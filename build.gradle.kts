@@ -49,6 +49,15 @@ dependencies {
     testImplementation ("org.testcontainers:mysql")
     testImplementation ("com.redis:testcontainers-redis:2.2.4")
 
+    //vault
+    implementation ("org.springframework.cloud:spring-cloud-starter-vault-config")
+
+}
+
+dependencyManagement {
+    imports {
+        mavenBom("org.springframework.cloud:spring-cloud-dependencies:2025.0.0")
+    }
 }
 
 kotlin {
