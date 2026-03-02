@@ -7,4 +7,3 @@ spring:
       - mysql
       - actuator
       - redis
-      - vault
