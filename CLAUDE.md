@@ -13,7 +13,7 @@ orino/
 
 ## Backend (be/)
 
-**Spring Boot 3.5.6 / Kotlin 1.9.25 / Java 21**, Gradle Kotlin DSL
+**Spring Boot 3.5.6 / Java 21**, Gradle Groovy DSL
 
 ```bash
 cd be
