@@ -1,0 +1,19 @@
+management:
+  endpoints:
+    web:
+      base-path: /
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        ready:
+          include: readinessState, db, redis
+        live:
+          include: livenessState
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true

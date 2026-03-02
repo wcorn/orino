@@ -1,0 +1,5 @@
+FROM eclipse-temurin:25-jdk
+WORKDIR /app
+COPY . .
+RUN ./gradlew dependencies --no-daemon
+ENTRYPOINT ["./gradlew", "bootRun", "--no-daemon"]

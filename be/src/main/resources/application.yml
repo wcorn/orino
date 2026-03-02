@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: orino
+  profiles:
+    include:
+      - mysql
+      - actuator
+      - redis

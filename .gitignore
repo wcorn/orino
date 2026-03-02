@@ -1,9 +1,11 @@
 HELP.md
-.gradle
-build/
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
-!**/src/test/**/build/
+
+### Gradle (be/) ###
+be/.gradle
+be/build/
+!be/gradle/wrapper/gradle-wrapper.jar
+!be/**/src/main/**/build/
+!be/**/src/test/**/build/
 
 ### STS ###
 .apt_generated
@@ -36,5 +38,6 @@ out/
 ### VS Code ###
 .vscode/
 
-### Kotlin ###
-.kotlin
+### Environment ###
+.env
+
