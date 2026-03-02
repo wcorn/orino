@@ -5,7 +5,7 @@ services:
     ports:
       - "3306:3306"
     env_file:
-      - .env
+      - ./be/.env
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -22,11 +22,19 @@ services:
     volumes:
       - redis-data:/data
 
-  # fe:
-  #   build:
-  #     context: ./fe
-  #   ports:
-  #     - "3000:3000"
+  be:
+    build:
+      context: ./be
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./be/.env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
 volumes:
   mysql-data:
