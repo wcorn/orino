@@ -25,20 +25,18 @@ cd be
 
 ### Profiles
 
-Default active profile: `local` (auto-includes `mysql`, `actuator`, `redis`, `vault`)
+Active profiles: `local` (default, docker-compose), `prod`, `test`. 모두 `mysql`, `actuator`, `redis` 자동 포함.
 
-| Profile | MySQL | Redis | Vault |
-|---------|-------|-------|-------|
-| `local` | localhost:3306 (user: dongseok) | localhost:6379 | disabled |
-| `dev`   | env vars (MYSQL_HOST, etc.) | env var (REDIS_HOST) | AppRole auth via env vars |
-| `test`  | TestContainers (MySQL 8.4.4) | — | disabled |
-
-Vault env vars for dev: `VAULT_ROLE_ID`, `VAULT_SECRET_ID`, `VAULT_HOST`, `VAULT_PORT`
+| Profile | 용도 | MySQL | Redis |
+|---------|------|-------|-------|
+| `local` | docker-compose 로컬 개발 | `mysql:3306/orino` (dongseok/dongseok) | `redis:6379` |
+| `prod`  | 운영 배포 | env vars (`MYSQL_HOST`, `MYSQL_USERNAME`, `MYSQL_PASSWORD`) | env vars (`REDIS_HOST`, `REDIS_PORT`) |
+| `test`  | 테스트 | TestContainers MySQL 8.4.4 | — |
 
 ### Response & Error Handling
 
-- **Success codes**: `ResponseCode` enum in `common/response/api/ResponseCode.kt`
-- **Error codes**: `ErrorCode` enum in `common/response/exception/ErrorCode.kt` (format: `GLB-ERR-XXX`)
+- **Success codes**: `CustomResponseCode` enum in `common/response/api/CustomResponseCode.java`
+- **Error codes**: `ErrorCode` enum in `common/response/exception/ErrorCode.java` (format: `GLB-ERR-XXX`)
 - **Custom exceptions**: Throw `CustomException(errorCode)` — caught by `GlobalExceptionHandler`
 
 Current error codes:

@@ -1,0 +1,33 @@
+services:
+  mysql:
+    image: mysql:8.4.8@sha256:a235c5bbb7235534ceca86d0dff98977aa854dd5b2ee507745458343d80454e4
+    platform: linux/arm64/v8
+    ports:
+      - "3306:3306"
+    env_file:
+      - .env
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8.6.1@sha256:b7e0bf9f5642e27acc72c1f031aa452c29f96f47ec89cf045df14918add7e836
+    platform: linux/arm64/v8
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  # fe:
+  #   build:
+  #     context: ./fe
+  #   ports:
+  #     - "3000:3000"
+
+volumes:
+  mysql-data:
+  redis-data:
