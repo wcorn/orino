@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add .gitignore CLAUDE.md fe/ infra/)"
+    ]
+  }
+}
