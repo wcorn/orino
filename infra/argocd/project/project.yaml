@@ -20,8 +20,8 @@ spec:
       namespace: longhorn-system
 
   clusterResourceWhitelist:
-    - group: ""
-      kind: Namespace
+    - group: "*"
+      kind: "*"
 
   namespaceResourceWhitelist:
     - group: "*"
