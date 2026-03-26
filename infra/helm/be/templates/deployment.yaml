@@ -22,6 +22,11 @@ spec:
               value: {{ .Values.env.SPRING_PROFILES_ACTIVE | quote }}
             - name: MYSQL_HOST
               value: {{ .Values.env.MYSQL_HOST | quote }}
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_DATABASE
             - name: MYSQL_USERNAME
               valueFrom:
                 secretKeyRef:
