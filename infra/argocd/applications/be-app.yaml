@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: be
+  namespace: argocd
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: be=ghcr.io/wcorn/orino/be
+    argocd-image-updater.argoproj.io/be.update-strategy: digest
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: orino
+
+  source:
+    repoURL: https://github.com/wcorn/orino.git
+    targetRevision: main
+    path: infra/helm/be
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: orino
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

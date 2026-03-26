@@ -1,0 +1,10 @@
+apiVersion: v2
+name: be
+description: Orino Spring Boot 백엔드
+type: application
+version: 1.0.0
+appVersion: "0.0.1"
+
+keywords:
+  - backend
+  - spring-boot
