@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: orino
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Orino project
+
+  sourceRepos:
+    - https://github.com/wcorn/orino.git
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: orino
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  orphanedResources:
+    warn: true

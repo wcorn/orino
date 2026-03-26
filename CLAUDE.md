@@ -51,7 +51,23 @@ Current error codes:
 - **Actuator**: `/actuator/health`
 - **TestContainers**: Tests use real MySQL 8.4.4 (no H2)
 
+## Git Workflow
+
+- main 브랜치에 직접 push 금지. 반드시 새 브랜치에서 PR을 통해 머지한다.
+
+## GitHub Templates
+
+Issue/PR 생성 시 `.github/` 템플릿을 따른다.
+
+- **Feature Issue**: `.github/ISSUE_TEMPLATE/feature.md` — label: `feat`, Description + Todo 체크리스트
+- **Bug Issue**: `.github/ISSUE_TEMPLATE/bug.md` — label: `bug`, Description
+- **PR**: `.github/PULL_REQUEST_TEMPLATE.md` — 연관 이슈 체크리스트 + 작업 내용
+
 ## Commit Message Format
 
-`.gitmessage.txt` 기준: `<type>: <subject>` (subject ≤ 50자)
-Types: `feat`, `fix`, `docs`, `test`, `refactor`, `style`, `chore`
+커밋 작성 시 `.gitmessage.txt`를 참고한다.
+
+- 형식: `<타입> : <제목>` (제목 50자 이내, 끝에 마침표 금지)
+- 본문: 구체적인 내용, `-`로 구분 (한 줄 72자 이내)
+- 꼬릿말: 관련 이슈 번호 (예: `#7`)
+- Types: `feat`, `fix`, `docs`, `test`, `refactor`, `style`, `chore`
