@@ -1,0 +1,17 @@
+apiVersion: v2
+name: longhorn
+description: Longhorn 분산 블록 스토리지 시스템
+type: application
+version: 1.0.0
+appVersion: "v1.11.1"
+
+dependencies:
+  - name: longhorn
+    version: 1.11.1
+    repository: https://charts.longhorn.io
+
+keywords:
+  - longhorn
+  - storage
+  - block-storage
+  - persistent-volume
