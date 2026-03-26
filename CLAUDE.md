@@ -51,6 +51,21 @@ Current error codes:
 - **Actuator**: `/actuator/health`
 - **TestContainers**: Tests use real MySQL 8.4.4 (no H2)
 
+## Infra / GitOps
+
+모든 인프라 설치는 Git을 통해 관리한다 (GitOps). ArgoCD가 클러스터에 설치되어 있으며 App of Apps 패턴을 사용한다.
+
+- **Application** (`infra/argocd/applications/`): Helm 디렉토리를 참조하는 용도만 담는다
+- **Helm Chart** (`infra/helm/<app>/`): wrapper chart 구조. `Chart.yaml`에서 `dependencies`로 upstream chart를 참조하고, `values.yaml`에 상세 설정을 정의한다
+- 직접 `helm install`이나 `kubectl apply`로 설치하지 않는다
+
+```
+infra/helm/<app>/
+├── Chart.yaml     # dependencies로 upstream chart 참조
+├── values.yaml    # 커스텀 설정
+└── Chart.lock     # dependency lock
+```
+
 ## Git Workflow
 
 - main 브랜치에 직접 push 금지. 반드시 새 브랜치에서 PR을 통해 머지한다.
