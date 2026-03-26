@@ -1,0 +1,10 @@
+apiVersion: v2
+name: mysql
+description: MySQL 데이터베이스
+type: application
+version: 1.0.0
+appVersion: "8.4"
+
+keywords:
+  - mysql
+  - database

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: redis
+description: Redis 캐시
+type: application
+version: 1.0.0
+appVersion: "7.4"
+
+keywords:
+  - redis
+  - cache
