@@ -1,0 +1,16 @@
+name: Infra CI
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'infra/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # TODO: helm lint, kubeval, yaml validation 등 추가 예정
