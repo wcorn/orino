@@ -2,6 +2,8 @@ longhorn:
   defaultSettings:
     defaultDataPath: /data
     defaultReplicaCount: 2
+    storageReservedPercentageForDefaultDisk: 5
+    guaranteedInstanceManagerCPU: 2
 
   persistence:
     defaultClassReplicaCount: 2
