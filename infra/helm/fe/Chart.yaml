@@ -1,0 +1,11 @@
+apiVersion: v2
+name: fe
+description: Orino React 프론트엔드
+type: application
+version: 1.0.0
+appVersion: "0.0.1"
+
+keywords:
+  - frontend
+  - react
+  - nginx

@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fe
+  namespace: argocd
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: fe=ghcr.io/wcorn/orino/fe
+    argocd-image-updater.argoproj.io/fe.update-strategy: digest
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: orino
+
+  source:
+    repoURL: https://github.com/wcorn/orino.git
+    targetRevision: main
+    path: infra/helm/fe
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: orino
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
