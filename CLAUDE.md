@@ -11,6 +11,18 @@ orino/
 └── infra/   # Kubernetes GitOps
 ```
 
+## Documentation & Project Management
+
+- **설계 문서**: GitHub Wiki (https://github.com/wcorn/orino/wiki)에서 관리한다
+- **프로젝트 관리**: GitHub Projects 칸반 보드로 관리한다
+- 코드 저장소에 문서 파일을 두지 않는다
+
+### 자동 관리 규칙
+
+- 구현 작업 시 관련 GitHub Issue를 확인하고, 완료 후 프로젝트 보드 상태를 업데이트한다
+- 설계 변경이 발생하면 GitHub Wiki 문서도 함께 업데이트한다
+- 새로운 기능 작업 시 GitHub Issue가 없으면 먼저 생성한다
+
 ## Backend (be/)
 
 **Spring Boot 4.0.3 / Java 25**, Gradle Groovy DSL
