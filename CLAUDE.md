@@ -22,6 +22,7 @@ orino/
 - 구현 작업 시 관련 GitHub Issue를 확인하고, 완료 후 프로젝트 보드 상태를 업데이트한다
 - 설계 변경이 발생하면 GitHub Wiki 문서도 함께 업데이트한다
 - 새로운 기능 작업 시 GitHub Issue가 없으면 먼저 생성한다
+- Issue/PR 생성 시 assignee를 항상 `wcorn`으로 설정한다
 
 ## Backend (be/)
 
