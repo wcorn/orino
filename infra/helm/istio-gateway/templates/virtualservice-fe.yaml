@@ -1,0 +1,16 @@
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: fe
+  namespace: istio-ingress
+spec:
+  hosts:
+    - "orino.dev"
+  gateways:
+    - orino-gateway
+  http:
+    - route:
+        - destination:
+            host: fe.orino.svc.cluster.local
+            port:
+              number: 80

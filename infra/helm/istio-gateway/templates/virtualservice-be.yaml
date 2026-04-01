@@ -1,0 +1,16 @@
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: be
+  namespace: istio-ingress
+spec:
+  hosts:
+    - "api.orino.dev"
+  gateways:
+    - orino-gateway
+  http:
+    - route:
+        - destination:
+            host: be.orino.svc.cluster.local
+            port:
+              number: 8080
