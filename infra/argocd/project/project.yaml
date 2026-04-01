@@ -20,6 +20,10 @@ spec:
       namespace: longhorn-system
     - server: https://kubernetes.default.svc
       namespace: kube-system
+    - server: https://kubernetes.default.svc
+      namespace: istio-system
+    - server: https://kubernetes.default.svc
+      namespace: istio-ingress
 
   clusterResourceWhitelist:
     - group: "*"

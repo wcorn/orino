@@ -1,0 +1,16 @@
+apiVersion: v2
+name: istiod
+description: Istio 컨트롤 플레인
+type: application
+version: 1.0.0
+appVersion: "1.29.1"
+
+dependencies:
+  - name: istiod
+    version: 1.29.1
+    repository: https://istio-release.storage.googleapis.com/charts
+
+keywords:
+  - istio
+  - istiod
+  - service-mesh
