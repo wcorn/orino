@@ -39,3 +39,6 @@ spring:
     url: jdbc:tc:mysql:8.4.4:///toy
     username: test
     password: test
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
