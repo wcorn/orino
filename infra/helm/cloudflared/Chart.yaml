@@ -1,0 +1,15 @@
+apiVersion: v2
+name: cloudflared
+description: Cloudflare Tunnel 클라이언트
+type: application
+version: 1.0.0
+appVersion: "latest"
+
+dependencies:
+  - name: cloudflare-tunnel-remote
+    version: 0.1.2
+    repository: https://cloudflare.github.io/helm-charts
+
+keywords:
+  - cloudflare
+  - tunnel
