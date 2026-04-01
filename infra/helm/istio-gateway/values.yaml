@@ -1,3 +1,5 @@
 gateway:
   service:
     type: LoadBalancer
+  autoscaling:
+    enabled: false
