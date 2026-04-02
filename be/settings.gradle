@@ -1,1 +1,6 @@
 rootProject.name = 'orino'
+include 'orino-common'
+include 'orino-domain-rdb'
+include 'orino-domain-redis'
+include 'orino-core-web'
+include 'orino-app-api'
