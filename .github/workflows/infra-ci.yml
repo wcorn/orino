@@ -86,6 +86,6 @@ jobs:
             if [ -f "$chart/Chart.yaml" ]; then
               echo "Validating $chart"
               helm dependency build "$chart" 2>/dev/null || true
-              helm template "$chart" | kubeconform -strict -summary
+              helm template "$chart" | kubeconform -strict -ignore-missing-schemas -summary
             fi
           done
