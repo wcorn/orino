@@ -7,6 +7,11 @@ spring:
     username: ${MYSQL_USERNAME}
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
 ---
 spring:
   config:
@@ -18,11 +23,15 @@ spring:
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
+    hibernate:
+      ddl-auto: validate
     properties:
       hibernate:
         format_sql: true
         highlight_sql: true
         generate_statistics: true
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
 
 logging:
   level:
@@ -42,3 +51,5 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+  liquibase:
+    enabled: false
