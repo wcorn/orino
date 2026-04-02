@@ -1,10 +1,14 @@
 import { useNavigate } from "react-router-dom";
 import { logout } from "../features/auth/api/auth";
 import { useAuth } from "../app/providers";
+import { Button } from "@/components/ui/button";
+import { LogOut, Moon, Sun } from "lucide-react";
+import { useThemeStore } from "@/shared/lib/theme";
 
 export function MainPage() {
   const navigate = useNavigate();
   const { refresh } = useAuth();
+  const { theme, setTheme } = useThemeStore();
 
   const handleLogout = async () => {
     await logout();
@@ -12,13 +16,32 @@ export function MainPage() {
     navigate("/", { replace: true });
   };
 
+  const toggleTheme = () => {
+    const resolved =
+      theme === "system"
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light"
+        : theme;
+    setTheme(resolved === "dark" ? "light" : "dark");
+  };
+
   return (
-    <div className="main-container">
-      <header className="main-header">
-        <span className="main-logo">orino</span>
-        <button onClick={handleLogout}>로그아웃</button>
+    <div className="min-h-svh">
+      <header className="flex items-center justify-between border-b bg-card px-6 py-3">
+        <span className="text-lg font-bold">orino</span>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon-sm" onClick={toggleTheme}>
+            <Sun className="size-4 scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
+            <Moon className="absolute size-4 scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleLogout}>
+            <LogOut className="size-3.5" />
+            로그아웃
+          </Button>
+        </div>
       </header>
-      <main className="main-content" />
+      <main className="p-6" />
     </div>
   );
 }
