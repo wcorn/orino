@@ -6,6 +6,8 @@ metadata:
   annotations:
     argocd-image-updater.argoproj.io/image-list: fe=ghcr.io/wcorn/orino/fe
     argocd-image-updater.argoproj.io/fe.update-strategy: digest
+    argocd-image-updater.argoproj.io/fe.helm.image-name: image.repository
+    argocd-image-updater.argoproj.io/fe.helm.image-tag: image.tag
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
