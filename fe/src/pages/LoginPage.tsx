@@ -2,6 +2,15 @@ import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { login } from "../features/auth/api/auth";
 import { useAuth } from "../app/providers";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export function LoginPage() {
   const [loginId, setLoginId] = useState("");
@@ -28,27 +37,43 @@ export function LoginPage() {
   };
 
   return (
-    <div className="login-container">
-      <form className="login-form" onSubmit={handleSubmit}>
-        <h1 className="login-logo">orino</h1>
-        <input
-          type="text"
-          placeholder="아이디"
-          value={loginId}
-          onChange={(e) => setLoginId(e.target.value)}
-          autoFocus
-        />
-        <input
-          type="password"
-          placeholder="비밀번호"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button type="submit" disabled={submitting}>
-          로그인
-        </button>
-        {error && <p className="login-error">{error}</p>}
-      </form>
+    <div className="flex min-h-svh items-center justify-center px-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold">orino</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="loginId">아이디</Label>
+              <Input
+                id="loginId"
+                type="text"
+                placeholder="아이디를 입력하세요"
+                value={loginId}
+                onChange={(e) => setLoginId(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="password">비밀번호</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="비밀번호를 입력하세요"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            <Button type="submit" disabled={submitting} className="w-full">
+              로그인
+            </Button>
+            {error && (
+              <p className="text-center text-sm text-destructive">{error}</p>
+            )}
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
