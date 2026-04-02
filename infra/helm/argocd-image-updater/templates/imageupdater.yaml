@@ -6,6 +6,24 @@ metadata:
 spec:
   applicationRefs:
     - namePattern: "be"
-      useAnnotations: true
+      images:
+        - alias: be
+          imageName: "ghcr.io/wcorn/orino/be:latest"
+          commonUpdateSettings:
+            updateStrategy: digest
+            allowTags: "^latest$"
+          manifestTargets:
+            helm:
+              name: image.repository
+              tag: image.tag
     - namePattern: "fe"
-      useAnnotations: true
+      images:
+        - alias: fe
+          imageName: "ghcr.io/wcorn/orino/fe:latest"
+          commonUpdateSettings:
+            updateStrategy: digest
+            allowTags: "^latest$"
+          manifestTargets:
+            helm:
+              name: image.repository
+              tag: image.tag

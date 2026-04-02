@@ -3,12 +3,7 @@ kind: Application
 metadata:
   name: be
   namespace: argocd
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: be=ghcr.io/wcorn/orino/be
-    argocd-image-updater.argoproj.io/be.update-strategy: digest
-    argocd-image-updater.argoproj.io/be.allow-tags: regexp:^latest$
-    argocd-image-updater.argoproj.io/be.helm.image-name: image.repository
-    argocd-image-updater.argoproj.io/be.helm.image-tag: image.tag
+  annotations: {}
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
