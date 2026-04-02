@@ -7,6 +7,12 @@ spring:
     username: ${MYSQL_USERNAME}
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 0
 ---
 spring:
   config:
@@ -18,11 +24,16 @@ spring:
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
+    hibernate:
+      ddl-auto: validate
     properties:
       hibernate:
         format_sql: true
         highlight_sql: true
         generate_statistics: true
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 0
 
 logging:
   level:
@@ -42,3 +53,5 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+  flyway:
+    enabled: false
