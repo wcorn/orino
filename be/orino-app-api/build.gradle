@@ -2,10 +2,6 @@ plugins {
     id 'org.springframework.boot'
 }
 
-configurations {
-    liquibaseDiff
-}
-
 dependencies {
     implementation project(':orino-core-web')
     implementation project(':orino-domain-rdb')
@@ -19,42 +15,9 @@ dependencies {
     implementation 'org.liquibase:liquibase-core'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
 
-    liquibaseDiff 'org.liquibase:liquibase-core'
-    liquibaseDiff 'org.liquibase.ext:liquibase-hibernate6:4.30.0'
-    liquibaseDiff 'org.springframework.boot:spring-boot-starter-data-jpa'
-    liquibaseDiff 'com.mysql:mysql-connector-j'
-    liquibaseDiff 'info.picocli:picocli:4.7.6'
-    liquibaseDiff project(':orino-domain-rdb')
-    liquibaseDiff project(':orino-common')
-
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
     testImplementation 'org.testcontainers:testcontainers-mysql'
     testImplementation 'com.redis:testcontainers-redis:2.2.4'
-}
-
-tasks.register('diffChangeLog', JavaExec) {
-    description = 'JPA 엔티티와 DB를 비교하여 Liquibase changelog 자동 생성'
-    group = 'liquibase'
-    classpath = configurations.liquibaseDiff + sourceSets.main.output
-    mainClass = 'liquibase.integration.commandline.LiquibaseCommandLine'
-
-    def dbUrl = project.findProperty('dbUrl') ?: 'jdbc:mysql://localhost:3306/orino'
-    def dbUser = project.findProperty('dbUser') ?: 'dongseok'
-    def dbPassword = project.findProperty('dbPassword') ?: 'dongseok'
-    def outFile = project.findProperty('outputFile') ?: 'src/main/resources/db/changelog/changes/diff-output.yaml'
-    def refUrl = 'hibernate:spring:ds.project.orino' +
-            '?dialect=org.hibernate.dialect.MySQLDialect' +
-            '&hibernate.physical_naming_strategy=org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy' +
-            '&hibernate.implicit_naming_strategy=org.springframework.boot.orm.jpa.hibernate.SpringImplicitNamingStrategy'
-
-    args = [
-            '--url=' + dbUrl,
-            '--username=' + dbUser,
-            '--password=' + dbPassword,
-            '--referenceUrl=' + refUrl,
-            '--changeLogFile=' + outFile,
-            'diffChangeLog'
-    ]
 }

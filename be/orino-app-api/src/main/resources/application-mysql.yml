@@ -24,14 +24,14 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
     properties:
       hibernate:
         format_sql: true
         highlight_sql: true
         generate_statistics: true
   liquibase:
-    change-log: classpath:db/changelog/db.changelog-master.yaml
+    enabled: false
 
 logging:
   level:
