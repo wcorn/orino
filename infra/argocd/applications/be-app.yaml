@@ -3,7 +3,11 @@ kind: Application
 metadata:
   name: be
   namespace: argocd
-  annotations: {}
+  annotations:
+    notifications.argoproj.io/subscribe.on-sync-running.discord: ""
+    notifications.argoproj.io/subscribe.on-sync-succeeded.discord: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.discord: ""
+    notifications.argoproj.io/subscribe.on-health-degraded.discord: ""
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

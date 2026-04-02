@@ -1,0 +1,4 @@
+apiVersion: v2
+name: argocd-notifications
+description: ArgoCD Notifications configuration
+version: 0.1.0
