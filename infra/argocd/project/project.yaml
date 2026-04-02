@@ -26,8 +26,6 @@ spec:
       namespace: istio-ingress
     - server: https://kubernetes.default.svc
       namespace: cloudflared
-    - server: https://kubernetes.default.svc
-      namespace: cert-manager
 
   clusterResourceWhitelist:
     - group: "*"
