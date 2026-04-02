@@ -51,12 +51,12 @@ spec:
           readinessProbe:
             httpGet:
               path: /health/readiness
-              port: 8080
+              port: 9090
             initialDelaySeconds: 30
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health/liveness
-              port: 8080
+              port: 9090
             initialDelaySeconds: 60
             periodSeconds: 30
