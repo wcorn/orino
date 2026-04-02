@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { login } from "../api/auth";
-import { useAuth } from "../auth/AuthProvider";
+import { login } from "../features/auth/api/auth";
+import { useAuth } from "../app/providers";
 
 export function LoginPage() {
   const [loginId, setLoginId] = useState("");

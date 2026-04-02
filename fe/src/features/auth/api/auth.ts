@@ -1,6 +1,6 @@
 import axios from "axios";
-import client from "./client";
-import { setAccessToken } from "../auth/authStore";
+import client from "../../../shared/api/client";
+import { setAccessToken } from "../store/authStore";
 
 interface LoginRequest {
   loginId: string;

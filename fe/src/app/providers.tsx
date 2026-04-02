@@ -1,6 +1,15 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { getAccessToken } from "./authStore";
-import { reissue } from "../api/auth";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
+import { reissue } from "../features/auth/api/auth";
+import { getAccessToken } from "../features/auth/store/authStore";
+
+const queryClient = new QueryClient();
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -18,7 +27,7 @@ export function useAuth(): AuthContextType {
   return useContext(AuthContext);
 }
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
 
@@ -33,13 +42,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAuthenticated = getAccessToken() !== null;
   const refresh = () => setVersion((v) => v + 1);
 
-  if (loading) {
-    return null;
-  }
+  if (loading) return null;
 
   return (
     <AuthContext.Provider value={{ isAuthenticated, loading, refresh }}>
       {children}
     </AuthContext.Provider>
+  );
+}
+
+export function Providers({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>{children}</AuthProvider>
+    </QueryClientProvider>
   );
 }

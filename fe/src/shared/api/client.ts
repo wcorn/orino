@@ -1,5 +1,8 @@
 import axios from "axios";
-import { getAccessToken, setAccessToken } from "../auth/authStore";
+import {
+  getAccessToken,
+  setAccessToken,
+} from "../../features/auth/store/authStore";
 
 const client = axios.create({
   baseURL: "/api",
