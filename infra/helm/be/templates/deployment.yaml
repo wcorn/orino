@@ -50,13 +50,13 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           readinessProbe:
             httpGet:
-              path: /health/readiness
-              port: 8080
+              path: /actuator/health/readiness
+              port: 9090
             initialDelaySeconds: 30
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /health/liveness
-              port: 8080
+              path: /actuator/health/liveness
+              port: 9090
             initialDelaySeconds: 60
             periodSeconds: 30
