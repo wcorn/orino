@@ -5,7 +5,7 @@ import {
 } from "../../features/auth/store/authStore";
 
 const client = axios.create({
-  baseURL: "/api",
+  baseURL: "https://api.orino.dev/api",
 });
 
 client.interceptors.request.use((config) => {
@@ -38,7 +38,7 @@ client.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      const { data } = await axios.post("/api/auth/reissue");
+      const { data } = await axios.post("https://api.orino.dev/api/auth/reissue");
       setAccessToken(data.data.accessToken);
       pendingRequests.forEach((cb) => cb());
       return client(originalRequest);
