@@ -38,14 +38,16 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-svh items-center justify-center px-4">
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-[360px]">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">orino</CardTitle>
+          <CardTitle className="text-xl font-bold">orino</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="loginId">아이디</Label>
+              <Label htmlFor="loginId" className="text-xs">
+                아이디
+              </Label>
               <Input
                 id="loginId"
                 type="text"
@@ -56,7 +58,9 @@ export function LoginPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="password">비밀번호</Label>
+              <Label htmlFor="password" className="text-xs">
+                비밀번호
+              </Label>
               <Input
                 id="password"
                 type="password"
@@ -65,11 +69,11 @@ export function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <Button type="submit" disabled={submitting} className="w-full">
+            <Button type="submit" disabled={submitting} className="mt-1 w-full">
               로그인
             </Button>
             {error && (
-              <p className="text-center text-sm text-destructive">{error}</p>
+              <p className="text-center text-xs text-destructive">{error}</p>
             )}
           </form>
         </CardContent>
