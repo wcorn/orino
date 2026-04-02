@@ -4,9 +4,17 @@ longhorn:
     defaultReplicaCount: 2
     storageReservedPercentageForDefaultDisk: 5
     guaranteedInstanceManagerCPU: 2
+    backupTarget: s3://orino-longhorn-backup@ap-northeast-2/
+    backupTargetCredentialSecret: longhorn-backup-s3
 
   persistence:
     defaultClassReplicaCount: 2
 
   longhornUI:
     replicas: 1
+
+  recurringJobSelector:
+    - name: daily-snapshot
+      isGroup: false
+    - name: daily-backup
+      isGroup: false

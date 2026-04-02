@@ -41,3 +41,9 @@ out/
 ### Environment ###
 be/.env
 
+### Terraform ###
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+
