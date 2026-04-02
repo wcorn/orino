@@ -82,6 +82,7 @@ infra/helm/<app>/
 ## Git Workflow
 
 - main 브랜치에 직접 push 금지. 반드시 새 브랜치에서 PR을 통해 머지한다.
+- PR 생성 시 base 브랜치는 항상 main으로 설정한다. 중간 브랜치를 base로 사용하지 않는다.
 
 ## GitHub Templates
 
