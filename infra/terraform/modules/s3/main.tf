@@ -1,32 +1,9 @@
-resource "aws_s3_bucket" "longhorn_backup" {
+resource "aws_s3_bucket" "this" {
   bucket = var.bucket_name
 }
 
-resource "aws_s3_bucket_lifecycle_configuration" "longhorn_backup" {
-  bucket = aws_s3_bucket.longhorn_backup.id
-
-  rule {
-    id     = "backup-lifecycle"
-    status = "Enabled"
-
-    transition {
-      days          = var.lifecycle_ia_days
-      storage_class = "STANDARD_IA"
-    }
-
-    transition {
-      days          = var.lifecycle_glacier_days
-      storage_class = "GLACIER_IR"
-    }
-
-    expiration {
-      days = var.lifecycle_expiration_days
-    }
-  }
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "longhorn_backup" {
-  bucket = aws_s3_bucket.longhorn_backup.id
+resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
+  bucket = aws_s3_bucket.this.id
 
   rule {
     apply_server_side_encryption_by_default {
@@ -35,8 +12,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "longhorn_backup" 
   }
 }
 
-resource "aws_s3_bucket_public_access_block" "longhorn_backup" {
-  bucket = aws_s3_bucket.longhorn_backup.id
+resource "aws_s3_bucket_public_access_block" "this" {
+  bucket = aws_s3_bucket.this.id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -44,43 +21,38 @@ resource "aws_s3_bucket_public_access_block" "longhorn_backup" {
   restrict_public_buckets = true
 }
 
-resource "aws_s3_bucket_versioning" "longhorn_backup" {
-  bucket = aws_s3_bucket.longhorn_backup.id
+resource "aws_s3_bucket_versioning" "this" {
+  bucket = aws_s3_bucket.this.id
 
   versioning_configuration {
-    status = "Suspended"
+    status = var.enable_versioning ? "Enabled" : "Suspended"
   }
 }
 
-# IAM user for Longhorn
-resource "aws_iam_user" "longhorn" {
-  name = "longhorn-backup"
-}
+resource "aws_s3_bucket_lifecycle_configuration" "this" {
+  count  = length(var.lifecycle_rules) > 0 ? 1 : 0
+  bucket = aws_s3_bucket.this.id
 
-resource "aws_iam_user_policy" "longhorn" {
-  name = "longhorn-backup-s3"
-  user = aws_iam_user.longhorn.name
+  dynamic "rule" {
+    for_each = var.lifecycle_rules
+    content {
+      id     = rule.value.id
+      status = "Enabled"
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:PutObject",
-          "s3:GetObject",
-          "s3:DeleteObject",
-          "s3:ListBucket",
-        ]
-        Resource = [
-          aws_s3_bucket.longhorn_backup.arn,
-          "${aws_s3_bucket.longhorn_backup.arn}/*",
-        ]
+      dynamic "transition" {
+        for_each = rule.value.transitions
+        content {
+          days          = transition.value.days
+          storage_class = transition.value.storage_class
+        }
       }
-    ]
-  })
-}
 
-resource "aws_iam_access_key" "longhorn" {
-  user = aws_iam_user.longhorn.name
+      dynamic "expiration" {
+        for_each = rule.value.expiration_days != null ? [1] : []
+        content {
+          days = rule.value.expiration_days
+        }
+      }
+    }
+  }
 }

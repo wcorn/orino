@@ -1,11 +1,17 @@
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.14"
 
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
+  }
+
+  backend "s3" {
+    bucket = "orino-terraform-state"
+    key    = "infra/terraform.tfstate"
+    region = "ap-northeast-2"
   }
 }
 

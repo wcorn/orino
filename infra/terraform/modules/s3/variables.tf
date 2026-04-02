@@ -1,27 +1,23 @@
 variable "bucket_name" {
-  description = "S3 bucket name for Longhorn backup"
+  description = "S3 bucket name"
   type        = string
 }
 
-variable "aws_region" {
-  description = "AWS region"
-  type        = string
+variable "enable_versioning" {
+  description = "Enable S3 bucket versioning"
+  type        = bool
+  default     = false
 }
 
-variable "lifecycle_ia_days" {
-  description = "Days before transitioning to Standard-IA"
-  type        = number
-  default     = 30
-}
-
-variable "lifecycle_glacier_days" {
-  description = "Days before transitioning to Glacier Instant Retrieval"
-  type        = number
-  default     = 90
-}
-
-variable "lifecycle_expiration_days" {
-  description = "Days before expiring old backups"
-  type        = number
-  default     = 365
+variable "lifecycle_rules" {
+  description = "Lifecycle rules for the bucket"
+  type = list(object({
+    id = string
+    transitions = list(object({
+      days          = number
+      storage_class = string
+    }))
+    expiration_days = optional(number)
+  }))
+  default = []
 }
