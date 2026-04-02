@@ -9,7 +9,23 @@ spec:
   gateways:
     - orino-gateway
   http:
-    - route:
+    - corsPolicy:
+        allowOrigins:
+          - exact: "https://orino.dev"
+          - exact: "http://orino.dev"
+        allowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - PATCH
+          - OPTIONS
+        allowHeaders:
+          - Authorization
+          - Content-Type
+        allowCredentials: true
+        maxAge: "86400s"
+      route:
         - destination:
             host: be.orino.svc.cluster.local
             port:
