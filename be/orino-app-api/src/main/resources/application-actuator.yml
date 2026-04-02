@@ -3,7 +3,7 @@ management:
     port: 9090
   endpoints:
     web:
-      base-path: /actuator
+      base-path: /
   endpoint:
     health:
       show-details: always
