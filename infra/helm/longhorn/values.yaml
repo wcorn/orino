@@ -4,8 +4,8 @@ longhorn:
     defaultReplicaCount: 2
     storageReservedPercentageForDefaultDisk: 5
     guaranteedInstanceManagerCPU: 2
-    backupTarget: s3://orino-longhorn-backup@ap-northeast-2/
-    backupTargetCredentialSecret: longhorn-backup-s3
+    backupTarget: ""
+    backupTargetCredentialSecret: ""
 
   persistence:
     defaultClassReplicaCount: 2
