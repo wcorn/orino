@@ -9,7 +9,7 @@ export function MainPage() {
   const handleLogout = async () => {
     await logout();
     refresh();
-    navigate("/login", { replace: true });
+    navigate("/", { replace: true });
   };
 
   return (

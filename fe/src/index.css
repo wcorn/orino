@@ -79,6 +79,51 @@ body {
   text-align: center;
 }
 
+/* Landing */
+.landing-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+.landing-content {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.landing-title {
+  font-size: 48px;
+  font-weight: 800;
+  color: #111;
+  letter-spacing: -1px;
+}
+
+.landing-description {
+  font-size: 16px;
+  color: #666;
+  line-height: 1.6;
+}
+
+.landing-login-button {
+  display: inline-block;
+  padding: 14px 48px;
+  background: #111;
+  color: #fff;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+
+.landing-login-button:hover {
+  background: #333;
+}
+
 /* Main */
 .main-container {
   min-height: 100vh;
