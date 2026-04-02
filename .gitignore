@@ -2,7 +2,7 @@ HELP.md
 
 ### Gradle (be/) ###
 be/.gradle
-be/build/
+be/**/build/
 !be/gradle/wrapper/gradle-wrapper.jar
 !be/**/src/main/**/build/
 !be/**/src/test/**/build/
