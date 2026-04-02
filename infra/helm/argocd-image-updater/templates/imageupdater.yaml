@@ -11,7 +11,7 @@ spec:
           imageName: "ghcr.io/wcorn/orino/be:latest"
           commonUpdateSettings:
             updateStrategy: digest
-            allowTags: "^latest$"
+            allowTags: "regexp:^latest$"
           manifestTargets:
             helm:
               name: image.repository
@@ -22,7 +22,7 @@ spec:
           imageName: "ghcr.io/wcorn/orino/fe:latest"
           commonUpdateSettings:
             updateStrategy: digest
-            allowTags: "^latest$"
+            allowTags: "regexp:^latest$"
           manifestTargets:
             helm:
               name: image.repository
