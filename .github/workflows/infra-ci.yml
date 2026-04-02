@@ -7,10 +7,85 @@ on:
       - 'infra/**'
 
 jobs:
-  validate:
+  yaml-lint:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      # TODO: helm lint, kubeval, yaml validation 등 추가 예정
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: YAML lint
+        run: yamllint -c .yamllint.yml infra/
+
+  helm-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Add Helm repositories
+        run: |
+          helm repo add argoproj https://argoproj.github.io/argo-helm
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo add bitnami-labs https://bitnami-labs.github.io/sealed-secrets
+          helm repo add longhorn https://charts.longhorn.io
+          helm repo add istio https://istio-release.storage.googleapis.com/charts
+          helm repo add cloudflare https://cloudflare.github.io/helm-charts
+          helm repo update
+
+      - name: Helm dependency build
+        run: |
+          for chart in infra/helm/*/; do
+            if [ -f "$chart/Chart.yaml" ]; then
+              echo "Building dependencies for $chart"
+              helm dependency build "$chart" || true
+            fi
+          done
+
+      - name: Helm lint
+        run: |
+          for chart in infra/helm/*/; do
+            if [ -f "$chart/Chart.yaml" ]; then
+              echo "Linting $chart"
+              helm lint "$chart"
+            fi
+          done
+
+  kubeconform:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Add Helm repositories
+        run: |
+          helm repo add argoproj https://argoproj.github.io/argo-helm
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo add bitnami-labs https://bitnami-labs.github.io/sealed-secrets
+          helm repo add longhorn https://charts.longhorn.io
+          helm repo add istio https://istio-release.storage.googleapis.com/charts
+          helm repo add cloudflare https://cloudflare.github.io/helm-charts
+          helm repo update
+
+      - name: Validate manifests
+        run: |
+          for chart in infra/helm/be infra/helm/fe infra/helm/mysql infra/helm/redis; do
+            if [ -f "$chart/Chart.yaml" ]; then
+              echo "Validating $chart"
+              helm dependency build "$chart" 2>/dev/null || true
+              helm template "$chart" | kubeconform -strict -summary
+            fi
+          done
