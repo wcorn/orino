@@ -14,7 +14,5 @@ longhorn:
     replicas: 1
 
   recurringJobSelector:
-    - name: daily-snapshot
-      isGroup: false
     - name: daily-backup
       isGroup: false
