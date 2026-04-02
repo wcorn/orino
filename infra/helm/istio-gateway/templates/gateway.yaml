@@ -8,9 +8,21 @@ spec:
     istio: gateway
   servers:
     - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: orino-tls-credential
+      hosts:
+        - "orino.dev"
+        - "*.orino.dev"
+    - port:
         number: 80
         name: http
         protocol: HTTP
+      tls:
+        httpsRedirect: true
       hosts:
         - "orino.dev"
         - "*.orino.dev"
