@@ -1,4 +1,3 @@
-import axios from "axios";
 import client from "../../../shared/api/client";
 import { setAccessToken } from "../store/authStore";
 
@@ -13,13 +12,13 @@ interface TokenResponse {
 }
 
 export async function login(request: LoginRequest): Promise<void> {
-  const { data } = await axios.post<TokenResponse>("/api/auth/login", request);
+  const { data } = await client.post<TokenResponse>("/auth/login", request);
   setAccessToken(data.data.accessToken);
 }
 
 export async function reissue(): Promise<boolean> {
   try {
-    const { data } = await axios.post<TokenResponse>("/api/auth/reissue");
+    const { data } = await client.post<TokenResponse>("/auth/reissue");
     setAccessToken(data.data.accessToken);
     return true;
   } catch {
