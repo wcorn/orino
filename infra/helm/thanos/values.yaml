@@ -1,66 +1,45 @@
-thanos:
-  image:
-    registry: docker.io
-    repository: bitnamilegacy/thanos
+image:
+  registry: quay.io
+  repository: thanos/thanos
+  tag: v0.41.0
 
-  existingObjstoreSecret: thanos-objstore-secret
+objstoreSecret: thanos-objstore-secret
 
-  query:
-    enabled: true
-    replicaCount: 1
-    stores:
-      - dnssrv+_grpc._tcp.kube-prometheus-stack-thanos-discovery.monitoring.svc.cluster.local
-      - dnssrv+_grpc._tcp.thanos-storegateway.monitoring.svc.cluster.local
-    resources:
-      requests:
-        cpu: 100m
-        memory: 128Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
+query:
+  replicas: 1
+  stores:
+    - dnssrv+_grpc._tcp.kube-prometheus-stack-thanos-discovery.monitoring.svc.cluster.local
+    - dnssrv+_grpc._tcp.thanos-storegateway.monitoring.svc.cluster.local
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
 
-  queryFrontend:
-    enabled: false
+storegateway:
+  replicas: 1
+  storageClass: longhorn
+  storageSize: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
 
-  compactor:
-    enabled: true
-    retentionResolutionRaw: 30d
-    retentionResolution5m: 90d
-    retentionResolution1h: 365d
-    persistence:
-      enabled: true
-      storageClass: longhorn
-      size: 10Gi
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
-
-  storegateway:
-    enabled: true
-    replicaCount: 1
-    persistence:
-      enabled: true
-      storageClass: longhorn
-      size: 5Gi
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
-
-  ruler:
-    enabled: false
-  receive:
-    enabled: false
-  bucketweb:
-    enabled: false
-  metrics:
-    enabled: true
-    serviceMonitor:
-      enabled: true
+compactor:
+  retentionRaw: 30d
+  retention5m: 90d
+  retention1h: 365d
+  storageClass: longhorn
+  storageSize: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
