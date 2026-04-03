@@ -25,6 +25,11 @@ spec:
           - Content-Type
         allowCredentials: true
         maxAge: "86400s"
+      timeout: 10s
+      retries:
+        attempts: 2
+        retryOn: 5xx,reset,connect-failure
+        perTryTimeout: 3s
       route:
         - destination:
             host: be.orino.svc.cluster.local
