@@ -18,3 +18,24 @@ output "longhorn_iam_secret_access_key" {
   value       = aws_iam_access_key.longhorn.secret
   sensitive   = true
 }
+
+output "loki_logs_bucket" {
+  description = "Loki logs S3 bucket name"
+  value       = module.loki_logs.bucket_name
+}
+
+output "thanos_metrics_bucket" {
+  description = "Thanos metrics S3 bucket name"
+  value       = module.thanos_metrics.bucket_name
+}
+
+output "observability_iam_access_key_id" {
+  description = "IAM access key ID for observability (Loki + Thanos)"
+  value       = aws_iam_access_key.observability.id
+}
+
+output "observability_iam_secret_access_key" {
+  description = "IAM secret access key for observability (Loki + Thanos)"
+  value       = aws_iam_access_key.observability.secret
+  sensitive   = true
+}
