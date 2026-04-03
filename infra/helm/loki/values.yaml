@@ -9,18 +9,38 @@ loki:
       configs:
         - from: "2024-01-01"
           store: tsdb
-          object_store: filesystem
+          object_store: s3
           schema: v13
           index:
             prefix: index_
             period: 24h
     storage:
-      type: filesystem
+      type: s3
+      bucketNames:
+        chunks: orino-loki-logs
+        ruler: orino-loki-logs
+      s3:
+        endpoint: s3.ap-northeast-2.amazonaws.com
+        region: ap-northeast-2
+        secretAccessKey: ${AWS_SECRET_ACCESS_KEY}
+        accessKeyId: ${AWS_ACCESS_KEY_ID}
+        s3ForcePathStyle: false
     limits_config:
-      retention_period: 168h
+      retention_period: 2160h
 
   singleBinary:
     replicas: 1
+    extraEnv:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: observability-s3-secret
+            key: AWS_ACCESS_KEY_ID
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: observability-s3-secret
+            key: AWS_SECRET_ACCESS_KEY
     resources:
       requests:
         cpu: 100m
@@ -31,7 +51,7 @@ loki:
     persistence:
       enabled: true
       storageClass: longhorn
-      size: 20Gi
+      size: 10Gi
 
   chunksCache:
     enabled: false
