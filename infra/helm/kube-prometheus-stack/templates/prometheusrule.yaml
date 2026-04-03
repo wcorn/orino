@@ -1,0 +1,95 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: orino-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: pod-alerts
+      rules:
+        - alert: PodCrashLoopBackOff
+          expr: rate(kube_pod_container_status_restarts_total[10m]) * 60 * 5 > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{ "{{" }} $labels.namespace {{ "}}" }}/{{ "{{" }} $labels.pod {{ "}}" }} CrashLoopBackOff"
+            description: "Pod {{ "{{" }} $labels.pod {{ "}}" }}이 5분간 반복 재시작 중"
+
+        - alert: PodOOMKilled
+          expr: kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ "{{" }} $labels.namespace {{ "}}" }}/{{ "{{" }} $labels.pod {{ "}}" }} OOMKilled"
+            description: "컨테이너 {{ "{{" }} $labels.container {{ "}}" }}이 메모리 부족으로 종료됨"
+
+        - alert: PodNotReady
+          expr: kube_pod_status_ready{condition="true"} == 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ "{{" }} $labels.namespace {{ "}}" }}/{{ "{{" }} $labels.pod {{ "}}" }} Not Ready"
+            description: "Pod가 10분 이상 Ready 상태가 아님"
+
+    - name: node-alerts
+      rules:
+        - alert: NodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "노드 {{ "{{" }} $labels.node {{ "}}" }} Not Ready"
+            description: "노드가 5분 이상 Ready 상태가 아님"
+
+        - alert: NodeHighCpuUsage
+          expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "노드 {{ "{{" }} $labels.instance {{ "}}" }} CPU 사용률 높음"
+            description: "CPU 사용률이 10분간 85% 초과 (현재: {{ "{{" }} $value | printf \"%.1f\" {{ "}}" }}%)"
+
+        - alert: NodeHighMemoryUsage
+          expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "노드 {{ "{{" }} $labels.instance {{ "}}" }} 메모리 사용률 높음"
+            description: "메모리 사용률이 10분간 85% 초과 (현재: {{ "{{" }} $value | printf \"%.1f\" {{ "}}" }}%)"
+
+        - alert: NodeDiskSpaceLow
+          expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes) * 100 > 85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "노드 {{ "{{" }} $labels.instance {{ "}}" }} 디스크 사용률 높음"
+            description: "디스크 사용률이 85% 초과 (현재: {{ "{{" }} $value | printf \"%.1f\" {{ "}}" }}%)"
+
+    - name: longhorn-alerts
+      rules:
+        - alert: LonghornBackupFailed
+          expr: longhorn_backup_state{backup_state="Error"} == 1
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Longhorn 백업 실패: {{ "{{" }} $labels.volume {{ "}}" }}"
+            description: "볼륨 {{ "{{" }} $labels.volume {{ "}}" }}의 백업이 실패함"
+
+        - alert: LonghornVolumeDegrade
+          expr: longhorn_volume_robustness{robustness="degraded"} == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Longhorn 볼륨 Degraded: {{ "{{" }} $labels.volume {{ "}}" }}"
+            description: "볼륨 {{ "{{" }} $labels.volume {{ "}}" }}이 Degraded 상태"
