@@ -25,7 +25,7 @@ spec:
             - --http-address=0.0.0.0:9090
             - --grpc-address=0.0.0.0:10901
             {{- range .Values.query.stores }}
-            - --store={{ . }}
+            - --endpoint={{ . }}
             {{- end }}
           ports:
             - name: http

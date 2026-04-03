@@ -18,6 +18,8 @@ spec:
         app.kubernetes.io/name: thanos
         app.kubernetes.io/component: storegateway
     spec:
+      securityContext:
+        fsGroup: 1001
       containers:
         - name: thanos-storegateway
           image: {{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}

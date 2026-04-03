@@ -18,6 +18,8 @@ spec:
         app.kubernetes.io/name: thanos
         app.kubernetes.io/component: compactor
     spec:
+      securityContext:
+        fsGroup: 1001
       containers:
         - name: thanos-compactor
           image: {{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}
