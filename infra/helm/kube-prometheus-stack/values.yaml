@@ -34,6 +34,12 @@ kube-prometheus-stack:
       enabled: true
       storageClassName: longhorn
       size: 5Gi
+    additionalDataSources:
+      - name: Loki
+        type: loki
+        url: http://loki.monitoring.svc.cluster.local:3100
+        access: proxy
+        isDefault: false
 
   alertmanager:
     alertmanagerSpec:
