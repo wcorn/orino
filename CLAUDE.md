@@ -97,6 +97,16 @@ infra/helm/<app>/
 └── Chart.lock     # dependency lock
 ```
 
+### Secrets 관리
+
+- SealedSecret 원본 비밀값은 `.secrets` 파일에 기록한다 (`.gitignore`로 추적 제외)
+- 새 SealedSecret 추가 시 `.secrets`에 원본값을 함께 기록한다
+- kubeseal 실행은 `ssh note1`에서 수행한다
+  ```bash
+  ssh note1 "echo -n '<값>' | kubeseal --raw --namespace <ns> --name <secret-name> \
+    --controller-name sealed-secrets --controller-namespace kube-system"
+  ```
+
 ## Git Workflow
 
 - main 브랜치에 직접 push 금지. 반드시 새 브랜치에서 PR을 통해 머지한다.
