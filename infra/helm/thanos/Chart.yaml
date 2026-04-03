@@ -1,0 +1,15 @@
+apiVersion: v2
+name: thanos
+description: Thanos 메트릭 장기저장
+type: application
+version: 1.0.0
+appVersion: "0.39.2"
+
+dependencies:
+  - name: thanos
+    version: 17.3.1
+    repository: https://charts.bitnami.com/bitnami
+
+keywords:
+  - thanos
+  - monitoring

@@ -3,8 +3,15 @@ kube-prometheus-stack:
     service:
       type: NodePort
       nodePort: 30090
+    thanosService:
+      enabled: true
     prometheusSpec:
       retention: 7d
+      thanos:
+        objectStorageConfig:
+          existingSecret:
+            name: thanos-objstore-secret
+            key: objstore.yml
       resources:
         requests:
           cpu: 200m
@@ -56,6 +63,11 @@ kube-prometheus-stack:
       - name: Loki
         type: loki
         url: http://loki.monitoring.svc.cluster.local:3100
+        access: proxy
+        isDefault: false
+      - name: Thanos
+        type: prometheus
+        url: http://thanos-query.monitoring.svc.cluster.local:9090
         access: proxy
         isDefault: false
 
