@@ -4,3 +4,7 @@ dist-ssr
 *.local
 .env
 .env.production
+
+# Playwright
+test-results/
+playwright-report/
