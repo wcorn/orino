@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: promtail
+  name: alloy
   namespace: argocd
   annotations:
     notifications.argoproj.io/subscribe.on-sync-running.discord: ""
@@ -16,7 +16,7 @@ spec:
   source:
     repoURL: https://github.com/wcorn/orino.git
     targetRevision: main
-    path: infra/helm/promtail
+    path: infra/helm/alloy
 
   destination:
     server: https://kubernetes.default.svc
