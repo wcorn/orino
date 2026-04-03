@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 orino/
 ├── be/      # Spring Boot 백엔드
-├── fe/      # React 프론트엔드 (스펙 미정)
+├── fe/      # React 프론트엔드
 └── infra/   # Kubernetes GitOps
 ```
 
@@ -52,17 +52,35 @@ Active profiles: `local` (default, docker-compose), `prod`, `test`. 모두 `mysq
 - **Error codes**: `ErrorCode` enum in `common/response/exception/ErrorCode.java` (format: `GLB-ERR-XXX`)
 - **Custom exceptions**: Throw `CustomException(errorCode)` — caught by `GlobalExceptionHandler`
 
-Current error codes:
-- `GLB-ERR-001`: Bad Request (400)
-- `GLB-ERR-002`: Method Not Allowed (405)
-- `GLB-ERR-003`: Internal Server Error (500)
-
 ### Key Infrastructure
 
 - **JPA Auditing**: Enabled — entities can use `@CreatedDate`/`@LastModifiedDate`
 - **OpenAPI/Swagger**: `/swagger-ui.html`
 - **Actuator**: `/actuator/health`
 - **TestContainers**: Tests use real MySQL 8.4.4 (no H2)
+
+## Testing
+
+설계 문서: [Test Strategy (Wiki)](https://github.com/wcorn/orino/wiki/Test-Strategy)
+
+### FE 테스트 원칙
+
+- **Testing Trophy**: 통합 테스트 중심, 단위 테스트는 순수 로직만 선별적으로
+- **Mock은 API 레벨에서만**: MSW로 네트워크 응답만 제어한다. 훅/컨텍스트를 `vi.mock`으로 통째 교체하지 않는다
+- **프로덕션 코드 그대로 사용**: 테스트 전용 컴포넌트(TestAuthProvider 등)를 만들지 않는다. 테스트 전용 컴포넌트가 필요하다면 프로덕션 구조를 개선해야 한다는 신호
+- **테스트 유틸은 OK**: `renderWithRouter` 같은 보일러플레이트 헬퍼는 사용
+
+```bash
+cd fe
+npm test              # Run all tests
+npm run test:watch    # Watch mode
+```
+
+| | BE | FE |
+|---|---|---|
+| 단위 | JUnit 5 | Vitest |
+| 통합 | MockMvc + TestContainers | RTL + MSW |
+| E2E | — | Playwright |
 
 ## Infra / GitOps
 
