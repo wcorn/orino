@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: thanos-storegateway
+  labels:
+    app.kubernetes.io/name: thanos
+    app.kubernetes.io/component: storegateway
+spec:
+  replicas: {{ .Values.storegateway.replicas }}
+  serviceName: thanos-storegateway
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: thanos
+      app.kubernetes.io/component: storegateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: thanos
+        app.kubernetes.io/component: storegateway
+    spec:
+      containers:
+        - name: thanos-storegateway
+          image: {{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}
+          args:
+            - store
+            - --data-dir=/var/thanos/store
+            - --objstore.config-file=/etc/thanos/objstore.yml
+            - --http-address=0.0.0.0:9090
+            - --grpc-address=0.0.0.0:10901
+          ports:
+            - name: http
+              containerPort: 9090
+            - name: grpc
+              containerPort: 10901
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+          volumeMounts:
+            - name: data
+              mountPath: /var/thanos/store
+            - name: objstore-config
+              mountPath: /etc/thanos
+          resources:
+            {{- toYaml .Values.storegateway.resources | nindent 12 }}
+      volumes:
+        - name: objstore-config
+          secret:
+            secretName: {{ .Values.objstoreSecret }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.storegateway.storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.storegateway.storageSize }}
