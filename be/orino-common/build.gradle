@@ -1,1 +1,6 @@
 // 순수 Java — Spring 의존성 없음
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core'
+}

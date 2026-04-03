@@ -1,20 +1,15 @@
 package ds.project.orino.redis.auth;
 
-import ds.project.orino.config.TestRedisConfig;
+import ds.project.orino.redis.support.RedisTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.ActiveProfiles;
 
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
-@ActiveProfiles("test")
-@Import(TestRedisConfig.class)
+@RedisTest
 class RefreshTokenRepositoryTest {
 
     @Autowired
