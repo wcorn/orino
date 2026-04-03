@@ -30,6 +30,9 @@ kube-prometheus-stack:
       limits:
         cpu: 500m
         memory: 512Mi
+    service:
+      type: NodePort
+      nodePort: 30300
     persistence:
       enabled: true
       storageClassName: longhorn
