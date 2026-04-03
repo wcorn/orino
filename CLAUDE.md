@@ -63,6 +63,8 @@ Active profiles: `local` (default, docker-compose), `prod`, `test`. 모두 `mysq
 
 설계 문서: [Test Strategy (Wiki)](https://github.com/wcorn/orino/wiki/Test-Strategy)
 
+- **기능 추가·수정 시 테스트도 함께 업데이트한다.** 각 모듈의 테스트 구조(`support/`)에 맞춰 테스트를 작성하거나 수정한다.
+
 ### FE 테스트 원칙
 
 - **Testing Trophy**: 통합 테스트 중심, 단위 테스트는 순수 로직만 선별적으로

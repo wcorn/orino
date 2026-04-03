@@ -1,4 +1,8 @@
 dependencies {
     api project(':orino-common')
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'com.redis:testcontainers-redis:2.2.4'
 }
