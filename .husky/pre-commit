@@ -1,0 +1,6 @@
+npx lint-staged
+
+# BE Java 파일 변경 시 Checkstyle 실행
+if git diff --cached --name-only | grep -q '^be/.*\.java$'; then
+  cd be && ./gradlew checkstyleMain checkstyleTest -q
+fi

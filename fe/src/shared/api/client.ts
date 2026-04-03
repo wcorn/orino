@@ -1,4 +1,5 @@
 import axios from "axios";
+
 import {
   getAccessToken,
   setAccessToken,
@@ -39,7 +40,11 @@ client.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      const { data } = await axios.post("https://api.orino.dev/api/auth/reissue", null, { withCredentials: true });
+      const { data } = await axios.post(
+        "https://api.orino.dev/api/auth/reissue",
+        null,
+        { withCredentials: true },
+      );
       setAccessToken(data.data.accessToken);
       pendingRequests.forEach((cb) => cb());
       return client(originalRequest);
@@ -51,7 +56,7 @@ client.interceptors.response.use(
       isRefreshing = false;
       pendingRequests = [];
     }
-  }
+  },
 );
 
 export default client;

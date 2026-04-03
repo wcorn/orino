@@ -1,4 +1,5 @@
 import axios from "axios";
+
 import client from "../../../shared/api/client";
 import { setAccessToken } from "../store/authStore";
 
@@ -22,7 +23,7 @@ export async function reissue(): Promise<boolean> {
     const { data } = await axios.post<TokenResponse>(
       `${client.defaults.baseURL}/auth/reissue`,
       null,
-      { withCredentials: true }
+      { withCredentials: true },
     );
     setAccessToken(data.data.accessToken);
     return true;

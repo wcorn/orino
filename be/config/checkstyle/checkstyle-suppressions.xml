@@ -1,0 +1,14 @@
+<!DOCTYPE suppressions PUBLIC
+        "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+        "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+
+<suppressions>
+    <!-- 테스트 코드: 메서드명에 언더스코어 허용 (login_success 등) -->
+    <suppress checks="MethodName" files=".*Test\.java$"/>
+
+    <!-- 테스트 코드: static wildcard import 허용 (MockMvc 관련) -->
+    <suppress checks="AvoidStarImport" files=".*Test\.java$"/>
+
+    <!-- Logger 필드명 log 허용 -->
+    <suppress checks="ConstantName" message=".*'log'.*"/>
+</suppressions>

@@ -1,4 +1,5 @@
 import { Route, Routes } from "react-router-dom";
+
 import { PrivateRoute } from "../features/auth/components/PrivateRoute";
 import { PublicRoute } from "../features/auth/components/PublicRoute";
 import { LandingPage } from "../pages/LandingPage";

@@ -1,10 +1,11 @@
-import { describe, expect, it, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { Route, Routes } from "react-router-dom";
-import { PublicRoute } from "./PublicRoute";
-import { useAuthStore } from "../store/authStore";
-import { renderWithRouter } from "../../../test/render";
+import { beforeEach, describe, expect, it } from "vitest";
+
 import { Providers } from "../../../app/providers";
+import { renderWithRouter } from "../../../test/render";
+import { useAuthStore } from "../store/authStore";
+import { PublicRoute } from "./PublicRoute";
 
 function renderWithPublicRoute() {
   return renderWithRouter(
@@ -16,7 +17,7 @@ function renderWithPublicRoute() {
         <Route path="/home" element={<div>홈 페이지</div>} />
       </Routes>
     </Providers>,
-    { initialEntries: ["/login"] }
+    { initialEntries: ["/login"] },
   );
 }
 

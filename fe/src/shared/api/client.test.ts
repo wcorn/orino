@@ -1,7 +1,8 @@
-import { describe, expect, it, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "../../test/mocks/server";
+import { beforeEach, describe, expect, it } from "vitest";
+
 import { useAuthStore } from "../../features/auth/store/authStore";
+import { server } from "../../test/mocks/server";
 import client from "./client";
 
 const API_BASE = "https://api.orino.dev/api";
@@ -16,7 +17,7 @@ describe("Axios interceptor", () => {
       http.get(`${API_BASE}/test`, ({ request }) => {
         const auth = request.headers.get("Authorization");
         return HttpResponse.json({ auth });
-      })
+      }),
     );
 
     const { data } = await client.get("/test");
@@ -39,7 +40,7 @@ describe("Axios interceptor", () => {
           code: "OK",
           data: { accessToken: "new-access-token" },
         });
-      })
+      }),
     );
 
     const { data } = await client.get("/protected");
@@ -54,7 +55,7 @@ describe("Axios interceptor", () => {
       }),
       http.post(`${API_BASE}/auth/reissue`, () => {
         return HttpResponse.json(null, { status: 401 });
-      })
+      }),
     );
 
     await expect(client.get("/protected")).rejects.toThrow();

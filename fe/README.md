@@ -4,12 +4,12 @@ React 프론트엔드 — MinIO 정적 웹 호스팅
 
 ## 버전
 
-| 항목 | 버전 | 선택 이유 |
-|------|------|---------|
-| Node.js | 24 LTS | Java 25 LTS 선택 기준과 동일 — 런타임은 LTS 우선 |
-| React | 19.2.x | Spring Boot 4.0.3과 동일 — 최신 stable |
-| Vite | 7.3.x | 최신 stable (8 beta 제외) — pre-release 미사용 원칙 |
-| TypeScript | 5.7.x | 최신 stable |
+| 항목       | 버전   | 선택 이유                                           |
+| ---------- | ------ | --------------------------------------------------- |
+| Node.js    | 24 LTS | Java 25 LTS 선택 기준과 동일 — 런타임은 LTS 우선    |
+| React      | 19.2.x | Spring Boot 4.0.3과 동일 — 최신 stable              |
+| Vite       | 7.3.x  | 최신 stable (8 beta 제외) — pre-release 미사용 원칙 |
+| TypeScript | 5.7.x  | 최신 stable                                         |
 
 ## 실행
 
@@ -22,8 +22,8 @@ npm run build    # 프로덕션 빌드 (dist/)
 
 ## 환경변수
 
-| 변수 | 설명 |
-|------|------|
+| 변수           | 설명                                           |
+| -------------- | ---------------------------------------------- |
 | `VITE_API_URL` | 백엔드 API 주소 (dev: `http://localhost:8080`) |
 
 ## MinIO 배포

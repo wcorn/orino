@@ -1,5 +1,6 @@
-import { describe, expect, it, beforeEach } from "vitest";
-import { useAuthStore, getAccessToken, setAccessToken } from "./authStore";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { getAccessToken, setAccessToken, useAuthStore } from "./authStore";
 
 describe("authStore", () => {
   beforeEach(() => {

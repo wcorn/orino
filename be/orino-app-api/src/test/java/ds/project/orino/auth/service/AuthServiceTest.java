@@ -65,7 +65,8 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("unknown", "password")))
                 .isInstanceOf(CustomException.class)
-                .satisfies(e -> assertThat(((CustomException) e).getErrorCode()).isEqualTo(ErrorCode.INVALID_CREDENTIALS));
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_CREDENTIALS));
     }
 
     @Test
@@ -77,7 +78,8 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("admin", "wrong")))
                 .isInstanceOf(CustomException.class)
-                .satisfies(e -> assertThat(((CustomException) e).getErrorCode()).isEqualTo(ErrorCode.INVALID_CREDENTIALS));
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_CREDENTIALS));
     }
 
     @Test
