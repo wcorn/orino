@@ -1,10 +1,11 @@
-import { describe, expect, it, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Route, Routes } from "react-router-dom";
-import { LoginPage } from "./LoginPage";
+import { beforeEach, describe, expect, it } from "vitest";
+
 import { useAuthStore } from "../features/auth/store/authStore";
 import { renderWithRouter } from "../test/render";
+import { LoginPage } from "./LoginPage";
 
 function renderLoginPage() {
   return renderWithRouter(
@@ -12,7 +13,7 @@ function renderLoginPage() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/home" element={<div>홈 페이지</div>} />
     </Routes>,
-    { initialEntries: ["/login"] }
+    { initialEntries: ["/login"] },
   );
 }
 
@@ -52,7 +53,7 @@ describe("LoginPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("아이디 또는 비밀번호가 올바르지 않습니다.")
+        screen.getByText("아이디 또는 비밀번호가 올바르지 않습니다."),
       ).toBeInTheDocument();
     });
   });

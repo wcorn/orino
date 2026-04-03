@@ -1,7 +1,7 @@
-import { render, type RenderOptions } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, type RenderOptions } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 
 function createWrapper(initialEntries: string[] = ["/"]) {
   const queryClient = new QueryClient({
@@ -19,7 +19,7 @@ function createWrapper(initialEntries: string[] = ["/"]) {
 
 export function renderWithRouter(
   ui: ReactElement,
-  options?: RenderOptions & { initialEntries?: string[] }
+  options?: RenderOptions & { initialEntries?: string[] },
 ) {
   const { initialEntries, ...renderOptions } = options ?? {};
   return render(ui, {

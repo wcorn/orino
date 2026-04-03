@@ -24,9 +24,17 @@ jobs:
         working-directory: fe
         run: npm ci
 
+      - name: Format check
+        working-directory: fe
+        run: npm run format:check
+
       - name: Lint
         working-directory: fe
         run: npm run lint
+
+      - name: Test
+        working-directory: fe
+        run: npm test
 
       - name: Build
         working-directory: fe

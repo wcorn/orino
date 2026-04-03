@@ -7,6 +7,8 @@ plugins {
 subprojects {
     apply plugin: 'java-library'
     apply plugin: 'io.spring.dependency-management'
+    apply plugin: 'checkstyle'
+    apply plugin: 'jacoco'
 
     group = 'ds.project'
     version = '0.0.1-SNAPSHOT'
@@ -33,7 +35,26 @@ subprojects {
         testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     }
 
+    checkstyle {
+        toolVersion = '10.25.0'
+        configFile = rootProject.file('config/checkstyle/checkstyle.xml')
+        maxWarnings = 0
+    }
+
+    jacoco {
+        toolVersion = '0.8.13'
+    }
+
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
+        finalizedBy jacocoTestReport
+    }
+
+    jacocoTestReport {
+        dependsOn test
+        reports {
+            xml.required = true
+            html.required = true
+        }
     }
 }

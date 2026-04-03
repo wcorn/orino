@@ -1,12 +1,13 @@
-import { describe, expect, it, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { Route, Routes } from "react-router-dom";
 import { http, HttpResponse } from "msw";
-import { PrivateRoute } from "./PrivateRoute";
-import { useAuthStore } from "../store/authStore";
+import { Route, Routes } from "react-router-dom";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { Providers } from "../../../app/providers";
 import { server } from "../../../test/mocks/server";
 import { renderWithRouter } from "../../../test/render";
-import { Providers } from "../../../app/providers";
+import { useAuthStore } from "../store/authStore";
+import { PrivateRoute } from "./PrivateRoute";
 
 const API_BASE = "https://api.orino.dev/api";
 
@@ -20,7 +21,7 @@ function renderWithPrivateRoute() {
         <Route path="/login" element={<div>로그인 페이지</div>} />
       </Routes>
     </Providers>,
-    { initialEntries: ["/home"] }
+    { initialEntries: ["/home"] },
   );
 }
 
@@ -33,7 +34,7 @@ describe("PrivateRoute", () => {
     server.use(
       http.post(`${API_BASE}/auth/reissue`, () => {
         return HttpResponse.json(null, { status: 401 });
-      })
+      }),
     );
 
     renderWithPrivateRoute();
@@ -50,7 +51,7 @@ describe("PrivateRoute", () => {
           code: "OK",
           data: { accessToken: "mock-access-token" },
         });
-      })
+      }),
     );
 
     renderWithPrivateRoute();

@@ -1,16 +1,13 @@
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { login } from "../features/auth/api/auth";
-import { useAuth } from "../app/providers";
+
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+
+import { useAuth } from "../app/providers";
+import { login } from "../features/auth/api/auth";
 
 export function LoginPage() {
   const [loginId, setLoginId] = useState("");
@@ -73,7 +70,7 @@ export function LoginPage() {
               로그인
             </Button>
             {error && (
-              <p className="text-center text-xs text-destructive">{error}</p>
+              <p className="text-destructive text-center text-xs">{error}</p>
             )}
           </form>
         </CardContent>

@@ -33,22 +33,27 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    public ResponseEntity<ErrorResponse> handleHttpRequestMethodNotSupportedException(HttpRequestMethodNotSupportedException e) {
-        log.error("handleHttpRequestMethodNotSupportedException: {}", e.getMessage());
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException e) {
+        log.error("handleMethodNotSupported: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
                 .body(ErrorResponse.of(ErrorCode.METHOD_NOT_ALLOWED));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> processValidationError(MethodArgumentNotValidException e) {
-        log.error("processValidationError: {}", e.getMessage());
+    public ResponseEntity<ErrorResponse> handleValidationError(
+            MethodArgumentNotValidException e) {
+        log.error("handleValidationError: {}", e.getMessage());
+        String message = e.getBindingResult().getAllErrors()
+                .get(0).getDefaultMessage();
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of(ErrorCode.BAD_REQUEST, e.getBindingResult().getAllErrors().get(0).getDefaultMessage()));
+                .body(ErrorResponse.of(ErrorCode.BAD_REQUEST, message));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<ErrorResponse> methodArgumentTypeMismatchExceptionError(MethodArgumentTypeMismatchException e) {
-        log.error("MethodArgumentError: {}", e.getMessage());
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(
+            MethodArgumentTypeMismatchException e) {
+        log.error("handleTypeMismatch: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of(ErrorCode.BAD_REQUEST, e));
     }

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 const API_BASE = "https://api.orino.dev/api";
 
@@ -78,9 +78,7 @@ test.describe("인증 흐름", () => {
 
     await expect(page).toHaveURL(/\/home/);
     await expect(page.getByText("orino")).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: /로그아웃/ })
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: /로그아웃/ })).toBeVisible();
   });
 
   test("로그인 실패 시 /login에 머문다", async ({ page }) => {

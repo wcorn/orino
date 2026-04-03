@@ -1,9 +1,11 @@
-import { useNavigate } from "react-router-dom";
-import { logout } from "../features/auth/api/auth";
-import { useAuth } from "../app/providers";
-import { Button } from "@/components/ui/button";
 import { LogOut, Moon, Sun } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+
+import { Button } from "@/components/ui/button";
 import { useThemeStore } from "@/shared/lib/theme";
+
+import { useAuth } from "../app/providers";
+import { logout } from "../features/auth/api/auth";
 
 export function MainPage() {
   const navigate = useNavigate();
