@@ -3,6 +3,8 @@ package ds.project.orino.auth.controller;
 import ds.project.orino.auth.dto.LoginRequest;
 import ds.project.orino.auth.dto.TokenResponse;
 import ds.project.orino.auth.service.AuthService;
+import ds.project.orino.common.exception.CustomException;
+import ds.project.orino.common.exception.ErrorCode;
 import ds.project.orino.common.response.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -38,7 +40,10 @@ public class AuthController {
 
     @PostMapping("/reissue")
     public ResponseEntity<ApiResponse<TokenResponse>> reissue(
-            @CookieValue(name = REFRESH_TOKEN_COOKIE) String refreshToken) {
+            @CookieValue(name = REFRESH_TOKEN_COOKIE, required = false) String refreshToken) {
+        if (refreshToken == null) {
+            throw new CustomException(ErrorCode.INVALID_TOKEN);
+        }
         AuthService.LoginResult result = authService.reissue(refreshToken);
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, createRefreshTokenCookie(result.refreshToken()).toString())
