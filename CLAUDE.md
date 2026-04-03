@@ -74,8 +74,10 @@ Active profiles: `local` (default, docker-compose), `prod`, `test`. 모두 `mysq
 
 ```bash
 cd fe
-npm test              # Run all tests
+npm test              # Run all tests (Vitest)
 npm run test:watch    # Watch mode
+npm run test:e2e      # E2E tests (Playwright)
+npm run test:e2e:ui   # E2E tests with UI
 ```
 
 | | BE | FE |
