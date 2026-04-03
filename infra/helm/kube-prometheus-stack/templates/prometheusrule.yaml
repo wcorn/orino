@@ -36,6 +36,24 @@ spec:
             summary: "Pod {{ "{{" }} $labels.namespace {{ "}}" }}/{{ "{{" }} $labels.pod {{ "}}" }} Not Ready"
             description: "Pod가 10분 이상 Ready 상태가 아님"
 
+        - alert: ContainerMemoryNearLimit
+          expr: container_memory_working_set_bytes{container!=""} / on(namespace, pod, container) kube_pod_container_resource_limits{resource="memory"} * 100 > 90
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ "{{" }} $labels.namespace {{ "}}" }}/{{ "{{" }} $labels.pod {{ "}}" }} 메모리 limit 근접"
+            description: "컨테이너 {{ "{{" }} $labels.container {{ "}}" }}이 메모리 limit의 {{ "{{" }} $value | printf \"%.0f\" {{ "}}" }}% 사용 중 (OOMKilled 위험)"
+
+        - alert: DeploymentReplicasMismatch
+          expr: kube_deployment_spec_replicas != kube_deployment_status_ready_replicas
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ "{{" }} $labels.namespace {{ "}}" }}/{{ "{{" }} $labels.deployment {{ "}}" }} replica 불일치"
+            description: "Deployment {{ "{{" }} $labels.deployment {{ "}}" }}의 Ready replica가 10분 이상 원하는 수와 불일치"
+
     - name: node-alerts
       rules:
         - alert: NodeNotReady
@@ -93,3 +111,34 @@ spec:
           annotations:
             summary: "Longhorn 볼륨 Degraded: {{ "{{" }} $labels.volume {{ "}}" }}"
             description: "볼륨 {{ "{{" }} $labels.volume {{ "}}" }}이 Degraded 상태"
+
+    - name: app-alerts
+      rules:
+        - alert: MysqlDown
+          expr: absent(kube_pod_status_ready{namespace="orino", pod=~"mysql-.*", condition="true"} == 1)
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "MySQL 다운"
+            description: "MySQL Pod가 Ready 상태가 아님"
+
+        - alert: RedisDown
+          expr: absent(kube_pod_status_ready{namespace="orino", pod=~"redis-.*", condition="true"} == 1)
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Redis 다운"
+            description: "Redis Pod가 Ready 상태가 아님"
+
+    - name: storage-alerts
+      rules:
+        - alert: PvcUsageHigh
+          expr: kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes * 100 > 80
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PVC {{ "{{" }} $labels.namespace {{ "}}" }}/{{ "{{" }} $labels.persistentvolumeclaim {{ "}}" }} 용량 부족"
+            description: "PVC 사용률 {{ "{{" }} $value | printf \"%.0f\" {{ "}}" }}% (80% 초과)"
