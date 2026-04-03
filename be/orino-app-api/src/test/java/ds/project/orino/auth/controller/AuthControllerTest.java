@@ -1,51 +1,29 @@
 package ds.project.orino.auth.controller;
 
-import ds.project.orino.config.TestRedisConfig;
-import ds.project.orino.domain.member.entity.Member;
 import ds.project.orino.domain.member.repository.MemberRepository;
+import ds.project.orino.support.ApiTestSupport;
+import ds.project.orino.support.MemberFixture;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.context.WebApplicationContext;
 
 import static org.hamcrest.Matchers.notNullValue;
-import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
-@ActiveProfiles("test")
-@Import(TestRedisConfig.class)
-class AuthControllerTest {
-
-    private MockMvc mockMvc;
-
-    @Autowired
-    private WebApplicationContext context;
+class AuthControllerTest extends ApiTestSupport {
 
     @Autowired
     private MemberRepository memberRepository;
 
-    @Autowired
-    private BCryptPasswordEncoder passwordEncoder;
-
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.webAppContextSetup(context)
-                .apply(springSecurity())
-                .build();
         memberRepository.deleteAll();
-        memberRepository.save(new Member("admin", passwordEncoder.encode("password")));
+        memberRepository.save(MemberFixture.create());
     }
 
     @Test
@@ -54,8 +32,8 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"loginId": "admin", "password": "password"}
-                                """))
+                                {"loginId": "%s", "password": "%s"}
+                                """.formatted(MemberFixture.DEFAULT_LOGIN_ID, MemberFixture.DEFAULT_PASSWORD)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.accessToken", notNullValue()))
                 .andExpect(cookie().exists("refreshToken"))
@@ -69,8 +47,8 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"loginId": "admin", "password": "wrong"}
-                                """))
+                                {"loginId": "%s", "password": "wrong"}
+                                """.formatted(MemberFixture.DEFAULT_LOGIN_ID)))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH-ERR-001"));
     }
@@ -104,8 +82,8 @@ class AuthControllerTest {
         MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"loginId": "admin", "password": "password"}
-                                """))
+                                {"loginId": "%s", "password": "%s"}
+                                """.formatted(MemberFixture.DEFAULT_LOGIN_ID, MemberFixture.DEFAULT_PASSWORD)))
                 .andReturn();
 
         Cookie refreshCookie = loginResult.getResponse().getCookie("refreshToken");
@@ -131,8 +109,8 @@ class AuthControllerTest {
         MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"loginId": "admin", "password": "password"}
-                                """))
+                                {"loginId": "%s", "password": "%s"}
+                                """.formatted(MemberFixture.DEFAULT_LOGIN_ID, MemberFixture.DEFAULT_PASSWORD)))
                 .andReturn();
 
         Cookie refreshCookie = loginResult.getResponse().getCookie("refreshToken");
