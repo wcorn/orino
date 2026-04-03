@@ -1,0 +1,15 @@
+apiVersion: v2
+name: minio
+description: MinIO 오브젝트 스토리지
+type: application
+version: 1.0.0
+appVersion: "RELEASE.2024-12-18T13-15-44Z"
+
+dependencies:
+  - name: minio
+    version: 5.4.0
+    repository: https://charts.min.io/
+
+keywords:
+  - minio
+  - object-storage
