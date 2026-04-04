@@ -63,7 +63,9 @@ Active profiles: `local` (default, docker-compose), `prod`, `test`. 모두 `mysq
 
 설계 문서: [Test Strategy (Wiki)](https://github.com/wcorn/orino/wiki/Test-Strategy)
 
-- **기능 추가·수정 시 테스트도 함께 업데이트한다.** 각 모듈의 테스트 구조(`support/`)에 맞춰 테스트를 작성하거나 수정한다.
+- **기능 추가·수정 시 테스트코드를 완벽하게 작성한다.** 각 모듈의 테스트 구조(`support/`)에 맞춰 테스트를 작성하거나 수정한다.
+- **기능이 변경·삭제되면 테스트코드도 함께 변경·삭제한다.**
+- **테스트코드와 별개로, 로컬에서 해당 기능이 정상 동작하는지 직접 확인한다.** (bootRun, curl, 브라우저 등)
 
 ### FE 테스트 원칙
 
@@ -113,16 +115,17 @@ infra/helm/<app>/
 
 ## Git Workflow
 
-- main 브랜치에 직접 push 금지. 반드시 새 브랜치에서 PR을 통해 머지한다.
+- main 브랜치에 직접 push하거나 merge하지 않는다. 최종 판단은 개발자가 한다.
+- 반드시 새 브랜치에서 작업하고 PR을 통해 머지한다.
 - PR 생성 시 base 브랜치는 항상 main으로 설정한다. 중간 브랜치를 base로 사용하지 않는다.
 
 ## GitHub Templates
 
-Issue/PR 생성 시 `.github/` 템플릿을 따른다.
+Issue/PR 생성 시 `.github/` 템플릿을 반드시 따른다.
 
 - **Feature Issue**: `.github/ISSUE_TEMPLATE/feature.md` — label: `feat`, Description + Todo 체크리스트
 - **Bug Issue**: `.github/ISSUE_TEMPLATE/bug.md` — label: `bug`, Description
-- **PR**: `.github/PULL_REQUEST_TEMPLATE.md` — 연관 이슈 체크리스트 + 작업 내용
+- **PR**: `.github/PULL_REQUEST_TEMPLATE.md` — `closes #이슈번호`로 연관 이슈를 연결한다. 연관 이슈가 없으면 먼저 Issue를 생성한다.
 
 ## Commit Message Format
 
