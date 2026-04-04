@@ -45,6 +45,30 @@ alloy:
 
         loki.source.kubernetes "pods" {
           targets    = discovery.relabel.pods.output
+          forward_to = [loki.process.json_parse.receiver]
+        }
+
+        // JSON 로그 파싱 (BE prod 로그: LogstashEncoder)
+        loki.process "json_parse" {
+          // JSON에서 level 필드 추출
+          stage.json {
+            expressions = {
+              level      = "level",
+              logger     = "logger_name",
+              request_id = "requestId",
+              user_id    = "userId",
+              trace_id   = "traceId",
+            }
+          }
+
+          // level을 Loki 라벨로 설정
+          stage.labels {
+            values = {
+              level = "",
+            }
+          }
+
+          // 비JSON 로그는 파싱 실패해도 그대로 통과
           forward_to = [loki.write.default.receiver]
         }
 
