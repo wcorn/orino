@@ -8,6 +8,11 @@ import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.domain.routine.repository.RoutineCheckRepository;
 import ds.project.orino.domain.routine.repository.RoutineExceptionRepository;
 import ds.project.orino.domain.routine.repository.RoutineRepository;
+import ds.project.orino.domain.material.repository.MaterialAllocationRepository;
+import ds.project.orino.domain.material.repository.MaterialDailyOverrideRepository;
+import ds.project.orino.domain.material.repository.ReviewConfigRepository;
+import ds.project.orino.domain.material.repository.StudyMaterialRepository;
+import ds.project.orino.domain.material.repository.StudyUnitRepository;
 import ds.project.orino.domain.todo.repository.TodoRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.MemberFixture;
@@ -52,8 +57,28 @@ class AuthControllerTest extends ApiTestSupport {
     @Autowired
     private TodoRepository todoRepository;
 
+    @Autowired
+    private ReviewConfigRepository reviewConfigRepository;
+
+    @Autowired
+    private MaterialDailyOverrideRepository dailyOverrideRepository;
+
+    @Autowired
+    private MaterialAllocationRepository allocationRepository;
+
+    @Autowired
+    private StudyUnitRepository unitRepository;
+
+    @Autowired
+    private StudyMaterialRepository materialRepository;
+
     @BeforeEach
     void setUp() {
+        reviewConfigRepository.deleteAll();
+        dailyOverrideRepository.deleteAll();
+        allocationRepository.deleteAll();
+        unitRepository.deleteAll();
+        materialRepository.deleteAll();
         routineExceptionRepository.deleteAll();
         routineCheckRepository.deleteAll();
         routineRepository.deleteAll();
