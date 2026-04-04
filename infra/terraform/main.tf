@@ -51,7 +51,14 @@ module "thanos_metrics" {
   bucket_name = "orino-thanos-metrics"
 }
 
-# IAM user for observability S3 access (Loki + Thanos)
+# Tempo traces S3 bucket
+module "tempo_traces" {
+  source = "./modules/s3"
+
+  bucket_name = "orino-tempo-traces"
+}
+
+# IAM user for observability S3 access (Loki + Thanos + Tempo)
 resource "aws_iam_user" "observability" {
   name = "observability-s3"
 }
@@ -76,6 +83,8 @@ resource "aws_iam_user_policy" "observability" {
           "${module.loki_logs.bucket_arn}/*",
           module.thanos_metrics.bucket_arn,
           "${module.thanos_metrics.bucket_arn}/*",
+          module.tempo_traces.bucket_arn,
+          "${module.tempo_traces.bucket_arn}/*",
         ]
       }
     ]

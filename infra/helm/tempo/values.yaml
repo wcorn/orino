@@ -1,0 +1,44 @@
+tempo:
+  tempo:
+    storage:
+      trace:
+        backend: s3
+        s3:
+          bucket: orino-tempo-traces
+          endpoint: s3.ap-northeast-2.amazonaws.com
+          region: ap-northeast-2
+          access_key: ${AWS_ACCESS_KEY_ID}
+          secret_key: ${AWS_SECRET_ACCESS_KEY}
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    retention: 720h  # 30일
+
+  extraEnv:
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: observability-s3-secret
+          key: AWS_ACCESS_KEY_ID
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: observability-s3-secret
+          key: AWS_SECRET_ACCESS_KEY
+
+  persistence:
+    enabled: true
+    storageClassName: longhorn
+    size: 5Gi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
