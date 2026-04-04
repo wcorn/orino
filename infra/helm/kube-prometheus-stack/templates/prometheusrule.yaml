@@ -114,6 +114,24 @@ spec:
 
     - name: app-alerts
       rules:
+        - alert: BackendDown
+          expr: absent(kube_pod_status_ready{namespace="orino", pod=~"be-.*", condition="true"} == 1)
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "BE 서비스 다운"
+            description: "BE Pod가 1분 이상 Ready 상태가 아님"
+
+        - alert: FrontendDown
+          expr: absent(kube_pod_status_ready{namespace="orino", pod=~"fe-.*", condition="true"} == 1)
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "FE 서비스 다운"
+            description: "FE Pod가 1분 이상 Ready 상태가 아님"
+
         - alert: MysqlDown
           expr: absent(kube_pod_status_ready{namespace="orino", pod=~"mysql-.*", condition="true"} == 1)
           for: 1m
