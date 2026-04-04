@@ -19,3 +19,8 @@ resources:
   limits:
     cpu: "1"
     memory: 1Gi
+
+hpa:
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilization: 70
