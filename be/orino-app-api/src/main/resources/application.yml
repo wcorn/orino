@@ -11,3 +11,17 @@ jwt:
   secret: ${JWT_SECRET:default-dev-secret-key-must-be-at-least-256-bits-long-for-hs256}
   access-token-expiration: 1800000
   refresh-token-expiration: 1209600000
+
+management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    metrics:
+      export:
+        enabled: false
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
