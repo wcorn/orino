@@ -1,6 +1,7 @@
 package ds.project.orino.planner.goal.controller;
 
 import ds.project.orino.domain.category.repository.CategoryRepository;
+import ds.project.orino.domain.fixedschedule.repository.FixedScheduleRepository;
 import ds.project.orino.domain.goal.repository.GoalRepository;
 import ds.project.orino.domain.goal.repository.MilestoneRepository;
 import ds.project.orino.domain.member.repository.MemberRepository;
@@ -36,10 +37,14 @@ class GoalControllerTest extends ApiTestSupport {
     @Autowired
     private GoalRepository goalRepository;
 
+    @Autowired
+    private FixedScheduleRepository fixedScheduleRepository;
+
     private String accessToken;
 
     @BeforeEach
     void setUp() throws Exception {
+        fixedScheduleRepository.deleteAll();
         milestoneRepository.deleteAll();
         goalRepository.deleteAll();
         categoryRepository.deleteAll();

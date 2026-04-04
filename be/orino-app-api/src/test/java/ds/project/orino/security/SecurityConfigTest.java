@@ -1,6 +1,7 @@
 package ds.project.orino.security;
 
 import ds.project.orino.domain.category.repository.CategoryRepository;
+import ds.project.orino.domain.fixedschedule.repository.FixedScheduleRepository;
 import ds.project.orino.domain.goal.repository.GoalRepository;
 import ds.project.orino.domain.goal.repository.MilestoneRepository;
 import ds.project.orino.domain.member.repository.MemberRepository;
@@ -32,8 +33,12 @@ class SecurityConfigTest extends ApiTestSupport {
     @Autowired
     private GoalRepository goalRepository;
 
+    @Autowired
+    private FixedScheduleRepository fixedScheduleRepository;
+
     @BeforeEach
     void setUp() {
+        fixedScheduleRepository.deleteAll();
         milestoneRepository.deleteAll();
         goalRepository.deleteAll();
         categoryRepository.deleteAll();
