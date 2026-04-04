@@ -1,6 +1,8 @@
 package ds.project.orino.auth.controller;
 
 import ds.project.orino.domain.category.repository.CategoryRepository;
+import ds.project.orino.domain.goal.repository.GoalRepository;
+import ds.project.orino.domain.goal.repository.MilestoneRepository;
 import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.MemberFixture;
@@ -24,8 +26,16 @@ class AuthControllerTest extends ApiTestSupport {
     @Autowired
     private CategoryRepository categoryRepository;
 
+    @Autowired
+    private MilestoneRepository milestoneRepository;
+
+    @Autowired
+    private GoalRepository goalRepository;
+
     @BeforeEach
     void setUp() {
+        milestoneRepository.deleteAll();
+        goalRepository.deleteAll();
         categoryRepository.deleteAll();
         memberRepository.deleteAll();
         memberRepository.save(MemberFixture.create());
