@@ -22,6 +22,27 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+      initContainers:
+        - name: wait-mysql
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ .Values.env.MYSQL_HOST }} 3306; do
+                echo "Waiting for MySQL..."
+                sleep 2
+              done
+        - name: wait-redis
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ .Values.env.REDIS_HOST }} {{ .Values.env.REDIS_PORT }}; do
+                echo "Waiting for Redis..."
+                sleep 2
+              done
       containers:
         - name: be
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
