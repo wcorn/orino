@@ -7,10 +7,11 @@ import ds.project.orino.core.jwt.JwtTokenProvider;
 import ds.project.orino.domain.member.entity.Member;
 import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.redis.auth.RefreshTokenRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -27,7 +28,6 @@ import static org.mockito.Mockito.verify;
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
-    @InjectMocks
     private AuthService authService;
 
     @Mock
@@ -41,6 +41,16 @@ class AuthServiceTest {
 
     @Mock
     private BCryptPasswordEncoder passwordEncoder;
+
+    @BeforeEach
+    void setUp() {
+        authService = new AuthService(
+                memberRepository,
+                refreshTokenRepository,
+                jwtTokenProvider,
+                passwordEncoder,
+                new SimpleMeterRegistry());
+    }
 
     @Test
     @DisplayName("로그인 성공 시 AT와 RT를 반환한다")
