@@ -6,11 +6,11 @@
   },
   "lint-staged": {
     "fe/src/**/*.{ts,tsx}": [
-      "prettier --write --config fe/.prettierrc",
-      "eslint --fix --config fe/eslint.config.js"
+      "bash -c 'cd fe && npx prettier --write --config .prettierrc \"$@\"' _",
+      "bash -c 'cd fe && npx eslint --fix --config eslint.config.js \"$@\"' _"
     ],
     "fe/e2e/**/*.ts": [
-      "prettier --write --config fe/.prettierrc"
+      "bash -c 'cd fe && npx prettier --write --config .prettierrc \"$@\"' _"
     ]
   },
   "scripts": {
