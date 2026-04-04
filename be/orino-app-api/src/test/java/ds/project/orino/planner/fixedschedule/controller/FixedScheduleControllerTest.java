@@ -13,6 +13,8 @@ import ds.project.orino.domain.material.repository.MaterialDailyOverrideReposito
 import ds.project.orino.domain.material.repository.ReviewConfigRepository;
 import ds.project.orino.domain.material.repository.StudyMaterialRepository;
 import ds.project.orino.domain.material.repository.StudyUnitRepository;
+import ds.project.orino.domain.preference.repository.PriorityRuleRepository;
+import ds.project.orino.domain.preference.repository.UserPreferenceRepository;
 import ds.project.orino.domain.todo.repository.TodoRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.MemberFixture;
@@ -75,10 +77,18 @@ class FixedScheduleControllerTest extends ApiTestSupport {
     @Autowired
     private StudyMaterialRepository materialRepository;
 
+    @Autowired
+    private PriorityRuleRepository priorityRuleRepository;
+
+    @Autowired
+    private UserPreferenceRepository userPreferenceRepository;
+
     private String accessToken;
 
     @BeforeEach
     void setUp() throws Exception {
+        priorityRuleRepository.deleteAll();
+        userPreferenceRepository.deleteAll();
         reviewConfigRepository.deleteAll();
         dailyOverrideRepository.deleteAll();
         allocationRepository.deleteAll();
