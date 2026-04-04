@@ -1,0 +1,61 @@
+databaseChangeLog:
+  - changeSet:
+      id: 014-create-indexes
+      author: wcorn
+      changes:
+        - createIndex:
+            tableName: fixed_schedule
+            indexName: idx_fixed_schedule_member_date
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: schedule_date
+        - createIndex:
+            tableName: fixed_schedule
+            indexName: idx_fixed_schedule_member_recurrence
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: recurrence_type
+        - createIndex:
+            tableName: study_unit
+            indexName: idx_study_unit_material_order
+            columns:
+              - column:
+                  name: material_id
+              - column:
+                  name: sort_order
+        - createIndex:
+            tableName: review_schedule
+            indexName: idx_review_schedule_date_status
+            columns:
+              - column:
+                  name: scheduled_date
+              - column:
+                  name: status
+        - createIndex:
+            tableName: review_schedule
+            indexName: idx_review_schedule_study_unit
+            columns:
+              - column:
+                  name: study_unit_id
+        - createIndex:
+            tableName: schedule_block
+            indexName: idx_schedule_block_daily_order
+            columns:
+              - column:
+                  name: daily_schedule_id
+              - column:
+                  name: sort_order
+        - createIndex:
+            tableName: streak
+            indexName: idx_streak_member_type_routine
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: streak_type
+              - column:
+                  name: routine_id
