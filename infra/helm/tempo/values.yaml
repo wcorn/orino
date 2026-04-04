@@ -9,6 +9,17 @@ tempo:
           region: ap-northeast-2
         wal:
           path: /var/tempo/wal
+    extraEnv:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: observability-s3-secret
+            key: AWS_ACCESS_KEY_ID
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: observability-s3-secret
+            key: AWS_SECRET_ACCESS_KEY
     receivers:
       otlp:
         protocols:
@@ -17,18 +28,6 @@ tempo:
           http:
             endpoint: 0.0.0.0:4318
     retention: 720h  # 30일
-
-  extraEnv:
-    - name: AWS_ACCESS_KEY_ID
-      valueFrom:
-        secretKeyRef:
-          name: observability-s3-secret
-          key: AWS_ACCESS_KEY_ID
-    - name: AWS_SECRET_ACCESS_KEY
-      valueFrom:
-        secretKeyRef:
-          name: observability-s3-secret
-          key: AWS_SECRET_ACCESS_KEY
 
   persistence:
     enabled: true
