@@ -46,6 +46,8 @@ spec:
               value: {{ .Values.env.REDIS_HOST | quote }}
             - name: REDIS_PORT
               value: {{ .Values.env.REDIS_PORT | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.env.OTEL_EXPORTER_OTLP_ENDPOINT | quote }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           readinessProbe:
