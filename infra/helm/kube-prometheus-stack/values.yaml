@@ -6,6 +6,8 @@ kube-prometheus-stack:
     thanosService:
       enabled: true
     prometheusSpec:
+      enableFeatures:
+        - exemplar-storage
       retention: 7d
       thanos:
         objectStorageConfig:
@@ -62,19 +64,43 @@ kube-prometheus-stack:
     additionalDataSources:
       - name: Loki
         type: loki
+        uid: loki
         url: http://loki.monitoring.svc.cluster.local:3100
         access: proxy
         isDefault: false
+        jsonData:
+          derivedFields:
+            - name: traceId
+              matcherRegex: '"traceId":"([a-f0-9]+)"'
+              url: "$${__value.raw}"
+              datasourceUid: tempo
+              urlDisplayLabel: Tempo
       - name: Thanos
         type: prometheus
         url: http://thanos-query.monitoring.svc.cluster.local:9090
         access: proxy
         isDefault: false
+        jsonData:
+          exemplarTraceIdDestinations:
+            - name: traceID
+              datasourceUid: tempo
       - name: Tempo
         type: tempo
+        uid: tempo
         url: http://tempo.monitoring.svc.cluster.local:3100
         access: proxy
         isDefault: false
+        jsonData:
+          tracesToLogsV2:
+            datasourceUid: loki
+            filterByTraceID: true
+            tags:
+              - key: namespace
+              - key: pod
+          nodeGraph:
+            enabled: true
+          serviceMap:
+            datasourceUid: prometheus
 
   alertmanager:
     config:
