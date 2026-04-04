@@ -8,6 +8,7 @@ import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.domain.routine.repository.RoutineCheckRepository;
 import ds.project.orino.domain.routine.repository.RoutineExceptionRepository;
 import ds.project.orino.domain.routine.repository.RoutineRepository;
+import ds.project.orino.domain.todo.repository.TodoRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.MemberFixture;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,12 +49,16 @@ class SecurityConfigTest extends ApiTestSupport {
     @Autowired
     private RoutineRepository routineRepository;
 
+    @Autowired
+    private TodoRepository todoRepository;
+
     @BeforeEach
     void setUp() {
         routineExceptionRepository.deleteAll();
         routineCheckRepository.deleteAll();
         routineRepository.deleteAll();
         fixedScheduleRepository.deleteAll();
+        todoRepository.deleteAll();
         milestoneRepository.deleteAll();
         goalRepository.deleteAll();
         categoryRepository.deleteAll();

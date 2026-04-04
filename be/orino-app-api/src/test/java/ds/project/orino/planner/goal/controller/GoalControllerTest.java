@@ -8,6 +8,7 @@ import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.domain.routine.repository.RoutineCheckRepository;
 import ds.project.orino.domain.routine.repository.RoutineExceptionRepository;
 import ds.project.orino.domain.routine.repository.RoutineRepository;
+import ds.project.orino.domain.todo.repository.TodoRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.MemberFixture;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +53,9 @@ class GoalControllerTest extends ApiTestSupport {
     @Autowired
     private RoutineRepository routineRepository;
 
+    @Autowired
+    private TodoRepository todoRepository;
+
     private String accessToken;
 
     @BeforeEach
@@ -60,6 +64,7 @@ class GoalControllerTest extends ApiTestSupport {
         routineCheckRepository.deleteAll();
         routineRepository.deleteAll();
         fixedScheduleRepository.deleteAll();
+        todoRepository.deleteAll();
         milestoneRepository.deleteAll();
         goalRepository.deleteAll();
         categoryRepository.deleteAll();
