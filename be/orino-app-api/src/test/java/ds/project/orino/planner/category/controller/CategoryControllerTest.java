@@ -5,6 +5,9 @@ import ds.project.orino.domain.fixedschedule.repository.FixedScheduleRepository;
 import ds.project.orino.domain.goal.repository.GoalRepository;
 import ds.project.orino.domain.goal.repository.MilestoneRepository;
 import ds.project.orino.domain.member.repository.MemberRepository;
+import ds.project.orino.domain.routine.repository.RoutineCheckRepository;
+import ds.project.orino.domain.routine.repository.RoutineExceptionRepository;
+import ds.project.orino.domain.routine.repository.RoutineRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.MemberFixture;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,10 +42,22 @@ class CategoryControllerTest extends ApiTestSupport {
     @Autowired
     private FixedScheduleRepository fixedScheduleRepository;
 
+    @Autowired
+    private RoutineExceptionRepository routineExceptionRepository;
+
+    @Autowired
+    private RoutineCheckRepository routineCheckRepository;
+
+    @Autowired
+    private RoutineRepository routineRepository;
+
     private String accessToken;
 
     @BeforeEach
     void setUp() throws Exception {
+        routineExceptionRepository.deleteAll();
+        routineCheckRepository.deleteAll();
+        routineRepository.deleteAll();
         fixedScheduleRepository.deleteAll();
         milestoneRepository.deleteAll();
         goalRepository.deleteAll();
