@@ -1,0 +1,127 @@
+databaseChangeLog:
+  - changeSet:
+      id: 005-create-goal
+      author: wcorn
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: goal
+      changes:
+        - createTable:
+            tableName: goal
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_goal_member
+                    references: member(id)
+              - column:
+                  name: category_id
+                  type: BIGINT
+                  constraints:
+                    foreignKeyName: fk_goal_category
+                    references: category(id)
+              - column:
+                  name: title
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: TEXT
+              - column:
+                  name: period_type
+                  type: VARCHAR(15)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: start_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: deadline
+                  type: DATE
+              - column:
+                  name: status
+                  type: VARCHAR(10)
+                  defaultValue: ACTIVE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 005-create-milestone
+      author: wcorn
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: milestone
+      changes:
+        - createTable:
+            tableName: milestone
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: goal_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_milestone_goal
+                    references: goal(id)
+              - column:
+                  name: title
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: deadline
+                  type: DATE
+              - column:
+                  name: status
+                  type: VARCHAR(10)
+                  defaultValue: PENDING
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sort_order
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false

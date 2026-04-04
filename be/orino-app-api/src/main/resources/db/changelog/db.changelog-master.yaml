@@ -1,3 +1,29 @@
 databaseChangeLog:
   - include:
       file: db/changelog/changes/001-create-member.yaml
+  - include:
+      file: db/changelog/changes/002-create-category.yaml
+  - include:
+      file: db/changelog/changes/003-create-user-preference.yaml
+  - include:
+      file: db/changelog/changes/004-create-priority-rule.yaml
+  - include:
+      file: db/changelog/changes/005-create-goal-milestone.yaml
+  - include:
+      file: db/changelog/changes/006-create-fixed-schedule.yaml
+  - include:
+      file: db/changelog/changes/007-create-routine.yaml
+  - include:
+      file: db/changelog/changes/008-create-todo.yaml
+  - include:
+      file: db/changelog/changes/009-create-study-material.yaml
+  - include:
+      file: db/changelog/changes/010-create-review-schedule.yaml
+  - include:
+      file: db/changelog/changes/011-create-daily-schedule.yaml
+  - include:
+      file: db/changelog/changes/012-create-streak-reflection.yaml
+  - include:
+      file: db/changelog/changes/013-create-shedlock.yaml
+  - include:
+      file: db/changelog/changes/014-create-indexes.yaml

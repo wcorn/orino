@@ -1,0 +1,283 @@
+databaseChangeLog:
+  - changeSet:
+      id: 009-create-study-material
+      author: wcorn
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: study_material
+      changes:
+        - createTable:
+            tableName: study_material
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_study_material_member
+                    references: member(id)
+              - column:
+                  name: title
+                  type: VARCHAR(200)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type
+                  type: VARCHAR(10)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: category_id
+                  type: BIGINT
+                  constraints:
+                    foreignKeyName: fk_study_material_category
+                    references: category(id)
+              - column:
+                  name: goal_id
+                  type: BIGINT
+                  constraints:
+                    foreignKeyName: fk_study_material_goal
+                    references: goal(id)
+              - column:
+                  name: deadline
+                  type: DATE
+              - column:
+                  name: deadline_mode
+                  type: VARCHAR(10)
+                  defaultValue: FREE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(10)
+                  defaultValue: ACTIVE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 009-create-study-unit
+      author: wcorn
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: study_unit
+      changes:
+        - createTable:
+            tableName: study_unit
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: material_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_study_unit_material
+                    references: study_material(id)
+              - column:
+                  name: title
+                  type: VARCHAR(200)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sort_order
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: estimated_minutes
+                  type: INT
+                  defaultValueNumeric: 30
+                  constraints:
+                    nullable: false
+              - column:
+                  name: difficulty
+                  type: VARCHAR(10)
+              - column:
+                  name: status
+                  type: VARCHAR(10)
+                  defaultValue: PENDING
+                  constraints:
+                    nullable: false
+              - column:
+                  name: completed_at
+                  type: DATETIME(6)
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 009-create-material-allocation
+      author: wcorn
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: material_allocation
+      changes:
+        - createTable:
+            tableName: material_allocation
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: material_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uk_material_allocation_material
+                    foreignKeyName: fk_material_allocation_material
+                    references: study_material(id)
+              - column:
+                  name: default_minutes
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 009-create-material-daily-override
+      author: wcorn
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: material_daily_override
+      changes:
+        - createTable:
+            tableName: material_daily_override
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: material_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_material_daily_override_material
+                    references: study_material(id)
+              - column:
+                  name: override_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: minutes
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: material_daily_override
+            columnNames: material_id, override_date
+            constraintName: uk_material_daily_override_material_date
+
+  - changeSet:
+      id: 009-create-review-config
+      author: wcorn
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: review_config
+      changes:
+        - createTable:
+            tableName: review_config
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: material_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uk_review_config_material
+                    foreignKeyName: fk_review_config_material
+                    references: study_material(id)
+              - column:
+                  name: intervals
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: missed_policy
+                  type: VARCHAR(10)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
