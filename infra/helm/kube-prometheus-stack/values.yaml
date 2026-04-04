@@ -70,6 +70,11 @@ kube-prometheus-stack:
         url: http://thanos-query.monitoring.svc.cluster.local:9090
         access: proxy
         isDefault: false
+      - name: Tempo
+        type: tempo
+        url: http://tempo.monitoring.svc.cluster.local:3100
+        access: proxy
+        isDefault: false
 
   alertmanager:
     config:

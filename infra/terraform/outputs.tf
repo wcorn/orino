@@ -29,8 +29,13 @@ output "thanos_metrics_bucket" {
   value       = module.thanos_metrics.bucket_name
 }
 
+output "tempo_traces_bucket" {
+  description = "Tempo traces S3 bucket name"
+  value       = module.tempo_traces.bucket_name
+}
+
 output "observability_iam_access_key_id" {
-  description = "IAM access key ID for observability (Loki + Thanos)"
+  description = "IAM access key ID for observability (Loki + Thanos + Tempo)"
   value       = aws_iam_access_key.observability.id
 }
 
