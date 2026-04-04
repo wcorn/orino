@@ -5,10 +5,10 @@ tempo:
         backend: s3
         s3:
           bucket: orino-tempo-traces
-          endpoint: s3.ap-northeast-2.amazonaws.com
+          endpoint: s3.dualstack.ap-northeast-2.amazonaws.com
           region: ap-northeast-2
-          access_key: ${AWS_ACCESS_KEY_ID}
-          secret_key: ${AWS_SECRET_ACCESS_KEY}
+        wal:
+          path: /var/tempo/wal
     receivers:
       otlp:
         protocols:
