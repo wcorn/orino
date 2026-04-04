@@ -127,6 +127,7 @@ Issue/PR 생성 시 `.github/` 템플릿을 반드시 따른다.
 - **Feature Issue**: `.github/ISSUE_TEMPLATE/feature.md` — label: `feat`, Description + Todo 체크리스트
 - **Bug Issue**: `.github/ISSUE_TEMPLATE/bug.md` — label: `bug`, Description
 - **PR**: `.github/PULL_REQUEST_TEMPLATE.md` — `closes #이슈번호`로 연관 이슈를 연결한다. 연관 이슈가 없으면 먼저 Issue를 생성한다.
+- PR에 새로운 커밋이 추가되면 PR 본문도 함께 업데이트한다.
 
 ## Commit Message Format
 
