@@ -24,3 +24,6 @@ hpa:
   minReplicas: 1
   maxReplicas: 3
   targetCPUUtilization: 70
+
+pdb:
+  maxUnavailable: 1
