@@ -1,1 +1,11 @@
-istiod: {}
+istiod:
+  meshConfig:
+    enablePrometheusMerge: true
+    defaultConfig:
+      tracing:
+        sampling: 100
+    extensionProviders:
+      - name: tempo
+        opentelemetry:
+          service: tempo.monitoring.svc.cluster.local
+          port: 4317
