@@ -1,4 +1,4 @@
-package ds.project.orino.planner.category.controller;
+package ds.project.orino.planner.fixedschedule.controller;
 
 import ds.project.orino.domain.category.repository.CategoryRepository;
 import ds.project.orino.domain.fixedschedule.repository.FixedScheduleRepository;
@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-class CategoryControllerTest extends ApiTestSupport {
+class FixedScheduleControllerTest extends ApiTestSupport {
 
     @Autowired
     private MemberRepository memberRepository;
@@ -54,120 +54,155 @@ class CategoryControllerTest extends ApiTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"loginId": "%s", "password": "%s"}
-                                """.formatted(MemberFixture.DEFAULT_LOGIN_ID, MemberFixture.DEFAULT_PASSWORD)))
+                                """.formatted(
+                                MemberFixture.DEFAULT_LOGIN_ID,
+                                MemberFixture.DEFAULT_PASSWORD)))
                 .andReturn();
 
         accessToken = com.jayway.jsonpath.JsonPath.read(
-                loginResult.getResponse().getContentAsString(), "$.data.accessToken");
+                loginResult.getResponse().getContentAsString(),
+                "$.data.accessToken");
     }
 
     @Test
-    @DisplayName("POST /api/categories - 카테고리를 생성한다")
-    void create() throws Exception {
-        mockMvc.perform(post("/api/categories")
+    @DisplayName("POST /api/fixed-schedules - 단발성 고정 일정을 생성한다")
+    void create_single() throws Exception {
+        mockMvc.perform(post("/api/fixed-schedules")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name": "프로그래밍", "color": "#FF9800", "icon": "code", "sortOrder": 0}
+                                {"title": "면접", "startTime": "14:00",
+                                 "endTime": "15:00", "scheduleDate": "2026-04-15",
+                                 "recurrenceType": "NONE"}
                                 """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.name").value("프로그래밍"))
-                .andExpect(jsonPath("$.data.color").value("#FF9800"));
+                .andExpect(jsonPath("$.data.title").value("면접"))
+                .andExpect(jsonPath("$.data.recurrenceType").value("NONE"));
     }
 
     @Test
-    @DisplayName("GET /api/categories - 카테고리 목록을 조회한다")
-    void getCategories() throws Exception {
-        mockMvc.perform(post("/api/categories")
+    @DisplayName("POST /api/fixed-schedules - 주간 반복 일정을 생성한다")
+    void create_weekly() throws Exception {
+        mockMvc.perform(post("/api/fixed-schedules")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "운동", "startTime": "07:00",
+                                 "endTime": "08:00",
+                                 "recurrenceType": "WEEKLY",
+                                 "recurrenceDays": "MON,WED,FRI",
+                                 "recurrenceStart": "2026-04-01"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.recurrenceType").value("WEEKLY"))
+                .andExpect(jsonPath("$.data.recurrenceDays").value("MON,WED,FRI"));
+    }
+
+    @Test
+    @DisplayName("GET /api/fixed-schedules - 고정 일정 목록을 조회한다")
+    void getFixedSchedules() throws Exception {
+        mockMvc.perform(post("/api/fixed-schedules")
                 .header("Authorization", "Bearer " + accessToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"name": "프로그래밍", "color": "#FF9800", "icon": "code", "sortOrder": 0}
+                        {"title": "일정1", "startTime": "09:00",
+                         "endTime": "10:00", "scheduleDate": "2026-04-10",
+                         "recurrenceType": "NONE"}
                         """));
-        mockMvc.perform(post("/api/categories")
+        mockMvc.perform(post("/api/fixed-schedules")
                 .header("Authorization", "Bearer " + accessToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"name": "알고리즘", "color": "#9C27B0", "icon": "puzzle", "sortOrder": 1}
+                        {"title": "일정2", "startTime": "11:00",
+                         "endTime": "12:00", "scheduleDate": "2026-04-11",
+                         "recurrenceType": "NONE"}
                         """));
 
-        mockMvc.perform(get("/api/categories")
+        mockMvc.perform(get("/api/fixed-schedules")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data", hasSize(2)))
-                .andExpect(jsonPath("$.data[0].name").value("프로그래밍"))
-                .andExpect(jsonPath("$.data[1].name").value("알고리즘"));
+                .andExpect(jsonPath("$.data", hasSize(2)));
     }
 
     @Test
-    @DisplayName("PUT /api/categories/{id} - 카테고리를 수정한다")
+    @DisplayName("PUT /api/fixed-schedules/{id} - 고정 일정을 수정한다")
     void update() throws Exception {
-        MvcResult createResult = mockMvc.perform(post("/api/categories")
+        MvcResult createResult = mockMvc.perform(post("/api/fixed-schedules")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name": "기존이름", "color": "#000000", "sortOrder": 0}
+                                {"title": "기존", "startTime": "09:00",
+                                 "endTime": "10:00", "scheduleDate": "2026-04-10",
+                                 "recurrenceType": "NONE"}
                                 """))
                 .andReturn();
 
-        Integer categoryId = com.jayway.jsonpath.JsonPath.read(
+        Integer id = com.jayway.jsonpath.JsonPath.read(
                 createResult.getResponse().getContentAsString(), "$.data.id");
 
-        mockMvc.perform(put("/api/categories/" + categoryId)
+        mockMvc.perform(put("/api/fixed-schedules/" + id)
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name": "새이름", "color": "#FF0000", "icon": "star", "sortOrder": 5}
+                                {"title": "수정됨", "startTime": "10:00",
+                                 "endTime": "11:30", "scheduleDate": "2026-04-20",
+                                 "recurrenceType": "NONE"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.name").value("새이름"))
-                .andExpect(jsonPath("$.data.color").value("#FF0000"))
-                .andExpect(jsonPath("$.data.sortOrder").value(5));
+                .andExpect(jsonPath("$.data.title").value("수정됨"))
+                .andExpect(jsonPath("$.data.startTime").value("10:00:00"));
     }
 
     @Test
-    @DisplayName("DELETE /api/categories/{id} - 카테고리를 삭제한다")
-    void deleteCategory() throws Exception {
-        MvcResult createResult = mockMvc.perform(post("/api/categories")
+    @DisplayName("DELETE /api/fixed-schedules/{id} - 고정 일정을 삭제한다")
+    void deleteSchedule() throws Exception {
+        MvcResult createResult = mockMvc.perform(post("/api/fixed-schedules")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name": "삭제대상", "color": "#000000", "sortOrder": 0}
+                                {"title": "삭제대상", "startTime": "09:00",
+                                 "endTime": "10:00", "scheduleDate": "2026-04-10",
+                                 "recurrenceType": "NONE"}
                                 """))
                 .andReturn();
 
-        Integer categoryId = com.jayway.jsonpath.JsonPath.read(
+        Integer id = com.jayway.jsonpath.JsonPath.read(
                 createResult.getResponse().getContentAsString(), "$.data.id");
 
-        mockMvc.perform(delete("/api/categories/" + categoryId)
+        mockMvc.perform(delete("/api/fixed-schedules/" + id)
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/categories")
+        mockMvc.perform(get("/api/fixed-schedules")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(jsonPath("$.data", hasSize(0)));
     }
 
     @Test
-    @DisplayName("POST /api/categories - 잘못된 color 형식이면 400을 반환한다")
-    void create_invalidColor() throws Exception {
-        mockMvc.perform(post("/api/categories")
+    @DisplayName("NONE 타입에 scheduleDate 없으면 400을 반환한다")
+    void create_noneWithoutDate() throws Exception {
+        mockMvc.perform(post("/api/fixed-schedules")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name": "테스트", "color": "invalid", "sortOrder": 0}
+                                {"title": "테스트", "startTime": "09:00",
+                                 "endTime": "10:00",
+                                 "recurrenceType": "NONE"}
                                 """))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SP-ERR-002"));
     }
 
     @Test
-    @DisplayName("PUT /api/categories/{id} - 존재하지 않는 카테고리이면 404를 반환한다")
+    @DisplayName("존재하지 않는 고정 일정 수정 시 404를 반환한다")
     void update_notFound() throws Exception {
-        mockMvc.perform(put("/api/categories/999")
+        mockMvc.perform(put("/api/fixed-schedules/999")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name": "이름", "color": "#000000", "sortOrder": 0}
+                                {"title": "이름", "startTime": "09:00",
+                                 "endTime": "10:00", "scheduleDate": "2026-04-10",
+                                 "recurrenceType": "NONE"}
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("SP-ERR-001"));
@@ -176,7 +211,7 @@ class CategoryControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("인증 없이 요청하면 403을 반환한다")
     void unauthorized() throws Exception {
-        mockMvc.perform(get("/api/categories"))
+        mockMvc.perform(get("/api/fixed-schedules"))
                 .andExpect(status().isForbidden());
     }
 }
