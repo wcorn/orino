@@ -12,6 +12,7 @@ spec:
       labels:
         app: be
     spec:
+      terminationGracePeriodSeconds: 60
       containers:
         - name: be
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
@@ -50,6 +51,10 @@ spec:
               value: {{ .Values.env.OTEL_EXPORTER_OTLP_ENDPOINT | quote }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
           readinessProbe:
             httpGet:
               path: /health/readiness
