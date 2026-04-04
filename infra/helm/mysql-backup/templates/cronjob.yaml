@@ -1,0 +1,79 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mysql-backup
+spec:
+  schedule: {{ .Values.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: {{ .Values.mysql.image }}
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  BACKUP_FILE="/tmp/orino-${TIMESTAMP}.sql.gz"
+
+                  echo "Starting mysqldump..."
+                  mysqldump -h ${MYSQL_HOST} -u ${MYSQL_USER} -p${MYSQL_PASSWORD} \
+                    --single-transaction --routines --triggers ${MYSQL_DATABASE} \
+                    | gzip > ${BACKUP_FILE}
+                  echo "Dump completed: $(du -h ${BACKUP_FILE} | cut -f1)"
+
+                  echo "Downloading mc..."
+                  curl -sLo /tmp/mc https://dl.min.io/client/mc/release/linux-amd64/mc
+                  chmod +x /tmp/mc
+
+                  echo "Uploading to MinIO..."
+                  /tmp/mc alias set backup http://${MINIO_ENDPOINT} ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY}
+                  /tmp/mc cp ${BACKUP_FILE} backup/${MINIO_BUCKET}/backup/mysql/
+
+                  echo "Cleaning up backups older than ${RETENTION_DAYS} days..."
+                  /tmp/mc rm --recursive --force --older-than ${RETENTION_DAYS}d backup/${MINIO_BUCKET}/backup/mysql/ || true
+
+                  echo "Backup completed successfully"
+              env:
+                - name: MYSQL_HOST
+                  value: {{ .Values.mysql.host | quote }}
+                - name: MYSQL_DATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-secret
+                      key: MYSQL_DATABASE
+                - name: MYSQL_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-secret
+                      key: MYSQL_USER
+                - name: MYSQL_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-secret
+                      key: MYSQL_PASSWORD
+                - name: MINIO_ENDPOINT
+                  value: {{ .Values.minio.endpoint | quote }}
+                - name: MINIO_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-secret
+                      key: rootUser
+                - name: MINIO_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-secret
+                      key: rootPassword
+                - name: MINIO_BUCKET
+                  value: {{ .Values.minio.bucket | quote }}
+                - name: RETENTION_DAYS
+                  value: {{ .Values.retention.days | quote }}
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}

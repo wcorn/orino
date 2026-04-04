@@ -1,0 +1,20 @@
+schedule: "0 3 * * *"
+
+mysql:
+  host: mysql.orino.svc.cluster.local
+  image: mysql:8.4
+
+minio:
+  endpoint: minio-minio.orino.svc.cluster.local:9000
+  bucket: orino
+
+retention:
+  days: 7
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

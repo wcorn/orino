@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mysql-backup
+  namespace: argocd
+  annotations:
+    notifications.argoproj.io/subscribe.on-sync-failed.discord: ""
+    notifications.argoproj.io/subscribe.on-health-degraded.discord: ""
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: orino
+
+  source:
+    repoURL: https://github.com/wcorn/orino.git
+    targetRevision: main
+    path: infra/helm/mysql-backup
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: orino
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
