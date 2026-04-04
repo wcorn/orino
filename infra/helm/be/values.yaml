@@ -10,6 +10,7 @@ env:
   MYSQL_USERNAME: orino_app
   REDIS_HOST: redis.orino.svc.cluster.local
   REDIS_PORT: "6379"
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy.monitoring.svc.cluster.local:4318
 
 resources:
   requests:
