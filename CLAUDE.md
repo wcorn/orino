@@ -116,6 +116,7 @@ infra/helm/<app>/
 ## Git Workflow
 
 - main 브랜치에 직접 push하거나 merge하지 않는다. 최종 판단은 개발자가 한다.
+- 새로운 작업을 시작할 때 반드시 main을 pull 받은 후 새 브랜치를 생성한다.
 - 반드시 새 브랜치에서 작업하고 PR을 통해 머지한다.
 - PR 생성 시 base 브랜치는 항상 main으로 설정한다. 중간 브랜치를 base로 사용하지 않는다.
 
