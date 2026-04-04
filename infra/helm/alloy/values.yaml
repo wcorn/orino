@@ -2,7 +2,34 @@ alloy:
   alloy:
     configMap:
       content: |
+        // ========================
+        // OTLP 수신 (gRPC/HTTP)
+        // ========================
+        otelcol.receiver.otlp "default" {
+          grpc {
+            endpoint = "0.0.0.0:4317"
+          }
+          http {
+            endpoint = "0.0.0.0:4318"
+          }
+          output {
+            traces  = [otelcol.exporter.otlp.tempo.input]
+          }
+        }
+
+        // Traces → Tempo
+        otelcol.exporter.otlp "tempo" {
+          client {
+            endpoint = "tempo.monitoring.svc.cluster.local:4317"
+            tls {
+              insecure = true
+            }
+          }
+        }
+
+        // ========================
         // Kubernetes Pod 로그 수집
+        // ========================
         discovery.kubernetes "pods" {
           role = "pod"
         }
@@ -50,7 +77,6 @@ alloy:
 
         // JSON 로그 파싱 (BE prod 로그: LogstashEncoder)
         loki.process "json_parse" {
-          // JSON에서 level 필드 추출
           stage.json {
             expressions = {
               level      = "level",
@@ -61,14 +87,12 @@ alloy:
             }
           }
 
-          // level을 Loki 라벨로 설정
           stage.labels {
             values = {
               level = "",
             }
           }
 
-          // 비JSON 로그는 파싱 실패해도 그대로 통과
           forward_to = [loki.write.default.receiver]
         }
 
@@ -78,6 +102,16 @@ alloy:
             url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
           }
         }
+
+    extraPorts:
+      - name: otlp-grpc
+        port: 4317
+        targetPort: 4317
+        protocol: TCP
+      - name: otlp-http
+        port: 4318
+        targetPort: 4318
+        protocol: TCP
 
   controller:
     type: daemonset
