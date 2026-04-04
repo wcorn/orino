@@ -21,8 +21,10 @@
     <springProfile name="prod">
         <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-                <excludeJsonFieldName>@version</excludeJsonFieldName>
-                <excludeJsonFieldName>level_value</excludeJsonFieldName>
+                <fieldNames>
+                    <version>[ignore]</version>
+                    <levelValue>[ignore]</levelValue>
+                </fieldNames>
                 <timeZone>Asia/Seoul</timeZone>
                 <shortenedLoggerNameLength>36</shortenedLoggerNameLength>
             </encoder>
