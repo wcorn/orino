@@ -1,0 +1,102 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-create-user-preference
+      author: wcorn
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: user_preference
+      changes:
+        - createTable:
+            tableName: user_preference
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uk_user_preference_member
+                    foreignKeyName: fk_user_preference_member
+                    references: member(id)
+              - column:
+                  name: wake_time
+                  type: TIME
+                  defaultValue: "07:00:00"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sleep_time
+                  type: TIME
+                  defaultValue: "24:00:00"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: daily_study_minutes
+                  type: INT
+                  defaultValueNumeric: 240
+                  constraints:
+                    nullable: false
+              - column:
+                  name: study_time_preference
+                  type: VARCHAR(10)
+                  defaultValue: MORNING
+                  constraints:
+                    nullable: false
+              - column:
+                  name: focus_minutes
+                  type: INT
+                  defaultValueNumeric: 50
+                  constraints:
+                    nullable: false
+              - column:
+                  name: break_minutes
+                  type: INT
+                  defaultValueNumeric: 10
+                  constraints:
+                    nullable: false
+              - column:
+                  name: rest_days
+                  type: VARCHAR(30)
+              - column:
+                  name: skip_holidays
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: default_review_intervals
+                  type: VARCHAR(50)
+                  defaultValue: "1,2,3,7,15,30"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: default_missed_policy
+                  type: VARCHAR(10)
+                  defaultValue: IMMEDIATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: streak_freeze_per_month
+                  type: INT
+                  defaultValueNumeric: 2
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
