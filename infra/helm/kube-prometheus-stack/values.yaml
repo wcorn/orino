@@ -42,7 +42,7 @@ kube-prometheus-stack:
   kubeControllerManager:
     enabled: false
   kubelet:
-    enabled: false
+    enabled: true
 
   grafana:
     adminPassword: admin
