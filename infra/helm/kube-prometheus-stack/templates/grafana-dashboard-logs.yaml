@@ -1,0 +1,124 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-logs
+  labels:
+    grafana_dashboard: "1"
+data:
+  logs.json: |-
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "links": [],
+      "panels": [
+        {
+          "title": "로그 볼륨",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "expr": "sum by (app) (count_over_time({namespace=\"orino\"} [1m]))",
+              "legendFormat": "{{`{{app}}`}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 50,
+                "stacking": { "mode": "normal" }
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "title": "에러 로그 볼륨",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 6 },
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "expr": "sum by (app) (count_over_time({namespace=\"orino\", level=\"ERROR\"} [1m]))",
+              "legendFormat": "{{`{{app}}`}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 50
+              },
+              "color": { "mode": "fixed", "fixedColor": "red" }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "title": "레벨별 로그 수 (5분)",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 24, "x": 0, "y": 12 },
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "expr": "sum by (level) (count_over_time({namespace=\"orino\"} [5m]))",
+              "legendFormat": "{{`{{level}}`}}"
+            }
+          ],
+          "options": {
+            "colorMode": "background",
+            "textMode": "value_and_name"
+          }
+        },
+        {
+          "title": "앱 로그",
+          "type": "logs",
+          "gridPos": { "h": 16, "w": 24, "x": 0, "y": 16 },
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "expr": "{namespace=\"orino\", app=~\"$app\", level=~\"$level\"}",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": true,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": true,
+            "enableLogDetails": true,
+            "sortOrder": "Descending"
+          }
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "app",
+            "type": "query",
+            "datasource": { "type": "loki", "uid": "loki" },
+            "query": "label_values({namespace=\"orino\"}, app)",
+            "includeAll": true,
+            "allValue": ".*",
+            "current": { "text": "All", "value": "$__all" },
+            "multi": true
+          },
+          {
+            "name": "level",
+            "type": "custom",
+            "query": "INFO,WARN,ERROR",
+            "includeAll": true,
+            "allValue": ".*",
+            "current": { "text": "All", "value": "$__all" },
+            "multi": true
+          }
+        ]
+      },
+      "time": { "from": "now-1h", "to": "now" },
+      "title": "Application Logs",
+      "uid": "app-logs"
+    }
