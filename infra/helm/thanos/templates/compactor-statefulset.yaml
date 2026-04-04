@@ -55,11 +55,14 @@ spec:
           secret:
             secretName: {{ .Values.objstoreSecret }}
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes: ["ReadWriteOnce"]
         storageClassName: {{ .Values.compactor.storageClass }}
+        volumeMode: Filesystem
         resources:
           requests:
             storage: {{ .Values.compactor.storageSize }}
