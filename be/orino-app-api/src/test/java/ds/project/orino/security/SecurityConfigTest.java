@@ -3,7 +3,6 @@ package ds.project.orino.security;
 import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.MemberFixture;
-import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
