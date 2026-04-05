@@ -41,3 +41,22 @@ namespaces:
       limits:
         cpu: "8"
         memory: 16Gi
+
+  - name: argocd
+    limitRange:
+      enabled: true
+      default:
+        cpu: 100m
+        memory: 128Mi
+      defaultRequest:
+        cpu: 10m
+        memory: 32Mi
+    resourceQuota:
+      enabled: true
+      # 현재 requests 합계 ~640m/1120Mi + 업그레이드 surge 대비 여유
+      requests:
+        cpu: "2"
+        memory: 3Gi
+      limits:
+        cpu: "4"
+        memory: 4Gi
