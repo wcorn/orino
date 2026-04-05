@@ -6,6 +6,7 @@ import ds.project.orino.domain.preference.repository.UserPreferenceRepository;
 import ds.project.orino.domain.reflection.repository.DailyReflectionRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.MemberFixture;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,11 @@ class ReflectionControllerTest extends ApiTestSupport {
         accessToken = com.jayway.jsonpath.JsonPath.read(
                 loginResult.getResponse().getContentAsString(),
                 "$.data.accessToken");
+    }
+
+    @AfterEach
+    void tearDown() {
+        reflectionRepository.deleteAll();
     }
 
     @Test
