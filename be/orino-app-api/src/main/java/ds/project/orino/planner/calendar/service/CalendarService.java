@@ -24,12 +24,16 @@ import ds.project.orino.planner.calendar.dto.DailyProgress;
 import ds.project.orino.planner.calendar.dto.DailyScheduleResponse;
 import ds.project.orino.planner.calendar.dto.MonthlyDayResponse;
 import ds.project.orino.planner.calendar.dto.MonthlyScheduleResponse;
+import ds.project.orino.planner.calendar.dto.PostponeBlockRequest;
+import ds.project.orino.planner.calendar.dto.PostponeBlockResponse;
+import ds.project.orino.planner.calendar.dto.PostponeStrategy;
 import ds.project.orino.planner.calendar.dto.ReorderBlockRequest;
 import ds.project.orino.planner.calendar.dto.ReorderBlockResponse;
 import ds.project.orino.planner.calendar.dto.ScheduleBlockResponse;
 import ds.project.orino.planner.calendar.dto.WarningResponse;
 import ds.project.orino.planner.calendar.dto.WeeklyDayResponse;
 import ds.project.orino.planner.calendar.dto.WeeklyScheduleResponse;
+import ds.project.orino.planner.scheduling.dirty.DirtyScheduleMarker;
 import ds.project.orino.planner.scheduling.engine.SchedulingEngine;
 import ds.project.orino.planner.scheduling.engine.model.SchedulingResult;
 import org.springframework.stereotype.Service;
@@ -62,6 +66,7 @@ public class CalendarService {
     private final ReviewScheduleRepository reviewScheduleRepository;
     private final RoutineRepository routineRepository;
     private final RoutineCheckRepository routineCheckRepository;
+    private final DirtyScheduleMarker dirtyScheduleMarker;
 
     public CalendarService(
             SchedulingEngine schedulingEngine,
@@ -73,7 +78,8 @@ public class CalendarService {
             StudyUnitRepository studyUnitRepository,
             ReviewScheduleRepository reviewScheduleRepository,
             RoutineRepository routineRepository,
-            RoutineCheckRepository routineCheckRepository) {
+            RoutineCheckRepository routineCheckRepository,
+            DirtyScheduleMarker dirtyScheduleMarker) {
         this.schedulingEngine = schedulingEngine;
         this.dailyScheduleRepository = dailyScheduleRepository;
         this.scheduleBlockRepository = scheduleBlockRepository;
@@ -84,19 +90,21 @@ public class CalendarService {
         this.reviewScheduleRepository = reviewScheduleRepository;
         this.routineRepository = routineRepository;
         this.routineCheckRepository = routineCheckRepository;
+        this.dirtyScheduleMarker = dirtyScheduleMarker;
     }
 
     @Transactional
     public DailyScheduleResponse getDaily(Long memberId, LocalDate date) {
         SchedulingResult result = schedulingEngine.generate(memberId, date);
         DailySchedule schedule = result.dailySchedule();
-        List<ScheduleBlock> sortedBlocks = schedule.getBlocks().stream()
+        List<ScheduleBlock> visibleBlocks = schedule.getBlocks().stream()
+                .filter(b -> b.getStatus() != BlockStatus.POSTPONED)
                 .sorted(Comparator.comparing(ScheduleBlock::getStartTime))
                 .toList();
         Map<Long, BlockMetadata> metadata =
-                metadataResolver.resolve(sortedBlocks);
+                metadataResolver.resolve(visibleBlocks);
 
-        List<ScheduleBlockResponse> blockResponses = sortedBlocks.stream()
+        List<ScheduleBlockResponse> blockResponses = visibleBlocks.stream()
                 .map(b -> toBlockResponse(b, metadata.get(b.getId())))
                 .toList();
         List<WarningResponse> warnings = result.warnings().stream()
@@ -118,12 +126,13 @@ public class CalendarService {
             LocalDate date = startDate.plusDays(i);
             SchedulingResult result = schedulingEngine.generate(memberId, date);
             DailySchedule schedule = result.dailySchedule();
-            List<ScheduleBlock> sortedBlocks = schedule.getBlocks().stream()
+            List<ScheduleBlock> visibleBlocks = schedule.getBlocks().stream()
+                    .filter(b -> b.getStatus() != BlockStatus.POSTPONED)
                     .sorted(Comparator.comparing(ScheduleBlock::getStartTime))
                     .toList();
             Map<Long, BlockMetadata> metadata =
-                    metadataResolver.resolve(sortedBlocks);
-            List<ScheduleBlockResponse> blockResponses = sortedBlocks.stream()
+                    metadataResolver.resolve(visibleBlocks);
+            List<ScheduleBlockResponse> blockResponses = visibleBlocks.stream()
                     .map(b -> toBlockResponse(b, metadata.get(b.getId())))
                     .toList();
             days.add(new WeeklyDayResponse(
@@ -147,7 +156,9 @@ public class CalendarService {
             DailySchedule schedule = result.dailySchedule();
             Set<BlockType> distinctTypes = new LinkedHashSet<>();
             for (ScheduleBlock block : schedule.getBlocks()) {
-                distinctTypes.add(block.getBlockType());
+                if (block.getStatus() != BlockStatus.POSTPONED) {
+                    distinctTypes.add(block.getBlockType());
+                }
             }
             days.add(new MonthlyDayResponse(
                     date,
@@ -161,7 +172,7 @@ public class CalendarService {
     @Transactional
     public CompleteBlockResponse completeBlock(Long memberId, Long blockId) {
         ScheduleBlock block = loadOwnedBlock(memberId, blockId);
-        if (block.getStatus() == BlockStatus.COMPLETED) {
+        if (block.getStatus() != BlockStatus.SCHEDULED) {
             throw new CustomException(ErrorCode.INVALID_STATE);
         }
 
@@ -169,16 +180,91 @@ public class CalendarService {
         block.complete();
 
         DailySchedule schedule = block.getDailySchedule();
-        int completed = (int) schedule.getBlocks().stream()
-                .filter(b -> b.getStatus() == BlockStatus.COMPLETED)
-                .count();
-        schedule.markGenerated(schedule.getBlocks().size(), completed);
+        int total = countActiveBlocks(schedule);
+        int completed = countCompletedBlocks(schedule);
+        schedule.markGenerated(total, completed);
 
         return new CompleteBlockResponse(
                 block.getId(),
                 block.getStatus(),
                 effect,
-                new DailyProgress(schedule.getBlocks().size(), completed));
+                new DailyProgress(total, completed));
+    }
+
+    @Transactional
+    public PostponeBlockResponse postponeBlock(
+            Long memberId, Long blockId, PostponeBlockRequest request) {
+        ScheduleBlock block = loadOwnedBlock(memberId, blockId);
+        if (block.getStatus() != BlockStatus.SCHEDULED) {
+            throw new CustomException(ErrorCode.INVALID_STATE);
+        }
+        if (block.getBlockType() == BlockType.FIXED
+                || block.getBlockType() == BlockType.ROUTINE) {
+            throw new CustomException(ErrorCode.INVALID_STATE);
+        }
+
+        LocalDate sourceDate = block.getDailySchedule().getScheduleDate();
+        LocalDate targetDate = resolveTargetDate(
+                memberId, sourceDate, request.strategy());
+
+        block.postpone();
+        if (block.getBlockType() == BlockType.REVIEW) {
+            ReviewSchedule review = reviewScheduleRepository
+                    .findById(block.getReferenceId())
+                    .orElseThrow(() -> new CustomException(
+                            ErrorCode.RESOURCE_NOT_FOUND));
+            review.reschedule(targetDate);
+        }
+
+        DailySchedule sourceSchedule = block.getDailySchedule();
+        int total = countActiveBlocks(sourceSchedule);
+        int completed = countCompletedBlocks(sourceSchedule);
+        sourceSchedule.markGenerated(total, completed);
+
+        dirtyScheduleMarker.markDirtyOn(memberId, targetDate);
+
+        return new PostponeBlockResponse(
+                block.getId(), targetDate,
+                new DailyProgress(total, completed));
+    }
+
+    private LocalDate resolveTargetDate(Long memberId, LocalDate sourceDate,
+                                        PostponeStrategy strategy) {
+        if (strategy == PostponeStrategy.TOMORROW) {
+            return sourceDate.plusDays(1);
+        }
+        LocalDate rangeStart = sourceDate.plusDays(1);
+        LocalDate rangeEnd = sourceDate.plusDays(6);
+        List<DailySchedule> existing = dailyScheduleRepository
+                .findByMemberIdAndScheduleDateBetween(
+                        memberId, rangeStart, rangeEnd);
+        Map<LocalDate, Integer> counts = new java.util.HashMap<>();
+        for (DailySchedule s : existing) {
+            counts.put(s.getScheduleDate(), countActiveBlocks(s));
+        }
+        LocalDate best = rangeStart;
+        int bestCount = counts.getOrDefault(rangeStart, 0);
+        for (LocalDate d = rangeStart.plusDays(1); !d.isAfter(rangeEnd);
+                d = d.plusDays(1)) {
+            int c = counts.getOrDefault(d, 0);
+            if (c < bestCount) {
+                best = d;
+                bestCount = c;
+            }
+        }
+        return best;
+    }
+
+    private int countActiveBlocks(DailySchedule schedule) {
+        return (int) schedule.getBlocks().stream()
+                .filter(b -> b.getStatus() != BlockStatus.POSTPONED)
+                .count();
+    }
+
+    private int countCompletedBlocks(DailySchedule schedule) {
+        return (int) schedule.getBlocks().stream()
+                .filter(b -> b.getStatus() == BlockStatus.COMPLETED)
+                .count();
     }
 
     @Transactional

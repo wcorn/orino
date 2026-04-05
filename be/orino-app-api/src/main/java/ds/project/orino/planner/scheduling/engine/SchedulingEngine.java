@@ -119,7 +119,9 @@ public class SchedulingEngine {
 
         resortBlocks(dailySchedule);
 
-        int total = dailySchedule.getBlocks().size();
+        int total = (int) dailySchedule.getBlocks().stream()
+                .filter(b -> b.getStatus() != BlockStatus.POSTPONED)
+                .count();
         int completed = (int) dailySchedule.getBlocks().stream()
                 .filter(b -> b.getStatus() == BlockStatus.COMPLETED)
                 .count();
@@ -161,10 +163,13 @@ public class SchedulingEngine {
 
     private List<TimeSlot> subtractLockedFromFreeSlots(
             List<TimeSlot> freeSlots, List<ScheduleBlock> locked) {
-        if (locked.isEmpty()) {
+        List<ScheduleBlock> timeConsuming = locked.stream()
+                .filter(b -> b.getStatus() != BlockStatus.POSTPONED)
+                .toList();
+        if (timeConsuming.isEmpty()) {
             return freeSlots;
         }
-        List<TimeSlot> taken = locked.stream()
+        List<TimeSlot> taken = timeConsuming.stream()
                 .map(b -> new TimeSlot(b.getStartTime(), b.getEndTime()))
                 .sorted(Comparator.comparing(TimeSlot::start))
                 .toList();

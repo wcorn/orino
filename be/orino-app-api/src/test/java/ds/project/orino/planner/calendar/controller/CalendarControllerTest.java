@@ -325,6 +325,102 @@ class CalendarControllerTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("POST postpone (TOMORROW) - 오늘에서 제외되고 내일로 이동")
+    void postponeBlock_tomorrow() throws Exception {
+        Todo todo = todoRepository.save(new Todo(
+                member, "리포트", null, null, null,
+                Priority.HIGH, null, 30));
+
+        MvcResult getResult = mockMvc.perform(get("/api/calendar/daily")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("date", targetDate.toString()))
+                .andReturn();
+        Integer blockId = com.jayway.jsonpath.JsonPath.read(
+                getResult.getResponse().getContentAsString(),
+                "$.data.blocks[0].id");
+        Integer initialTotal = com.jayway.jsonpath.JsonPath.read(
+                getResult.getResponse().getContentAsString(),
+                "$.data.totalBlocks");
+
+        mockMvc.perform(post("/api/calendar/blocks/" + blockId + "/postpone")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"strategy": "TOMORROW"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.blockId").value(blockId))
+                .andExpect(jsonPath("$.data.postponedTo")
+                        .value(targetDate.plusDays(1).toString()))
+                .andExpect(jsonPath("$.data.dailyProgress.totalBlocks")
+                        .value(initialTotal - 1));
+
+        // 오늘 조회 시 해당 블록이 보이지 않아야 함
+        mockMvc.perform(get("/api/calendar/daily")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("date", targetDate.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalBlocks")
+                        .value(initialTotal - 1));
+
+        org.assertj.core.api.Assertions.assertThat(todo.getId())
+                .isNotNull();
+    }
+
+    @Test
+    @DisplayName("POST postpone (THIS_WEEK) - 주 내 덜 바쁜 날로 이동")
+    void postponeBlock_thisWeek() throws Exception {
+        todoRepository.save(new Todo(
+                member, "과제", null, null, null,
+                Priority.MEDIUM, null, 30));
+
+        MvcResult getResult = mockMvc.perform(get("/api/calendar/daily")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("date", targetDate.toString()))
+                .andReturn();
+        Integer blockId = com.jayway.jsonpath.JsonPath.read(
+                getResult.getResponse().getContentAsString(),
+                "$.data.blocks[0].id");
+
+        mockMvc.perform(post("/api/calendar/blocks/" + blockId + "/postpone")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"strategy": "THIS_WEEK"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.blockId").value(blockId))
+                .andExpect(jsonPath("$.data.postponedTo", notNullValue()));
+    }
+
+    @Test
+    @DisplayName("POST postpone - 이미 완료된 블록은 409")
+    void postponeBlock_alreadyCompleted() throws Exception {
+        todoRepository.save(new Todo(member, "작업", null, null, null,
+                Priority.HIGH, null, 30));
+
+        MvcResult getResult = mockMvc.perform(get("/api/calendar/daily")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("date", targetDate.toString()))
+                .andReturn();
+        Integer blockId = com.jayway.jsonpath.JsonPath.read(
+                getResult.getResponse().getContentAsString(),
+                "$.data.blocks[0].id");
+
+        mockMvc.perform(patch("/api/calendar/blocks/" + blockId + "/complete")
+                .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/calendar/blocks/" + blockId + "/postpone")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"strategy": "TOMORROW"}
+                                """))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     @DisplayName("PUT reorder - end가 start보다 빠르면 400")
     void reorderBlock_invalidTimeRange() throws Exception {
         todoRepository.save(new Todo(member, "작업", null, null, null,
