@@ -160,3 +160,110 @@ spec:
           annotations:
             summary: "PVC {{ "{{" }} $labels.namespace {{ "}}" }}/{{ "{{" }} $labels.persistentvolumeclaim {{ "}}" }} 용량 부족"
             description: "PVC 사용률 {{ "{{" }} $value | printf \"%.0f\" {{ "}}" }}% (80% 초과)"
+
+    - name: app-metrics
+      rules:
+        - alert: BackendHighErrorRate
+          expr: |
+            sum(rate(http_server_requests_seconds_count{namespace="orino",status=~"5.."}[5m]))
+              / sum(rate(http_server_requests_seconds_count{namespace="orino"}[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "BE 5xx 에러율 높음"
+            description: "BE 5xx 비율이 5분간 5% 초과 (현재: {{ "{{" }} $value | printf \"%.2f\" {{ "}}" }})"
+
+        - alert: BackendJvmHeapHigh
+          expr: |
+            sum(jvm_memory_used_bytes{namespace="orino",area="heap"})
+              / sum(jvm_memory_max_bytes{namespace="orino",area="heap"}) > 0.85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "BE JVM heap 사용률 높음"
+            description: "JVM heap 사용률 10분간 85% 초과 (현재: {{ "{{" }} $value | printf \"%.2f\" {{ "}}" }})"
+
+        - alert: BackendDbPoolExhausted
+          expr: |
+            max(hikaricp_connections_active{namespace="orino"})
+              / max(hikaricp_connections_max{namespace="orino"}) > 0.9
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "BE DB 커넥션 풀 고갈 임박"
+            description: "HikariCP active / max 비율이 5분간 90% 초과 (현재: {{ "{{" }} $value | printf \"%.2f\" {{ "}}" }})"
+
+    - name: istio
+      rules:
+        - alert: IstioServiceErrorRateHigh
+          expr: |
+            sum by (destination_service) (rate(istio_requests_total{reporter="destination",response_code=~"5.."}[5m]))
+              / sum by (destination_service) (rate(istio_requests_total{reporter="destination"}[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Istio 서비스 5xx 비율 높음: {{ "{{" }} $labels.destination_service {{ "}}" }}"
+            description: "destination 5xx 비율이 5분간 5% 초과 (현재: {{ "{{" }} $value | printf \"%.2f\" {{ "}}" }})"
+
+        - alert: IstioServiceLatencyP99High
+          expr: |
+            histogram_quantile(0.99,
+              sum by (destination_service, le) (rate(istio_request_duration_milliseconds_bucket{reporter="destination"}[5m]))
+            ) > 2000
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Istio 서비스 p99 지연 높음: {{ "{{" }} $labels.destination_service {{ "}}" }}"
+            description: "p99 레이턴시가 10분간 2초 초과 (현재: {{ "{{" }} $value | printf \"%.0f\" {{ "}}" }}ms)"
+
+    - name: observability-self
+      rules:
+        - alert: PrometheusDown
+          expr: absent(kube_pod_status_ready{namespace="monitoring", pod=~"prometheus-kube-prometheus-stack-prometheus-.*", condition="true"} == 1)
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Prometheus 다운"
+            description: "Prometheus Pod가 1분 이상 Ready 상태가 아님"
+
+        - alert: LokiDown
+          expr: absent(kube_pod_status_ready{namespace="monitoring", pod=~"loki-.*", condition="true"} == 1)
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Loki 다운"
+            description: "Loki Pod가 1분 이상 Ready 상태가 아님"
+
+        - alert: TempoDown
+          expr: absent(kube_pod_status_ready{namespace="monitoring", pod=~"tempo-.*", condition="true"} == 1)
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Tempo 다운"
+            description: "Tempo Pod가 1분 이상 Ready 상태가 아님"
+
+        - alert: AlloyDown
+          expr: absent(kube_pod_status_ready{namespace="monitoring", pod=~"alloy-.*", condition="true"} == 1)
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Alloy 다운"
+            description: "Alloy Pod가 1분 이상 Ready 상태가 아님"
+
+        - alert: ScrapeTargetDown
+          expr: up == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Prometheus scrape target 다운: {{ "{{" }} $labels.job {{ "}}" }}/{{ "{{" }} $labels.instance {{ "}}" }}"
+            description: "scrape target이 5분 이상 up=0 상태"

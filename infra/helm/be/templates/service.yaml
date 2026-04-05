@@ -2,10 +2,16 @@ apiVersion: v1
 kind: Service
 metadata:
   name: be
+  labels:
+    app: be
 spec:
   type: ClusterIP
   selector:
     app: be
   ports:
-    - port: 8080
-      targetPort: 8080
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: actuator
+      port: 9090
+      targetPort: actuator
