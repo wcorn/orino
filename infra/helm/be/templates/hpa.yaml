@@ -1,3 +1,4 @@
+{{- if .Values.hpa.enabled }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -16,3 +17,30 @@ spec:
         target:
           type: Utilization
           averageUtilization: {{ .Values.hpa.targetCPUUtilization }}
+    {{- if .Values.hpa.targetMemoryUtilization }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.targetMemoryUtilization }}
+    {{- end }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.hpa.behavior.scaleUp.stabilizationWindowSeconds }}
+      policies:
+        - type: Percent
+          value: {{ .Values.hpa.behavior.scaleUp.percent }}
+          periodSeconds: {{ .Values.hpa.behavior.scaleUp.periodSeconds }}
+        - type: Pods
+          value: {{ .Values.hpa.behavior.scaleUp.pods }}
+          periodSeconds: {{ .Values.hpa.behavior.scaleUp.periodSeconds }}
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.hpa.behavior.scaleDown.stabilizationWindowSeconds }}
+      policies:
+        - type: Percent
+          value: {{ .Values.hpa.behavior.scaleDown.percent }}
+          periodSeconds: {{ .Values.hpa.behavior.scaleDown.periodSeconds }}
+      selectPolicy: Max
+{{- end }}
