@@ -3,6 +3,7 @@ package ds.project.orino.planner.calendar.service;
 import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
 import ds.project.orino.domain.calendar.entity.BlockStatus;
+import ds.project.orino.domain.calendar.entity.BlockType;
 import ds.project.orino.domain.calendar.entity.DailySchedule;
 import ds.project.orino.domain.calendar.entity.ScheduleBlock;
 import ds.project.orino.domain.calendar.repository.DailyScheduleRepository;
@@ -21,19 +22,27 @@ import ds.project.orino.planner.calendar.dto.BlockEffect;
 import ds.project.orino.planner.calendar.dto.CompleteBlockResponse;
 import ds.project.orino.planner.calendar.dto.DailyProgress;
 import ds.project.orino.planner.calendar.dto.DailyScheduleResponse;
+import ds.project.orino.planner.calendar.dto.MonthlyDayResponse;
+import ds.project.orino.planner.calendar.dto.MonthlyScheduleResponse;
 import ds.project.orino.planner.calendar.dto.ReorderBlockRequest;
 import ds.project.orino.planner.calendar.dto.ReorderBlockResponse;
 import ds.project.orino.planner.calendar.dto.ScheduleBlockResponse;
 import ds.project.orino.planner.calendar.dto.WarningResponse;
+import ds.project.orino.planner.calendar.dto.WeeklyDayResponse;
+import ds.project.orino.planner.calendar.dto.WeeklyScheduleResponse;
 import ds.project.orino.planner.scheduling.engine.SchedulingEngine;
 import ds.project.orino.planner.scheduling.engine.model.SchedulingResult;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 일간 캘린더 조회 및 블록 상태 변경 서비스.
@@ -99,6 +108,54 @@ public class CalendarService {
                 schedule.getCompletedBlocks(),
                 blockResponses,
                 warnings);
+    }
+
+    @Transactional
+    public WeeklyScheduleResponse getWeekly(Long memberId, LocalDate startDate) {
+        LocalDate endDate = startDate.plusDays(6);
+        List<WeeklyDayResponse> days = new ArrayList<>(7);
+        for (int i = 0; i < 7; i++) {
+            LocalDate date = startDate.plusDays(i);
+            SchedulingResult result = schedulingEngine.generate(memberId, date);
+            DailySchedule schedule = result.dailySchedule();
+            List<ScheduleBlock> sortedBlocks = schedule.getBlocks().stream()
+                    .sorted(Comparator.comparing(ScheduleBlock::getStartTime))
+                    .toList();
+            Map<Long, BlockMetadata> metadata =
+                    metadataResolver.resolve(sortedBlocks);
+            List<ScheduleBlockResponse> blockResponses = sortedBlocks.stream()
+                    .map(b -> toBlockResponse(b, metadata.get(b.getId())))
+                    .toList();
+            days.add(new WeeklyDayResponse(
+                    date,
+                    schedule.getTotalBlocks(),
+                    schedule.getCompletedBlocks(),
+                    blockResponses));
+        }
+        return new WeeklyScheduleResponse(startDate, endDate, days);
+    }
+
+    @Transactional
+    public MonthlyScheduleResponse getMonthly(Long memberId, int year, int month) {
+        YearMonth yearMonth = YearMonth.of(year, month);
+        LocalDate firstDay = yearMonth.atDay(1);
+        LocalDate lastDay = yearMonth.atEndOfMonth();
+        List<MonthlyDayResponse> days = new ArrayList<>();
+        for (LocalDate date = firstDay; !date.isAfter(lastDay);
+                date = date.plusDays(1)) {
+            SchedulingResult result = schedulingEngine.generate(memberId, date);
+            DailySchedule schedule = result.dailySchedule();
+            Set<BlockType> distinctTypes = new LinkedHashSet<>();
+            for (ScheduleBlock block : schedule.getBlocks()) {
+                distinctTypes.add(block.getBlockType());
+            }
+            days.add(new MonthlyDayResponse(
+                    date,
+                    schedule.getTotalBlocks(),
+                    schedule.getCompletedBlocks(),
+                    new ArrayList<>(distinctTypes)));
+        }
+        return new MonthlyScheduleResponse(year, month, days);
     }
 
     @Transactional

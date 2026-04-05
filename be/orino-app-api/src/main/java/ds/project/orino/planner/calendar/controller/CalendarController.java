@@ -3,8 +3,10 @@ package ds.project.orino.planner.calendar.controller;
 import ds.project.orino.common.response.ApiResponse;
 import ds.project.orino.planner.calendar.dto.CompleteBlockResponse;
 import ds.project.orino.planner.calendar.dto.DailyScheduleResponse;
+import ds.project.orino.planner.calendar.dto.MonthlyScheduleResponse;
 import ds.project.orino.planner.calendar.dto.ReorderBlockRequest;
 import ds.project.orino.planner.calendar.dto.ReorderBlockResponse;
+import ds.project.orino.planner.calendar.dto.WeeklyScheduleResponse;
 import ds.project.orino.planner.calendar.service.CalendarService;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -40,6 +42,27 @@ public class CalendarController {
         LocalDate target = date != null ? date : LocalDate.now();
         return ResponseEntity.ok(ApiResponse.success(
                 calendarService.getDaily(memberId, target)));
+    }
+
+    @GetMapping("/weekly")
+    public ResponseEntity<ApiResponse<WeeklyScheduleResponse>> getWeekly(
+            Authentication authentication,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        Long memberId = (Long) authentication.getPrincipal();
+        LocalDate target = date != null ? date : LocalDate.now();
+        return ResponseEntity.ok(ApiResponse.success(
+                calendarService.getWeekly(memberId, target)));
+    }
+
+    @GetMapping("/monthly")
+    public ResponseEntity<ApiResponse<MonthlyScheduleResponse>> getMonthly(
+            Authentication authentication,
+            @RequestParam int year,
+            @RequestParam int month) {
+        Long memberId = (Long) authentication.getPrincipal();
+        return ResponseEntity.ok(ApiResponse.success(
+                calendarService.getMonthly(memberId, year, month)));
     }
 
     @PatchMapping("/blocks/{blockId}/complete")
