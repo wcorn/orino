@@ -80,6 +80,11 @@ public class StudyUnit {
         this.difficulty = difficulty;
     }
 
+    public void complete() {
+        this.status = UnitStatus.COMPLETED;
+        this.completedAt = LocalDateTime.now();
+    }
+
     public Long getId() {
         return id;
     }
