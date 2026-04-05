@@ -43,9 +43,29 @@ alloy:
           }
 
           output {
-            logs   = [loki.process.json_parse.receiver]
+            logs   = [loki.process.faro.receiver]
             traces = [otelcol.exporter.otlp.tempo.input]
           }
+        }
+
+        // Faro 로그 전용 파이프라인: logfmt 파싱 후 app/kind를 스트림 라벨로 승격
+        // 나머지 필드(session_id, trace_id, view_name 등)는 high-cardinality이므로 로그 내용에만 남김
+        loki.process "faro" {
+          stage.logfmt {
+            mapping = {
+              app  = "app_name",
+              kind = "",
+            }
+          }
+
+          stage.labels {
+            values = {
+              app  = "",
+              kind = "",
+            }
+          }
+
+          forward_to = [loki.write.default.receiver]
         }
 
         // ========================
