@@ -115,6 +115,12 @@ public class StudyMaterial {
                 ? deadlineMode : DeadlineMode.FREE;
     }
 
+    public void shiftDeadline(int days) {
+        if (this.deadline != null) {
+            this.deadline = this.deadline.plusDays(days);
+        }
+    }
+
     public void pause() {
         this.status = MaterialStatus.PAUSED;
     }
