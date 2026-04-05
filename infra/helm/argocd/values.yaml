@@ -25,7 +25,8 @@ server:
   extraArgs:
     - --loglevel=info
   service:
-    type: ClusterIP
+    type: NodePort
+    nodePortHttp: 30080
   resources:
     requests:
       cpu: 250m
