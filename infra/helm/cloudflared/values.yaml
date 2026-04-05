@@ -1,7 +1,27 @@
-cloudflare-tunnel-remote:
-  cloudflare:
-    tunnel_token: ""
-  replicaCount: 1
+cloudflared:
+  # Locally-managed tunnel: tunnel 이름 + credentials.json + cert.pem
+  tunnelConfig:
+    name: orino
+    logLevel: info
+    noAutoUpdate: true
+
+  # 기존 SealedSecret(cloudflared-tunnel)에서 cert.pem, credentials.json 마운트
+  tunnelSecrets:
+    existingPemFileSecret:
+      name: cloudflared-tunnel
+      key: cert.pem
+    existingConfigJsonFileSecret:
+      name: cloudflared-tunnel
+      key: credentials.json
+
+  # Cloudflare → istio-gateway 라우팅 규칙
+  ingress:
+    - hostname: orino.dev
+      service: http://istio-gateway.istio-ingress.svc.cluster.local:80
+    - hostname: api.orino.dev
+      service: http://istio-gateway.istio-ingress.svc.cluster.local:80
+    - service: http_status:404
+
   resources:
     requests:
       cpu: 50m

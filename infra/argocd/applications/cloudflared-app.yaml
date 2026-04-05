@@ -17,13 +17,6 @@ spec:
     server: https://kubernetes.default.svc
     namespace: cloudflared
 
-  ignoreDifferences:
-    - group: ""
-      kind: Secret
-      name: cloudflared-cloudflare-tunnel-remote
-      jsonPointers:
-        - /data
-
   syncPolicy:
     automated:
       prune: true
