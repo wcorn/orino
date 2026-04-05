@@ -14,6 +14,7 @@ import ds.project.orino.planner.preference.dto.PriorityRuleRequest;
 import ds.project.orino.planner.preference.dto.PriorityRuleResponse;
 import ds.project.orino.planner.preference.dto.UpdatePreferenceRequest;
 import ds.project.orino.planner.preference.dto.UpdatePriorityRulesRequest;
+import ds.project.orino.planner.scheduling.dirty.DirtyScheduleMarker;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,14 +27,17 @@ public class PreferenceService {
     private final UserPreferenceRepository preferenceRepository;
     private final PriorityRuleRepository ruleRepository;
     private final MemberRepository memberRepository;
+    private final DirtyScheduleMarker dirtyScheduleMarker;
 
     public PreferenceService(
             UserPreferenceRepository preferenceRepository,
             PriorityRuleRepository ruleRepository,
-            MemberRepository memberRepository) {
+            MemberRepository memberRepository,
+            DirtyScheduleMarker dirtyScheduleMarker) {
         this.preferenceRepository = preferenceRepository;
         this.ruleRepository = ruleRepository;
         this.memberRepository = memberRepository;
+        this.dirtyScheduleMarker = dirtyScheduleMarker;
     }
 
     @Transactional
@@ -61,6 +65,7 @@ public class PreferenceService {
                 request.defaultMissedPolicy(),
                 request.streakFreezePerMonth());
 
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
         return PreferenceResponse.from(pref);
     }
 
@@ -98,11 +103,13 @@ public class PreferenceService {
             rule.updateSortOrder(ruleReq.sortOrder());
         }
 
-        return ruleRepository
+        List<PriorityRuleResponse> response = ruleRepository
                 .findByMemberIdOrderBySortOrder(memberId)
                 .stream()
                 .map(PriorityRuleResponse::from)
                 .toList();
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
+        return response;
     }
 
     private UserPreference createDefault(Long memberId) {

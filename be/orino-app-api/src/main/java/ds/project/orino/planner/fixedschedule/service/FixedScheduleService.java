@@ -12,6 +12,7 @@ import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.planner.fixedschedule.dto.CreateFixedScheduleRequest;
 import ds.project.orino.planner.fixedschedule.dto.FixedScheduleResponse;
 import ds.project.orino.planner.fixedschedule.dto.UpdateFixedScheduleRequest;
+import ds.project.orino.planner.scheduling.dirty.DirtyScheduleMarker;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,13 +25,16 @@ public class FixedScheduleService {
     private final FixedScheduleRepository fixedScheduleRepository;
     private final MemberRepository memberRepository;
     private final CategoryRepository categoryRepository;
+    private final DirtyScheduleMarker dirtyScheduleMarker;
 
     public FixedScheduleService(FixedScheduleRepository fixedScheduleRepository,
                                 MemberRepository memberRepository,
-                                CategoryRepository categoryRepository) {
+                                CategoryRepository categoryRepository,
+                                DirtyScheduleMarker dirtyScheduleMarker) {
         this.fixedScheduleRepository = fixedScheduleRepository;
         this.memberRepository = memberRepository;
         this.categoryRepository = categoryRepository;
+        this.dirtyScheduleMarker = dirtyScheduleMarker;
     }
 
     public List<FixedScheduleResponse> getFixedSchedules(Long memberId) {
@@ -58,7 +62,10 @@ public class FixedScheduleService {
                 request.recurrenceInterval(), request.recurrenceDays(),
                 request.recurrenceStart(), request.recurrenceEnd());
 
-        return FixedScheduleResponse.from(fixedScheduleRepository.save(schedule));
+        FixedScheduleResponse response = FixedScheduleResponse.from(
+                fixedScheduleRepository.save(schedule));
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
+        return response;
     }
 
     @Transactional
@@ -79,6 +86,7 @@ public class FixedScheduleService {
                 request.recurrenceInterval(), request.recurrenceDays(),
                 request.recurrenceStart(), request.recurrenceEnd());
 
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
         return FixedScheduleResponse.from(schedule);
     }
 
@@ -89,6 +97,7 @@ public class FixedScheduleService {
                 .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
 
         fixedScheduleRepository.delete(schedule);
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
     }
 
     private void validateRecurrence(RecurrenceType type,

@@ -13,6 +13,7 @@ import ds.project.orino.domain.todo.entity.Priority;
 import ds.project.orino.domain.todo.entity.Todo;
 import ds.project.orino.domain.todo.entity.TodoStatus;
 import ds.project.orino.domain.todo.repository.TodoRepository;
+import ds.project.orino.planner.scheduling.dirty.DirtyScheduleMarker;
 import ds.project.orino.planner.todo.dto.CreateTodoRequest;
 import ds.project.orino.planner.todo.dto.TodoResponse;
 import ds.project.orino.planner.todo.dto.UpdateTodoRequest;
@@ -51,12 +52,15 @@ class TodoServiceTest {
     @Mock
     private GoalRepository goalRepository;
 
+    @Mock
+    private DirtyScheduleMarker dirtyScheduleMarker;
+
     private Member member;
 
     @BeforeEach
     void setUp() {
         todoService = new TodoService(todoRepository, memberRepository,
-                categoryRepository, goalRepository);
+                categoryRepository, goalRepository, dirtyScheduleMarker);
         member = new Member("admin", "encoded");
     }
 

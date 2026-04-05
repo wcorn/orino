@@ -37,6 +37,7 @@ import ds.project.orino.planner.material.dto.ReviewConfigResponse;
 import ds.project.orino.planner.material.dto.UnitResponse;
 import ds.project.orino.planner.material.dto.UpdateMaterialRequest;
 import ds.project.orino.planner.material.dto.UpdateUnitRequest;
+import ds.project.orino.planner.scheduling.dirty.DirtyScheduleMarker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -67,6 +68,7 @@ class MaterialServiceTest {
     @Mock private MemberRepository memberRepository;
     @Mock private CategoryRepository categoryRepository;
     @Mock private GoalRepository goalRepository;
+    @Mock private DirtyScheduleMarker dirtyScheduleMarker;
 
     private Member member;
 
@@ -76,7 +78,8 @@ class MaterialServiceTest {
                 materialRepository, unitRepository,
                 allocationRepository, dailyOverrideRepository,
                 reviewConfigRepository, memberRepository,
-                categoryRepository, goalRepository);
+                categoryRepository, goalRepository,
+                dirtyScheduleMarker);
         member = new Member("admin", "encoded");
     }
 

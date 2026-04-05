@@ -77,6 +77,11 @@ public class SchedulingEngine {
             return new SchedulingResult(dailySchedule, List.of());
         }
 
+        if (!dailySchedule.isDirty()) {
+            dailySchedule.getBlocks().size();
+            return new SchedulingResult(dailySchedule, List.of());
+        }
+
         UserPreference preference = preferenceRepository
                 .findByMemberId(memberId)
                 .orElseGet(() -> createDefaultPreference(memberId));

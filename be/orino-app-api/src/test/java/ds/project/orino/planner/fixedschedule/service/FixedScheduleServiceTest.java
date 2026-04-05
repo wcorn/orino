@@ -11,6 +11,7 @@ import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.planner.fixedschedule.dto.CreateFixedScheduleRequest;
 import ds.project.orino.planner.fixedschedule.dto.FixedScheduleResponse;
 import ds.project.orino.planner.fixedschedule.dto.UpdateFixedScheduleRequest;
+import ds.project.orino.planner.scheduling.dirty.DirtyScheduleMarker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,12 +44,16 @@ class FixedScheduleServiceTest {
     @Mock
     private CategoryRepository categoryRepository;
 
+    @Mock
+    private DirtyScheduleMarker dirtyScheduleMarker;
+
     private Member member;
 
     @BeforeEach
     void setUp() {
         service = new FixedScheduleService(
-                fixedScheduleRepository, memberRepository, categoryRepository);
+                fixedScheduleRepository, memberRepository, categoryRepository,
+                dirtyScheduleMarker);
         member = new Member("admin", "encoded");
     }
 
