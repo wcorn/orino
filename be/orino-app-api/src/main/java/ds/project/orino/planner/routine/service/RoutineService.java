@@ -13,6 +13,7 @@ import ds.project.orino.domain.routine.entity.RoutineStatus;
 import ds.project.orino.domain.routine.repository.RoutineCheckRepository;
 import ds.project.orino.domain.routine.repository.RoutineExceptionRepository;
 import ds.project.orino.domain.routine.repository.RoutineRepository;
+import ds.project.orino.planner.scheduling.dirty.DirtyScheduleMarker;
 import ds.project.orino.planner.routine.dto.CreateRoutineRequest;
 import ds.project.orino.planner.routine.dto.RoutineCheckRequest;
 import ds.project.orino.planner.routine.dto.RoutineCheckResponse;
@@ -38,17 +39,20 @@ public class RoutineService {
     private final RoutineExceptionRepository routineExceptionRepository;
     private final MemberRepository memberRepository;
     private final CategoryRepository categoryRepository;
+    private final DirtyScheduleMarker dirtyScheduleMarker;
 
     public RoutineService(RoutineRepository routineRepository,
                           RoutineCheckRepository routineCheckRepository,
                           RoutineExceptionRepository routineExceptionRepository,
                           MemberRepository memberRepository,
-                          CategoryRepository categoryRepository) {
+                          CategoryRepository categoryRepository,
+                          DirtyScheduleMarker dirtyScheduleMarker) {
         this.routineRepository = routineRepository;
         this.routineCheckRepository = routineCheckRepository;
         this.routineExceptionRepository = routineExceptionRepository;
         this.memberRepository = memberRepository;
         this.categoryRepository = categoryRepository;
+        this.dirtyScheduleMarker = dirtyScheduleMarker;
     }
 
     public List<RoutineResponse> getRoutines(Long memberId) {
@@ -79,6 +83,7 @@ public class RoutineService {
                 Boolean.TRUE.equals(request.skipHolidays()));
 
         Routine saved = routineRepository.save(routine);
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
         return RoutineResponse.from(saved, new StreakInfo(0, 0));
     }
 
@@ -97,6 +102,7 @@ public class RoutineService {
                 request.endDate(),
                 Boolean.TRUE.equals(request.skipHolidays()));
 
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
         return RoutineResponse.from(routine, calculateStreak(routine));
     }
 
@@ -105,6 +111,7 @@ public class RoutineService {
         Routine routine = routineRepository.findByIdAndMemberId(routineId, memberId)
                 .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
         routineRepository.delete(routine);
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
     }
 
     @Transactional
@@ -113,6 +120,7 @@ public class RoutineService {
         Routine routine = routineRepository.findByIdAndMemberId(routineId, memberId)
                 .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
         routine.changeStatus(status);
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
         return RoutineResponse.from(routine, calculateStreak(routine));
     }
 
@@ -147,8 +155,10 @@ public class RoutineService {
 
         RoutineException exception = new RoutineException(
                 routine, request.exceptionDate());
-        return RoutineExceptionResponse.from(
+        RoutineExceptionResponse response = RoutineExceptionResponse.from(
                 routineExceptionRepository.save(exception));
+        dirtyScheduleMarker.markDirtyOn(memberId, request.exceptionDate());
+        return response;
     }
 
     @Transactional
@@ -161,7 +171,9 @@ public class RoutineService {
                 .findByIdAndRoutineId(exceptionId, routineId)
                 .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
 
+        LocalDate exceptionDate = exception.getExceptionDate();
         routineExceptionRepository.delete(exception);
+        dirtyScheduleMarker.markDirtyOn(memberId, exceptionDate);
     }
 
     private StreakInfo calculateStreak(Routine routine) {

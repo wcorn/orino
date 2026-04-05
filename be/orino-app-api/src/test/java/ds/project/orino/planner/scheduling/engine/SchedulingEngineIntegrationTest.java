@@ -5,6 +5,7 @@ import ds.project.orino.domain.calendar.entity.BlockType;
 import ds.project.orino.domain.calendar.entity.DailySchedule;
 import ds.project.orino.domain.calendar.entity.ScheduleBlock;
 import ds.project.orino.domain.calendar.repository.DailyScheduleRepository;
+import ds.project.orino.domain.calendar.repository.ScheduleBlockRepository;
 import ds.project.orino.domain.fixedschedule.entity.FixedSchedule;
 import ds.project.orino.domain.fixedschedule.entity.RecurrenceType;
 import ds.project.orino.domain.fixedschedule.repository.FixedScheduleRepository;
@@ -36,6 +37,7 @@ import ds.project.orino.domain.todo.repository.TodoRepository;
 import ds.project.orino.domain.goal.repository.GoalRepository;
 import ds.project.orino.domain.goal.repository.MilestoneRepository;
 import ds.project.orino.domain.category.repository.CategoryRepository;
+import ds.project.orino.planner.scheduling.dirty.DirtyScheduleMarker;
 import ds.project.orino.planner.scheduling.engine.model.SchedulingResult;
 import ds.project.orino.support.IntegrationTest;
 import ds.project.orino.support.MemberFixture;
@@ -56,6 +58,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SchedulingEngineIntegrationTest {
 
     @Autowired private SchedulingEngine engine;
+    @Autowired private DirtyScheduleMarker dirtyScheduleMarker;
     @Autowired private MemberRepository memberRepository;
     @Autowired private UserPreferenceRepository preferenceRepository;
     @Autowired private PriorityRuleRepository priorityRuleRepository;
@@ -71,6 +74,7 @@ class SchedulingEngineIntegrationTest {
     @Autowired private ReviewConfigRepository reviewConfigRepository;
     @Autowired private ReviewScheduleRepository reviewRepository;
     @Autowired private DailyScheduleRepository dailyScheduleRepository;
+    @Autowired private ScheduleBlockRepository scheduleBlockRepository;
     @Autowired private GoalRepository goalRepository;
     @Autowired private MilestoneRepository milestoneRepository;
     @Autowired private CategoryRepository categoryRepository;
@@ -258,6 +262,80 @@ class SchedulingEngineIntegrationTest {
         assertThat(sorted.get(0).getReferenceId()).isEqualTo(urgent.getId());
         assertThat(sorted.get(1).getReferenceId())
                 .isEqualTo(noDeadline.getId());
+    }
+
+    @Test
+    @DisplayName("dirty=false 인 스케줄은 재생성하지 않고 기존 블록을 반환한다")
+    void cleanScheduleIsNotRegenerated() {
+        saveDefaultPreference();
+
+        StudyMaterial material = materialRepository.save(new StudyMaterial(
+                member, "알고리즘", MaterialType.BOOK, null, null,
+                null, DeadlineMode.FREE));
+        unitRepository.save(new StudyUnit(material, "챕터1", 1, 30, null));
+
+        SchedulingResult first = engine.generate(member.getId(), targetDate);
+        int firstBlockCount = first.dailySchedule().getBlocks().size();
+        assertThat(first.dailySchedule().isDirty()).isFalse();
+
+        // 데이터 변경 후 dirty 마킹은 하지 않음
+        unitRepository.save(new StudyUnit(material, "챕터2", 2, 30, null));
+
+        // 재호출 시 dirty=false 이므로 재생성하지 않음
+        SchedulingResult second = engine.generate(member.getId(), targetDate);
+        assertThat(second.dailySchedule().getBlocks()).hasSize(firstBlockCount);
+    }
+
+    @Test
+    @DisplayName("dirty=true 마킹하면 다음 호출에서 재생성한다")
+    void dirtyScheduleIsRegenerated() {
+        saveDefaultPreference();
+
+        StudyMaterial material = materialRepository.save(new StudyMaterial(
+                member, "알고리즘", MaterialType.BOOK, null, null,
+                null, DeadlineMode.FREE));
+        unitRepository.save(new StudyUnit(material, "챕터1", 1, 30, null));
+
+        SchedulingResult first = engine.generate(member.getId(), targetDate);
+        int firstBlockCount = first.dailySchedule().getBlocks().size();
+
+        unitRepository.save(new StudyUnit(material, "챕터2", 2, 30, null));
+        dirtyScheduleMarker.markDirtyFromToday(member.getId());
+
+        SchedulingResult second = engine.generate(member.getId(), targetDate);
+        assertThat(second.dailySchedule().getBlocks())
+                .hasSize(firstBlockCount + 1);
+    }
+
+    @Test
+    @DisplayName("완료/pinned 블록은 dirty 재생성 시에도 유지된다")
+    void lockedBlocksPreservedOnRegeneration() {
+        saveDefaultPreference();
+
+        StudyMaterial material = materialRepository.save(new StudyMaterial(
+                member, "알고리즘", MaterialType.BOOK, null, null,
+                null, DeadlineMode.FREE));
+        unitRepository.save(new StudyUnit(material, "챕터1", 1, 30, null));
+
+        SchedulingResult first = engine.generate(member.getId(), targetDate);
+        ScheduleBlock firstBlock = first.dailySchedule().getBlocks().get(0);
+        Long completedBlockId = firstBlock.getId();
+        LocalTime originalStart = firstBlock.getStartTime();
+        // DB에 COMPLETED 상태를 반영
+        ScheduleBlock managed = scheduleBlockRepository
+                .findById(completedBlockId).orElseThrow();
+        managed.complete();
+        scheduleBlockRepository.save(managed);
+
+        unitRepository.save(new StudyUnit(material, "챕터2", 2, 30, null));
+        dirtyScheduleMarker.markDirtyFromToday(member.getId());
+
+        SchedulingResult second = engine.generate(member.getId(), targetDate);
+        ScheduleBlock preserved = second.dailySchedule().getBlocks().stream()
+                .filter(b -> b.getId().equals(completedBlockId))
+                .findFirst().orElseThrow();
+        assertThat(preserved.getStatus()).isEqualTo(BlockStatus.COMPLETED);
+        assertThat(preserved.getStartTime()).isEqualTo(originalStart);
     }
 
     private UserPreference saveDefaultPreference() {

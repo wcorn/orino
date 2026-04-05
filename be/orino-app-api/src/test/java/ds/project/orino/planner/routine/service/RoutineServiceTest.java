@@ -20,6 +20,7 @@ import ds.project.orino.planner.routine.dto.RoutineExceptionRequest;
 import ds.project.orino.planner.routine.dto.RoutineExceptionResponse;
 import ds.project.orino.planner.routine.dto.RoutineResponse;
 import ds.project.orino.planner.routine.dto.UpdateRoutineRequest;
+import ds.project.orino.planner.scheduling.dirty.DirtyScheduleMarker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -47,13 +48,15 @@ class RoutineServiceTest {
     @Mock private RoutineExceptionRepository routineExceptionRepository;
     @Mock private MemberRepository memberRepository;
     @Mock private CategoryRepository categoryRepository;
+    @Mock private DirtyScheduleMarker dirtyScheduleMarker;
 
     private Member member;
 
     @BeforeEach
     void setUp() {
         service = new RoutineService(routineRepository, routineCheckRepository,
-                routineExceptionRepository, memberRepository, categoryRepository);
+                routineExceptionRepository, memberRepository, categoryRepository,
+                dirtyScheduleMarker);
         member = new Member("admin", "encoded");
     }
 

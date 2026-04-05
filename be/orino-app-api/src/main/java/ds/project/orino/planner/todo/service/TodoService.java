@@ -13,6 +13,7 @@ import ds.project.orino.domain.todo.entity.Todo;
 import ds.project.orino.domain.todo.entity.TodoStatus;
 import ds.project.orino.domain.todo.repository.TodoRepository;
 import ds.project.orino.domain.todo.repository.TodoSpecification;
+import ds.project.orino.planner.scheduling.dirty.DirtyScheduleMarker;
 import ds.project.orino.planner.todo.dto.CreateTodoRequest;
 import ds.project.orino.planner.todo.dto.TodoResponse;
 import ds.project.orino.planner.todo.dto.UpdateTodoRequest;
@@ -30,15 +31,18 @@ public class TodoService {
     private final MemberRepository memberRepository;
     private final CategoryRepository categoryRepository;
     private final GoalRepository goalRepository;
+    private final DirtyScheduleMarker dirtyScheduleMarker;
 
     public TodoService(TodoRepository todoRepository,
                        MemberRepository memberRepository,
                        CategoryRepository categoryRepository,
-                       GoalRepository goalRepository) {
+                       GoalRepository goalRepository,
+                       DirtyScheduleMarker dirtyScheduleMarker) {
         this.todoRepository = todoRepository;
         this.memberRepository = memberRepository;
         this.categoryRepository = categoryRepository;
         this.goalRepository = goalRepository;
+        this.dirtyScheduleMarker = dirtyScheduleMarker;
     }
 
     public List<TodoResponse> getTodos(Long memberId, TodoStatus status,
@@ -76,7 +80,9 @@ public class TodoService {
                 category, goal, request.priority(),
                 request.deadline(), request.estimatedMinutes());
 
-        return TodoResponse.from(todoRepository.save(todo));
+        TodoResponse response = TodoResponse.from(todoRepository.save(todo));
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
+        return response;
     }
 
     @Transactional
@@ -92,6 +98,7 @@ public class TodoService {
                 category, goal, request.priority(),
                 request.deadline(), request.estimatedMinutes());
 
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
         return TodoResponse.from(todo);
     }
 
@@ -100,6 +107,7 @@ public class TodoService {
         Todo todo = todoRepository.findByIdAndMemberId(todoId, memberId)
                 .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
         todoRepository.delete(todo);
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
     }
 
     @Transactional

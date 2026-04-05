@@ -33,6 +33,7 @@ import ds.project.orino.planner.material.dto.ReviewConfigResponse;
 import ds.project.orino.planner.material.dto.UnitResponse;
 import ds.project.orino.planner.material.dto.UpdateMaterialRequest;
 import ds.project.orino.planner.material.dto.UpdateUnitRequest;
+import ds.project.orino.planner.scheduling.dirty.DirtyScheduleMarker;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,6 +52,7 @@ public class MaterialService {
     private final MemberRepository memberRepository;
     private final CategoryRepository categoryRepository;
     private final GoalRepository goalRepository;
+    private final DirtyScheduleMarker dirtyScheduleMarker;
 
     public MaterialService(
             StudyMaterialRepository materialRepository,
@@ -60,7 +62,8 @@ public class MaterialService {
             ReviewConfigRepository reviewConfigRepository,
             MemberRepository memberRepository,
             CategoryRepository categoryRepository,
-            GoalRepository goalRepository) {
+            GoalRepository goalRepository,
+            DirtyScheduleMarker dirtyScheduleMarker) {
         this.materialRepository = materialRepository;
         this.unitRepository = unitRepository;
         this.allocationRepository = allocationRepository;
@@ -69,6 +72,7 @@ public class MaterialService {
         this.memberRepository = memberRepository;
         this.categoryRepository = categoryRepository;
         this.goalRepository = goalRepository;
+        this.dirtyScheduleMarker = dirtyScheduleMarker;
     }
 
     public List<MaterialResponse> getMaterials(Long memberId) {
@@ -114,6 +118,7 @@ public class MaterialService {
             }
         }
 
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
         return MaterialResponse.from(material);
     }
 
@@ -130,6 +135,7 @@ public class MaterialService {
                 category, goal,
                 request.deadline(), request.deadlineMode());
 
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
         return MaterialResponse.from(material);
     }
 
@@ -137,6 +143,7 @@ public class MaterialService {
     public void delete(Long memberId, Long materialId) {
         StudyMaterial material = findMaterial(materialId, memberId);
         materialRepository.delete(material);
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
     }
 
     @Transactional
@@ -146,6 +153,7 @@ public class MaterialService {
             throw new CustomException(ErrorCode.INVALID_STATE);
         }
         material.pause();
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
         return MaterialResponse.from(material);
     }
 
@@ -156,6 +164,7 @@ public class MaterialService {
             throw new CustomException(ErrorCode.INVALID_STATE);
         }
         material.resume();
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
         return MaterialResponse.from(material);
     }
 
@@ -168,7 +177,9 @@ public class MaterialService {
         StudyUnit unit = new StudyUnit(
                 material, request.title(), request.sortOrder(),
                 request.estimatedMinutes(), request.difficulty());
-        return UnitResponse.from(unitRepository.save(unit));
+        UnitResponse response = UnitResponse.from(unitRepository.save(unit));
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
+        return response;
     }
 
     @Transactional
@@ -176,7 +187,7 @@ public class MaterialService {
             Long memberId, Long materialId,
             CreateUnitBatchRequest request) {
         StudyMaterial material = findMaterial(materialId, memberId);
-        return request.units().stream()
+        List<UnitResponse> response = request.units().stream()
                 .map(req -> {
                     StudyUnit unit = new StudyUnit(
                             material, req.title(), req.sortOrder(),
@@ -184,6 +195,8 @@ public class MaterialService {
                     return UnitResponse.from(unitRepository.save(unit));
                 })
                 .toList();
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
+        return response;
     }
 
     @Transactional
@@ -197,6 +210,7 @@ public class MaterialService {
                         ErrorCode.RESOURCE_NOT_FOUND));
         unit.update(request.title(), request.sortOrder(),
                 request.estimatedMinutes(), request.difficulty());
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
         return UnitResponse.from(unit);
     }
 
@@ -209,6 +223,7 @@ public class MaterialService {
                 .orElseThrow(() -> new CustomException(
                         ErrorCode.RESOURCE_NOT_FOUND));
         unitRepository.delete(unit);
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
     }
 
     // --- Allocation ---
@@ -228,6 +243,7 @@ public class MaterialService {
         } else {
             allocation.update(request.defaultMinutes());
         }
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
         return AllocationResponse.from(allocation);
     }
 
@@ -258,6 +274,7 @@ public class MaterialService {
         } else {
             override.update(request.minutes());
         }
+        dirtyScheduleMarker.markDirtyOn(memberId, date);
         return DailyOverrideResponse.from(override);
     }
 
@@ -270,6 +287,7 @@ public class MaterialService {
                 .orElseThrow(() -> new CustomException(
                         ErrorCode.RESOURCE_NOT_FOUND));
         dailyOverrideRepository.delete(override);
+        dirtyScheduleMarker.markDirtyOn(memberId, date);
     }
 
     // --- Review Config ---
@@ -291,6 +309,7 @@ public class MaterialService {
             config.update(request.intervals(),
                     request.missedPolicy());
         }
+        dirtyScheduleMarker.markDirtyFromToday(memberId);
         return ReviewConfigResponse.from(config);
     }
 

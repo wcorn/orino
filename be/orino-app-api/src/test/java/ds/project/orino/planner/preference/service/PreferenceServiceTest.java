@@ -14,6 +14,7 @@ import ds.project.orino.planner.preference.dto.PriorityRuleRequest;
 import ds.project.orino.planner.preference.dto.PriorityRuleResponse;
 import ds.project.orino.planner.preference.dto.UpdatePreferenceRequest;
 import ds.project.orino.planner.preference.dto.UpdatePriorityRulesRequest;
+import ds.project.orino.planner.scheduling.dirty.DirtyScheduleMarker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,7 @@ class PreferenceServiceTest {
     @Mock private UserPreferenceRepository preferenceRepository;
     @Mock private PriorityRuleRepository ruleRepository;
     @Mock private MemberRepository memberRepository;
+    @Mock private DirtyScheduleMarker dirtyScheduleMarker;
 
     private Member member;
 
@@ -45,7 +47,7 @@ class PreferenceServiceTest {
     void setUp() {
         preferenceService = new PreferenceService(
                 preferenceRepository, ruleRepository,
-                memberRepository);
+                memberRepository, dirtyScheduleMarker);
         member = new Member("admin", "encoded");
     }
 
