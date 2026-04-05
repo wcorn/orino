@@ -3,7 +3,9 @@ kind: Deployment
 metadata:
   name: fe
 spec:
+  {{- if not .Values.hpa.enabled }}
   replicas: {{ .Values.replicas }}
+  {{- end }}
   strategy:
     type: RollingUpdate
     rollingUpdate:

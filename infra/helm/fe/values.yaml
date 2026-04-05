@@ -12,5 +12,22 @@ resources:
     cpu: 200m
     memory: 128Mi
 
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilization: 70
+  targetMemoryUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      periodSeconds: 60
+      percent: 100
+      pods: 2
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      periodSeconds: 60
+      percent: 50
+
 pdb:
   maxUnavailable: 1
