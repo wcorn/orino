@@ -1,0 +1,82 @@
+# ArgoCD 본체는 chicken-and-egg 문제로 GitOps 관리 밖이다.
+# 배포/업그레이드는 note1에서 수동으로 실행한다:
+#
+#   ssh note1 "helm repo update argo && \
+#     helm upgrade argocd argo/argo-cd --namespace argocd --version 9.4.10 \
+#       -f values.yaml"
+#
+# values 변경 시 이 파일을 먼저 갱신한 뒤 수동 apply.
+
+configs:
+  params:
+    server.insecure: true
+
+# StatefulSet: 실 사용량 ~80m CPU / ~370Mi — 여유 있게 설정
+controller:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+server:
+  extraArgs:
+    - --loglevel=info
+  service:
+    type: ClusterIP
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Git 클론/렌더링 담당. 실 사용량 ~16m / ~74Mi
+repoServer:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ApplicationSet 미사용 중이지만 App of Apps 보완재로 구동
+applicationSet:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+dex:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 50m
+      memory: 64Mi
+
+notifications:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
