@@ -23,6 +23,7 @@ import ds.project.orino.domain.material.repository.StudyMaterialRepository;
 import ds.project.orino.domain.material.repository.StudyUnitRepository;
 import ds.project.orino.domain.member.entity.Member;
 import ds.project.orino.domain.member.repository.MemberRepository;
+import ds.project.orino.domain.preference.repository.UserPreferenceRepository;
 import ds.project.orino.planner.material.dto.AllocationRequest;
 import ds.project.orino.planner.material.dto.AllocationResponse;
 import ds.project.orino.planner.material.dto.CreateMaterialRequest;
@@ -68,17 +69,21 @@ class MaterialServiceTest {
     @Mock private MemberRepository memberRepository;
     @Mock private CategoryRepository categoryRepository;
     @Mock private GoalRepository goalRepository;
+    @Mock private UserPreferenceRepository preferenceRepository;
     @Mock private DirtyScheduleMarker dirtyScheduleMarker;
+    private DeadlineCalculator deadlineCalculator;
 
     private Member member;
 
     @BeforeEach
     void setUp() {
+        deadlineCalculator = new DeadlineCalculator();
         materialService = new MaterialService(
                 materialRepository, unitRepository,
                 allocationRepository, dailyOverrideRepository,
                 reviewConfigRepository, memberRepository,
                 categoryRepository, goalRepository,
+                preferenceRepository, deadlineCalculator,
                 dirtyScheduleMarker);
         member = new Member("admin", "encoded");
     }

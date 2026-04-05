@@ -166,7 +166,14 @@ class MaterialControllerTest extends ApiTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.title")
                         .value("이펙티브 자바"))
-                .andExpect(jsonPath("$.data.units").isArray());
+                .andExpect(jsonPath("$.data.units").isArray())
+                .andExpect(jsonPath("$.data.deadlineProjection").exists())
+                .andExpect(jsonPath(
+                        "$.data.deadlineProjection.deadline")
+                        .value("2026-07-01"))
+                .andExpect(jsonPath(
+                        "$.data.deadlineProjection.paceStatus")
+                        .value("AHEAD"));
     }
 
     @Test

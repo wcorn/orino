@@ -19,10 +19,16 @@ public record MaterialDetailResponse(
         MaterialStatus status,
         List<UnitResponse> units,
         AllocationResponse allocation,
-        ReviewConfigResponse reviewConfig
+        ReviewConfigResponse reviewConfig,
+        DeadlineProjectionResponse deadlineProjection
 ) {
 
     public static MaterialDetailResponse from(StudyMaterial m) {
+        return from(m, null);
+    }
+
+    public static MaterialDetailResponse from(
+            StudyMaterial m, DeadlineProjectionResponse projection) {
         return new MaterialDetailResponse(
                 m.getId(),
                 m.getTitle(),
@@ -42,7 +48,8 @@ public record MaterialDetailResponse(
                         : null,
                 m.getReviewConfig() != null
                         ? ReviewConfigResponse.from(m.getReviewConfig())
-                        : null
+                        : null,
+                projection
         );
     }
 }
