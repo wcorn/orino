@@ -32,4 +32,27 @@ public interface ReviewScheduleRepository
     List<ReviewSchedule> findByMemberAndDateAndStatus(@Param("memberId") Long memberId,
                                                       @Param("date") LocalDate date,
                                                       @Param("status") ReviewStatus status);
+
+    @Query("select r from ReviewSchedule r " +
+            "where r.studyUnit.id = :studyUnitId " +
+            "and r.status in :statuses " +
+            "order by r.sequence asc")
+    List<ReviewSchedule> findByStudyUnitIdAndStatusIn(
+            @Param("studyUnitId") Long studyUnitId,
+            @Param("statuses") List<ReviewStatus> statuses);
+
+    @Query("select r from ReviewSchedule r " +
+            "where r.studyUnit.id = :studyUnitId " +
+            "and r.sequence > :sequence " +
+            "and r.status = :status " +
+            "order by r.sequence asc")
+    List<ReviewSchedule> findUpcomingByStudyUnit(
+            @Param("studyUnitId") Long studyUnitId,
+            @Param("sequence") int sequence,
+            @Param("status") ReviewStatus status);
+
+    @Query("select coalesce(max(r.sequence), 0) from ReviewSchedule r " +
+            "where r.studyUnit.id = :studyUnitId")
+    int findMaxSequenceByStudyUnit(
+            @Param("studyUnitId") Long studyUnitId);
 }
