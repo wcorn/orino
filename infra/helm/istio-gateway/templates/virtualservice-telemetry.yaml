@@ -1,0 +1,28 @@
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: telemetry
+  namespace: istio-ingress
+spec:
+  hosts:
+    - "telemetry.orino.dev"
+  gateways:
+    - orino-gateway
+  http:
+    - corsPolicy:
+        allowOrigins:
+          - exact: "https://orino.dev"
+        allowMethods:
+          - POST
+          - OPTIONS
+        allowHeaders:
+          - Content-Type
+          - X-API-Key
+          - X-Faro-Session-Id
+        maxAge: "86400s"
+      timeout: 10s
+      route:
+        - destination:
+            host: alloy.monitoring.svc.cluster.local
+            port:
+              number: 12347

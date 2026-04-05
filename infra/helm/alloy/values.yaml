@@ -28,6 +28,27 @@ alloy:
         }
 
         // ========================
+        // Faro receiver (FE 텔레메트리 수신)
+        // ========================
+        faro.receiver "app_receiver" {
+          server {
+            listen_address           = "0.0.0.0"
+            listen_port              = 12347
+            cors_allowed_origins     = ["https://orino.dev"]
+            api_key                  = sys.env("FARO_API_KEY")
+            max_allowed_payload_size = "10MiB"
+            rate_limiting {
+              rate = 100
+            }
+          }
+
+          output {
+            logs   = [loki.process.json_parse.receiver]
+            traces = [otelcol.exporter.otlp.tempo.input]
+          }
+        }
+
+        // ========================
         // Kubernetes Pod 로그 수집
         // ========================
         discovery.kubernetes "pods" {
@@ -103,6 +124,11 @@ alloy:
           }
         }
 
+    # FARO_API_KEY 환경변수 주입 (alloy-faro-secret)
+    envFrom:
+      - secretRef:
+          name: alloy-faro-secret
+
     extraPorts:
       - name: otlp-grpc
         port: 4317
@@ -111,6 +137,10 @@ alloy:
       - name: otlp-http
         port: 4318
         targetPort: 4318
+        protocol: TCP
+      - name: faro
+        port: 12347
+        targetPort: 12347
         protocol: TCP
 
   controller:

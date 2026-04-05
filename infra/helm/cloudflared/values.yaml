@@ -20,6 +20,8 @@ cloudflared:
       service: http://istio-gateway.istio-ingress.svc.cluster.local:80
     - hostname: api.orino.dev
       service: http://istio-gateway.istio-ingress.svc.cluster.local:80
+    - hostname: telemetry.orino.dev
+      service: http://istio-gateway.istio-ingress.svc.cluster.local:80
     - service: http_status:404
 
   resources:
