@@ -1,0 +1,19 @@
+{{- range .Values.namespaces }}
+{{- if .limitRange.enabled }}
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+  namespace: {{ .name }}
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: {{ .limitRange.default.cpu }}
+        memory: {{ .limitRange.default.memory }}
+      defaultRequest:
+        cpu: {{ .limitRange.defaultRequest.cpu }}
+        memory: {{ .limitRange.defaultRequest.memory }}
+{{- end }}
+{{- end }}
