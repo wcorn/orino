@@ -20,7 +20,7 @@ subprojects {
     }
 
     ext['jackson-2-bom.version'] = '2.21.1'
-    ext['jackson-bom.version'] = '3.1.0'
+    ext['jackson-bom.version'] = '3.1.1'
     ext['spring-security.version'] = '7.0.4'
 
     repositories {
