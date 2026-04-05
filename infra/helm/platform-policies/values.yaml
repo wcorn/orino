@@ -21,7 +21,7 @@ namespaces:
         cpu: "2"
         memory: 4Gi
       limits:
-        cpu: "8"
+        cpu: "12"
         memory: 12Gi
 
   - name: monitoring
