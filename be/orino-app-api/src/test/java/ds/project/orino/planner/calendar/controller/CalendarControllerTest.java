@@ -155,6 +155,70 @@ class CalendarControllerTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("GET /api/calendar/weekly - 7일분 스케줄을 반환한다")
+    void getWeekly_returnsSevenDays() throws Exception {
+        Category category = categoryRepository.save(
+                new Category(member, "공부", "#8b00ff", null, 1));
+        StudyMaterial material = materialRepository.save(new StudyMaterial(
+                member, "알고리즘", MaterialType.BOOK, category, null,
+                null, DeadlineMode.FREE));
+        unitRepository.save(new StudyUnit(material, "챕터1", 1, 30, null));
+
+        mockMvc.perform(get("/api/calendar/weekly")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("date", targetDate.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.startDate")
+                        .value(targetDate.toString()))
+                .andExpect(jsonPath("$.data.endDate")
+                        .value(targetDate.plusDays(6).toString()))
+                .andExpect(jsonPath("$.data.days.length()").value(7))
+                .andExpect(jsonPath("$.data.days[0].date")
+                        .value(targetDate.toString()))
+                .andExpect(jsonPath("$.data.days[6].date")
+                        .value(targetDate.plusDays(6).toString()))
+                .andExpect(jsonPath("$.data.days[0].totalBlocks")
+                        .value(greaterThan(0)))
+                .andExpect(jsonPath("$.data.days[0].blocks[0].blockType")
+                        .value("STUDY"));
+    }
+
+    @Test
+    @DisplayName("GET /api/calendar/weekly - date 파라미터가 없으면 오늘부터 7일")
+    void getWeekly_defaultsToToday() throws Exception {
+        mockMvc.perform(get("/api/calendar/weekly")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.startDate")
+                        .value(LocalDate.now().toString()))
+                .andExpect(jsonPath("$.data.days.length()").value(7));
+    }
+
+    @Test
+    @DisplayName("GET /api/calendar/monthly - 해당 월의 모든 날짜를 반환한다")
+    void getMonthly_returnsAllDaysOfMonth() throws Exception {
+        Category category = categoryRepository.save(
+                new Category(member, "공부", "#8b00ff", null, 1));
+        StudyMaterial material = materialRepository.save(new StudyMaterial(
+                member, "알고리즘", MaterialType.BOOK, category, null,
+                null, DeadlineMode.FREE));
+        unitRepository.save(new StudyUnit(material, "챕터1", 1, 30, null));
+
+        int year = targetDate.getYear();
+        int month = targetDate.getMonthValue();
+        int expectedDays = targetDate.lengthOfMonth();
+
+        mockMvc.perform(get("/api/calendar/monthly")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("year", String.valueOf(year))
+                        .param("month", String.valueOf(month)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.year").value(year))
+                .andExpect(jsonPath("$.data.month").value(month))
+                .andExpect(jsonPath("$.data.days.length()").value(expectedDays));
+    }
+
+    @Test
     @DisplayName("PATCH /api/calendar/blocks/{id}/complete (TODO) - 할 일 완료")
     void completeBlock_todo() throws Exception {
         Todo todo = todoRepository.save(new Todo(
