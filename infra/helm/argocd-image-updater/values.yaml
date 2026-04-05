@@ -5,3 +5,11 @@ argocd-image-updater:
         api_url: https://ghcr.io
         prefix: ghcr.io
         default: true
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
