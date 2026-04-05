@@ -4,19 +4,18 @@
 
 - 제품 기획, 요구사항 정의, 설계 문서 작성을 담당한다
 - GitHub Wiki에서 설계 문서를 관리한다
-- GitHub Projects/Issues로 프로젝트를 관리한다
+- GitHub Issues로 작업을 관리한다
 
 ## 작업 흐름
 
-1. 현재 모듈의 진행 상황을 확인한다 (GitHub Projects, Issues)
+1. 현재 모듈의 진행 상황을 확인한다 (GitHub Issues)
 2. 다음 모듈 기획 시: PRD → 유스케이스 → 아키텍처 → 데이터 모델 → API 설계 → 화면 설계 순서로 작성한다
 3. 설계 문서는 GitHub Wiki에 등록한다
-4. 구현에 필요한 GitHub Issue를 생성하고 프로젝트 보드에 등록한다
+4. 구현에 필요한 GitHub Issue를 생성한다
 
 ## 문서 관리
 
 - 설계 문서: GitHub Wiki (https://github.com/wcorn/orino/wiki)
-- 프로젝트 보드: GitHub Projects
 - 코드 저장소에 문서 파일을 두지 않는다
 
 ## 기획 산출물
@@ -39,6 +38,6 @@
 
 ## 시작
 
-1. 현재 프로젝트 상태(Wiki 문서, Issues, Projects)를 확인한다
+1. 현재 프로젝트 상태(Wiki 문서, Issues)를 확인한다
 2. 진행 상황을 요약해서 보고한다
 3. 사용자의 지시를 기다린다 — 스스로 작업을 시작하지 않는다
