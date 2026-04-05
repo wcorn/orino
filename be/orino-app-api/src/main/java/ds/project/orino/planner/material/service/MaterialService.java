@@ -19,6 +19,8 @@ import ds.project.orino.domain.material.repository.StudyMaterialRepository;
 import ds.project.orino.domain.material.repository.StudyUnitRepository;
 import ds.project.orino.domain.member.entity.Member;
 import ds.project.orino.domain.member.repository.MemberRepository;
+import ds.project.orino.domain.preference.entity.UserPreference;
+import ds.project.orino.domain.preference.repository.UserPreferenceRepository;
 import ds.project.orino.planner.material.dto.AllocationRequest;
 import ds.project.orino.planner.material.dto.AllocationResponse;
 import ds.project.orino.planner.material.dto.CreateMaterialRequest;
@@ -26,6 +28,7 @@ import ds.project.orino.planner.material.dto.CreateUnitBatchRequest;
 import ds.project.orino.planner.material.dto.CreateUnitRequest;
 import ds.project.orino.planner.material.dto.DailyOverrideRequest;
 import ds.project.orino.planner.material.dto.DailyOverrideResponse;
+import ds.project.orino.planner.material.dto.DeadlineProjectionResponse;
 import ds.project.orino.planner.material.dto.MaterialDetailResponse;
 import ds.project.orino.planner.material.dto.MaterialResponse;
 import ds.project.orino.planner.material.dto.ReviewConfigRequest;
@@ -52,6 +55,8 @@ public class MaterialService {
     private final MemberRepository memberRepository;
     private final CategoryRepository categoryRepository;
     private final GoalRepository goalRepository;
+    private final UserPreferenceRepository preferenceRepository;
+    private final DeadlineCalculator deadlineCalculator;
     private final DirtyScheduleMarker dirtyScheduleMarker;
 
     public MaterialService(
@@ -63,6 +68,8 @@ public class MaterialService {
             MemberRepository memberRepository,
             CategoryRepository categoryRepository,
             GoalRepository goalRepository,
+            UserPreferenceRepository preferenceRepository,
+            DeadlineCalculator deadlineCalculator,
             DirtyScheduleMarker dirtyScheduleMarker) {
         this.materialRepository = materialRepository;
         this.unitRepository = unitRepository;
@@ -72,6 +79,8 @@ public class MaterialService {
         this.memberRepository = memberRepository;
         this.categoryRepository = categoryRepository;
         this.goalRepository = goalRepository;
+        this.preferenceRepository = preferenceRepository;
+        this.deadlineCalculator = deadlineCalculator;
         this.dirtyScheduleMarker = dirtyScheduleMarker;
     }
 
@@ -86,7 +95,12 @@ public class MaterialService {
     public MaterialDetailResponse getMaterial(Long memberId,
                                               Long materialId) {
         StudyMaterial material = findMaterial(materialId, memberId);
-        return MaterialDetailResponse.from(material);
+        UserPreference preference = preferenceRepository
+                .findByMemberId(memberId)
+                .orElse(null);
+        DeadlineProjectionResponse projection = deadlineCalculator
+                .calculate(material, preference, LocalDate.now());
+        return MaterialDetailResponse.from(material, projection);
     }
 
     @Transactional
