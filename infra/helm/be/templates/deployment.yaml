@@ -18,6 +18,8 @@ spec:
     metadata:
       labels:
         app: be
+      annotations:
+        traffic.sidecar.istio.io/excludeInboundPorts: "9090"
     spec:
       terminationGracePeriodSeconds: 60
       securityContext:
@@ -49,7 +51,10 @@ spec:
         - name: be
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
           ports:
-            - containerPort: 8080
+            - name: http
+              containerPort: 8080
+            - name: actuator
+              containerPort: 9090
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
