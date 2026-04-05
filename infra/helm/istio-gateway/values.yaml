@@ -1,5 +1,24 @@
 gateway:
   service:
     type: ClusterIP
+
+  # 외부 트래픽 진입점이므로 HA 구성 (최소 2 replica)
+  replicaCount: 2
+
   autoscaling:
-    enabled: false
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+  # 최소 1개 유지하여 노드 재시작/롤링 업데이트 중 트래픽 단절 방지
+  podDisruptionBudget:
+    minAvailable: 1
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
