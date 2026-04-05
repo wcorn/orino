@@ -84,6 +84,10 @@ public class ScheduleBlock {
         this.completedAt = LocalDateTime.now();
     }
 
+    public void postpone() {
+        this.status = BlockStatus.POSTPONED;
+    }
+
     public void reschedule(LocalTime startTime, LocalTime endTime) {
         this.startTime = startTime;
         this.endTime = endTime;
@@ -95,7 +99,9 @@ public class ScheduleBlock {
     }
 
     public boolean isLocked() {
-        return status == BlockStatus.COMPLETED || pinned;
+        return status == BlockStatus.COMPLETED
+                || status == BlockStatus.POSTPONED
+                || pinned;
     }
 
     public Long getId() {
