@@ -19,6 +19,9 @@ public interface DailyScheduleRepository
     List<DailySchedule> findByMemberIdAndScheduleDateBetween(
             Long memberId, LocalDate from, LocalDate to);
 
+    List<DailySchedule> findByScheduleDateBetween(
+            LocalDate from, LocalDate to);
+
     @Modifying
     @Query("UPDATE DailySchedule ds SET ds.dirty = true "
             + "WHERE ds.member.id = :memberId "
