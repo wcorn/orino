@@ -1,0 +1,43 @@
+# 네임스페이스별 정책 정의
+# - limitRange: 컨테이너 default/defaultRequest 값 (기존 파드 영향 없음, 신규 파드 안전망)
+# - resourceQuota: 네임스페이스 총량 한도 (requests/limits 누적 합계)
+#
+# 신규 네임스페이스 추가 시 아래 namespaces 리스트에 항목을 추가한다.
+# resourceQuota.enabled=false로 설정하면 해당 네임스페이스에는 LimitRange만 적용된다.
+
+namespaces:
+  - name: orino
+    limitRange:
+      enabled: true
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+    resourceQuota:
+      enabled: true
+      requests:
+        cpu: "2"
+        memory: 4Gi
+      limits:
+        cpu: "8"
+        memory: 12Gi
+
+  - name: monitoring
+    limitRange:
+      enabled: true
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+    resourceQuota:
+      enabled: true
+      requests:
+        cpu: "2"
+        memory: 8Gi
+      limits:
+        cpu: "8"
+        memory: 16Gi

@@ -1,0 +1,11 @@
+apiVersion: v2
+name: platform-policies
+description: 네임스페이스별 LimitRange 및 ResourceQuota 거버넌스 정책
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - limitrange
+  - resourcequota
+  - governance
