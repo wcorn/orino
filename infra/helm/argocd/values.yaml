@@ -35,15 +35,16 @@ server:
       cpu: 500m
       memory: 512Mi
 
-# Git 클론/렌더링 담당. 실 사용량 ~16m / ~74Mi
+# Git 클론/렌더링 담당. 평상시 ~16m / ~74Mi
+# 단, kube-prometheus-stack/alloy 등 큰 차트 렌더링 시 메모리 spike 발생 (OOM 방지 위해 여유있게 설정)
 repoServer:
   resources:
     requests:
       cpu: 50m
       memory: 128Mi
     limits:
-      cpu: 200m
-      memory: 256Mi
+      cpu: 500m
+      memory: 768Mi
 
 # ApplicationSet 미사용 중이지만 App of Apps 보완재로 구동
 applicationSet:
