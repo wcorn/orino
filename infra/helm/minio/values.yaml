@@ -3,6 +3,11 @@ minio:
 
   existingSecret: minio-secret
 
+  # RWO PVC(longhorn) 단일 replica 구성이므로 Recreate로 롤아웃 교착 방지
+  # - maxSurge 100% + RWO 조합은 Multi-Attach error로 롤아웃이 멈춘다
+  deploymentUpdate:
+    type: Recreate
+
   persistence:
     enabled: true
     storageClass: longhorn
