@@ -44,3 +44,19 @@ output "observability_iam_secret_access_key" {
   value       = aws_iam_access_key.observability.secret
   sensitive   = true
 }
+
+output "mysql_backup_bucket" {
+  description = "MySQL backup S3 bucket name"
+  value       = module.mysql_backup.bucket_name
+}
+
+output "mysql_backup_iam_access_key_id" {
+  description = "IAM access key ID for MySQL backup"
+  value       = aws_iam_access_key.mysql_backup.id
+}
+
+output "mysql_backup_iam_secret_access_key" {
+  description = "IAM secret access key for MySQL backup"
+  value       = aws_iam_access_key.mysql_backup.secret
+  sensitive   = true
+}

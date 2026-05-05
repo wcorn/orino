@@ -1,0 +1,83 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mysql-backup
+spec:
+  schedule: {{ .Values.schedule | quote }}
+  timeZone: {{ .Values.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: {{ .Values.mysql.image }}
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  BACKUP_FILE="/tmp/orino-${TIMESTAMP}.sql.gz"
+                  S3_KEY="${S3_PREFIX}/${TIMESTAMP}/orino-${TIMESTAMP}.sql.gz"
+
+                  echo "[1/3] mysqldump → gzip"
+                  mysqldump -h "${MYSQL_HOST}" -u "${MYSQL_USER}" -p"${MYSQL_PASSWORD}" \
+                    --single-transaction --routines --triggers --quick --set-gtid-purged=OFF \
+                    "${MYSQL_DATABASE}" \
+                    | gzip > "${BACKUP_FILE}"
+                  echo "  size: $(du -h ${BACKUP_FILE} | cut -f1)"
+
+                  echo "[2/3] awscli v2 설치"
+                  apt-get update -qq
+                  apt-get install -y -qq --no-install-recommends curl unzip ca-certificates >/dev/null
+                  curl -sSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscli.zip
+                  unzip -q /tmp/awscli.zip -d /tmp
+                  AWS=/tmp/aws/dist/aws
+
+                  echo "[3/3] S3 업로드 → s3://${S3_BUCKET}/${S3_KEY}"
+                  ${AWS} s3 cp "${BACKUP_FILE}" "s3://${S3_BUCKET}/${S3_KEY}" \
+                    --region "${AWS_DEFAULT_REGION}" \
+                    --no-progress
+                  echo "백업 완료"
+              env:
+                - name: MYSQL_HOST
+                  value: {{ .Values.mysql.host | quote }}
+                - name: MYSQL_DATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-secret
+                      key: MYSQL_DATABASE
+                - name: MYSQL_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-secret
+                      key: MYSQL_USER
+                - name: MYSQL_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-secret
+                      key: MYSQL_PASSWORD
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-backup-secret
+                      key: AWS_ACCESS_KEY_ID
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-backup-secret
+                      key: AWS_SECRET_ACCESS_KEY
+                - name: AWS_DEFAULT_REGION
+                  value: {{ .Values.s3.region | quote }}
+                - name: S3_BUCKET
+                  value: {{ .Values.s3.bucket | quote }}
+                - name: S3_PREFIX
+                  value: {{ .Values.s3.prefix | quote }}
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}

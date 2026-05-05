@@ -20,3 +20,19 @@ resource "aws_s3_bucket_public_access_block" "this" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
+
+resource "aws_s3_bucket_lifecycle_configuration" "this" {
+  count  = var.lifecycle_expiration_days > 0 ? 1 : 0
+  bucket = aws_s3_bucket.this.id
+
+  rule {
+    id     = "expire-after-${var.lifecycle_expiration_days}-days"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = var.lifecycle_expiration_days
+    }
+  }
+}

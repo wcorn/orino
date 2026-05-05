@@ -1,0 +1,12 @@
+apiVersion: v2
+name: mysql-backup
+description: MySQL 논리 백업 CronJob (mysqldump → S3)
+type: application
+version: 1.0.0
+appVersion: "8.4.4"
+
+keywords:
+  - mysql
+  - backup
+  - cronjob
+  - s3
