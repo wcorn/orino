@@ -112,6 +112,26 @@ spec:
             summary: "Longhorn 볼륨 Degraded: {{ "{{" }} $labels.volume {{ "}}" }}"
             description: "볼륨 {{ "{{" }} $labels.volume {{ "}}" }}이 Degraded 상태"
 
+    - name: mysql-backup-alerts
+      rules:
+        - alert: MysqlBackupFailed
+          expr: kube_job_status_failed{namespace="orino",job_name=~"mysql-backup-.*"} > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "MySQL 백업 실패: {{ "{{" }} $labels.job_name {{ "}}" }}"
+            description: "MySQL 백업 Job {{ "{{" }} $labels.job_name {{ "}}" }}이 5분 이상 실패 상태 — RPO 24h 위협"
+
+        - alert: MysqlBackupNotScheduled
+          expr: time() - kube_cronjob_status_last_schedule_time{namespace="orino",cronjob="mysql-backup"} > 30 * 3600
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "MySQL 백업 CronJob이 30시간 이상 실행되지 않음"
+            description: "mysql-backup CronJob의 마지막 스케줄 시각으로부터 {{ "{{" }} $value | humanizeDuration {{ "}}" }} 경과 — controller·suspend 상태 점검"
+
     - name: app-alerts
       rules:
         - alert: BackendDown
