@@ -143,6 +143,129 @@ spec:
             summary: "SealedSecrets master key 신규 생성 감지"
             description: "최근 24시간 내 신규 sealed-secrets-key가 생성됨 — 1Password에 백업 갱신 필요 (Backup-Recovery §4.3)"
 
+    # SLO recording rules — Istio destination 메트릭 기반.
+    # service 라벨(destination_service_name=be|fe)이 결과 series에 자동 전파되어
+    # 동일 alert가 BE/FE 각각 발동된다.
+    - name: slo-recording-rules
+      interval: 30s
+      rules:
+        # 가용성 SLI: 5xx / 전체 요청 비율
+        - record: slo:availability:error_ratio:rate5m
+          expr: |
+            sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination",response_code=~"5.."}[5m]))
+            /
+            sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination"}[5m]))
+        - record: slo:availability:error_ratio:rate30m
+          expr: |
+            sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination",response_code=~"5.."}[30m]))
+            /
+            sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination"}[30m]))
+        - record: slo:availability:error_ratio:rate1h
+          expr: |
+            sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination",response_code=~"5.."}[1h]))
+            /
+            sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination"}[1h]))
+        - record: slo:availability:error_ratio:rate6h
+          expr: |
+            sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination",response_code=~"5.."}[6h]))
+            /
+            sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination"}[6h]))
+
+        # 지연 SLI: p95 임계 500ms 초과 요청 비율 = 1 - bucket(le=500)/total
+        - record: slo:latency:slow_ratio:rate5m
+          expr: |
+            (
+              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[5m]))
+              -
+              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{destination_service_name=~"be|fe",reporter="destination",le="500"}[5m]))
+            )
+            /
+            sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[5m]))
+        - record: slo:latency:slow_ratio:rate30m
+          expr: |
+            (
+              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[30m]))
+              -
+              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{destination_service_name=~"be|fe",reporter="destination",le="500"}[30m]))
+            )
+            /
+            sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[30m]))
+        - record: slo:latency:slow_ratio:rate1h
+          expr: |
+            (
+              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[1h]))
+              -
+              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{destination_service_name=~"be|fe",reporter="destination",le="500"}[1h]))
+            )
+            /
+            sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[1h]))
+        - record: slo:latency:slow_ratio:rate6h
+          expr: |
+            (
+              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[6h]))
+              -
+              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{destination_service_name=~"be|fe",reporter="destination",le="500"}[6h]))
+            )
+            /
+            sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[6h]))
+
+    # SLO burn rate alerts — multi-window multi-burn-rate (Google SRE 패턴).
+    # SLO 99.0% 가용성 → error budget 1% → fast 14.4×=0.144, slow 6×=0.06
+    # SLO 95% (p95<500ms) → error budget 5%   → fast 14.4×=0.72,  slow 6×=0.30
+    - name: slo-burn-rate-alerts
+      rules:
+        - alert: AvailabilityBurnRateFast
+          expr: |
+            slo:availability:error_ratio:rate1h > 0.144
+            and
+            slo:availability:error_ratio:rate5m > 0.144
+          for: 2m
+          labels:
+            severity: critical
+            slo: availability
+          annotations:
+            summary: "{{ "{{" }} $labels.destination_service_name {{ "}}" }} 가용성 SLO fast burn (14.4×)"
+            description: "1h+5m 윈도우 모두 14.4× burn rate 초과 — 현재 속도면 월 예산 ~2일에 소진 (SLO 99.0%)"
+
+        - alert: AvailabilityBurnRateSlow
+          expr: |
+            slo:availability:error_ratio:rate6h > 0.06
+            and
+            slo:availability:error_ratio:rate30m > 0.06
+          for: 15m
+          labels:
+            severity: warning
+            slo: availability
+          annotations:
+            summary: "{{ "{{" }} $labels.destination_service_name {{ "}}" }} 가용성 SLO slow burn (6×)"
+            description: "6h+30m 윈도우 모두 6× burn rate 초과 — 현재 속도면 월 예산 ~5일에 소진 (SLO 99.0%)"
+
+        - alert: LatencyBurnRateFast
+          expr: |
+            slo:latency:slow_ratio:rate1h > 0.72
+            and
+            slo:latency:slow_ratio:rate5m > 0.72
+          for: 2m
+          labels:
+            severity: critical
+            slo: latency
+          annotations:
+            summary: "{{ "{{" }} $labels.destination_service_name {{ "}}" }} 지연 SLO fast burn (14.4×)"
+            description: "1h+5m 윈도우 모두 p95<500ms 위반 비율 14.4× 초과 — SLO 95% 위협"
+
+        - alert: LatencyBurnRateSlow
+          expr: |
+            slo:latency:slow_ratio:rate6h > 0.30
+            and
+            slo:latency:slow_ratio:rate30m > 0.30
+          for: 15m
+          labels:
+            severity: warning
+            slo: latency
+          annotations:
+            summary: "{{ "{{" }} $labels.destination_service_name {{ "}}" }} 지연 SLO slow burn (6×)"
+            description: "6h+30m 윈도우 모두 p95<500ms 위반 비율 6× 초과"
+
     - name: app-alerts
       rules:
         - alert: BackendDown
