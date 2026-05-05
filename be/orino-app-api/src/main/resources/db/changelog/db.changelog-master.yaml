@@ -27,3 +27,5 @@ databaseChangeLog:
       file: db/changelog/changes/013-create-shedlock.yaml
   - include:
       file: db/changelog/changes/014-create-indexes.yaml
+  - include:
+      file: db/changelog/changes/015-drop-planner-tables.yaml
