@@ -1,21 +1,6 @@
 package ds.project.orino.security;
 
-import ds.project.orino.domain.category.repository.CategoryRepository;
-import ds.project.orino.domain.fixedschedule.repository.FixedScheduleRepository;
-import ds.project.orino.domain.goal.repository.GoalRepository;
-import ds.project.orino.domain.goal.repository.MilestoneRepository;
 import ds.project.orino.domain.member.repository.MemberRepository;
-import ds.project.orino.domain.routine.repository.RoutineCheckRepository;
-import ds.project.orino.domain.routine.repository.RoutineExceptionRepository;
-import ds.project.orino.domain.routine.repository.RoutineRepository;
-import ds.project.orino.domain.material.repository.MaterialAllocationRepository;
-import ds.project.orino.domain.material.repository.MaterialDailyOverrideRepository;
-import ds.project.orino.domain.material.repository.ReviewConfigRepository;
-import ds.project.orino.domain.material.repository.StudyMaterialRepository;
-import ds.project.orino.domain.material.repository.StudyUnitRepository;
-import ds.project.orino.domain.preference.repository.PriorityRuleRepository;
-import ds.project.orino.domain.preference.repository.UserPreferenceRepository;
-import ds.project.orino.domain.todo.repository.TodoRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.MemberFixture;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,68 +20,8 @@ class SecurityConfigTest extends ApiTestSupport {
     @Autowired
     private MemberRepository memberRepository;
 
-    @Autowired
-    private CategoryRepository categoryRepository;
-
-    @Autowired
-    private MilestoneRepository milestoneRepository;
-
-    @Autowired
-    private GoalRepository goalRepository;
-
-    @Autowired
-    private FixedScheduleRepository fixedScheduleRepository;
-
-    @Autowired
-    private RoutineExceptionRepository routineExceptionRepository;
-
-    @Autowired
-    private RoutineCheckRepository routineCheckRepository;
-
-    @Autowired
-    private RoutineRepository routineRepository;
-
-    @Autowired
-    private TodoRepository todoRepository;
-
-    @Autowired
-    private ReviewConfigRepository reviewConfigRepository;
-
-    @Autowired
-    private MaterialDailyOverrideRepository dailyOverrideRepository;
-
-    @Autowired
-    private MaterialAllocationRepository allocationRepository;
-
-    @Autowired
-    private StudyUnitRepository unitRepository;
-
-    @Autowired
-    private StudyMaterialRepository materialRepository;
-
-    @Autowired
-    private PriorityRuleRepository priorityRuleRepository;
-
-    @Autowired
-    private UserPreferenceRepository userPreferenceRepository;
-
     @BeforeEach
     void setUp() {
-        priorityRuleRepository.deleteAll();
-        userPreferenceRepository.deleteAll();
-        reviewConfigRepository.deleteAll();
-        dailyOverrideRepository.deleteAll();
-        allocationRepository.deleteAll();
-        unitRepository.deleteAll();
-        materialRepository.deleteAll();
-        routineExceptionRepository.deleteAll();
-        routineCheckRepository.deleteAll();
-        routineRepository.deleteAll();
-        fixedScheduleRepository.deleteAll();
-        todoRepository.deleteAll();
-        milestoneRepository.deleteAll();
-        goalRepository.deleteAll();
-        categoryRepository.deleteAll();
         memberRepository.deleteAll();
         memberRepository.save(MemberFixture.create());
     }
