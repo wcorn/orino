@@ -1,0 +1,19 @@
+schedule: "0 4 * * *"
+timeZone: "Asia/Seoul"
+
+mysql:
+  host: mysql.orino.svc.cluster.local
+  image: mysql:8.4.4
+
+s3:
+  bucket: orino-mysql-backup
+  region: ap-northeast-2
+  prefix: mysql
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
