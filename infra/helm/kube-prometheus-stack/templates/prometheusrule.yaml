@@ -132,6 +132,17 @@ spec:
             summary: "MySQL 백업 CronJob이 30시간 이상 실행되지 않음"
             description: "mysql-backup CronJob의 마지막 스케줄 시각으로부터 {{ "{{" }} $value | humanizeDuration {{ "}}" }} 경과 — controller·suspend 상태 점검"
 
+    - name: sealed-secrets-alerts
+      rules:
+        - alert: SealedSecretsKeyRotated
+          expr: max(kube_secret_created{namespace="kube-system",secret=~"sealed-secrets-key.*"}) > (time() - 86400)
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "SealedSecrets master key 신규 생성 감지"
+            description: "최근 24시간 내 신규 sealed-secrets-key가 생성됨 — 1Password에 백업 갱신 필요 (Backup-Recovery §4.3)"
+
     - name: app-alerts
       rules:
         - alert: BackendDown
