@@ -94,3 +94,44 @@ resource "aws_iam_user_policy" "observability" {
 resource "aws_iam_access_key" "observability" {
   user = aws_iam_user.observability.name
 }
+
+# MySQL backup S3 bucket (30-day lifecycle)
+module "mysql_backup" {
+  source = "./modules/s3"
+
+  bucket_name               = "orino-mysql-backup"
+  lifecycle_expiration_days = 30
+}
+
+# IAM user for MySQL backup S3 access
+resource "aws_iam_user" "mysql_backup" {
+  name = "mysql-backup"
+}
+
+resource "aws_iam_user_policy" "mysql_backup" {
+  name = "mysql-backup-s3"
+  user = aws_iam_user.mysql_backup.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject",
+          "s3:ListBucket",
+        ]
+        Resource = [
+          module.mysql_backup.bucket_arn,
+          "${module.mysql_backup.bucket_arn}/*",
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_access_key" "mysql_backup" {
+  user = aws_iam_user.mysql_backup.name
+}
