@@ -9,7 +9,10 @@ public enum ErrorCode {
 
     // AUTH
     INVALID_CREDENTIALS("AUTH-ERR-001", "아이디 또는 비밀번호가 올바르지 않습니다.", 401),
-    INVALID_TOKEN("AUTH-ERR-002", "유효하지 않은 토큰입니다.", 401);
+    INVALID_TOKEN("AUTH-ERR-002", "유효하지 않은 토큰입니다.", 401),
+
+    // STUDY PLANNER
+    RESOURCE_NOT_FOUND("SP-ERR-001", "존재하지 않는 리소스입니다.", 404);
 
     private final String code;
     private final String message;
