@@ -6,8 +6,11 @@ import {
 } from "../../features/auth/store/authStore";
 import { logApiError } from "../error/error-logger";
 
+export const API_BASE_URL =
+  import.meta.env.VITE_API_URL ?? "https://api.orino.dev/api";
+
 const client = axios.create({
-  baseURL: "https://api.orino.dev/api",
+  baseURL: API_BASE_URL,
   withCredentials: true,
 });
 
@@ -42,11 +45,9 @@ client.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      const { data } = await axios.post(
-        "https://api.orino.dev/api/auth/reissue",
-        null,
-        { withCredentials: true },
-      );
+      const { data } = await axios.post(`${API_BASE_URL}/auth/reissue`, null, {
+        withCredentials: true,
+      });
       setAccessToken(data.data.accessToken);
       pendingRequests.forEach((cb) => cb());
       return client(originalRequest);
