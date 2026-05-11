@@ -14,7 +14,14 @@ import { TodayReviewsPage } from "./TodayReviewsPage";
 
 const API_BASE = "https://api.orino.dev/api";
 
-function reviewFixture(overrides: Partial<{ id: number; sequence: number; delayDays: number; unitTitle: string }> = {}) {
+function reviewFixture(
+  overrides: Partial<{
+    id: number;
+    sequence: number;
+    delayDays: number;
+    unitTitle: string;
+  }> = {},
+) {
   return {
     id: overrides.id ?? 1,
     scheduledDate: "2026-05-12",

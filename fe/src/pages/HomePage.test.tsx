@@ -90,13 +90,9 @@ describe("HomePage", () => {
     renderPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByText("0건 — 모두 완료했어요!"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("0건 — 모두 완료했어요!")).toBeInTheDocument();
     });
-    expect(
-      screen.getByText("아직 등록된 자료가 없어요."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("아직 등록된 자료가 없어요.")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /첫 자료 추가/ }),
     ).toBeInTheDocument();
@@ -104,11 +100,7 @@ describe("HomePage", () => {
 
   it("복습 3건(밀린 1건) + 자료 5개일 때 카운트를 표시한다", async () => {
     setup({
-      todayReviews: [
-        { delayDays: 0 },
-        { delayDays: 0 },
-        { delayDays: 2 },
-      ],
+      todayReviews: [{ delayDays: 0 }, { delayDays: 0 }, { delayDays: 2 }],
       materials: 5,
     });
     renderPage();

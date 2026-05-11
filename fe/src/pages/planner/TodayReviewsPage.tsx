@@ -103,9 +103,7 @@ export function TodayReviewsPage() {
 
   if (isError || !data) {
     return (
-      <p className="text-destructive text-sm">
-        오늘 복습을 불러오지 못했어요.
-      </p>
+      <p className="text-destructive text-sm">오늘 복습을 불러오지 못했어요.</p>
     );
   }
 
@@ -118,8 +116,7 @@ export function TodayReviewsPage() {
         <h1 className="text-xl font-semibold">오늘 복습</h1>
         {reviews.length > 0 && (
           <p className="text-muted-foreground text-sm">
-            {reviews.length}건
-            {overdueCount > 0 && ` (밀린 ${overdueCount}건)`}
+            {reviews.length}건{overdueCount > 0 && ` (밀린 ${overdueCount}건)`}
           </p>
         )}
       </header>
