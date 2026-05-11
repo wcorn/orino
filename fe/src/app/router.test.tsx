@@ -93,12 +93,30 @@ describe("AppRouter", () => {
 
   it("/planner/materials/:id 경로에서 자료 상세 페이지를 렌더링한다", async () => {
     useAuthStore.setState({ accessToken: "valid-token" });
+    server.use(
+      http.get(`${API_BASE}/planner/materials/42`, () => {
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 42,
+            title: "테스트 자료",
+            type: "BOOK",
+            status: "ACTIVE",
+            totalUnits: 0,
+            completedUnits: 0,
+            createdAt: "2026-05-01T10:00:00",
+            updatedAt: "2026-05-01T10:00:00",
+            units: [],
+          },
+        });
+      }),
+    );
 
     renderApp(["/planner/materials/42"]);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: /학습 자료 #42/ }),
+        screen.getByRole("heading", { name: "테스트 자료" }),
       ).toBeInTheDocument();
     });
   });
