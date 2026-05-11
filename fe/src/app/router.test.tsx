@@ -76,5 +76,50 @@ describe("AppRouter", () => {
         screen.getByRole("button", { name: /로그아웃/ }),
       ).toBeInTheDocument();
     });
+    expect(screen.getByText("안녕하세요 👋")).toBeInTheDocument();
+  });
+
+  it("/planner/materials 경로에서 자료 목록 페이지를 렌더링한다", async () => {
+    useAuthStore.setState({ accessToken: "valid-token" });
+
+    renderApp(["/planner/materials"]);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "학습 자료" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("/planner/materials/:id 경로에서 자료 상세 페이지를 렌더링한다", async () => {
+    useAuthStore.setState({ accessToken: "valid-token" });
+
+    renderApp(["/planner/materials/42"]);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: /학습 자료 #42/ }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("/planner/reviews/today 경로에서 오늘 복습 페이지를 렌더링한다", async () => {
+    useAuthStore.setState({ accessToken: "valid-token" });
+
+    renderApp(["/planner/reviews/today"]);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "오늘 복습" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("정의되지 않은 경로는 /로 리다이렉트된다", async () => {
+    renderApp(["/unknown-path"]);
+
+    await waitFor(() => {
+      expect(screen.getByText("orino")).toBeInTheDocument();
+    });
   });
 });
