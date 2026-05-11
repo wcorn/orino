@@ -1,6 +1,5 @@
+import { faro } from "@grafana/faro-react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
-
-import { logRenderError } from "./error-logger";
 
 interface Props {
   children: ReactNode;
@@ -22,7 +21,9 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    logRenderError(error);
+    faro?.api?.pushError(error, {
+      context: { componentStack: info.componentStack ?? "" },
+    });
     console.error("ErrorBoundary caught:", error, info.componentStack);
   }
 

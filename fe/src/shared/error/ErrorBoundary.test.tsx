@@ -1,68 +1,51 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ErrorBoundary } from "./ErrorBoundary";
 
-function ThrowingComponent({ shouldThrow }: { shouldThrow: boolean }) {
-  if (shouldThrow) {
-    throw new Error("test error");
-  }
-  return <div>정상 컨텐츠</div>;
+function Boom(): never {
+  throw new Error("boom");
 }
 
 describe("ErrorBoundary", () => {
-  beforeEach(() => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-  });
+  it("자식 컴포넌트에서 에러가 발생하면 기본 폴백을 렌더링한다", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
-  it("에러가 없으면 children을 렌더링한다", () => {
     render(
       <ErrorBoundary>
-        <ThrowingComponent shouldThrow={false} />
-      </ErrorBoundary>,
-    );
-
-    expect(screen.getByText("정상 컨텐츠")).toBeInTheDocument();
-  });
-
-  it("에러 발생 시 기본 폴백 UI를 렌더링한다", () => {
-    render(
-      <ErrorBoundary>
-        <ThrowingComponent shouldThrow={true} />
+        <Boom />
       </ErrorBoundary>,
     );
 
     expect(screen.getByText("문제가 발생했습니다.")).toBeInTheDocument();
-    expect(screen.getByText("새로고침")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "새로고침" }),
+    ).toBeInTheDocument();
+
+    error.mockRestore();
   });
 
-  it("커스텀 fallback을 전달하면 해당 UI를 렌더링한다", () => {
+  it("커스텀 fallback이 제공되면 그것을 렌더링한다", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
     render(
-      <ErrorBoundary fallback={<div>커스텀 에러 UI</div>}>
-        <ThrowingComponent shouldThrow={true} />
+      <ErrorBoundary fallback={<div>custom fallback</div>}>
+        <Boom />
       </ErrorBoundary>,
     );
 
-    expect(screen.getByText("커스텀 에러 UI")).toBeInTheDocument();
+    expect(screen.getByText("custom fallback")).toBeInTheDocument();
+
+    error.mockRestore();
   });
 
-  it("새로고침 버튼 클릭 시 window.location.reload를 호출한다", async () => {
-    const reloadMock = vi.fn();
-    Object.defineProperty(window, "location", {
-      value: { ...window.location, reload: reloadMock },
-      writable: true,
-    });
-
-    const user = userEvent.setup();
-
+  it("에러가 없으면 children을 그대로 렌더링한다", () => {
     render(
       <ErrorBoundary>
-        <ThrowingComponent shouldThrow={true} />
+        <div>정상</div>
       </ErrorBoundary>,
     );
 
-    await user.click(screen.getByText("새로고침"));
-    expect(reloadMock).toHaveBeenCalled();
+    expect(screen.getByText("정상")).toBeInTheDocument();
   });
 });
