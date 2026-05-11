@@ -11,8 +11,6 @@ import { useLocation } from "react-router-dom";
 import { reissue } from "../features/auth/api/auth";
 import { getAccessToken } from "../features/auth/store/authStore";
 
-const queryClient = new QueryClient();
-
 interface AuthContextType {
   isAuthenticated: boolean;
   loading: boolean;
@@ -61,6 +59,7 @@ function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function Providers({ children }: { children: ReactNode }) {
+  const [queryClient] = useState(() => new QueryClient());
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>{children}</AuthProvider>

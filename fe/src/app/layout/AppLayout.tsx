@@ -1,13 +1,14 @@
 import { LogOut, Moon, Sun } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { logout } from "@/features/auth/api/auth";
 import { useThemeStore } from "@/shared/lib/theme";
 
-import { useAuth } from "../app/providers";
-import { logout } from "../features/auth/api/auth";
+import { useAuth } from "../providers";
+import { Sidebar } from "./Sidebar";
 
-export function MainPage() {
+export function AppLayout() {
   const navigate = useNavigate();
   const { refresh } = useAuth();
   const { theme, setTheme } = useThemeStore();
@@ -29,7 +30,7 @@ export function MainPage() {
   };
 
   return (
-    <div className="min-h-svh">
+    <div className="flex min-h-svh flex-col">
       <header className="flex items-center justify-between border-b px-6 py-3">
         <span className="text-base font-semibold">orino</span>
         <div className="flex items-center gap-1">
@@ -43,7 +44,12 @@ export function MainPage() {
           </Button>
         </div>
       </header>
-      <main className="p-6" />
+      <div className="flex flex-1">
+        <Sidebar />
+        <main className="flex-1 p-6">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }
