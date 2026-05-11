@@ -34,12 +34,16 @@ class StudyUnitControllerTest extends ApiTestSupport {
     @Autowired
     private StudyUnitRepository studyUnitRepository;
 
+    @Autowired
+    private ds.project.orino.domain.planner.review.repository.ReviewScheduleRepository reviewScheduleRepository;
+
     private Member member;
     private String accessToken;
     private StudyMaterial material;
 
     @BeforeEach
     void setUp() throws Exception {
+        reviewScheduleRepository.deleteAll();
         studyUnitRepository.deleteAll();
         studyMaterialRepository.deleteAll();
         memberRepository.deleteAll();

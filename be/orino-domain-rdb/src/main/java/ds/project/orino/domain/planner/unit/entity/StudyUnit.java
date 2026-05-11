@@ -68,6 +68,15 @@ public class StudyUnit {
         this.sortOrder = sortOrder;
     }
 
+    public boolean isCompleted() {
+        return status == UnitStatus.COMPLETED;
+    }
+
+    public void markCompleted(LocalDateTime completedAt) {
+        this.status = UnitStatus.COMPLETED;
+        this.completedAt = completedAt;
+    }
+
     public Long getId() {
         return id;
     }

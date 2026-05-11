@@ -4,6 +4,7 @@ import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
 import ds.project.orino.domain.planner.material.entity.StudyMaterial;
 import ds.project.orino.domain.planner.material.repository.StudyMaterialRepository;
+import ds.project.orino.domain.planner.review.repository.ReviewScheduleRepository;
 import ds.project.orino.domain.planner.unit.entity.StudyUnit;
 import ds.project.orino.domain.planner.unit.repository.StudyUnitRepository;
 import ds.project.orino.planner.material.dto.UnitCreateRequest;
@@ -21,11 +22,14 @@ public class StudyUnitService {
 
     private final StudyMaterialRepository studyMaterialRepository;
     private final StudyUnitRepository studyUnitRepository;
+    private final ReviewScheduleRepository reviewScheduleRepository;
 
     public StudyUnitService(StudyMaterialRepository studyMaterialRepository,
-                            StudyUnitRepository studyUnitRepository) {
+                            StudyUnitRepository studyUnitRepository,
+                            ReviewScheduleRepository reviewScheduleRepository) {
         this.studyMaterialRepository = studyMaterialRepository;
         this.studyUnitRepository = studyUnitRepository;
+        this.reviewScheduleRepository = reviewScheduleRepository;
     }
 
     @Transactional
@@ -61,6 +65,7 @@ public class StudyUnitService {
     public void delete(Long memberId, Long unitId) {
         StudyUnit unit = studyUnitRepository.findByIdAndMemberId(unitId, memberId)
                 .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
+        reviewScheduleRepository.deleteAllByStudyUnitId(unit.getId());
         studyUnitRepository.delete(unit);
     }
 }
