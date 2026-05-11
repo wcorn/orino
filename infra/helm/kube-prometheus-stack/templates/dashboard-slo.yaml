@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-slo-overview
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  slo-overview.json: |-
+{{ .Files.Get "grafana-dashboards/slo-overview.json" | indent 4 }}
