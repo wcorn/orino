@@ -1,5 +1,7 @@
 import client from "../../../shared/api/client";
 
+export type Rating = "AGAIN" | "HARD" | "GOOD" | "EASY";
+
 export interface ReviewMaterial {
   id: number;
   title: string;
@@ -43,6 +45,33 @@ interface ApiResponse<T> {
 export async function fetchTodayReviews(): Promise<TodayReviewsResponse> {
   const { data } = await client.get<ApiResponse<TodayReviewsResponse>>(
     "/planner/reviews/today",
+  );
+  return data.data;
+}
+
+export interface ReviewSchedule {
+  id: number;
+  studyUnitId: number;
+  sequence: number;
+  scheduledDate: string;
+  intervalDays: number;
+  easeFactor: number;
+  status: "PENDING" | "COMPLETED";
+  completedAt: string | null;
+}
+
+export interface CompleteReviewResult {
+  completed: ReviewSchedule;
+  nextReview: ReviewSchedule;
+}
+
+export async function completeReview(
+  reviewId: number,
+  rating: Rating,
+): Promise<CompleteReviewResult> {
+  const { data } = await client.post<ApiResponse<CompleteReviewResult>>(
+    `/planner/reviews/${reviewId}/complete`,
+    { rating },
   );
   return data.data;
 }
