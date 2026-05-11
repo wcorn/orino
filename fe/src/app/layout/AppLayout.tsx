@@ -1,6 +1,7 @@
 import { LogOut, Moon, Sun } from "lucide-react";
 import { Outlet, useNavigate } from "react-router-dom";
 
+import { Toaster } from "@/components/Toaster";
 import { Button } from "@/components/ui/button";
 import { logout } from "@/features/auth/api/auth";
 import { useThemeStore } from "@/shared/lib/theme";
@@ -50,6 +51,7 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+      <Toaster />
     </div>
   );
 }
