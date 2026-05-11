@@ -123,6 +123,14 @@ describe("AppRouter", () => {
 
   it("/planner/reviews/today 경로에서 오늘 복습 페이지를 렌더링한다", async () => {
     useAuthStore.setState({ accessToken: "valid-token" });
+    server.use(
+      http.get(`${API_BASE}/planner/reviews/today`, () => {
+        return HttpResponse.json({
+          code: "OK",
+          data: { today: "2026-05-12", reviews: [] },
+        });
+      }),
+    );
 
     renderApp(["/planner/reviews/today"]);
 

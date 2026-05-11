@@ -1,7 +1,7 @@
 import { BookOpen, CheckSquare, Home } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
-import { useTodayReviews } from "@/features/planner/hooks/useTodayReviews";
+import { useTodayReviews } from "@/features/review/hooks/useTodayReviews";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
