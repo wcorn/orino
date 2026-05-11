@@ -29,3 +29,9 @@ databaseChangeLog:
       file: db/changelog/changes/014-create-indexes.yaml
   - include:
       file: db/changelog/changes/015-drop-planner-tables.yaml
+  - include:
+      file: db/changelog/changes/016-create-study-material.yaml
+  - include:
+      file: db/changelog/changes/017-create-study-unit.yaml
+  - include:
+      file: db/changelog/changes/018-create-review-schedule.yaml

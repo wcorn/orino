@@ -1,0 +1,99 @@
+databaseChangeLog:
+  - changeSet:
+      id: 018-create-review-schedule
+      author: wcorn
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: review_schedule
+      changes:
+        - createTable:
+            tableName: review_schedule
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_review_schedule_member
+                    references: member(id)
+              - column:
+                  name: study_unit_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_review_schedule_study_unit
+                    references: study_unit(id)
+                    deleteCascade: true
+              - column:
+                  name: sequence
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: scheduled_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: interval_days
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ease_factor
+                  type: DECIMAL(4,2)
+                  defaultValueNumeric: 2.50
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(10)
+                  defaultValue: PENDING
+                  constraints:
+                    nullable: false
+              - column:
+                  name: rating
+                  type: VARCHAR(10)
+              - column:
+                  name: elapsed_days
+                  type: INT
+              - column:
+                  name: completed_at
+                  type: DATETIME(6)
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: review_schedule
+            indexName: idx_review_schedule_member_date_status
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: scheduled_date
+              - column:
+                  name: status
+        - createIndex:
+            tableName: review_schedule
+            indexName: idx_review_schedule_unit_sequence
+            columns:
+              - column:
+                  name: study_unit_id
+              - column:
+                  name: sequence
