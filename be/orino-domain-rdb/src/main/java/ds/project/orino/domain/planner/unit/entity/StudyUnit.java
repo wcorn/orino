@@ -60,6 +60,14 @@ public class StudyUnit {
         this.status = UnitStatus.PENDING;
     }
 
+    public void updateTitle(String title) {
+        this.title = title;
+    }
+
+    public void updateSortOrder(Integer sortOrder) {
+        this.sortOrder = sortOrder;
+    }
+
     public Long getId() {
         return id;
     }

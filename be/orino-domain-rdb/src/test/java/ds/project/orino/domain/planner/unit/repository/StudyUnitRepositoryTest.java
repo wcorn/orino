@@ -78,6 +78,60 @@ class StudyUnitRepositoryTest {
         assertThat(map.get(m2.getId()).getCompletedUnits()).isZero();
     }
 
+    @Test
+    @DisplayName("findMaxSortOrderByMaterialId - 단위가 없으면 0을 반환한다")
+    void findMaxSortOrder_empty_returnsZero() {
+        Member member = memberRepository.save(new Member("user1", "pw"));
+        StudyMaterial material = studyMaterialRepository.save(
+                new StudyMaterial(member.getId(), "자료", MaterialType.BOOK));
+
+        int max = studyUnitRepository.findMaxSortOrderByMaterialId(material.getId());
+
+        assertThat(max).isZero();
+    }
+
+    @Test
+    @DisplayName("findMaxSortOrderByMaterialId - 가장 큰 sort_order를 반환한다")
+    void findMaxSortOrder_returnsMax() {
+        Member member = memberRepository.save(new Member("user1", "pw"));
+        StudyMaterial material = studyMaterialRepository.save(
+                new StudyMaterial(member.getId(), "자료", MaterialType.BOOK));
+        studyUnitRepository.save(new StudyUnit(member.getId(), material.getId(), "u1", 2));
+        studyUnitRepository.save(new StudyUnit(member.getId(), material.getId(), "u2", 7));
+        studyUnitRepository.save(new StudyUnit(member.getId(), material.getId(), "u3", 5));
+
+        int max = studyUnitRepository.findMaxSortOrderByMaterialId(material.getId());
+
+        assertThat(max).isEqualTo(7);
+    }
+
+    @Test
+    @DisplayName("findByIdAndMemberId - 본인 단위면 Optional에 담아 반환한다")
+    void findByIdAndMemberId_owned() {
+        Member member = memberRepository.save(new Member("user1", "pw"));
+        StudyMaterial material = studyMaterialRepository.save(
+                new StudyMaterial(member.getId(), "자료", MaterialType.BOOK));
+        StudyUnit unit = studyUnitRepository.save(
+                new StudyUnit(member.getId(), material.getId(), "u1", 1));
+
+        assertThat(studyUnitRepository.findByIdAndMemberId(unit.getId(), member.getId()))
+                .isPresent();
+    }
+
+    @Test
+    @DisplayName("findByIdAndMemberId - 다른 멤버 단위면 빈 Optional")
+    void findByIdAndMemberId_notOwned_empty() {
+        Member m1 = memberRepository.save(new Member("user1", "pw"));
+        Member m2 = memberRepository.save(new Member("user2", "pw"));
+        StudyMaterial material = studyMaterialRepository.save(
+                new StudyMaterial(m1.getId(), "자료", MaterialType.BOOK));
+        StudyUnit unit = studyUnitRepository.save(
+                new StudyUnit(m1.getId(), material.getId(), "u1", 1));
+
+        assertThat(studyUnitRepository.findByIdAndMemberId(unit.getId(), m2.getId()))
+                .isEmpty();
+    }
+
     private void markCompleted(StudyUnit unit) throws Exception {
         Field status = StudyUnit.class.getDeclaredField("status");
         status.setAccessible(true);
