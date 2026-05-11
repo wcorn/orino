@@ -1,0 +1,80 @@
+databaseChangeLog:
+  - changeSet:
+      id: 017-create-study-unit
+      author: wcorn
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: study_unit
+      changes:
+        - createTable:
+            tableName: study_unit
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_study_unit_member
+                    references: member(id)
+              - column:
+                  name: material_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_study_unit_material
+                    references: study_material(id)
+                    deleteCascade: true
+              - column:
+                  name: title
+                  type: VARCHAR(200)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sort_order
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(10)
+                  defaultValue: PENDING
+                  constraints:
+                    nullable: false
+              - column:
+                  name: completed_at
+                  type: DATETIME(6)
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: study_unit
+            indexName: idx_study_unit_material_order
+            columns:
+              - column:
+                  name: material_id
+              - column:
+                  name: sort_order
+        - createIndex:
+            tableName: study_unit
+            indexName: idx_study_unit_material_status
+            columns:
+              - column:
+                  name: material_id
+              - column:
+                  name: status
