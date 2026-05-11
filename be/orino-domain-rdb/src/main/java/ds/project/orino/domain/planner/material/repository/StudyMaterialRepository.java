@@ -14,4 +14,6 @@ public interface StudyMaterialRepository extends JpaRepository<StudyMaterial, Lo
     List<StudyMaterial> findAllByMemberIdAndStatusOrderByCreatedAtDesc(Long memberId, MaterialStatus status);
 
     Optional<StudyMaterial> findByIdAndMemberId(Long id, Long memberId);
+
+    List<StudyMaterial> findAllByIdIn(java.util.Collection<Long> ids);
 }

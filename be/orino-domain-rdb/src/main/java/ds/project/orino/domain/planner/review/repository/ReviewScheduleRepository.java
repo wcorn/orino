@@ -1,9 +1,12 @@
 package ds.project.orino.domain.planner.review.repository;
 
 import ds.project.orino.domain.planner.review.entity.ReviewSchedule;
+import ds.project.orino.domain.planner.review.entity.ReviewStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.LocalDate;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface ReviewScheduleRepository extends JpaRepository<ReviewSchedule, Long> {
@@ -13,4 +16,7 @@ public interface ReviewScheduleRepository extends JpaRepository<ReviewSchedule, 
     void deleteAllByStudyUnitId(Long studyUnitId);
 
     void deleteAllByStudyUnitIdIn(Collection<Long> studyUnitIds);
+
+    List<ReviewSchedule> findAllByMemberIdAndScheduledDateLessThanEqualAndStatusOrderByScheduledDateAscIdAsc(
+            Long memberId, LocalDate scheduledDate, ReviewStatus status);
 }

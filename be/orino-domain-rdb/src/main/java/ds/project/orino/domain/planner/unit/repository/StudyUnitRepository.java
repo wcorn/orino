@@ -23,6 +23,8 @@ public interface StudyUnitRepository extends JpaRepository<StudyUnit, Long> {
     @Query("SELECT u.id FROM StudyUnit u WHERE u.materialId = :materialId")
     List<Long> findIdsByMaterialId(@Param("materialId") Long materialId);
 
+    List<StudyUnit> findAllByIdIn(Collection<Long> ids);
+
     @Query("""
             SELECT u.materialId AS materialId,
                    COUNT(u) AS totalUnits,
