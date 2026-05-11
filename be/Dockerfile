@@ -3,7 +3,7 @@ WORKDIR /app
 COPY . .
 RUN ./gradlew :orino-app-api:build -x test --no-daemon
 
-FROM eclipse-temurin:25-jre
+FROM eclipse-temurin:25-jre-alpine
 WORKDIR /app
 COPY --from=builder /app/orino-app-api/build/libs/*.jar app.jar
 ENTRYPOINT ["java", "-jar", "app.jar"]
