@@ -4,7 +4,6 @@ import {
   getAccessToken,
   setAccessToken,
 } from "../../features/auth/store/authStore";
-import { logApiError } from "../error/error-logger";
 
 export const API_BASE_URL =
   import.meta.env.VITE_API_URL ?? "https://api.orino.dev/api";
@@ -31,7 +30,6 @@ client.interceptors.response.use(
     const originalRequest = error.config;
 
     if (error.response?.status !== 401 || originalRequest._retry) {
-      logApiError(originalRequest?.url, error.response?.status, error.message);
       return Promise.reject(error);
     }
 
