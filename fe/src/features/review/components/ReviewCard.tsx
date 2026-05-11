@@ -1,4 +1,10 @@
-import { AlertTriangle, BookOpen, GraduationCap, NotebookPen, Video } from "lucide-react";
+import {
+  AlertTriangle,
+  BookOpen,
+  GraduationCap,
+  NotebookPen,
+  Video,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -104,9 +110,10 @@ export function ReviewCard({
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {RATINGS.map((meta) => {
-          const previewDays = review.preview[
-            meta.rating.toLowerCase() as keyof typeof review.preview
-          ];
+          const previewDays =
+            review.preview[
+              meta.rating.toLowerCase() as keyof typeof review.preview
+            ];
           const isPending = pendingRating === meta.rating;
           return (
             <button
