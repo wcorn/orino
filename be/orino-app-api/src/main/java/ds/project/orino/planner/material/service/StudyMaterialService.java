@@ -5,6 +5,7 @@ import ds.project.orino.common.exception.ErrorCode;
 import ds.project.orino.domain.planner.material.entity.MaterialStatus;
 import ds.project.orino.domain.planner.material.entity.StudyMaterial;
 import ds.project.orino.domain.planner.material.repository.StudyMaterialRepository;
+import ds.project.orino.domain.planner.review.repository.ReviewScheduleRepository;
 import ds.project.orino.domain.planner.unit.entity.StudyUnit;
 import ds.project.orino.domain.planner.unit.repository.StudyUnitRepository;
 import ds.project.orino.planner.material.dto.MaterialCreateRequest;
@@ -25,11 +26,14 @@ public class StudyMaterialService {
 
     private final StudyMaterialRepository studyMaterialRepository;
     private final StudyUnitRepository studyUnitRepository;
+    private final ReviewScheduleRepository reviewScheduleRepository;
 
     public StudyMaterialService(StudyMaterialRepository studyMaterialRepository,
-                                StudyUnitRepository studyUnitRepository) {
+                                StudyUnitRepository studyUnitRepository,
+                                ReviewScheduleRepository reviewScheduleRepository) {
         this.studyMaterialRepository = studyMaterialRepository;
         this.studyUnitRepository = studyUnitRepository;
+        this.reviewScheduleRepository = reviewScheduleRepository;
     }
 
     public List<MaterialSummaryResponse> findAll(Long memberId, MaterialStatus status) {
@@ -94,6 +98,10 @@ public class StudyMaterialService {
     @Transactional
     public void delete(Long memberId, Long materialId) {
         StudyMaterial material = getOwnedMaterial(memberId, materialId);
+        List<Long> unitIds = studyUnitRepository.findIdsByMaterialId(material.getId());
+        if (!unitIds.isEmpty()) {
+            reviewScheduleRepository.deleteAllByStudyUnitIdIn(unitIds);
+        }
         studyUnitRepository.deleteAllByMaterialId(material.getId());
         studyMaterialRepository.delete(material);
     }

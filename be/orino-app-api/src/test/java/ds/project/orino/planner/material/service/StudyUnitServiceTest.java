@@ -37,6 +37,9 @@ class StudyUnitServiceTest {
     @Mock
     private StudyUnitRepository studyUnitRepository;
 
+    @Mock
+    private ds.project.orino.domain.planner.review.repository.ReviewScheduleRepository reviewScheduleRepository;
+
     @InjectMocks
     private StudyUnitService studyUnitService;
 
