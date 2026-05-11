@@ -27,7 +27,11 @@ export default defineConfig(() => {
     build: {
       outDir: "dist",
       assetsDir: "assets",
-      sourcemap: false,
+      // sourcemap: true → .map 파일 생성 + JS 끝에 //# sourceMappingURL 코멘트 추가.
+      // Alloy faro.receiver의 sourcemaps { download = true } 가 이 URL로 .map을 받아와
+      // Grafana 에러 화면에서 unminified stack을 보여준다.
+      // 소스는 이미 공개 저장소이므로 .map 공개 노출 무관.
+      sourcemap: true,
     },
     server: {
       host: "0.0.0.0",

@@ -42,6 +42,13 @@ alloy:
             }
           }
 
+          // FE 빌드(vite sourcemap: true)가 dist/assets/*.js.map을 함께 배포한다.
+          // 브라우저 스택 트레이스의 minified URL을 보고 동일 origin의 .map을 받아와
+          // unminified stack을 Grafana 에러 화면에 표시.
+          sourcemaps {
+            download = true
+          }
+
           output {
             logs   = [loki.process.faro.receiver]
             traces = [otelcol.exporter.otlp.tempo.input]
