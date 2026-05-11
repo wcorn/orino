@@ -7,10 +7,16 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface StudyUnitRepository extends JpaRepository<StudyUnit, Long> {
 
     List<StudyUnit> findAllByMaterialIdOrderBySortOrderAsc(Long materialId);
+
+    Optional<StudyUnit> findByIdAndMemberId(Long id, Long memberId);
+
+    @Query("SELECT COALESCE(MAX(u.sortOrder), 0) FROM StudyUnit u WHERE u.materialId = :materialId")
+    int findMaxSortOrderByMaterialId(@Param("materialId") Long materialId);
 
     void deleteAllByMaterialId(Long materialId);
 
