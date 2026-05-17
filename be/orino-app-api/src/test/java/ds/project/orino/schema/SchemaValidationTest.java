@@ -3,20 +3,14 @@ package ds.project.orino.schema;
 import ds.project.orino.support.IntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.context.TestPropertySource;
 
 /**
  * Liquibase changelog과 JPA 엔티티의 일치 여부를 검증한다.
  *
- * Liquibase가 changelog를 적용한 뒤, Hibernate validate가
+ * 테스트 프로파일이 Liquibase를 적용한 뒤 Hibernate validate가
  * 엔티티와 DB 스키마를 비교한다. 불일치 시 컨텍스트 로딩 실패 → 테스트 실패.
  */
 @IntegrationTest
-@TestPropertySource(properties = {
-        "spring.jpa.hibernate.ddl-auto=validate",
-        "spring.liquibase.enabled=true",
-        "spring.liquibase.change-log=classpath:db/changelog/db.changelog-master.yaml"
-})
 class SchemaValidationTest {
 
     @Test

@@ -2,6 +2,7 @@ package ds.project.orino.auth.controller;
 
 import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.support.ApiTestSupport;
+import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,9 +21,12 @@ class AuthControllerTest extends ApiTestSupport {
     @Autowired
     private MemberRepository memberRepository;
 
+    @Autowired
+    private DbCleaner dbCleaner;
+
     @BeforeEach
     void setUp() {
-        memberRepository.deleteAll();
+        dbCleaner.clean();
         memberRepository.save(MemberFixture.create());
     }
 
