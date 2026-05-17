@@ -1,0 +1,144 @@
+import { Plus } from "lucide-react";
+import { useState } from "react";
+
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/shared/lib/toast";
+
+import type { Flashcard } from "../api/flashcards";
+import { useCreateFlashcard } from "../hooks/useCreateFlashcard";
+import { useDeleteFlashcard } from "../hooks/useDeleteFlashcard";
+import { useFlashcards } from "../hooks/useFlashcards";
+import { useUpdateFlashcard } from "../hooks/useUpdateFlashcard";
+import { EmptyFlashcardState } from "./EmptyFlashcardState";
+import { FlashcardFormDialog } from "./FlashcardFormDialog";
+import { FlashcardItem } from "./FlashcardItem";
+
+interface Props {
+  materialId: number;
+}
+
+export function FlashcardListTab({ materialId }: Props) {
+  const flashcardsQuery = useFlashcards(materialId);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<Flashcard | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+  const createMutation = useCreateFlashcard(materialId);
+  const updateMutation = useUpdateFlashcard(materialId, editing?.id ?? 0);
+  const deleteMutation = useDeleteFlashcard(materialId);
+
+  const handleCreate = (values: { front: string; back: string }) => {
+    createMutation.mutate(values, {
+      onSuccess: () => {
+        setCreateOpen(false);
+        toast("카드가 추가되었어요. 첫 복습은 내일.", "success");
+      },
+    });
+  };
+
+  const handleUpdate = (values: { front: string; back: string }) => {
+    if (!editing) return;
+    updateMutation.mutate(values, {
+      onSuccess: () => setEditing(null),
+    });
+  };
+
+  const handleConfirmDelete = () => {
+    if (!editing) return;
+    deleteMutation.mutate(editing.id, {
+      onSuccess: () => {
+        setDeleteConfirmOpen(false);
+        setEditing(null);
+      },
+    });
+  };
+
+  if (flashcardsQuery.isLoading) {
+    return <p className="text-muted-foreground text-sm">불러오는 중...</p>;
+  }
+  if (flashcardsQuery.isError || !flashcardsQuery.data) {
+    return (
+      <p className="text-destructive text-sm">카드를 불러오지 못했어요.</p>
+    );
+  }
+
+  const flashcards = flashcardsQuery.data;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <p className="text-muted-foreground text-sm">
+          총 {flashcards.length}장
+        </p>
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
+          <Plus className="size-4" /> 카드 추가
+        </Button>
+      </div>
+
+      {flashcards.length === 0 ? (
+        <EmptyFlashcardState onAdd={() => setCreateOpen(true)} />
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {flashcards.map((card, idx) => (
+            <li key={card.id}>
+              <FlashcardItem
+                index={idx}
+                flashcard={card}
+                onEdit={() => setEditing(card)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <FlashcardFormDialog
+        mode="create"
+        open={createOpen}
+        onOpenChange={(o) => {
+          setCreateOpen(o);
+          if (!o) createMutation.reset();
+        }}
+        pending={createMutation.isPending}
+        errorMessage={
+          createMutation.isError
+            ? "카드 추가에 실패했어요. 잠시 후 다시 시도해주세요."
+            : undefined
+        }
+        onSubmit={handleCreate}
+      />
+
+      <FlashcardFormDialog
+        mode="edit"
+        open={editing !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setEditing(null);
+            updateMutation.reset();
+          }
+        }}
+        initialFront={editing?.front}
+        initialBack={editing?.back}
+        pending={updateMutation.isPending}
+        errorMessage={
+          updateMutation.isError
+            ? "저장에 실패했어요. 잠시 후 다시 시도해주세요."
+            : undefined
+        }
+        onSubmit={handleUpdate}
+        onDelete={() => setDeleteConfirmOpen(true)}
+      />
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="카드를 삭제할까요?"
+        description="이 카드의 복습 일정도 함께 삭제됩니다. 되돌릴 수 없어요."
+        confirmLabel="삭제"
+        destructive
+        onConfirm={handleConfirmDelete}
+        pending={deleteMutation.isPending}
+      />
+    </div>
+  );
+}
