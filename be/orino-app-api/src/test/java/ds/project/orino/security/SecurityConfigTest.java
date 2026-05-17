@@ -2,6 +2,7 @@ package ds.project.orino.security;
 
 import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.support.ApiTestSupport;
+import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,9 +21,12 @@ class SecurityConfigTest extends ApiTestSupport {
     @Autowired
     private MemberRepository memberRepository;
 
+    @Autowired
+    private DbCleaner dbCleaner;
+
     @BeforeEach
     void setUp() {
-        memberRepository.deleteAll();
+        dbCleaner.clean();
         memberRepository.save(MemberFixture.create());
     }
 

@@ -3,7 +3,11 @@ package ds.project.orino.domain.planner.material.repository;
 import ds.project.orino.domain.planner.material.entity.MaterialStatus;
 import ds.project.orino.domain.planner.material.entity.StudyMaterial;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -14,4 +18,30 @@ public interface StudyMaterialRepository extends JpaRepository<StudyMaterial, Lo
     List<StudyMaterial> findAllByMemberIdAndStatusOrderByCreatedAtDesc(Long memberId, MaterialStatus status);
 
     Optional<StudyMaterial> findByIdAndMemberId(Long id, Long memberId);
+
+    interface MaterialCountRow {
+        Long getMaterialId();
+        Long getCount();
+    }
+
+    @Query(value = """
+            SELECT material_id AS materialId, COUNT(*) AS count
+            FROM flashcard
+            WHERE material_id IN (:materialIds)
+            GROUP BY material_id
+            """, nativeQuery = true)
+    List<MaterialCountRow> countFlashcardsByMaterialIds(@Param("materialIds") Collection<Long> materialIds);
+
+    @Query(value = """
+            SELECT f.material_id AS materialId, COUNT(r.id) AS count
+            FROM review_schedule r
+            JOIN flashcard f ON f.id = r.flashcard_id
+            WHERE f.material_id IN (:materialIds)
+              AND r.status = 'PENDING'
+              AND r.scheduled_date <= :today
+            GROUP BY f.material_id
+            """, nativeQuery = true)
+    List<MaterialCountRow> countDueReviewsByMaterialIds(
+            @Param("materialIds") Collection<Long> materialIds,
+            @Param("today") LocalDate today);
 }
