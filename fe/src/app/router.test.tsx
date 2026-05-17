@@ -154,7 +154,7 @@ describe("AppRouter", () => {
     });
   });
 
-  it("/planner/reviews/today 경로에서 오늘 복습 stub을 렌더링한다", async () => {
+  it("/planner/reviews/today 경로에서 빈 상태를 렌더링한다", async () => {
     mockEmptyTodayReviews();
     useAuthStore.setState({ accessToken: "valid-token" });
 
@@ -162,7 +162,7 @@ describe("AppRouter", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "오늘 복습" }),
+        screen.getByText("오늘은 복습할 카드가 없어요! 🌱"),
       ).toBeInTheDocument();
     });
   });
