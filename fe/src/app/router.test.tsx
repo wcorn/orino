@@ -10,6 +10,17 @@ import { AppRouter } from "./router";
 
 const API_BASE = "https://api.orino.dev/api";
 
+function mockEmptyTodayReviews() {
+  server.use(
+    http.get(`${API_BASE}/planner/reviews/today`, () => {
+      return HttpResponse.json({
+        code: "OK",
+        data: { today: "2026-05-18", reviews: [] },
+      });
+    }),
+  );
+}
+
 function renderApp(initialEntries: string[]) {
   return renderWithRouter(
     <Providers>
@@ -41,6 +52,7 @@ describe("AppRouter", () => {
   });
 
   it("/login 경로에서 인증 시 /home으로 리다이렉트한다", async () => {
+    mockEmptyTodayReviews();
     useAuthStore.setState({ accessToken: "valid-token" });
 
     renderApp(["/login"]);
@@ -67,6 +79,7 @@ describe("AppRouter", () => {
   });
 
   it("/home 경로에서 인증 시 홈 페이지를 렌더링한다", async () => {
+    mockEmptyTodayReviews();
     useAuthStore.setState({ accessToken: "valid-token" });
 
     renderApp(["/home"]);
@@ -77,6 +90,45 @@ describe("AppRouter", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText("안녕하세요 👋")).toBeInTheDocument();
+  });
+
+  it("/planner/materials 경로에서 자료 목록 stub을 렌더링한다", async () => {
+    mockEmptyTodayReviews();
+    useAuthStore.setState({ accessToken: "valid-token" });
+
+    renderApp(["/planner/materials"]);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "학습 자료" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("/planner/materials/:id 경로에서 자료 상세 stub을 렌더링한다", async () => {
+    mockEmptyTodayReviews();
+    useAuthStore.setState({ accessToken: "valid-token" });
+
+    renderApp(["/planner/materials/42"]);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "자료 상세" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("/planner/reviews/today 경로에서 오늘 복습 stub을 렌더링한다", async () => {
+    mockEmptyTodayReviews();
+    useAuthStore.setState({ accessToken: "valid-token" });
+
+    renderApp(["/planner/reviews/today"]);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "오늘 복습" }),
+      ).toBeInTheDocument();
+    });
   });
 
   it("정의되지 않은 경로는 /로 리다이렉트된다", async () => {
