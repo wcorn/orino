@@ -1,0 +1,214 @@
+databaseChangeLog:
+  - changeSet:
+      id: 020-create-note
+      author: wcorn
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: note
+      changes:
+        - createTable:
+            tableName: note
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_note_member
+                    references: member(id)
+              - column:
+                  name: material_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uk_note_material
+                    foreignKeyName: fk_note_material
+                    references: study_material(id)
+                    deleteCascade: true
+              - column:
+                  name: content
+                  type: JSON
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 020-create-flashcard
+      author: wcorn
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: flashcard
+      changes:
+        - createTable:
+            tableName: flashcard
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_flashcard_member
+                    references: member(id)
+              - column:
+                  name: material_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_flashcard_material
+                    references: study_material(id)
+                    deleteCascade: true
+              - column:
+                  name: front
+                  type: VARCHAR(1000)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: back
+                  type: VARCHAR(1000)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: flashcard
+            indexName: idx_flashcard_material_id
+            columns:
+              - column:
+                  name: material_id
+              - column:
+                  name: id
+
+  - changeSet:
+      id: 020-create-review-schedule-v2
+      author: wcorn
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: review_schedule
+      changes:
+        - createTable:
+            tableName: review_schedule
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_review_schedule_member
+                    references: member(id)
+              - column:
+                  name: flashcard_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_review_schedule_flashcard
+                    references: flashcard(id)
+                    deleteCascade: true
+              - column:
+                  name: sequence
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: scheduled_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: interval_days
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ease_factor
+                  type: DECIMAL(4,2)
+                  defaultValueNumeric: 2.50
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(10)
+                  defaultValue: PENDING
+                  constraints:
+                    nullable: false
+              - column:
+                  name: rating
+                  type: VARCHAR(10)
+              - column:
+                  name: elapsed_days
+                  type: INT
+              - column:
+                  name: completed_at
+                  type: DATETIME(6)
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: review_schedule
+            indexName: idx_review_schedule_member_date_status
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: scheduled_date
+              - column:
+                  name: status
+        - createIndex:
+            tableName: review_schedule
+            indexName: idx_review_schedule_flashcard_sequence
+            columns:
+              - column:
+                  name: flashcard_id
+              - column:
+                  name: sequence
