@@ -1,37 +1,24 @@
-cloudflared:
-  # Locally-managed tunnel: tunnel 이름 + credentials.json + cert.pem
-  tunnelConfig:
-    name: orino
-    logLevel: info
-    noAutoUpdate: true
+image:
+  repository: cloudflare/cloudflared
+  tag: "2026.5.0"
 
-  # 기존 SealedSecret(cloudflared-tunnel)에서 cert.pem, credentials.json 마운트
-  tunnelSecrets:
-    existingPemFileSecret:
-      name: cloudflared-tunnel
-      key: cert.pem
-    existingConfigJsonFileSecret:
-      name: cloudflared-tunnel
-      key: credentials.json
+replicas: 2
 
-  # Cloudflare → istio-gateway 라우팅 규칙
-  ingress:
-    - hostname: orino.dev
-      service: http://istio-gateway.istio-ingress.svc.cluster.local:80
-    - hostname: api.orino.dev
-      service: http://istio-gateway.istio-ingress.svc.cluster.local:80
-    - hostname: telemetry.orino.dev
-      service: http://istio-gateway.istio-ingress.svc.cluster.local:80
-    # MySQL operator access via Cloudflare Access (TCP)
-    # 로컬: cloudflared access tcp --hostname mysql.orino.dev --url localhost:3306
-    - hostname: mysql.orino.dev
-      service: tcp://mysql.orino.svc.cluster.local:3306
-    - service: http_status:404
+# Tunnel token이 들어있는 Secret (SealedSecret으로 관리)
+tokenSecret:
+  name: cloudflared-tunnel
+  key: token
 
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 200m
-      memory: 128Mi
+metrics:
+  port: 2000
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi

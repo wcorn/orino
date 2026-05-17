@@ -1,0 +1,13 @@
+# 이 파일을 terraform.tfvars로 복사 후 실제 값으로 채우세요.
+# terraform.tfvars는 .gitignore로 추적 제외됩니다.
+#
+# Cloudflare API token + Account ID + Zone ID는 ~/.cloudflared/cert.pem 안에서 추출 가능:
+#   cat ~/.cloudflared/cert.pem | sed -n '/BEGIN ARGO/,/END ARGO/p' | grep -v ARGO | tr -d '\n' | base64 -d
+#
+# API token이 Access 권한 없으면 대시보드에서 권한 추가:
+#   My Profile → API Tokens → 해당 토큰 Edit → Account: Access: Apps and Policies: Edit
+
+cloudflare_api_token  = "cfut_xxxxxxxxxxxx"
+cloudflare_account_id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+cloudflare_zone_id    = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+operator_emails       = ["you@example.com"]

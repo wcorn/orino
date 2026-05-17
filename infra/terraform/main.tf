@@ -135,3 +135,47 @@ resource "aws_iam_user_policy" "mysql_backup" {
 resource "aws_iam_access_key" "mysql_backup" {
   user = aws_iam_user.mysql_backup.name
 }
+
+# Random tunnel secret (base64, 33+ bytes)
+resource "random_id" "tunnel_secret" {
+  byte_length = 35
+}
+
+# Cloudflare Tunnel (remotely-managed). Existing tunnel `orino` migrated via:
+#   terraform import module.cloudflare_tunnel.cloudflare_zero_trust_tunnel_cloudflared.this <account_id>/<tunnel_id>
+module "cloudflare_tunnel" {
+  source = "./modules/cloudflare-tunnel"
+
+  account_id    = var.cloudflare_account_id
+  zone_id       = var.cloudflare_zone_id
+  tunnel_name   = "orino"
+  tunnel_secret = random_id.tunnel_secret.b64_std
+
+  ingress = [
+    { hostname = "orino.dev", service = "http://istio-gateway.istio-ingress.svc.cluster.local:80" },
+    { hostname = "api.orino.dev", service = "http://istio-gateway.istio-ingress.svc.cluster.local:80" },
+    { hostname = "telemetry.orino.dev", service = "http://istio-gateway.istio-ingress.svc.cluster.local:80" },
+    { hostname = "mysql.orino.dev", service = "tcp://mysql.orino.svc.cluster.local:3306" },
+    { service = "http_status:404" },
+  ]
+
+  dns_hostnames = [
+    "orino.dev",
+    "api.orino.dev",
+    "telemetry.orino.dev",
+    "mysql.orino.dev",
+  ]
+}
+
+# Cloudflare Access for MySQL (TCP, operator-only)
+module "mysql_access" {
+  source = "./modules/cloudflare-access"
+
+  account_id            = var.cloudflare_account_id
+  name                  = "MySQL"
+  domain                = "mysql.orino.dev"
+  session_duration      = "1h"
+  allowed_emails        = var.operator_emails
+  require_mfa           = true
+  allowed_country_codes = ["KR"]
+}

@@ -1,14 +1,9 @@
 apiVersion: v2
 name: cloudflared
-description: Cloudflare Tunnel 클라이언트 (locally-managed)
+description: Cloudflare Tunnel connector (remotely-managed, token-based)
 type: application
-version: 2.0.0
-appVersion: "2026.2.0"
-
-dependencies:
-  - name: cloudflared
-    version: 2.2.7
-    repository: https://community-charts.github.io/helm-charts
+version: 3.0.0
+appVersion: "2026.5.0"
 
 keywords:
   - cloudflare
