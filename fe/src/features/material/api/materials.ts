@@ -66,3 +66,30 @@ export async function createMaterial(
   );
   return data.data;
 }
+
+export async function fetchMaterial(id: number): Promise<Material> {
+  const { data } = await client.get<ApiEnvelope<Material>>(
+    `/planner/materials/${id}`,
+  );
+  return data.data;
+}
+
+export interface MaterialUpdateRequest {
+  title?: string;
+  status?: MaterialStatus;
+}
+
+export async function updateMaterial(
+  id: number,
+  request: MaterialUpdateRequest,
+): Promise<Material> {
+  const { data } = await client.patch<ApiEnvelope<Material>>(
+    `/planner/materials/${id}`,
+    request,
+  );
+  return data.data;
+}
+
+export async function deleteMaterial(id: number): Promise<void> {
+  await client.delete(`/planner/materials/${id}`);
+}

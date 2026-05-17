@@ -92,8 +92,16 @@ describe("AppRouter", () => {
     expect(screen.getByText("안녕하세요 👋")).toBeInTheDocument();
   });
 
-  it("/planner/materials 경로에서 자료 목록 stub을 렌더링한다", async () => {
+  it("/planner/materials 경로에서 자료 목록을 렌더링한다", async () => {
     mockEmptyTodayReviews();
+    server.use(
+      http.get(`${API_BASE}/planner/materials`, () => {
+        return HttpResponse.json({
+          code: "OK",
+          data: { materials: [] },
+        });
+      }),
+    );
     useAuthStore.setState({ accessToken: "valid-token" });
 
     renderApp(["/planner/materials"]);
@@ -105,15 +113,43 @@ describe("AppRouter", () => {
     });
   });
 
-  it("/planner/materials/:id 경로에서 자료 상세 stub을 렌더링한다", async () => {
+  it("/planner/materials/:id 경로에서 자료 상세를 렌더링한다", async () => {
     mockEmptyTodayReviews();
+    server.use(
+      http.get(`${API_BASE}/planner/materials/42`, () => {
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 42,
+            title: "테스트 자료",
+            type: "BOOK",
+            status: "ACTIVE",
+            flashcardCount: 0,
+            dueReviewCount: 0,
+            createdAt: "2026-05-18T00:00:00",
+            updatedAt: "2026-05-18T00:00:00",
+          },
+        });
+      }),
+      http.get(`${API_BASE}/planner/materials/42/note`, () => {
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            materialId: 42,
+            content: { type: "doc", content: [] },
+            updatedAt: "2026-05-18T00:00:00",
+          },
+        });
+      }),
+    );
     useAuthStore.setState({ accessToken: "valid-token" });
 
     renderApp(["/planner/materials/42"]);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "자료 상세" }),
+        screen.getByRole("heading", { name: "테스트 자료" }),
       ).toBeInTheDocument();
     });
   });
