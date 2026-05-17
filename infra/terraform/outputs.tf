@@ -60,3 +60,14 @@ output "mysql_backup_iam_secret_access_key" {
   value       = aws_iam_access_key.mysql_backup.secret
   sensitive   = true
 }
+
+output "cloudflare_tunnel_id" {
+  description = "Cloudflare Tunnel ID"
+  value       = module.cloudflare_tunnel.tunnel_id
+}
+
+output "cloudflare_tunnel_token" {
+  description = "Tunnel token for cloudflared connector. Extract with: terraform output -raw cloudflare_tunnel_token"
+  value       = module.cloudflare_tunnel.tunnel_token
+  sensitive   = true
+}
