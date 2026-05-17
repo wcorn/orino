@@ -19,6 +19,8 @@ public interface StudyMaterialRepository extends JpaRepository<StudyMaterial, Lo
 
     Optional<StudyMaterial> findByIdAndMemberId(Long id, Long memberId);
 
+    List<StudyMaterial> findAllByIdIn(Collection<Long> ids);
+
     interface MaterialCountRow {
         Long getMaterialId();
         Long getCount();
