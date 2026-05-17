@@ -12,6 +12,8 @@ spec:
     metadata:
       labels:
         app: mysql
+      annotations:
+        traffic.sidecar.istio.io/excludeInboundPorts: "3306"
     spec:
       containers:
         - name: mysql
