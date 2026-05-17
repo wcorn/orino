@@ -87,6 +87,13 @@ public class ReviewSchedule {
                 today.plusDays(1), 1, INITIAL_EASE_FACTOR);
     }
 
+    public void complete(Rating rating, LocalDate today, LocalDateTime now) {
+        this.status = ReviewStatus.COMPLETED;
+        this.rating = rating;
+        this.elapsedDays = (int) java.time.temporal.ChronoUnit.DAYS.between(this.scheduledDate, today);
+        this.completedAt = now;
+    }
+
     public Long getId() {
         return id;
     }
