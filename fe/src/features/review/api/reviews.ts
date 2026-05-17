@@ -49,3 +49,37 @@ export async function fetchTodayReviews(): Promise<TodayReviewsResponse> {
   );
   return data.data;
 }
+
+export interface CompletedReview {
+  id: number;
+  status: "COMPLETED";
+  rating: Rating;
+  elapsedDays: number;
+  completedAt: string;
+}
+
+export interface NextReview {
+  id: number;
+  flashcardId: number;
+  sequence: number;
+  scheduledDate: string;
+  intervalDays: number;
+  easeFactor: number;
+  status: "PENDING";
+}
+
+export interface CompleteReviewResponse {
+  completed: CompletedReview;
+  nextReview: NextReview;
+}
+
+export async function completeReview(
+  reviewId: number,
+  rating: Rating,
+): Promise<CompleteReviewResponse> {
+  const { data } = await client.post<ApiEnvelope<CompleteReviewResponse>>(
+    `/planner/reviews/${reviewId}/complete`,
+    { rating },
+  );
+  return data.data;
+}
