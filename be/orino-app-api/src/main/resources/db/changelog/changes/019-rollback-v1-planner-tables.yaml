@@ -1,0 +1,15 @@
+databaseChangeLog:
+  - changeSet:
+      id: 019-rollback-v1-planner-tables
+      author: wcorn
+      comment: |
+        Study Planner v2 재구축(#363)을 위해 v1 단원/복습 테이블 drop.
+        review_schedule(v2)는 후속 마이그레이션(#364)에서 flashcard_id 기반으로 재생성.
+        study_material은 유지(v2에서 동일 테이블 재사용).
+      changes:
+        - dropTable:
+            tableName: review_schedule
+            cascadeConstraints: true
+        - dropTable:
+            tableName: study_unit
+            cascadeConstraints: true

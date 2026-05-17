@@ -79,68 +79,6 @@ describe("AppRouter", () => {
     expect(screen.getByText("안녕하세요 👋")).toBeInTheDocument();
   });
 
-  it("/planner/materials 경로에서 자료 목록 페이지를 렌더링한다", async () => {
-    useAuthStore.setState({ accessToken: "valid-token" });
-
-    renderApp(["/planner/materials"]);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "학습 자료" }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("/planner/materials/:id 경로에서 자료 상세 페이지를 렌더링한다", async () => {
-    useAuthStore.setState({ accessToken: "valid-token" });
-    server.use(
-      http.get(`${API_BASE}/planner/materials/42`, () => {
-        return HttpResponse.json({
-          code: "OK",
-          data: {
-            id: 42,
-            title: "테스트 자료",
-            type: "BOOK",
-            status: "ACTIVE",
-            totalUnits: 0,
-            completedUnits: 0,
-            createdAt: "2026-05-01T10:00:00",
-            updatedAt: "2026-05-01T10:00:00",
-            units: [],
-          },
-        });
-      }),
-    );
-
-    renderApp(["/planner/materials/42"]);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "테스트 자료" }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("/planner/reviews/today 경로에서 오늘 복습 페이지를 렌더링한다", async () => {
-    useAuthStore.setState({ accessToken: "valid-token" });
-    server.use(
-      http.get(`${API_BASE}/planner/reviews/today`, () => {
-        return HttpResponse.json({
-          code: "OK",
-          data: { today: "2026-05-12", reviews: [] },
-        });
-      }),
-    );
-
-    renderApp(["/planner/reviews/today"]);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "오늘 복습" }),
-      ).toBeInTheDocument();
-    });
-  });
-
   it("정의되지 않은 경로는 /로 리다이렉트된다", async () => {
     renderApp(["/unknown-path"]);
 
