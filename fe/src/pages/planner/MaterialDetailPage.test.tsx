@@ -82,8 +82,13 @@ describe("MaterialDetailPage", () => {
     expect(screen.getByRole("tab", { name: /카드 12/ })).toBeInTheDocument();
   });
 
-  it("카드 탭 클릭 시 ?tab=cards로 변경되고 stub이 보인다", async () => {
+  it("카드 탭 클릭 시 카드 목록이 보인다", async () => {
     mockMaterial();
+    server.use(
+      http.get(`${API_BASE}/planner/materials/1/flashcards`, () => {
+        return HttpResponse.json({ code: "OK", data: { flashcards: [] } });
+      }),
+    );
     const user = userEvent.setup();
     renderPage();
 
@@ -96,7 +101,7 @@ describe("MaterialDetailPage", () => {
     await user.click(screen.getByRole("tab", { name: /카드/ }));
 
     await waitFor(() => {
-      expect(screen.getByText(/카드 탭은 곧 만나요/)).toBeInTheDocument();
+      expect(screen.getByText("아직 카드가 없습니다.")).toBeInTheDocument();
     });
   });
 

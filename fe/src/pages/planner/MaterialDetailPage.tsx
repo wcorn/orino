@@ -1,6 +1,7 @@
 import { Tabs } from "@base-ui/react/tabs";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
+import { FlashcardListTab } from "@/features/flashcard/components/FlashcardListTab";
 import { MaterialHeader } from "@/features/material/components/MaterialHeader";
 import { useMaterial } from "@/features/material/hooks/useMaterial";
 import { NoteEditor } from "@/features/note/components/NoteEditor";
@@ -72,9 +73,7 @@ export function MaterialDetailPage() {
           />
         </Tabs.Panel>
         <Tabs.Panel value="cards" className="pt-4">
-          <p className="text-muted-foreground text-sm">
-            카드 탭은 곧 만나요. (#373)
-          </p>
+          <FlashcardListTab materialId={materialId} />
         </Tabs.Panel>
       </Tabs.Root>
     </div>
