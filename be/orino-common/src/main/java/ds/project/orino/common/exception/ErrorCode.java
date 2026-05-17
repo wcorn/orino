@@ -13,6 +13,7 @@ public enum ErrorCode {
 
     // STUDY PLANNER
     RESOURCE_NOT_FOUND("SP-ERR-001", "존재하지 않는 리소스입니다.", 404),
+    INVALID_REQUEST("SP-ERR-002", "유효하지 않은 요청입니다.", 400),
     INVALID_STATE("SP-ERR-003", "현재 상태에서 수행할 수 없는 작업입니다.", 409);
 
     private final String code;

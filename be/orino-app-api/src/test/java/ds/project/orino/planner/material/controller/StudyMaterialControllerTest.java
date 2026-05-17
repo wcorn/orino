@@ -20,6 +20,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.time.Clock;
 import java.time.LocalDate;
 
 import static org.hamcrest.Matchers.hasSize;
@@ -46,6 +47,9 @@ class StudyMaterialControllerTest extends ApiTestSupport {
 
     @Autowired
     private DbCleaner dbCleaner;
+
+    @Autowired
+    private Clock clock;
 
     private Member member;
     private Member otherMember;
@@ -149,10 +153,11 @@ class StudyMaterialControllerTest extends ApiTestSupport {
         Long fc2 = insertFlashcard(material.getId());
         Long fc3 = insertFlashcard(material.getId());
 
-        insertReview(fc1, LocalDate.now().minusDays(1), "PENDING");
-        insertReview(fc2, LocalDate.now(), "PENDING");
-        insertReview(fc3, LocalDate.now().plusDays(1), "PENDING");
-        insertReview(fc1, LocalDate.now().minusDays(2), "COMPLETED");
+        LocalDate today = LocalDate.now(clock);
+        insertReview(fc1, today.minusDays(1), "PENDING");
+        insertReview(fc2, today, "PENDING");
+        insertReview(fc3, today.plusDays(1), "PENDING");
+        insertReview(fc1, today.minusDays(2), "COMPLETED");
 
         mockMvc.perform(get("/api/planner/materials")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
