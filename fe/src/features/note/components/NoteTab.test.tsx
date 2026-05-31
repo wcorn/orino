@@ -132,7 +132,7 @@ describe("NoteTab", () => {
       expect(screen.getByLabelText("노트 제목")).toHaveValue("1장");
     });
 
-    await user.click(screen.getByRole("button", { name: /2장/ }));
+    await user.click(screen.getByRole("button", { name: "2장" }));
 
     await waitFor(() => {
       expect(screen.getByLabelText("노트 제목")).toHaveValue("2장");
@@ -226,5 +226,75 @@ describe("NoteTab", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("노트 제목")).toHaveValue("자식");
     });
+  });
+
+  it("트리 [⋯] → 삭제 → 확인 시 DELETE 호출 (루트 노트)", async () => {
+    mockTree([
+      {
+        id: 1,
+        title: "삭제할 루트",
+        parentId: null,
+        sortOrder: 0,
+        children: [],
+      },
+    ]);
+    mockNoteDetail(1, { type: "doc", content: [] }, "삭제할 루트");
+    let deletedId: number | null = null;
+    server.use(
+      http.delete(`${API_BASE}/planner/notes/1`, () => {
+        deletedId = 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("노트 제목")).toHaveValue("삭제할 루트");
+    });
+
+    await user.click(screen.getByRole("button", { name: /삭제할 루트 메뉴/ }));
+    await user.click(await screen.findByRole("menuitem", { name: /삭제/ }));
+    await user.click(await screen.findByRole("button", { name: "삭제" }));
+
+    await waitFor(() => expect(deletedId).toBe(1));
+  });
+
+  it("자손이 있는 노트 삭제 시 확인 문구에 하위 개수를 표시한다", async () => {
+    mockTree([
+      {
+        id: 1,
+        title: "부모",
+        parentId: null,
+        sortOrder: 0,
+        children: [
+          {
+            id: 2,
+            title: "자식",
+            parentId: 1,
+            sortOrder: 0,
+            children: [
+              { id: 3, title: "손자", parentId: 2, sortOrder: 0, children: [] },
+            ],
+          },
+        ],
+      },
+    ]);
+    mockNoteDetail(1, { type: "doc", content: [] }, "부모");
+
+    const user = userEvent.setup();
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("노트 제목")).toHaveValue("부모");
+    });
+
+    await user.click(screen.getByRole("button", { name: /부모 메뉴/ }));
+    await user.click(await screen.findByRole("menuitem", { name: /삭제/ }));
+
+    expect(
+      await screen.findByText(/하위 노트 2개도 함께 삭제됩니다/),
+    ).toBeInTheDocument();
   });
 });

@@ -1,17 +1,30 @@
 import { ArrowLeft, Plus } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 
+import type { NoteTreeNode } from "../api/notes";
 import { useNoteDetail } from "../hooks/useNoteDetail";
-import { useCreateNote } from "../hooks/useNoteMutations";
+import { useCreateNote, useDeleteNote } from "../hooks/useNoteMutations";
 import { useNoteTree } from "../hooks/useNoteTree";
 import { NoteEditor } from "./NoteEditor";
 import { NoteTreeSidebar } from "./NoteTreeSidebar";
 
 interface Props {
   materialId: number;
+}
+
+function collectSubtreeIds(node: NoteTreeNode): number[] {
+  return [node.id, ...node.children.flatMap(collectSubtreeIds)];
+}
+
+function countDescendants(node: NoteTreeNode): number {
+  return node.children.reduce(
+    (sum, child) => sum + 1 + countDescendants(child),
+    0,
+  );
 }
 
 export function NoteTab({ materialId }: Props) {
@@ -22,6 +35,8 @@ export function NoteTab({ materialId }: Props) {
   const treeQuery = useNoteTree(materialId);
   const detailQuery = useNoteDetail(activeNoteId);
   const createNote = useCreateNote(materialId);
+  const deleteNote = useDeleteNote(materialId);
+  const [pendingDelete, setPendingDelete] = useState<NoteTreeNode | null>(null);
 
   const setActiveNote = (noteId: number | null) => {
     setSearchParams(
@@ -57,6 +72,22 @@ export function NoteTab({ materialId }: Props) {
     );
   };
 
+  const handleConfirmDelete = () => {
+    if (!pendingDelete || deleteNote.isPending) return;
+    const removedIds = new Set(collectSubtreeIds(pendingDelete));
+    deleteNote.mutate(pendingDelete.id, {
+      onSuccess: () => {
+        // 삭제된 서브트리에 활성 노트가 포함됐으면 선택 해제
+        // (남은 루트가 있으면 useEffect가 자동 선택)
+        if (activeNoteId != null && removedIds.has(activeNoteId)) {
+          setActiveNote(null);
+        }
+        setPendingDelete(null);
+      },
+      onError: () => setPendingDelete(null),
+    });
+  };
+
   if (treeQuery.isLoading) {
     return <p className="text-muted-foreground text-sm">불러오는 중...</p>;
   }
@@ -89,6 +120,7 @@ export function NoteTab({ materialId }: Props) {
           activeNoteId={activeNoteId}
           onSelect={setActiveNote}
           onAddRoot={handleAddRoot}
+          onRequestDelete={setPendingDelete}
           addRootPending={createNote.isPending}
         />
       </div>
@@ -124,6 +156,23 @@ export function NoteTab({ materialId }: Props) {
           />
         )}
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+        title="노트를 삭제할까요?"
+        description={
+          pendingDelete && countDescendants(pendingDelete) > 0
+            ? `하위 노트 ${countDescendants(pendingDelete)}개도 함께 삭제됩니다. 되돌릴 수 없어요.`
+            : "이 노트가 삭제됩니다. 되돌릴 수 없어요."
+        }
+        confirmLabel="삭제"
+        destructive
+        onConfirm={handleConfirmDelete}
+        pending={deleteNote.isPending}
+      />
     </div>
   );
 }
