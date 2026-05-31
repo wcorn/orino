@@ -15,7 +15,8 @@ export function useDeleteFlashcard(materialId: number) {
         queryKey: flashcardKeys.byMaterial(materialId),
       });
       queryClient.invalidateQueries({ queryKey: materialKeys.all });
-      queryClient.invalidateQueries({ queryKey: reviewKeys.today });
+      // 카드 삭제 시 복습 일정도 사라지므로 today뿐 아니라 캘린더도 갱신
+      queryClient.invalidateQueries({ queryKey: reviewKeys.all });
     },
   });
 }
