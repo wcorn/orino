@@ -10,6 +10,11 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/be
 
+# 같은 PR에 새 커밋이 푸시되면 진행 중인 이전 실행을 취소한다 (러너 시간 절약)
+concurrency:
+  group: be-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -30,8 +35,13 @@ jobs:
         working-directory: be
         run: ./gradlew build
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       # CD와 동일한 이미지 취약점 게이트를 PR 단계에서도 검사한다.
       # CD에만 두면 머지 후에야 push가 막혀 배포가 조용히 실패한다.
+      # gha 캐시로 Docker 빌더 stage의 Gradle 의존성/컴파일 레이어를 재사용한다.
+      # scope=be로 BE CI/CD가 캐시를 공유한다.
       - name: Build image for scan
         uses: docker/build-push-action@v6
         with:
@@ -39,6 +49,8 @@ jobs:
           push: false
           load: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci-scan
+          cache-from: type=gha,scope=be
+          cache-to: type=gha,mode=max,scope=be
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.35.0
