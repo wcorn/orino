@@ -7,6 +7,7 @@ import { LandingPage } from "../pages/LandingPage";
 import { LoginPage } from "../pages/LoginPage";
 import { MaterialDetailPage } from "../pages/planner/MaterialDetailPage";
 import { MaterialListPage } from "../pages/planner/MaterialListPage";
+import { ReviewCalendarPage } from "../pages/planner/ReviewCalendarPage";
 import { TodayReviewsPage } from "../pages/planner/TodayReviewsPage";
 import { AppLayout } from "./layout/AppLayout";
 
@@ -26,6 +27,7 @@ export function AppRouter() {
             element={<MaterialDetailPage />}
           />
           <Route path="/planner/reviews/today" element={<TodayReviewsPage />} />
+          <Route path="/planner/calendar" element={<ReviewCalendarPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

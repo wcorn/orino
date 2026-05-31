@@ -1,4 +1,4 @@
-import { BookOpen, CheckSquare, Home } from "lucide-react";
+import { BookOpen, Calendar, CheckSquare, Home } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 import { useTodayReviews } from "@/features/review/hooks/useTodayReviews";
@@ -14,6 +14,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/home", label: "홈", icon: Home },
   { to: "/planner/materials", label: "학습 자료", icon: BookOpen },
   { to: "/planner/reviews/today", label: "오늘 복습", icon: CheckSquare },
+  { to: "/planner/calendar", label: "복습 캘린더", icon: Calendar },
 ];
 
 interface SidebarProps {
