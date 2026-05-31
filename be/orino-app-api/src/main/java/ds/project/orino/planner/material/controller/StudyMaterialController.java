@@ -3,7 +3,6 @@ package ds.project.orino.planner.material.controller;
 import ds.project.orino.common.response.ApiResponse;
 import ds.project.orino.domain.planner.material.entity.MaterialStatus;
 import ds.project.orino.planner.material.dto.MaterialCreateRequest;
-import ds.project.orino.planner.material.dto.MaterialCreateResponse;
 import ds.project.orino.planner.material.dto.MaterialListResponse;
 import ds.project.orino.planner.material.dto.MaterialResponse;
 import ds.project.orino.planner.material.dto.MaterialUpdateRequest;
@@ -41,7 +40,7 @@ public class StudyMaterialController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<MaterialCreateResponse>> create(
+    public ResponseEntity<ApiResponse<MaterialResponse>> create(
             @AuthenticationPrincipal Long memberId,
             @Valid @RequestBody MaterialCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)

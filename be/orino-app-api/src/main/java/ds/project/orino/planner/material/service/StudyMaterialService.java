@@ -6,13 +6,9 @@ import ds.project.orino.domain.planner.material.entity.MaterialStatus;
 import ds.project.orino.domain.planner.material.entity.StudyMaterial;
 import ds.project.orino.domain.planner.material.repository.StudyMaterialRepository;
 import ds.project.orino.domain.planner.material.repository.StudyMaterialRepository.MaterialCountRow;
-import ds.project.orino.domain.planner.note.entity.Note;
-import ds.project.orino.domain.planner.note.repository.NoteRepository;
 import ds.project.orino.planner.material.dto.MaterialCreateRequest;
-import ds.project.orino.planner.material.dto.MaterialCreateResponse;
 import ds.project.orino.planner.material.dto.MaterialResponse;
 import ds.project.orino.planner.material.dto.MaterialUpdateRequest;
-import ds.project.orino.planner.note.dto.NoteResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,14 +23,11 @@ import java.util.stream.Collectors;
 public class StudyMaterialService {
 
     private final StudyMaterialRepository studyMaterialRepository;
-    private final NoteRepository noteRepository;
     private final Clock clock;
 
     public StudyMaterialService(StudyMaterialRepository studyMaterialRepository,
-                                NoteRepository noteRepository,
                                 Clock clock) {
         this.studyMaterialRepository = studyMaterialRepository;
-        this.noteRepository = noteRepository;
         this.clock = clock;
     }
 
@@ -55,12 +48,10 @@ public class StudyMaterialService {
     }
 
     @Transactional
-    public MaterialCreateResponse create(Long memberId, MaterialCreateRequest request) {
+    public MaterialResponse create(Long memberId, MaterialCreateRequest request) {
         StudyMaterial saved = studyMaterialRepository.save(
                 new StudyMaterial(memberId, request.title(), request.type()));
-        Note note = noteRepository.save(new Note(memberId, saved.getId()));
-        MaterialResponse materialResponse = MaterialResponse.of(saved, 0L, 0L);
-        return new MaterialCreateResponse(materialResponse, NoteResponse.of(note));
+        return MaterialResponse.of(saved, 0L, 0L);
     }
 
     @Transactional

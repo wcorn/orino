@@ -9,21 +9,26 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.time.LocalDateTime;
 
-public record NoteResponse(
+public record NoteDetailResponse(
         Long id,
         Long materialId,
+        Long parentId,
+        String title,
+        int sortOrder,
         JsonNode content,
         LocalDateTime updatedAt
 ) {
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
-    public static NoteResponse of(Note note) {
+    public static NoteDetailResponse of(Note note) {
         JsonNode parsed;
         try {
             parsed = MAPPER.readTree(note.getContent());
         } catch (JacksonException e) {
             throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, e);
         }
-        return new NoteResponse(note.getId(), note.getMaterialId(), parsed, note.getUpdatedAt());
+        return new NoteDetailResponse(
+                note.getId(), note.getMaterialId(), note.getParentId(),
+                note.getTitle(), note.getSortOrder(), parsed, note.getUpdatedAt());
     }
 }

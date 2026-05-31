@@ -66,8 +66,8 @@ class StudyMaterialControllerTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("POST /api/planner/materials - 자료 생성 시 빈 노트가 함께 생성된다")
-    void create_material_with_empty_note() throws Exception {
+    @DisplayName("POST /api/planner/materials - 자료를 생성한다 (노트는 동봉하지 않는다)")
+    void create_material() throws Exception {
         mockMvc.perform(post("/api/planner/materials")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -75,14 +75,12 @@ class StudyMaterialControllerTest extends ApiTestSupport {
                                 {"title": "이펙티브 자바", "type": "BOOK"}
                                 """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.material.title").value("이펙티브 자바"))
-                .andExpect(jsonPath("$.data.material.type").value("BOOK"))
-                .andExpect(jsonPath("$.data.material.status").value("ACTIVE"))
-                .andExpect(jsonPath("$.data.material.flashcardCount").value(0))
-                .andExpect(jsonPath("$.data.material.dueReviewCount").value(0))
-                .andExpect(jsonPath("$.data.note.content.type").value("doc"))
-                .andExpect(jsonPath("$.data.note.content.content").isArray())
-                .andExpect(jsonPath("$.data.note.materialId").exists());
+                .andExpect(jsonPath("$.data.title").value("이펙티브 자바"))
+                .andExpect(jsonPath("$.data.type").value("BOOK"))
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.flashcardCount").value(0))
+                .andExpect(jsonPath("$.data.dueReviewCount").value(0))
+                .andExpect(jsonPath("$.data.note").doesNotExist());
     }
 
     @Test
