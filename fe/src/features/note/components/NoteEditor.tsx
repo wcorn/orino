@@ -1,9 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { DragHandle } from "@tiptap/extension-drag-handle-react";
 import Placeholder from "@tiptap/extension-placeholder";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
 import { EditorContent, type JSONContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { GripVertical } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -63,7 +65,7 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
       editorProps: {
         attributes: {
           class:
-            "prose prose-sm dark:prose-invert max-w-none min-h-[40svh] focus:outline-none p-4",
+            "prose prose-sm dark:prose-invert max-w-none min-h-[40svh] focus:outline-none py-4 pr-4 pl-10",
           "aria-label": "노트 본문",
         },
       },
@@ -155,7 +157,18 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
           onInsertPage={handleInsertPage}
           insertPagePending={createNote.isPending}
         />
-        <EditorContent editor={editor} />
+        {editor && (
+          <DragHandle editor={editor} className="z-10">
+            <button
+              type="button"
+              aria-label="블록 이동"
+              className="text-muted-foreground hover:bg-muted flex size-6 cursor-grab items-center justify-center rounded transition-colors active:cursor-grabbing"
+            >
+              <GripVertical className="size-4" />
+            </button>
+          </DragHandle>
+        )}
+        <EditorContent editor={editor} className="relative" />
       </div>
 
       <ConfirmDialog
