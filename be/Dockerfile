@@ -7,7 +7,6 @@ WORKDIR /app
 #    매 빌드마다 전체 의존성을 다시 받지 않는다.
 COPY gradlew settings.gradle build.gradle ./
 COPY gradle ./gradle
-COPY gradle.properties ./
 COPY orino-common/build.gradle ./orino-common/
 COPY orino-domain-rdb/build.gradle ./orino-domain-rdb/
 COPY orino-domain-redis/build.gradle ./orino-domain-redis/
