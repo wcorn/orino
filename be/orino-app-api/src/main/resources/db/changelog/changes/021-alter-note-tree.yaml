@@ -1,0 +1,57 @@
+databaseChangeLog:
+  - changeSet:
+      id: 021-alter-note-tree
+      author: wcorn
+      comment: |
+        노트를 Notion 스타일 트리(nested)로 확장 (#397).
+        자료당 1노트(1:1) → 자료당 N노트 + 무제한 중첩.
+        무손실 ALTER: 기존 노트는 parent_id=NULL(루트), title='제목 없음', sort_order=0으로 유지.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: note
+                columnName: parent_id
+      changes:
+        # 1) 컬럼 추가 (parent_id self-ref FK 포함)
+        - addColumn:
+            tableName: note
+            columns:
+              - column:
+                  name: parent_id
+                  type: BIGINT
+                  constraints:
+                    nullable: true
+                    foreignKeyName: fk_note_parent
+                    references: note(id)
+                    deleteCascade: true
+              - column:
+                  name: title
+                  type: VARCHAR(200)
+                  defaultValue: 제목 없음
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sort_order
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+
+        # 2) 트리 조회용 인덱스 (material_id prefix → fk_note_material이 이 인덱스를 사용)
+        - createIndex:
+            tableName: note
+            indexName: idx_note_material_parent_sort
+            columns:
+              - column:
+                  name: material_id
+              - column:
+                  name: parent_id
+              - column:
+                  name: sort_order
+
+        # 3) material_id UNIQUE 제약 제거 (1자료=1노트 해제)
+        #    위 인덱스가 material_id를 커버하므로 fk_note_material을 깨지 않고 drop 가능
+        - dropUniqueConstraint:
+            tableName: note
+            constraintName: uk_note_material
