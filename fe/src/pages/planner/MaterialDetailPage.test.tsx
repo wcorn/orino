@@ -112,6 +112,61 @@ describe("MaterialDetailPage", () => {
     });
   });
 
+  it("노트가 있어도 카드 탭으로 전환되고 유지된다 (자동선택이 탭을 되돌리지 않음)", async () => {
+    mockMaterial({ flashcardCount: 1 });
+    server.use(
+      // 노트가 존재 → 노트 탭에서 첫 노트가 자동선택됨
+      http.get(`${API_BASE}/planner/materials/1/notes`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            notes: [
+              {
+                id: 7,
+                title: "노트1",
+                parentId: null,
+                sortOrder: 0,
+                children: [],
+              },
+            ],
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/planner/notes/7`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 7,
+            materialId: 1,
+            parentId: null,
+            title: "노트1",
+            sortOrder: 0,
+            content: { type: "doc", content: [] },
+            updatedAt: "2026-05-31T10:00:00",
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/planner/materials/1/flashcards`, () =>
+        HttpResponse.json({ code: "OK", data: { flashcards: [] } }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    // 노트 탭: 자동선택으로 노트1 에디터가 열린다
+    await waitFor(() => {
+      expect(screen.getByLabelText("노트 제목")).toHaveValue("노트1");
+    });
+
+    await user.click(screen.getByRole("tab", { name: /카드/ }));
+
+    // 카드 탭이 유지되고 (노트 에디터가 사라지고) 카드 목록이 보인다
+    await waitFor(() => {
+      expect(screen.getByText("아직 카드가 없습니다.")).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("노트 제목")).not.toBeInTheDocument();
+  });
+
   it("자료 메뉴 → 삭제 → 확인 시 DELETE 호출 후 목록으로 이동한다", async () => {
     mockMaterial();
     let deleted = false;

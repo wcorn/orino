@@ -31,6 +31,10 @@ export function NoteTab({ materialId }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
   const noteParam = searchParams.get("note");
   const activeNoteId = noteParam ? Number(noteParam) : null;
+  // 노트 탭이 활성일 때만 자동선택을 수행한다. base-ui Tabs는 패널이 숨겨진
+  // 직후에도 한 렌더 동안 마운트를 유지하는데, 그 사이 자동선택이 tab=note로
+  // URL을 되돌려 카드 탭 전환을 막던 버그가 있었다.
+  const isNoteTab = (searchParams.get("tab") ?? "note") === "note";
 
   const treeQuery = useNoteTree(materialId);
   const detailQuery = useNoteDetail(activeNoteId);
@@ -56,13 +60,13 @@ export function NoteTab({ materialId }: Props) {
 
   const tree = treeQuery.data ?? [];
 
-  // 노트가 있는데 아무것도 선택 안 됐으면 첫 루트 자동 선택
+  // 노트가 있는데 아무것도 선택 안 됐으면 첫 루트 자동 선택 (노트 탭 한정)
   useEffect(() => {
-    if (activeNoteId == null && tree.length > 0) {
+    if (isNoteTab && activeNoteId == null && tree.length > 0) {
       setActiveNote(tree[0].id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeNoteId, tree]);
+  }, [isNoteTab, activeNoteId, tree]);
 
   const handleAddRoot = () => {
     if (createNote.isPending) return;
