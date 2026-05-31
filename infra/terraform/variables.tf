@@ -19,8 +19,3 @@ variable "cloudflare_zone_id" {
   description = "Cloudflare zone ID for orino.dev"
   type        = string
 }
-
-variable "operator_emails" {
-  description = "Allowed operator emails for Access policies"
-  type        = list(string)
-}
