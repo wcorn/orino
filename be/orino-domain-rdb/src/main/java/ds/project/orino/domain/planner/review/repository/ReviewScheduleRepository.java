@@ -18,4 +18,7 @@ public interface ReviewScheduleRepository extends JpaRepository<ReviewSchedule, 
 
     List<ReviewSchedule> findAllByMemberIdAndStatusAndScheduledDateLessThanEqualOrderByScheduledDateAscIdAsc(
             Long memberId, ReviewStatus status, LocalDate scheduledDate);
+
+    List<ReviewSchedule> findAllByMemberIdAndScheduledDateBetweenOrderByScheduledDateAscIdAsc(
+            Long memberId, LocalDate from, LocalDate to);
 }

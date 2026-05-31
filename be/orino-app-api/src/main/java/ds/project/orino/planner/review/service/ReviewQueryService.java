@@ -8,6 +8,12 @@ import ds.project.orino.domain.planner.review.entity.Rating;
 import ds.project.orino.domain.planner.review.entity.ReviewSchedule;
 import ds.project.orino.domain.planner.review.entity.ReviewStatus;
 import ds.project.orino.domain.planner.review.repository.ReviewScheduleRepository;
+import ds.project.orino.common.exception.CustomException;
+import ds.project.orino.common.exception.ErrorCode;
+import ds.project.orino.planner.review.dto.CalendarReviewFlashcard;
+import ds.project.orino.planner.review.dto.CalendarReviewItem;
+import ds.project.orino.planner.review.dto.CalendarReviewMaterial;
+import ds.project.orino.planner.review.dto.CalendarReviewsResponse;
 import ds.project.orino.planner.review.dto.PreviewView;
 import ds.project.orino.planner.review.dto.TodayReviewFlashcard;
 import ds.project.orino.planner.review.dto.TodayReviewItem;
@@ -69,6 +75,52 @@ public class ReviewQueryService {
                 .toList();
 
         return new TodayReviewsResponse(today, items);
+    }
+
+    static final int MAX_RANGE_DAYS = 100;
+
+    public CalendarReviewsResponse findCalendar(Long memberId, LocalDate from, LocalDate to) {
+        if (from == null || to == null || to.isBefore(from)
+                || ChronoUnit.DAYS.between(from, to) > MAX_RANGE_DAYS) {
+            throw new CustomException(ErrorCode.INVALID_REQUEST);
+        }
+
+        List<ReviewSchedule> reviews = reviewScheduleRepository
+                .findAllByMemberIdAndScheduledDateBetweenOrderByScheduledDateAscIdAsc(memberId, from, to);
+
+        if (reviews.isEmpty()) {
+            return new CalendarReviewsResponse(from, to, List.of());
+        }
+
+        Map<Long, Flashcard> cardById = loadCards(reviews);
+        Map<Long, StudyMaterial> materialById = loadMaterials(cardById);
+
+        List<CalendarReviewItem> items = reviews.stream()
+                .map(r -> {
+                    Flashcard card = cardById.get(r.getFlashcardId());
+                    StudyMaterial material = materialById.get(card.getMaterialId());
+                    CalendarReviewFlashcard flashcardDto = CalendarReviewFlashcard.of(
+                            card, CalendarReviewMaterial.of(material));
+                    return new CalendarReviewItem(
+                            r.getId(), r.getScheduledDate(), r.getStatus(),
+                            r.getRating(), r.getSequence(), flashcardDto);
+                })
+                .toList();
+
+        return new CalendarReviewsResponse(from, to, items);
+    }
+
+    private Map<Long, Flashcard> loadCards(List<ReviewSchedule> reviews) {
+        List<Long> flashcardIds = reviews.stream().map(ReviewSchedule::getFlashcardId).distinct().toList();
+        return flashcardRepository.findAllByIdIn(flashcardIds).stream()
+                .collect(Collectors.toMap(Flashcard::getId, Function.identity()));
+    }
+
+    private Map<Long, StudyMaterial> loadMaterials(Map<Long, Flashcard> cardById) {
+        List<Long> materialIds = cardById.values().stream()
+                .map(Flashcard::getMaterialId).distinct().toList();
+        return studyMaterialRepository.findAllByIdIn(materialIds).stream()
+                .collect(Collectors.toMap(StudyMaterial::getId, Function.identity()));
     }
 
     private TodayReviewItem toItem(ReviewSchedule r,

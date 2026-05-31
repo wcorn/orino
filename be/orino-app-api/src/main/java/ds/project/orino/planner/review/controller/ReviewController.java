@@ -1,19 +1,24 @@
 package ds.project.orino.planner.review.controller;
 
 import ds.project.orino.common.response.ApiResponse;
+import ds.project.orino.planner.review.dto.CalendarReviewsResponse;
 import ds.project.orino.planner.review.dto.ReviewCompletionRequest;
 import ds.project.orino.planner.review.dto.ReviewCompletionResponse;
 import ds.project.orino.planner.review.dto.TodayReviewsResponse;
 import ds.project.orino.planner.review.service.ReviewCompletionService;
 import ds.project.orino.planner.review.service.ReviewQueryService;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/planner/reviews")
@@ -31,6 +36,14 @@ public class ReviewController {
     @GetMapping("/today")
     public ApiResponse<TodayReviewsResponse> today(@AuthenticationPrincipal Long memberId) {
         return ApiResponse.success(reviewQueryService.findToday(memberId));
+    }
+
+    @GetMapping("/calendar")
+    public ApiResponse<CalendarReviewsResponse> calendar(
+            @AuthenticationPrincipal Long memberId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ApiResponse.success(reviewQueryService.findCalendar(memberId, from, to));
     }
 
     @PostMapping("/{id}/complete")
