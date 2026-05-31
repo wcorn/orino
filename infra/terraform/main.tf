@@ -155,7 +155,6 @@ module "cloudflare_tunnel" {
     { hostname = "orino.dev", service = "http://istio-gateway.istio-ingress.svc.cluster.local:80" },
     { hostname = "api.orino.dev", service = "http://istio-gateway.istio-ingress.svc.cluster.local:80" },
     { hostname = "telemetry.orino.dev", service = "http://istio-gateway.istio-ingress.svc.cluster.local:80" },
-    { hostname = "mysql.orino.dev", service = "tcp://mysql.orino.svc.cluster.local:3306" },
     { service = "http_status:404" },
   ]
 
@@ -163,19 +162,5 @@ module "cloudflare_tunnel" {
     "orino.dev",
     "api.orino.dev",
     "telemetry.orino.dev",
-    "mysql.orino.dev",
   ]
-}
-
-# Cloudflare Access for MySQL (TCP, operator-only)
-module "mysql_access" {
-  source = "./modules/cloudflare-access"
-
-  account_id            = var.cloudflare_account_id
-  name                  = "MySQL"
-  domain                = "mysql.orino.dev"
-  session_duration      = "1h"
-  allowed_emails        = var.operator_emails
-  require_mfa           = true
-  allowed_country_codes = ["KR"]
 }
