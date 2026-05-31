@@ -1,5 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { reviewKeys } from "@/features/review/queryKeys";
+
 import {
   type Flashcard,
   type FlashcardUpdateRequest,
@@ -15,6 +17,8 @@ export function useUpdateFlashcard(materialId: number, flashcardId: number) {
       queryClient.invalidateQueries({
         queryKey: flashcardKeys.byMaterial(materialId),
       });
+      // 카드 앞면 텍스트는 today·캘린더에도 노출되므로 함께 갱신
+      queryClient.invalidateQueries({ queryKey: reviewKeys.all });
     },
   });
 }

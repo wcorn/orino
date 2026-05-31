@@ -19,7 +19,8 @@ export function useCreateFlashcard(materialId: number) {
         queryKey: flashcardKeys.byMaterial(materialId),
       });
       queryClient.invalidateQueries({ queryKey: materialKeys.all });
-      queryClient.invalidateQueries({ queryKey: reviewKeys.today });
+      // 카드 생성 시 복습 일정이 함께 생성되므로 today뿐 아니라 캘린더도 갱신
+      queryClient.invalidateQueries({ queryKey: reviewKeys.all });
     },
   });
 }
