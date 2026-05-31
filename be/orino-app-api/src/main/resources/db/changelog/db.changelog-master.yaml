@@ -39,3 +39,5 @@ databaseChangeLog:
       file: db/changelog/changes/019-rollback-v1-planner-tables.yaml
   - include:
       file: db/changelog/changes/020-create-v2-planner-tables.yaml
+  - include:
+      file: db/changelog/changes/021-alter-note-tree.yaml
