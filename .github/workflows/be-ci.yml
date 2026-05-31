@@ -6,6 +6,10 @@ on:
     paths:
       - 'be/**'
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/be
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,3 +29,22 @@ jobs:
       - name: Build and Test
         working-directory: be
         run: ./gradlew build
+
+      # CD와 동일한 이미지 취약점 게이트를 PR 단계에서도 검사한다.
+      # CD에만 두면 머지 후에야 push가 막혀 배포가 조용히 실패한다.
+      - name: Build image for scan
+        uses: docker/build-push-action@v6
+        with:
+          context: be
+          push: false
+          load: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci-scan
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci-scan
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: false
+          exit-code: '1'
