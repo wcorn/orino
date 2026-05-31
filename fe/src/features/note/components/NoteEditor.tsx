@@ -28,7 +28,12 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
   const queryClient = useQueryClient();
   const { status, savedAt, schedule, flush, retry } = useAutoSaveNote(note.id, {
     onSaved: (patch) => {
-      // 제목 저장 시 사이드바 트리 라벨 갱신
+      // 저장된 값을 detail 캐시에 반영해 노트 재진입 시 최신 내용이 보이게 한다.
+      // (자동저장 응답엔 content가 없으므로 보낸 patch를 직접 머지)
+      queryClient.setQueryData<NoteDetail>(noteKeys.detail(note.id), (old) =>
+        old ? { ...old, ...patch } : old,
+      );
+      // 제목 저장 시 사이드바 트리 라벨도 갱신
       if (patch.title !== undefined) {
         queryClient.invalidateQueries({ queryKey: noteKeys.tree(materialId) });
       }
@@ -39,8 +44,9 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
 
   const [title, setTitle] = useState(note.title);
   const [pendingDelete, setPendingDelete] = useState<number | null>(null);
-  // 본문에 현재 박혀 있는 childPage noteId 집합 (삭제 diff 기준)
-  const childIdsRef = useRef<Set<number>>(new Set());
+  // 본문에 현재 박혀 있는 childPage noteId 집합 (삭제 diff 기준).
+  // NoteTab이 key={note.id}로 리마운트하므로 마운트 시점 content 기준으로 1회 초기화한다.
+  const childIdsRef = useRef<Set<number>>(collectChildPageIds(note.content));
 
   const editor = useEditor(
     {
@@ -70,13 +76,10 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
     [note.id],
   );
 
-  // 노트 전환 시 제목/본문/childPage 기준 초기화
-  useEffect(() => {
-    setTitle(note.title);
-    childIdsRef.current = collectChildPageIds(note.content);
-    editor?.commands.setContent(note.content as JSONContent);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [note.id, editor]);
+  // 노트 전환은 NoteTab의 key={note.id} 리마운트로 처리되므로
+  // setContent를 수동 호출하지 않는다. (editor 재생성마다 setContent가
+  // 캐시의 옛 content로 onUpdate를 발화해 방금 쓴 내용을 빈 doc으로
+  // 덮어쓰던 버그를 제거)
 
   useEffect(() => {
     return () => {
