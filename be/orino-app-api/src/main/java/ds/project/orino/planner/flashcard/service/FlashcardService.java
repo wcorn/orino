@@ -107,7 +107,7 @@ public class FlashcardService {
     private Map<Long, ReviewSchedule> loadNextReviewByCard(List<Flashcard> cards) {
         List<Long> ids = cards.stream().map(Flashcard::getId).toList();
         List<ReviewSchedule> reviews = reviewScheduleRepository
-                .findAllByFlashcardIdInAndStatusOrderByScheduledDateAscIdAsc(ids, ReviewStatus.PENDING);
+                .findAllByFlashcardIdInAndStatusOrderByScheduledAtAscIdAsc(ids, ReviewStatus.PENDING);
         Map<Long, ReviewSchedule> firstByCard = new HashMap<>();
         for (ReviewSchedule r : reviews) {
             firstByCard.putIfAbsent(r.getFlashcardId(), r);

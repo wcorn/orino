@@ -25,6 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
@@ -52,10 +54,11 @@ public class ReviewQueryService {
 
     public TodayReviewsResponse findToday(Long memberId) {
         LocalDate today = LocalDate.now(clock);
+        LocalDateTime now = LocalDateTime.now(clock);
 
         List<ReviewSchedule> reviews = reviewScheduleRepository
-                .findAllByMemberIdAndStatusAndScheduledDateLessThanEqualOrderByScheduledDateAscIdAsc(
-                        memberId, ReviewStatus.PENDING, today);
+                .findAllByMemberIdAndStatusAndScheduledAtLessThanEqualOrderByScheduledAtAscIdAsc(
+                        memberId, ReviewStatus.PENDING, now);
 
         if (reviews.isEmpty()) {
             return new TodayReviewsResponse(today, List.of());
@@ -86,7 +89,8 @@ public class ReviewQueryService {
         }
 
         List<ReviewSchedule> reviews = reviewScheduleRepository
-                .findAllByMemberIdAndScheduledDateBetweenOrderByScheduledDateAscIdAsc(memberId, from, to);
+                .findAllByMemberIdAndScheduledAtBetweenOrderByScheduledAtAscIdAsc(
+                        memberId, from.atStartOfDay(), to.atTime(LocalTime.MAX));
 
         if (reviews.isEmpty()) {
             return new CalendarReviewsResponse(from, to, List.of());
@@ -102,7 +106,7 @@ public class ReviewQueryService {
                     CalendarReviewFlashcard flashcardDto = CalendarReviewFlashcard.of(
                             card, CalendarReviewMaterial.of(material));
                     return new CalendarReviewItem(
-                            r.getId(), r.getScheduledDate(), r.getStatus(),
+                            r.getId(), r.getScheduledAt(), r.getStatus(),
                             r.getRating(), r.getSequence(), flashcardDto);
                 })
                 .toList();
@@ -131,9 +135,9 @@ public class ReviewQueryService {
         StudyMaterial material = materialById.get(card.getMaterialId());
         TodayReviewFlashcard flashcardDto = TodayReviewFlashcard.of(card, TodayReviewMaterial.of(material));
         PreviewView preview = preview(r);
-        int delayDays = (int) ChronoUnit.DAYS.between(r.getScheduledDate(), today);
+        int delayDays = (int) ChronoUnit.DAYS.between(r.getScheduledAt().toLocalDate(), today);
         return new TodayReviewItem(
-                r.getId(), r.getScheduledDate(), delayDays,
+                r.getId(), r.getScheduledAt(), delayDays,
                 r.getSequence(), r.getIntervalDays(), r.getEaseFactor(),
                 flashcardDto, preview);
     }

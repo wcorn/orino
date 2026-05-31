@@ -51,7 +51,7 @@ function mockCalendar(reviewsByCall: CalReview[]) {
           to,
           reviews: filtered.map((r) => ({
             id: r.id,
-            scheduledDate: r.scheduledDate,
+            scheduledAt: `${r.scheduledDate}T04:00:00`,
             status: r.status,
             rating: r.rating ?? null,
             sequence: 1,

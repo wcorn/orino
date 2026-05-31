@@ -37,7 +37,7 @@ function mockListWith(
     id: number;
     front: string;
     back: string;
-    nextReview?: { sequence: number; scheduledDate: string } | null;
+    nextReview?: { sequence: number; scheduledAt: string } | null;
   }>,
 ) {
   server.use(
@@ -56,7 +56,8 @@ function mockListWith(
                 : {
                     id: 100,
                     sequence: f.nextReview?.sequence ?? 1,
-                    scheduledDate: f.nextReview?.scheduledDate ?? "2026-05-20",
+                    scheduledAt:
+                      f.nextReview?.scheduledAt ?? "2026-05-20T04:00:00",
                     intervalDays: 1,
                     easeFactor: 2.5,
                   },
@@ -91,7 +92,7 @@ describe("FlashcardListTab", () => {
         id: 1,
         front: "Q1",
         back: "A1",
-        nextReview: { sequence: 2, scheduledDate: "2026-05-24" },
+        nextReview: { sequence: 2, scheduledAt: "2026-05-24T04:00:00" },
       },
       { id: 2, front: "Q2", back: "A2", nextReview: null },
     ]);
@@ -130,7 +131,7 @@ describe("FlashcardListTab", () => {
                   id: 100,
                   flashcardId: 10,
                   sequence: 1,
-                  scheduledDate: "2026-05-19",
+                  scheduledAt: "2026-05-19T04:00:00",
                   intervalDays: 1,
                   easeFactor: 2.5,
                   status: "PENDING",
@@ -167,7 +168,7 @@ describe("FlashcardListTab", () => {
         id: 7,
         front: "Q",
         back: "A",
-        nextReview: { sequence: 1, scheduledDate: "2026-05-20" },
+        nextReview: { sequence: 1, scheduledAt: "2026-05-20T04:00:00" },
       },
     ]);
     let deleted = false;

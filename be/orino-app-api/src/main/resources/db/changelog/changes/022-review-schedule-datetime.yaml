@@ -1,0 +1,52 @@
+databaseChangeLog:
+  - changeSet:
+      id: 022-review-schedule-scheduled-at
+      author: wcorn
+      comment: >-
+        복습 due를 하루 단위(scheduled_date DATE)에서 datetime(scheduled_at)로 전환한다.
+        기존 데이터는 해당 날짜 04:00(롤오버)으로 백필한다.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - columnExists:
+                tableName: review_schedule
+                columnName: scheduled_date
+            - not:
+                - columnExists:
+                    tableName: review_schedule
+                    columnName: scheduled_at
+      changes:
+        - addColumn:
+            tableName: review_schedule
+            columns:
+              - column:
+                  name: scheduled_at
+                  type: DATETIME(6)
+        - update:
+            tableName: review_schedule
+            columns:
+              - column:
+                  name: scheduled_at
+                  valueComputed: "TIMESTAMP(scheduled_date, '04:00:00')"
+        - addNotNullConstraint:
+            tableName: review_schedule
+            columnName: scheduled_at
+            columnDataType: DATETIME(6)
+        # 새 인덱스를 먼저 생성한다. member_id가 leftmost라 member FK를 지탱하므로,
+        # 그 다음 옛 인덱스를 안전하게 드롭할 수 있다(FK용 인덱스 부재 에러 방지).
+        - createIndex:
+            tableName: review_schedule
+            indexName: idx_review_schedule_member_at_status
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: scheduled_at
+              - column:
+                  name: status
+        - dropIndex:
+            tableName: review_schedule
+            indexName: idx_review_schedule_member_date_status
+        - dropColumn:
+            tableName: review_schedule
+            columnName: scheduled_date

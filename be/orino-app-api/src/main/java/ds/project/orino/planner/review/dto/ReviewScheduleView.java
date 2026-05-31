@@ -5,14 +5,14 @@ import ds.project.orino.domain.planner.review.entity.ReviewSchedule;
 import ds.project.orino.domain.planner.review.entity.ReviewStatus;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ReviewScheduleView(
         Long id,
         Long flashcardId,
         Integer sequence,
-        LocalDate scheduledDate,
+        LocalDateTime scheduledAt,
         Integer intervalDays,
         BigDecimal easeFactor,
         ReviewStatus status
@@ -20,14 +20,14 @@ public record ReviewScheduleView(
     public static ReviewScheduleView nextReview(ReviewSchedule r) {
         return new ReviewScheduleView(
                 r.getId(), null, r.getSequence(),
-                r.getScheduledDate(), r.getIntervalDays(), r.getEaseFactor(),
+                r.getScheduledAt(), r.getIntervalDays(), r.getEaseFactor(),
                 null);
     }
 
     public static ReviewScheduleView firstReview(ReviewSchedule r) {
         return new ReviewScheduleView(
                 r.getId(), r.getFlashcardId(), r.getSequence(),
-                r.getScheduledDate(), r.getIntervalDays(), r.getEaseFactor(),
+                r.getScheduledAt(), r.getIntervalDays(), r.getEaseFactor(),
                 r.getStatus());
     }
 }

@@ -6,7 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -40,10 +40,10 @@ public interface StudyMaterialRepository extends JpaRepository<StudyMaterial, Lo
             JOIN flashcard f ON f.id = r.flashcard_id
             WHERE f.material_id IN (:materialIds)
               AND r.status = 'PENDING'
-              AND r.scheduled_date <= :today
+              AND r.scheduled_at <= :now
             GROUP BY f.material_id
             """, nativeQuery = true)
     List<MaterialCountRow> countDueReviewsByMaterialIds(
             @Param("materialIds") Collection<Long> materialIds,
-            @Param("today") LocalDate today);
+            @Param("now") LocalDateTime now);
 }

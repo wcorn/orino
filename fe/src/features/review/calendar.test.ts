@@ -10,13 +10,10 @@ import {
   toIsoDate,
 } from "./calendar";
 
-function review(
-  scheduledDate: string,
-  status: "PENDING" | "COMPLETED",
-): CalendarReview {
+function review(date: string, status: "PENDING" | "COMPLETED"): CalendarReview {
   return {
     id: Math.floor(Math.random() * 1e6),
-    scheduledDate,
+    scheduledAt: `${date}T04:00:00`,
     status,
     rating: status === "COMPLETED" ? "GOOD" : null,
     sequence: 1,

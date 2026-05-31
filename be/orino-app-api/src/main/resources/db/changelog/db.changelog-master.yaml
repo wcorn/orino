@@ -41,3 +41,5 @@ databaseChangeLog:
       file: db/changelog/changes/020-create-v2-planner-tables.yaml
   - include:
       file: db/changelog/changes/021-alter-note-tree.yaml
+  - include:
+      file: db/changelog/changes/022-review-schedule-datetime.yaml

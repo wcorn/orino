@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Providers } from "@/app/providers";
 import { Toaster } from "@/components/Toaster";
@@ -45,7 +45,7 @@ function mockToday(reviewIds: number[], opts?: { delayDays?: number }) {
           today: "2026-05-18",
           reviews: reviewIds.map((id) => ({
             id,
-            scheduledDate: "2026-05-18",
+            scheduledAt: "2026-05-18T04:00:00",
             delayDays: opts?.delayDays ?? 0,
             sequence: 2,
             intervalDays: 6,
@@ -85,7 +85,7 @@ function mockComplete(captureRatings: Array<{ id: number; rating: string }>) {
               id: 999,
               flashcardId: 1,
               sequence: 3,
-              scheduledDate: "2026-05-24",
+              scheduledAt: "2026-05-24T04:00:00",
               intervalDays: 6,
               easeFactor: 2.5,
               status: "PENDING",
@@ -101,6 +101,14 @@ describe("TodayReviewsPage", () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: "mock-token" });
     useToastStore.setState({ toasts: [] });
+    // 오늘을 2026-05-18로 고정 (다음 복습 토스트 메시지가 now 기준이므로).
+    // Date만 fake하여 react-query/userEvent의 실제 setTimeout과 충돌하지 않게 한다.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 4, 18, 9, 0, 0));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("0건이면 빈 상태와 [홈으로] 버튼을 표시한다", async () => {

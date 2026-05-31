@@ -11,7 +11,7 @@ describe("formatNextReview", () => {
         {
           id: 1,
           sequence: 1,
-          scheduledDate: "2026-05-18",
+          scheduledAt: "2026-05-18T04:00:00",
           intervalDays: 1,
           easeFactor: 2.5,
         },
@@ -26,7 +26,7 @@ describe("formatNextReview", () => {
         {
           id: 1,
           sequence: 2,
-          scheduledDate: "2026-05-24",
+          scheduledAt: "2026-05-24T04:00:00",
           intervalDays: 6,
           easeFactor: 2.5,
         },
@@ -41,7 +41,7 @@ describe("formatNextReview", () => {
         {
           id: 1,
           sequence: 3,
-          scheduledDate: "2026-05-15",
+          scheduledAt: "2026-05-15T04:00:00",
           intervalDays: 1,
           easeFactor: 2.5,
         },

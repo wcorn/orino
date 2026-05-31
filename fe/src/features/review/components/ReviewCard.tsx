@@ -17,7 +17,7 @@ interface RatingButton {
   rating: Rating;
   label: string;
   key: string;
-  preview: (r: TodayReview) => number;
+  previewLabel: (r: TodayReview) => string;
   textClass: string;
 }
 
@@ -26,28 +26,29 @@ const RATING_BUTTONS: RatingButton[] = [
     rating: "AGAIN",
     label: "Again",
     key: "1",
-    preview: (r) => r.preview.again,
+    // AGAIN은 당일 10분 뒤 재복습 (일 단위 아님)
+    previewLabel: () => "10분",
     textClass: "text-red-500",
   },
   {
     rating: "HARD",
     label: "Hard",
     key: "2",
-    preview: (r) => r.preview.hard,
+    previewLabel: (r) => `${r.preview.hard}d`,
     textClass: "text-orange-500",
   },
   {
     rating: "GOOD",
     label: "Good",
     key: "3",
-    preview: (r) => r.preview.good,
+    previewLabel: (r) => `${r.preview.good}d`,
     textClass: "text-primary",
   },
   {
     rating: "EASY",
     label: "Easy",
     key: "4",
-    preview: (r) => r.preview.easy,
+    previewLabel: (r) => `${r.preview.easy}d`,
     textClass: "text-green-500",
   },
 ];
@@ -122,7 +123,7 @@ export function ReviewCard({ review, pending, onRate }: Props) {
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {RATING_BUTTONS.map((btn) => {
-                const days = btn.preview(review);
+                const previewLabel = btn.previewLabel(review);
                 return (
                   <Button
                     key={btn.rating}
@@ -134,7 +135,7 @@ export function ReviewCard({ review, pending, onRate }: Props) {
                     className="flex h-auto flex-col gap-1 py-3"
                   >
                     <span className="text-muted-foreground text-xs">
-                      {days}d
+                      {previewLabel}
                     </span>
                     <span className={cn("text-sm font-medium", btn.textClass)}>
                       {btn.label}

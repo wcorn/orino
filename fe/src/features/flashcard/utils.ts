@@ -4,7 +4,7 @@ export function formatNextReview(
   next: NextReview,
   today: Date = new Date(),
 ): string {
-  const d = parseDate(next.scheduledDate);
+  const d = parseDate(next.scheduledAt.slice(0, 10));
   const todayMid = new Date(
     today.getFullYear(),
     today.getMonth(),

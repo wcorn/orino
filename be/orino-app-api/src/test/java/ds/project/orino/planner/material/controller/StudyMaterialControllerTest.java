@@ -270,10 +270,10 @@ class StudyMaterialControllerTest extends ApiTestSupport {
     private void insertReview(Long flashcardId, LocalDate scheduledDate, String status) {
         jdbcTemplate.update("""
                 INSERT INTO review_schedule
-                  (member_id, flashcard_id, sequence, scheduled_date, interval_days,
+                  (member_id, flashcard_id, sequence, scheduled_at, interval_days,
                    ease_factor, status, created_at, updated_at)
                 VALUES (?, ?, 1, ?, 1, 2.50, ?, NOW(6), NOW(6))
-                """, member.getId(), flashcardId, scheduledDate, status);
+                """, member.getId(), flashcardId, scheduledDate.atStartOfDay(), status);
     }
 
     private static void assertCountZero(Integer count, String tableName) {

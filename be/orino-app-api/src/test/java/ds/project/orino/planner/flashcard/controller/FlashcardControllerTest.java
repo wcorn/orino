@@ -26,6 +26,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -90,7 +91,8 @@ class FlashcardControllerTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.data.firstReview.intervalDays").value(1))
                 .andExpect(jsonPath("$.data.firstReview.easeFactor").value(2.50))
                 .andExpect(jsonPath("$.data.firstReview.status").value("PENDING"))
-                .andExpect(jsonPath("$.data.firstReview.scheduledDate").value(today.plusDays(1).toString()));
+                .andExpect(jsonPath("$.data.firstReview.scheduledAt",
+                        startsWith(today.plusDays(1) + "T04:00")));
     }
 
     @Test
@@ -138,10 +140,10 @@ class FlashcardControllerTest extends ApiTestSupport {
         Flashcard card2 = flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "Q2", "A2"));
         LocalDate today = LocalDate.now(clock);
         reviewScheduleRepository.save(
-                new ReviewSchedule(member.getId(), card1.getId(), 1, today.plusDays(1), 1,
+                new ReviewSchedule(member.getId(), card1.getId(), 1, today.plusDays(1).atTime(4, 0), 1,
                         new BigDecimal("2.50")));
         reviewScheduleRepository.save(
-                new ReviewSchedule(member.getId(), card2.getId(), 1, today.plusDays(3), 1,
+                new ReviewSchedule(member.getId(), card2.getId(), 1, today.plusDays(3).atTime(4, 0), 1,
                         new BigDecimal("2.50")));
 
         mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
@@ -150,11 +152,11 @@ class FlashcardControllerTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.data.flashcards", hasSize(2)))
                 .andExpect(jsonPath("$.data.flashcards[0].id").value(card1.getId()))
                 .andExpect(jsonPath("$.data.flashcards[0].nextReview.sequence").value(1))
-                .andExpect(jsonPath("$.data.flashcards[0].nextReview.scheduledDate")
-                        .value(today.plusDays(1).toString()))
+                .andExpect(jsonPath("$.data.flashcards[0].nextReview.scheduledAt",
+                        startsWith(today.plusDays(1) + "T04:00")))
                 .andExpect(jsonPath("$.data.flashcards[1].id").value(card2.getId()))
-                .andExpect(jsonPath("$.data.flashcards[1].nextReview.scheduledDate")
-                        .value(today.plusDays(3).toString()));
+                .andExpect(jsonPath("$.data.flashcards[1].nextReview.scheduledAt",
+                        startsWith(today.plusDays(3) + "T04:00")));
     }
 
     @Test
@@ -164,23 +166,23 @@ class FlashcardControllerTest extends ApiTestSupport {
         LocalDate today = LocalDate.now(clock);
         jdbcTemplate.update("""
                 INSERT INTO review_schedule
-                  (member_id, flashcard_id, sequence, scheduled_date, interval_days,
+                  (member_id, flashcard_id, sequence, scheduled_at, interval_days,
                    ease_factor, status, completed_at, created_at, updated_at)
                 VALUES (?, ?, 1, ?, 1, 2.50, 'COMPLETED', NOW(6), NOW(6), NOW(6))
-                """, member.getId(), card.getId(), today.minusDays(5));
+                """, member.getId(), card.getId(), today.minusDays(5).atStartOfDay());
         reviewScheduleRepository.save(
-                new ReviewSchedule(member.getId(), card.getId(), 3, today.plusDays(10), 10,
+                new ReviewSchedule(member.getId(), card.getId(), 3, today.plusDays(10).atTime(4, 0), 10,
                         new BigDecimal("2.50")));
         reviewScheduleRepository.save(
-                new ReviewSchedule(member.getId(), card.getId(), 2, today.plusDays(2), 2,
+                new ReviewSchedule(member.getId(), card.getId(), 2, today.plusDays(2).atTime(4, 0), 2,
                         new BigDecimal("2.50")));
 
         mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.flashcards[0].nextReview.sequence").value(2))
-                .andExpect(jsonPath("$.data.flashcards[0].nextReview.scheduledDate")
-                        .value(today.plusDays(2).toString()));
+                .andExpect(jsonPath("$.data.flashcards[0].nextReview.scheduledAt",
+                        startsWith(today.plusDays(2) + "T04:00")));
     }
 
     @Test
@@ -211,7 +213,7 @@ class FlashcardControllerTest extends ApiTestSupport {
         Flashcard card = flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "Q", "A"));
         LocalDate today = LocalDate.now(clock);
         ReviewSchedule review = reviewScheduleRepository.save(
-                new ReviewSchedule(member.getId(), card.getId(), 1, today.plusDays(1), 1,
+                new ReviewSchedule(member.getId(), card.getId(), 1, today.plusDays(1).atTime(4, 0), 1,
                         new BigDecimal("2.50")));
 
         mockMvc.perform(patch("/api/planner/flashcards/{id}", card.getId())
@@ -225,7 +227,7 @@ class FlashcardControllerTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.data.back").value("A"));
 
         ReviewSchedule unchanged = reviewScheduleRepository.findById(review.getId()).orElseThrow();
-        org.assertj.core.api.Assertions.assertThat(unchanged.getScheduledDate()).isEqualTo(today.plusDays(1));
+        org.assertj.core.api.Assertions.assertThat(unchanged.getScheduledAt()).isEqualTo(today.plusDays(1).atTime(4, 0));
         org.assertj.core.api.Assertions.assertThat(unchanged.getSequence()).isEqualTo(1);
     }
 
@@ -264,10 +266,10 @@ class FlashcardControllerTest extends ApiTestSupport {
         Flashcard card = flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "Q", "A"));
         LocalDate today = LocalDate.now(clock);
         reviewScheduleRepository.save(
-                new ReviewSchedule(member.getId(), card.getId(), 1, today.plusDays(1), 1,
+                new ReviewSchedule(member.getId(), card.getId(), 1, today.plusDays(1).atTime(4, 0), 1,
                         new BigDecimal("2.50")));
         reviewScheduleRepository.save(
-                new ReviewSchedule(member.getId(), card.getId(), 2, today.plusDays(7), 7,
+                new ReviewSchedule(member.getId(), card.getId(), 2, today.plusDays(7).atTime(4, 0), 7,
                         new BigDecimal("2.50")));
 
         mockMvc.perform(delete("/api/planner/flashcards/{id}", card.getId())
