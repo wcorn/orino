@@ -1,4 +1,12 @@
-import { ChevronDown, ChevronRight, FileText, Plus } from "lucide-react";
+import { Menu } from "@base-ui/react/menu";
+import {
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  MoreHorizontal,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -11,6 +19,7 @@ interface Props {
   activeNoteId: number | null;
   onSelect: (noteId: number) => void;
   onAddRoot: () => void;
+  onRequestDelete: (node: NoteTreeNode) => void;
   addRootPending?: boolean;
 }
 
@@ -19,6 +28,7 @@ export function NoteTreeSidebar({
   activeNoteId,
   onSelect,
   onAddRoot,
+  onRequestDelete,
   addRootPending,
 }: Props) {
   return (
@@ -51,6 +61,7 @@ export function NoteTreeSidebar({
               depth={0}
               activeNoteId={activeNoteId}
               onSelect={onSelect}
+              onRequestDelete={onRequestDelete}
             />
           ))}
         </ul>
@@ -64,9 +75,16 @@ interface ItemProps {
   depth: number;
   activeNoteId: number | null;
   onSelect: (noteId: number) => void;
+  onRequestDelete: (node: NoteTreeNode) => void;
 }
 
-function NoteTreeItem({ node, depth, activeNoteId, onSelect }: ItemProps) {
+function NoteTreeItem({
+  node,
+  depth,
+  activeNoteId,
+  onSelect,
+  onRequestDelete,
+}: ItemProps) {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.children.length > 0;
   const isActive = node.id === activeNoteId;
@@ -75,7 +93,7 @@ function NoteTreeItem({ node, depth, activeNoteId, onSelect }: ItemProps) {
     <li>
       <div
         className={cn(
-          "flex items-center gap-0.5 rounded-md pr-1 text-sm",
+          "group/note flex items-center gap-0.5 rounded-md pr-1 text-sm",
           isActive
             ? "bg-primary/10 text-primary"
             : "text-foreground/80 hover:bg-muted",
@@ -106,6 +124,33 @@ function NoteTreeItem({ node, depth, activeNoteId, onSelect }: ItemProps) {
           <FileText className="size-3.5 shrink-0 opacity-60" />
           <span className="truncate">{node.title}</span>
         </button>
+
+        <Menu.Root>
+          <Menu.Trigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`${node.title} 메뉴`}
+                className="size-6 shrink-0 opacity-0 group-hover/note:opacity-100 data-[popup-open]:opacity-100"
+              >
+                <MoreHorizontal className="size-3.5" />
+              </Button>
+            }
+          />
+          <Menu.Portal>
+            <Menu.Positioner sideOffset={4} align="end" className="z-50">
+              <Menu.Popup className="bg-popover text-popover-foreground min-w-28 rounded-md border p-1 shadow-md">
+                <Menu.Item
+                  onClick={() => onRequestDelete(node)}
+                  className="text-destructive data-[highlighted]:bg-destructive/10 flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none"
+                >
+                  <Trash2 className="size-3.5" /> 삭제
+                </Menu.Item>
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        </Menu.Root>
       </div>
       {hasChildren && expanded && (
         <ul className="flex flex-col gap-0.5">
@@ -116,6 +161,7 @@ function NoteTreeItem({ node, depth, activeNoteId, onSelect }: ItemProps) {
               depth={depth + 1}
               activeNoteId={activeNoteId}
               onSelect={onSelect}
+              onRequestDelete={onRequestDelete}
             />
           ))}
         </ul>
