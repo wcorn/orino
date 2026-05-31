@@ -227,7 +227,8 @@ class FlashcardControllerTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.data.back").value("A"));
 
         ReviewSchedule unchanged = reviewScheduleRepository.findById(review.getId()).orElseThrow();
-        org.assertj.core.api.Assertions.assertThat(unchanged.getScheduledAt()).isEqualTo(today.plusDays(1).atTime(4, 0));
+        org.assertj.core.api.Assertions.assertThat(unchanged.getScheduledAt())
+                .isEqualTo(today.plusDays(1).atTime(4, 0));
         org.assertj.core.api.Assertions.assertThat(unchanged.getSequence()).isEqualTo(1);
     }
 
