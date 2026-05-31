@@ -16,6 +16,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 @Entity
 @EntityListeners(AuditingEntityListener.class)
@@ -23,6 +24,12 @@ import java.time.LocalDateTime;
 public class ReviewSchedule {
 
     public static final BigDecimal INITIAL_EASE_FACTOR = new BigDecimal("2.50");
+
+    /** 다중일 복습 due 시각(롤오버). 해당 날짜 04:00부터 due가 되어 그 날 하루 종일 복습 가능. */
+    public static final int ROLLOVER_HOUR = 4;
+
+    /** AGAIN(틀림) 시 당일 재복습까지의 분. */
+    public static final int RELEARN_MINUTES = 10;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -37,8 +44,8 @@ public class ReviewSchedule {
     @Column(nullable = false)
     private Integer sequence;
 
-    @Column(name = "scheduled_date", nullable = false)
-    private LocalDate scheduledDate;
+    @Column(name = "scheduled_at", nullable = false)
+    private LocalDateTime scheduledAt;
 
     @Column(name = "interval_days", nullable = false)
     private Integer intervalDays;
@@ -72,11 +79,11 @@ public class ReviewSchedule {
     }
 
     public ReviewSchedule(Long memberId, Long flashcardId, int sequence,
-                          LocalDate scheduledDate, int intervalDays, BigDecimal easeFactor) {
+                          LocalDateTime scheduledAt, int intervalDays, BigDecimal easeFactor) {
         this.memberId = memberId;
         this.flashcardId = flashcardId;
         this.sequence = sequence;
-        this.scheduledDate = scheduledDate;
+        this.scheduledAt = scheduledAt;
         this.intervalDays = intervalDays;
         this.easeFactor = easeFactor;
         this.status = ReviewStatus.PENDING;
@@ -84,13 +91,24 @@ public class ReviewSchedule {
 
     public static ReviewSchedule firstReview(Long memberId, Long flashcardId, LocalDate today) {
         return new ReviewSchedule(memberId, flashcardId, 1,
-                today.plusDays(1), 1, INITIAL_EASE_FACTOR);
+                today.plusDays(1).atTime(ROLLOVER_HOUR, 0), 1, INITIAL_EASE_FACTOR);
     }
 
-    public void complete(Rating rating, LocalDate today, LocalDateTime now) {
+    /**
+     * 다음 복습 due 시각을 계산한다.
+     * AGAIN(틀림)은 당일 {@value #RELEARN_MINUTES}분 뒤(분 단위), 그 외는 일 간격 뒤 날짜의 04:00(롤오버).
+     */
+    public static LocalDateTime computeScheduledAt(Rating rating, int intervalDays, LocalDateTime now) {
+        if (rating == Rating.AGAIN) {
+            return now.plusMinutes(RELEARN_MINUTES);
+        }
+        return now.toLocalDate().plusDays(intervalDays).atTime(ROLLOVER_HOUR, 0);
+    }
+
+    public void complete(Rating rating, LocalDateTime now) {
         this.status = ReviewStatus.COMPLETED;
         this.rating = rating;
-        this.elapsedDays = (int) java.time.temporal.ChronoUnit.DAYS.between(this.scheduledDate, today);
+        this.elapsedDays = (int) ChronoUnit.DAYS.between(this.scheduledAt.toLocalDate(), now.toLocalDate());
         this.completedAt = now;
     }
 
@@ -110,8 +128,8 @@ public class ReviewSchedule {
         return sequence;
     }
 
-    public LocalDate getScheduledDate() {
-        return scheduledDate;
+    public LocalDateTime getScheduledAt() {
+        return scheduledAt;
     }
 
     public Integer getIntervalDays() {

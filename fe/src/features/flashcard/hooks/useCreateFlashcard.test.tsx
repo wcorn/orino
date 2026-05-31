@@ -41,7 +41,7 @@ describe("useCreateFlashcard", () => {
                 id: 1,
                 flashcardId: 99,
                 sequence: 1,
-                scheduledDate: "2026-06-01",
+                scheduledAt: "2026-06-01T04:00:00",
                 intervalDays: 1,
                 easeFactor: 2.5,
                 status: "PENDING",

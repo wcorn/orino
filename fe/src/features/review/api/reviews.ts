@@ -24,7 +24,8 @@ export interface PreviewView {
 
 export interface TodayReview {
   id: number;
-  scheduledDate: string;
+  /** ISO datetime (예: "2026-06-07T04:00:00"). due = scheduledAt <= now */
+  scheduledAt: string;
   delayDays: number;
   sequence: number;
   intervalDays: number;
@@ -62,7 +63,7 @@ export interface NextReview {
   id: number;
   flashcardId: number;
   sequence: number;
-  scheduledDate: string;
+  scheduledAt: string;
   intervalDays: number;
   easeFactor: number;
   status: "PENDING";

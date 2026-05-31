@@ -27,6 +27,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -72,7 +73,7 @@ class ReviewControllerTest extends ApiTestSupport {
     void complete_good_creates_next_review() throws Exception {
         LocalDate today = LocalDate.now(clock);
         ReviewSchedule current = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 1, today.minusDays(1), 1,
+                member.getId(), card.getId(), 1, today.minusDays(1).atTime(4, 0), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
@@ -89,7 +90,8 @@ class ReviewControllerTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.data.completed.completedAt").exists())
                 .andExpect(jsonPath("$.data.nextReview.flashcardId").value(card.getId()))
                 .andExpect(jsonPath("$.data.nextReview.sequence").value(2))
-                .andExpect(jsonPath("$.data.nextReview.scheduledDate").value(today.plusDays(6).toString()))
+                .andExpect(jsonPath("$.data.nextReview.scheduledAt",
+                        startsWith(today.plusDays(6) + "T04:00")))
                 .andExpect(jsonPath("$.data.nextReview.intervalDays").value(6))
                 .andExpect(jsonPath("$.data.nextReview.easeFactor").value(2.50))
                 .andExpect(jsonPath("$.data.nextReview.status").value("PENDING"));
@@ -107,7 +109,7 @@ class ReviewControllerTest extends ApiTestSupport {
     void complete_again() throws Exception {
         LocalDate today = LocalDate.now(clock);
         ReviewSchedule current = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 2, today, 6,
+                member.getId(), card.getId(), 2, today.atTime(4, 0), 6,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
@@ -118,7 +120,9 @@ class ReviewControllerTest extends ApiTestSupport {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.nextReview.intervalDays").value(1))
-                .andExpect(jsonPath("$.data.nextReview.scheduledDate").value(today.plusDays(1).toString()))
+                // AGAIN은 당일 10분 뒤(분 단위) 재복습 → 오늘 날짜의 datetime
+                .andExpect(jsonPath("$.data.nextReview.scheduledAt",
+                        startsWith(today.toString() + "T")))
                 .andExpect(jsonPath("$.data.nextReview.easeFactor").value(2.30));
     }
 
@@ -127,7 +131,7 @@ class ReviewControllerTest extends ApiTestSupport {
     void complete_easy() throws Exception {
         LocalDate today = LocalDate.now(clock);
         ReviewSchedule current = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 2, today, 6,
+                member.getId(), card.getId(), 2, today.atTime(4, 0), 6,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
@@ -145,7 +149,7 @@ class ReviewControllerTest extends ApiTestSupport {
     void complete_already_completed_returns_409() throws Exception {
         LocalDate today = LocalDate.now(clock);
         ReviewSchedule current = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 1, today.minusDays(1), 1,
+                member.getId(), card.getId(), 1, today.minusDays(1).atTime(4, 0), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
@@ -175,7 +179,7 @@ class ReviewControllerTest extends ApiTestSupport {
                 new Flashcard(otherMember.getId(), otherMaterial.getId(), "Q", "A"));
         LocalDate today = LocalDate.now(clock);
         ReviewSchedule otherReview = reviewScheduleRepository.save(new ReviewSchedule(
-                otherMember.getId(), otherCard.getId(), 1, today, 1,
+                otherMember.getId(), otherCard.getId(), 1, today.atTime(4, 0), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", otherReview.getId())
@@ -192,7 +196,7 @@ class ReviewControllerTest extends ApiTestSupport {
     void complete_missing_rating_returns_400() throws Exception {
         LocalDate today = LocalDate.now(clock);
         ReviewSchedule current = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 1, today, 1,
+                member.getId(), card.getId(), 1, today.atTime(4, 0), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
@@ -207,7 +211,7 @@ class ReviewControllerTest extends ApiTestSupport {
     void complete_elapsed_days_can_be_negative_for_early_review() throws Exception {
         LocalDate today = LocalDate.now(clock);
         ReviewSchedule earlyReview = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 1, today.plusDays(2), 1,
+                member.getId(), card.getId(), 1, today.plusDays(2).atTime(4, 0), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", earlyReview.getId())
@@ -225,7 +229,7 @@ class ReviewControllerTest extends ApiTestSupport {
     void complete_four_consecutive_good_evaluations() throws Exception {
         LocalDate today = LocalDate.now(clock);
         ReviewSchedule firstReview = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 1, today, 1,
+                member.getId(), card.getId(), 1, today.atTime(4, 0), 1,
                 new BigDecimal("2.50")));
 
         Long currentId = firstReview.getId();
@@ -244,8 +248,8 @@ class ReviewControllerTest extends ApiTestSupport {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.nextReview.sequence").value(expectedSequence))
                     .andExpect(jsonPath("$.data.nextReview.intervalDays").value(expectedInterval))
-                    .andExpect(jsonPath("$.data.nextReview.scheduledDate")
-                            .value(today.plusDays(expectedInterval).toString()))
+                    .andExpect(jsonPath("$.data.nextReview.scheduledAt",
+                            startsWith(today.plusDays(expectedInterval) + "T04:00")))
                     .andReturn().getResponse().getContentAsString();
             Number nextId = com.jayway.jsonpath.JsonPath.read(body, "$.data.nextReview.id");
             currentId = nextId.longValue();

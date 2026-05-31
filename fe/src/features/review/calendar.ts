@@ -2,6 +2,11 @@ import type { CalendarReview } from "./api/calendar";
 
 export type ReviewBucket = "completed" | "overdue" | "today" | "upcoming";
 
+/** scheduledAt(datetime)에서 로컬 날짜 부분(YYYY-MM-DD)만 추출. 캘린더는 날짜 단위로 그룹/분류한다. */
+export function reviewDate(review: CalendarReview): string {
+  return review.scheduledAt.slice(0, 10);
+}
+
 /** YYYY-MM-DD 로컬 포맷 (UTC 변환 없이) */
 export function toIsoDate(date: Date): string {
   const y = date.getFullYear();
@@ -46,7 +51,7 @@ export function classifyReview(
   if (review.status === "COMPLETED") {
     return "completed";
   }
-  const scheduled = parseIsoDate(review.scheduledDate).getTime();
+  const scheduled = parseIsoDate(reviewDate(review)).getTime();
   const todayMid = startOfDay(today).getTime();
   if (scheduled < todayMid) {
     return "overdue";
@@ -70,11 +75,12 @@ export function groupByDate(
 ): Map<string, CalendarReview[]> {
   const map = new Map<string, CalendarReview[]>();
   for (const r of reviews) {
-    const list = map.get(r.scheduledDate);
+    const key = reviewDate(r);
+    const list = map.get(key);
     if (list) {
       list.push(r);
     } else {
-      map.set(r.scheduledDate, [r]);
+      map.set(key, [r]);
     }
   }
   return map;

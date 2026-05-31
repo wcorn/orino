@@ -25,6 +25,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -67,13 +68,13 @@ class ReviewCalendarControllerTest extends ApiTestSupport {
 
     private ReviewSchedule pending(LocalDate date, int sequence) {
         return reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), sequence, date, 6, new BigDecimal("2.50")));
+                member.getId(), card.getId(), sequence, date.atTime(4, 0), 6, new BigDecimal("2.50")));
     }
 
     private ReviewSchedule completed(LocalDate date, int sequence, Rating rating) {
         ReviewSchedule r = new ReviewSchedule(
-                member.getId(), card.getId(), sequence, date, 6, new BigDecimal("2.50"));
-        r.complete(rating, date, java.time.LocalDateTime.of(date, java.time.LocalTime.NOON));
+                member.getId(), card.getId(), sequence, date.atTime(4, 0), 6, new BigDecimal("2.50"));
+        r.complete(rating, java.time.LocalDateTime.of(date, java.time.LocalTime.NOON));
         return reviewScheduleRepository.save(r);
     }
 
@@ -102,10 +103,10 @@ class ReviewCalendarControllerTest extends ApiTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.reviews", hasSize(2)))
-                .andExpect(jsonPath("$.data.reviews[0].scheduledDate").value("2026-05-10"))
+                .andExpect(jsonPath("$.data.reviews[0].scheduledAt", startsWith("2026-05-10T")))
                 .andExpect(jsonPath("$.data.reviews[0].status").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.reviews[0].rating").value("GOOD"))
-                .andExpect(jsonPath("$.data.reviews[1].scheduledDate").value("2026-05-20"))
+                .andExpect(jsonPath("$.data.reviews[1].scheduledAt", startsWith("2026-05-20T")))
                 .andExpect(jsonPath("$.data.reviews[1].status").value("PENDING"))
                 .andExpect(jsonPath("$.data.reviews[1].rating").doesNotExist());
     }
@@ -124,8 +125,8 @@ class ReviewCalendarControllerTest extends ApiTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.reviews", hasSize(2)))
-                .andExpect(jsonPath("$.data.reviews[0].scheduledDate").value("2026-05-01"))
-                .andExpect(jsonPath("$.data.reviews[1].scheduledDate").value("2026-05-31"));
+                .andExpect(jsonPath("$.data.reviews[0].scheduledAt", startsWith("2026-05-01T")))
+                .andExpect(jsonPath("$.data.reviews[1].scheduledAt", startsWith("2026-05-31T")));
     }
 
     @Test
@@ -153,7 +154,7 @@ class ReviewCalendarControllerTest extends ApiTestSupport {
         Flashcard otherCard = flashcardRepository.save(
                 new Flashcard(otherMember.getId(), otherMaterial.getId(), "Q2", "A2"));
         reviewScheduleRepository.save(new ReviewSchedule(
-                otherMember.getId(), otherCard.getId(), 1, LocalDate.parse("2026-05-15"), 6,
+                otherMember.getId(), otherCard.getId(), 1, LocalDate.parse("2026-05-15").atTime(4, 0), 6,
                 new BigDecimal("2.50")));
         pending(LocalDate.parse("2026-05-16"), 1);
 
@@ -163,7 +164,7 @@ class ReviewCalendarControllerTest extends ApiTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.reviews", hasSize(1)))
-                .andExpect(jsonPath("$.data.reviews[0].scheduledDate").value("2026-05-16"));
+                .andExpect(jsonPath("$.data.reviews[0].scheduledAt", startsWith("2026-05-16T")));
     }
 
     @Test

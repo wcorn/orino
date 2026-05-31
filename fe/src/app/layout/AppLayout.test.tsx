@@ -44,7 +44,7 @@ function mockTodayReviews(count: number) {
           today: "2026-05-18",
           reviews: Array.from({ length: count }, (_, i) => ({
             id: i + 1,
-            scheduledDate: "2026-05-18",
+            scheduledAt: "2026-05-18T04:00:00",
             delayDays: 0,
             sequence: 1,
             intervalDays: 1,

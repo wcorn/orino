@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Service
@@ -37,19 +36,19 @@ public class ReviewCompletionService {
             throw new CustomException(ErrorCode.INVALID_STATE);
         }
 
-        LocalDate today = LocalDate.now(clock);
         LocalDateTime now = LocalDateTime.now(clock);
 
         int newSequence = current.getSequence() + 1;
         Sm2Calculator.Result computed = Sm2Calculator.next(
                 newSequence, current.getIntervalDays(), current.getEaseFactor(), request.rating());
 
-        current.complete(request.rating(), today, now);
+        current.complete(request.rating(), now);
 
+        LocalDateTime scheduledAt = ReviewSchedule.computeScheduledAt(
+                request.rating(), computed.intervalDays(), now);
         ReviewSchedule next = reviewScheduleRepository.save(new ReviewSchedule(
                 memberId, current.getFlashcardId(), newSequence,
-                today.plusDays(computed.intervalDays()), computed.intervalDays(),
-                computed.easeFactor()));
+                scheduledAt, computed.intervalDays(), computed.easeFactor()));
 
         return new ReviewCompletionResponse(
                 CompletedReviewView.of(current),

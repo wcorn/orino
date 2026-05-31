@@ -3,7 +3,7 @@ import { client } from "@/shared/api";
 export interface NextReview {
   id: number;
   sequence: number;
-  scheduledDate: string;
+  scheduledAt: string;
   intervalDays: number;
   easeFactor: number;
 }

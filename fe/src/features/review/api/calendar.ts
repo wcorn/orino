@@ -12,7 +12,8 @@ export interface CalendarReviewFlashcard {
 
 export interface CalendarReview {
   id: number;
-  scheduledDate: string;
+  /** ISO datetime. 캘린더 그룹/분류는 날짜 부분(slice 0..10)으로 한다. */
+  scheduledAt: string;
   status: ReviewStatus;
   rating: Rating | null;
   sequence: number;

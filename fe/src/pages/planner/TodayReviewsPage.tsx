@@ -47,10 +47,7 @@ export function TodayReviewsPage() {
       { reviewId: current.id, rating },
       {
         onSuccess: (res) => {
-          toast(
-            formatNextReviewMessage(res.nextReview.scheduledDate),
-            "success",
-          );
+          toast(formatNextReviewMessage(res.nextReview.scheduledAt), "success");
           setCurrentIndex((i) => i + 1);
         },
       },
@@ -71,25 +68,27 @@ export function TodayReviewsPage() {
   );
 }
 
-function formatNextReviewMessage(scheduledDate: string): string {
-  const today = new Date();
-  const todayMid = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate(),
-  );
-  const next = parseDate(scheduledDate);
+function formatNextReviewMessage(scheduledAt: string): string {
+  const now = new Date();
+  const next = new Date(scheduledAt);
+
+  // 당일 짧은 재복습(AGAIN 등)은 분/시간 단위로 안내
+  const diffMin = Math.round((next.getTime() - now.getTime()) / 60000);
+  if (diffMin <= 0) {
+    return "다음 복습이 곧 다시 표시됩니다";
+  }
+  if (diffMin < 60) {
+    return `다음 복습은 약 ${diffMin}분 후`;
+  }
+
+  const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const nextMid = new Date(next.getFullYear(), next.getMonth(), next.getDate());
   const days = Math.round(
-    (next.getTime() - todayMid.getTime()) / (1000 * 60 * 60 * 24),
+    (nextMid.getTime() - todayMid.getTime()) / (1000 * 60 * 60 * 24),
   );
   const md = `${next.getMonth() + 1}/${next.getDate()}`;
   if (days <= 0) {
     return `다음 복습은 오늘 (${md})`;
   }
   return `다음 복습은 ${days}일 후 (${md})`;
-}
-
-function parseDate(isoDate: string): Date {
-  const [y, m, d] = isoDate.split("-").map(Number);
-  return new Date(y, m - 1, d);
 }
