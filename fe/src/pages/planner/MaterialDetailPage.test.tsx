@@ -50,15 +50,10 @@ function mockMaterial(
         },
       });
     }),
-    http.get(`${API_BASE}/planner/materials/1/note`, () => {
+    http.get(`${API_BASE}/planner/materials/1/notes`, () => {
       return HttpResponse.json({
         code: "OK",
-        data: {
-          id: 10,
-          materialId: 1,
-          content: { type: "doc", content: [] },
-          updatedAt: "2026-05-18T00:00:00",
-        },
+        data: { notes: [] },
       });
     }),
   );
@@ -80,6 +75,18 @@ describe("MaterialDetailPage", () => {
     });
     expect(screen.getByRole("tab", { name: /📝 노트/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /카드 12/ })).toBeInTheDocument();
+  });
+
+  it("노트가 없으면 노트 탭에 빈 상태를 표시한다", async () => {
+    mockMaterial();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("아직 노트가 없습니다.")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", { name: /첫 노트 만들기/ }),
+    ).toBeInTheDocument();
   });
 
   it("카드 탭 클릭 시 카드 목록이 보인다", async () => {

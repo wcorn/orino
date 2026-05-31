@@ -1,11 +1,10 @@
 import { Tabs } from "@base-ui/react/tabs";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 
 import { FlashcardListTab } from "@/features/flashcard/components/FlashcardListTab";
 import { MaterialHeader } from "@/features/material/components/MaterialHeader";
 import { useMaterial } from "@/features/material/hooks/useMaterial";
-import { NoteEditor } from "@/features/note/components/NoteEditor";
-import { useNote } from "@/features/note/hooks/useNote";
+import { NoteTab } from "@/features/note/components/NoteTab";
 
 type TabValue = "note" | "cards";
 
@@ -14,8 +13,7 @@ const VALID_TABS: TabValue[] = ["note", "cards"];
 export function MaterialDetailPage() {
   const { id } = useParams<{ id: string }>();
   const materialId = Number(id);
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const tabParam = searchParams.get("tab");
   const tab: TabValue = VALID_TABS.includes(tabParam as TabValue)
@@ -23,23 +21,28 @@ export function MaterialDetailPage() {
     : "note";
 
   const handleTabChange = (next: TabValue) => {
-    navigate(`/planner/materials/${materialId}?tab=${next}`, { replace: true });
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.set("tab", next);
+        // 카드 탭으로 가면 활성 노트 쿼리는 정리
+        if (next !== "note") {
+          params.delete("note");
+        }
+        return params;
+      },
+      { replace: true },
+    );
   };
 
   const materialQuery = useMaterial(materialId);
-  const noteQuery = useNote(materialId);
 
-  if (materialQuery.isLoading || noteQuery.isLoading) {
+  if (materialQuery.isLoading) {
     return <p className="text-muted-foreground text-sm">불러오는 중...</p>;
   }
   if (materialQuery.isError || !materialQuery.data) {
     return (
       <p className="text-destructive text-sm">자료를 불러오지 못했어요.</p>
-    );
-  }
-  if (noteQuery.isError || !noteQuery.data) {
-    return (
-      <p className="text-destructive text-sm">노트를 불러오지 못했어요.</p>
     );
   }
 
@@ -67,10 +70,7 @@ export function MaterialDetailPage() {
         </Tabs.List>
 
         <Tabs.Panel value="note" className="pt-4">
-          <NoteEditor
-            materialId={materialId}
-            initialContent={noteQuery.data.content}
-          />
+          <NoteTab materialId={materialId} />
         </Tabs.Panel>
         <Tabs.Panel value="cards" className="pt-4">
           <FlashcardListTab materialId={materialId} />
