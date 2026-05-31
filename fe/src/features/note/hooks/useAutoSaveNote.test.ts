@@ -17,33 +17,31 @@ describe("useAutoSaveNote", () => {
     vi.useRealTimers();
   });
 
-  it("schedule 호출 후 2초 debounce되어 PUT을 호출하고 saved 상태로 전환된다", async () => {
-    const calls: Array<{ content: unknown }> = [];
+  it("schedule 후 2초 debounce되어 PATCH를 호출하고 saved로 전환된다", async () => {
+    const calls: unknown[] = [];
     server.use(
-      http.put(
-        `${API_BASE}/planner/materials/:id/note`,
-        async ({ request }) => {
-          const body = (await request.json()) as { content: unknown };
-          calls.push(body);
-          return HttpResponse.json({
-            code: "OK",
-            data: {
-              id: 1,
-              materialId: 1,
-              updatedAt: "2026-05-18T10:30:00",
-            },
-          });
-        },
-      ),
+      http.patch(`${API_BASE}/planner/notes/:id`, async ({ request }) => {
+        calls.push(await request.json());
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            materialId: 1,
+            parentId: null,
+            title: "t",
+            sortOrder: 0,
+            updatedAt: "2026-05-31T10:30:00",
+          },
+        });
+      }),
     );
 
     const { result } = renderHook(() => useAutoSaveNote(1));
     expect(result.current.status).toBe("idle");
 
     act(() => {
-      result.current.schedule({ type: "doc", content: [] });
+      result.current.schedule({ content: { type: "doc", content: [] } });
     });
-    // 디바운스 전: idle 유지
     expect(result.current.status).toBe("idle");
 
     await act(async () => {
@@ -53,80 +51,85 @@ describe("useAutoSaveNote", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]).toEqual({ content: { type: "doc", content: [] } });
     expect(result.current.status).toBe("saved");
-    expect(result.current.savedAt).not.toBeNull();
   });
 
-  it("연속 schedule은 마지막 값만 1회 PUT으로 합쳐진다 (debounce)", async () => {
-    let putCount = 0;
+  it("같은 창의 title/content schedule은 병합되어 1회 PATCH", async () => {
+    let count = 0;
+    let lastBody: { title?: string; content?: unknown } | null = null;
     server.use(
-      http.put(
-        `${API_BASE}/planner/materials/:id/note`,
-        async ({ request }) => {
-          putCount++;
-          const body = (await request.json()) as { content: { tag?: string } };
-          return HttpResponse.json({
-            code: "OK",
-            data: {
-              id: 1,
-              materialId: 1,
-              updatedAt: "2026-05-18T10:30:00",
-              _echo: body.content.tag,
-            },
-          });
-        },
-      ),
-    );
-
-    const { result } = renderHook(() => useAutoSaveNote(1));
-    act(() => {
-      result.current.schedule({ type: "doc", tag: "a" });
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1500);
-    });
-    act(() => {
-      result.current.schedule({ type: "doc", tag: "b" });
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000);
-    });
-
-    expect(putCount).toBe(1);
-  });
-
-  it("실패 시 error 상태가 되고 retry로 재전송된다", async () => {
-    let firstFailed = false;
-    server.use(
-      http.put(`${API_BASE}/planner/materials/:id/note`, async () => {
-        if (!firstFailed) {
-          firstFailed = true;
-          return HttpResponse.json(
-            { code: "ERR", message: "fail" },
-            { status: 500 },
-          );
-        }
+      http.patch(`${API_BASE}/planner/notes/:id`, async ({ request }) => {
+        count++;
+        lastBody = (await request.json()) as typeof lastBody;
         return HttpResponse.json({
           code: "OK",
-          data: { id: 1, materialId: 1, updatedAt: "2026-05-18T10:30:00" },
+          data: {
+            id: 1,
+            materialId: 1,
+            parentId: null,
+            title: "t",
+            sortOrder: 0,
+            updatedAt: "2026-05-31T10:30:00",
+          },
         });
       }),
     );
 
     const { result } = renderHook(() => useAutoSaveNote(1));
     act(() => {
-      result.current.schedule({ type: "doc", content: [] });
+      result.current.schedule({ title: "새 제목" });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    act(() => {
+      result.current.schedule({ content: { type: "doc", content: [] } });
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
 
+    expect(count).toBe(1);
+    expect(lastBody).toEqual({
+      title: "새 제목",
+      content: { type: "doc", content: [] },
+    });
+  });
+
+  it("실패하면 error → retry로 재전송하여 saved", async () => {
+    let failed = false;
+    server.use(
+      http.patch(`${API_BASE}/planner/notes/:id`, async () => {
+        if (!failed) {
+          failed = true;
+          return HttpResponse.json({ code: "ERR" }, { status: 500 });
+        }
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            materialId: 1,
+            parentId: null,
+            title: "t",
+            sortOrder: 0,
+            updatedAt: "2026-05-31T10:30:00",
+          },
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useAutoSaveNote(1));
+    act(() => {
+      result.current.schedule({ title: "x" });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
     expect(result.current.status).toBe("error");
 
     await act(async () => {
       result.current.retry();
       await vi.advanceTimersByTimeAsync(0);
     });
-
     expect(result.current.status).toBe("saved");
   });
 });

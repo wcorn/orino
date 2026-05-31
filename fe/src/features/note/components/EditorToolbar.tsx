@@ -3,6 +3,7 @@ import {
   Bold,
   Code,
   Code2,
+  FilePlus,
   Heading1,
   Heading2,
   Italic,
@@ -16,6 +17,8 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   editor: Editor | null;
+  onInsertPage?: () => void;
+  insertPagePending?: boolean;
 }
 
 interface ToolbarButton {
@@ -25,7 +28,11 @@ interface ToolbarButton {
   onClick: () => void;
 }
 
-export function EditorToolbar({ editor }: Props) {
+export function EditorToolbar({
+  editor,
+  onInsertPage,
+  insertPagePending,
+}: Props) {
   if (!editor) return null;
 
   const buttons: ToolbarButton[] = [
@@ -108,6 +115,21 @@ export function EditorToolbar({ editor }: Props) {
           </Button>
         );
       })}
+      {onInsertPage && (
+        <>
+          <span className="bg-border mx-1 w-px self-stretch" aria-hidden />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label="하위 페이지 추가"
+            disabled={insertPagePending}
+            onClick={onInsertPage}
+          >
+            <FilePlus className="size-4" /> 페이지
+          </Button>
+        </>
+      )}
     </div>
   );
 }
