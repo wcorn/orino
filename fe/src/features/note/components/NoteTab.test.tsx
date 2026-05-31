@@ -228,6 +228,45 @@ describe("NoteTab", () => {
     });
   });
 
+  it("childPage 블록은 attrs 캐시가 아니라 트리의 최신 제목을 표시한다", async () => {
+    // 부모 본문의 childPage는 삽입 시점 캐시("제목 없음")를 갖지만,
+    // 트리에서 자식 제목이 "test"로 바뀐 상태 → 블록도 "test"로 보여야 한다.
+    mockTree([
+      {
+        id: 1,
+        title: "부모",
+        parentId: null,
+        sortOrder: 0,
+        children: [
+          { id: 2, title: "test", parentId: 1, sortOrder: 0, children: [] },
+        ],
+      },
+    ]);
+    mockNoteDetail(
+      1,
+      {
+        type: "doc",
+        content: [
+          { type: "childPage", attrs: { noteId: 2, title: "제목 없음" } },
+        ],
+      },
+      "부모",
+    );
+
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("노트 제목")).toHaveValue("부모");
+    });
+
+    expect(
+      await screen.findByRole("button", { name: "하위 페이지 test 열기" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /하위 페이지 제목 없음 열기/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it("트리 [⋯] → 삭제 → 확인 시 DELETE 호출 (루트 노트)", async () => {
     mockTree([
       {

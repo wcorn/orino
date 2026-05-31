@@ -12,6 +12,8 @@ export interface ChildPageAttrs {
 
 export interface ChildPageOptions {
   onOpen: (noteId: number) => void;
+  /** 라이브 제목 조회용. attrs.title은 삽입 시점 캐시라 stale할 수 있어 트리에서 보강한다. */
+  materialId: number;
 }
 
 declare module "@tiptap/core" {
@@ -36,6 +38,7 @@ export const ChildPage = Node.create<ChildPageOptions>({
   addOptions() {
     return {
       onOpen: () => {},
+      materialId: 0,
     };
   },
 

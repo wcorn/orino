@@ -57,7 +57,7 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
         Placeholder.configure({
           placeholder: "내용을 입력하거나 페이지를 추가하세요...",
         }),
-        ChildPage.configure({ onOpen: onOpenNote }),
+        ChildPage.configure({ onOpen: onOpenNote, materialId }),
       ],
       content: note.content as JSONContent,
       editorProps: {
