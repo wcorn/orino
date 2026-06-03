@@ -7,7 +7,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public record NoteDetailResponse(
         Long id,
@@ -16,7 +16,7 @@ public record NoteDetailResponse(
         String title,
         int sortOrder,
         JsonNode content,
-        LocalDateTime updatedAt
+        Instant updatedAt
 ) {
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
 

@@ -71,9 +71,9 @@ class ReviewControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("POST complete - GOOD 평가 시 현재 review COMPLETED + 다음 review 생성")
     void complete_good_creates_next_review() throws Exception {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         ReviewSchedule current = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 1, today.minusDays(1).atTime(4, 0), 1,
+                member.getId(), card.getId(), 1, atTestZone(today.minusDays(1).atTime(4, 0)), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
@@ -107,9 +107,9 @@ class ReviewControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("POST complete - AGAIN 평가 시 interval=1, ease -0.20")
     void complete_again() throws Exception {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         ReviewSchedule current = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 2, today.atTime(4, 0), 6,
+                member.getId(), card.getId(), 2, atTestZone(today.atTime(4, 0)), 6,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
@@ -129,9 +129,9 @@ class ReviewControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("POST complete - EASY 평가 시 ease +0.10")
     void complete_easy() throws Exception {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         ReviewSchedule current = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 2, today.atTime(4, 0), 6,
+                member.getId(), card.getId(), 2, atTestZone(today.atTime(4, 0)), 6,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
@@ -147,9 +147,9 @@ class ReviewControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("POST complete - 이미 COMPLETED 인 경우 409 SP-ERR-003")
     void complete_already_completed_returns_409() throws Exception {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         ReviewSchedule current = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 1, today.minusDays(1).atTime(4, 0), 1,
+                member.getId(), card.getId(), 1, atTestZone(today.minusDays(1).atTime(4, 0)), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
@@ -177,9 +177,9 @@ class ReviewControllerTest extends ApiTestSupport {
                 new StudyMaterial(otherMember.getId(), "남의 자료", MaterialType.BOOK));
         Flashcard otherCard = flashcardRepository.save(
                 new Flashcard(otherMember.getId(), otherMaterial.getId(), "Q", "A"));
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         ReviewSchedule otherReview = reviewScheduleRepository.save(new ReviewSchedule(
-                otherMember.getId(), otherCard.getId(), 1, today.atTime(4, 0), 1,
+                otherMember.getId(), otherCard.getId(), 1, atTestZone(today.atTime(4, 0)), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", otherReview.getId())
@@ -194,9 +194,9 @@ class ReviewControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("POST complete - rating 누락 시 400")
     void complete_missing_rating_returns_400() throws Exception {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         ReviewSchedule current = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 1, today.atTime(4, 0), 1,
+                member.getId(), card.getId(), 1, atTestZone(today.atTime(4, 0)), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
@@ -209,9 +209,9 @@ class ReviewControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("POST complete - elapsedDays는 (today - scheduledDate)로 음수 가능")
     void complete_elapsed_days_can_be_negative_for_early_review() throws Exception {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         ReviewSchedule earlyReview = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 1, today.plusDays(2).atTime(4, 0), 1,
+                member.getId(), card.getId(), 1, atTestZone(today.plusDays(2).atTime(4, 0)), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", earlyReview.getId())
@@ -227,9 +227,9 @@ class ReviewControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("4번 연속 GOOD 평가 - sequence 1→2→3→4→5, scheduledDate가 모두 today+interval로 산정")
     void complete_four_consecutive_good_evaluations() throws Exception {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         ReviewSchedule firstReview = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 1, today.atTime(4, 0), 1,
+                member.getId(), card.getId(), 1, atTestZone(today.atTime(4, 0)), 1,
                 new BigDecimal("2.50")));
 
         Long currentId = firstReview.getId();

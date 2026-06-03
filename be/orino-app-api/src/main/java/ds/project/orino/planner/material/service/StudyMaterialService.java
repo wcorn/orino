@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -85,7 +84,7 @@ public class StudyMaterialService {
         Map<Long, Long> flashcardCounts = toCountMap(
                 studyMaterialRepository.countFlashcardsByMaterialIds(ids));
         Map<Long, Long> dueReviewCounts = toCountMap(
-                studyMaterialRepository.countDueReviewsByMaterialIds(ids, LocalDateTime.now(clock)));
+                studyMaterialRepository.countDueReviewsByMaterialIds(ids, clock.instant()));
         return materials.stream()
                 .map(m -> MaterialResponse.of(m,
                         flashcardCounts.getOrDefault(m.getId(), 0L),

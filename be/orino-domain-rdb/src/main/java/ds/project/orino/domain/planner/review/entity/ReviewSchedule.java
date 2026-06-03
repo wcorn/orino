@@ -14,8 +14,9 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 
 @Entity
@@ -45,7 +46,7 @@ public class ReviewSchedule {
     private Integer sequence;
 
     @Column(name = "scheduled_at", nullable = false)
-    private LocalDateTime scheduledAt;
+    private Instant scheduledAt;
 
     @Column(name = "interval_days", nullable = false)
     private Integer intervalDays;
@@ -65,21 +66,21 @@ public class ReviewSchedule {
     private Integer elapsedDays;
 
     @Column(name = "completed_at")
-    private LocalDateTime completedAt;
+    private Instant completedAt;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @LastModifiedDate
     @Column(nullable = false)
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
     protected ReviewSchedule() {
     }
 
     public ReviewSchedule(Long memberId, Long flashcardId, int sequence,
-                          LocalDateTime scheduledAt, int intervalDays, BigDecimal easeFactor) {
+                          Instant scheduledAt, int intervalDays, BigDecimal easeFactor) {
         this.memberId = memberId;
         this.flashcardId = flashcardId;
         this.sequence = sequence;
@@ -89,26 +90,35 @@ public class ReviewSchedule {
         this.status = ReviewStatus.PENDING;
     }
 
-    public static ReviewSchedule firstReview(Long memberId, Long flashcardId, LocalDate today) {
-        return new ReviewSchedule(memberId, flashcardId, 1,
-                today.plusDays(1).atTime(ROLLOVER_HOUR, 0), 1, INITIAL_EASE_FACTOR);
+    /**
+     * 첫 복습 일정을 생성한다. due 시각은 사용자 시간대 기준 익일 04:00(롤오버)을 UTC로 환산한 값이다.
+     */
+    public static ReviewSchedule firstReview(Long memberId, Long flashcardId, LocalDate today, ZoneId zone) {
+        Instant scheduledAt = today.plusDays(1).atTime(ROLLOVER_HOUR, 0).atZone(zone).toInstant();
+        return new ReviewSchedule(memberId, flashcardId, 1, scheduledAt, 1, INITIAL_EASE_FACTOR);
     }
 
     /**
-     * 다음 복습 due 시각을 계산한다.
-     * AGAIN(틀림)은 당일 {@value #RELEARN_MINUTES}분 뒤(분 단위), 그 외는 일 간격 뒤 날짜의 04:00(롤오버).
+     * 다음 복습 due 시각을 계산한다. 저장은 UTC({@link Instant})지만 "당일/익일 04:00 롤오버"는
+     * 사용자 시간대({@code zone}) 기준으로 계산한다.
+     * AGAIN(틀림)은 {@value #RELEARN_MINUTES}분 뒤(분 단위), 그 외는 사용자 로컬 날짜 기준 일 간격 뒤 04:00.
      */
-    public static LocalDateTime computeScheduledAt(Rating rating, int intervalDays, LocalDateTime now) {
+    public static Instant computeScheduledAt(Rating rating, int intervalDays, Instant now, ZoneId zone) {
         if (rating == Rating.AGAIN) {
-            return now.plusMinutes(RELEARN_MINUTES);
+            return now.plusSeconds(RELEARN_MINUTES * 60L);
         }
-        return now.toLocalDate().plusDays(intervalDays).atTime(ROLLOVER_HOUR, 0);
+        LocalDate dueDate = now.atZone(zone).toLocalDate().plusDays(intervalDays);
+        return dueDate.atTime(ROLLOVER_HOUR, 0).atZone(zone).toInstant();
     }
 
-    public void complete(Rating rating, LocalDateTime now) {
+    /**
+     * 복습을 완료 처리한다. 경과일(elapsedDays)은 사용자 시간대 기준 날짜 차이로 계산한다.
+     */
+    public void complete(Rating rating, Instant now, ZoneId zone) {
         this.status = ReviewStatus.COMPLETED;
         this.rating = rating;
-        this.elapsedDays = (int) ChronoUnit.DAYS.between(this.scheduledAt.toLocalDate(), now.toLocalDate());
+        this.elapsedDays = (int) ChronoUnit.DAYS.between(
+                this.scheduledAt.atZone(zone).toLocalDate(), now.atZone(zone).toLocalDate());
         this.completedAt = now;
     }
 
@@ -128,7 +138,7 @@ public class ReviewSchedule {
         return sequence;
     }
 
-    public LocalDateTime getScheduledAt() {
+    public Instant getScheduledAt() {
         return scheduledAt;
     }
 
@@ -152,15 +162,15 @@ public class ReviewSchedule {
         return elapsedDays;
     }
 
-    public LocalDateTime getCompletedAt() {
+    public Instant getCompletedAt() {
         return completedAt;
     }
 
-    public LocalDateTime getCreatedAt() {
+    public Instant getCreatedAt() {
         return createdAt;
     }
 
-    public LocalDateTime getUpdatedAt() {
+    public Instant getUpdatedAt() {
         return updatedAt;
     }
 }

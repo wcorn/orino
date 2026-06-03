@@ -9,12 +9,14 @@ import ds.project.orino.planner.review.dto.CompletedReviewView;
 import ds.project.orino.planner.review.dto.ReviewCompletionRequest;
 import ds.project.orino.planner.review.dto.ReviewCompletionResponse;
 import ds.project.orino.planner.review.dto.ReviewScheduleView;
+import ds.project.orino.core.time.UserTimeZone;
 import ds.project.orino.planner.review.sm2.Sm2Calculator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.ZoneId;
 
 @Service
 public class ReviewCompletionService {
@@ -36,16 +38,17 @@ public class ReviewCompletionService {
             throw new CustomException(ErrorCode.INVALID_STATE);
         }
 
-        LocalDateTime now = LocalDateTime.now(clock);
+        Instant now = clock.instant();
+        ZoneId zone = UserTimeZone.get();
 
         int newSequence = current.getSequence() + 1;
         Sm2Calculator.Result computed = Sm2Calculator.next(
                 newSequence, current.getIntervalDays(), current.getEaseFactor(), request.rating());
 
-        current.complete(request.rating(), now);
+        current.complete(request.rating(), now, zone);
 
-        LocalDateTime scheduledAt = ReviewSchedule.computeScheduledAt(
-                request.rating(), computed.intervalDays(), now);
+        Instant scheduledAt = ReviewSchedule.computeScheduledAt(
+                request.rating(), computed.intervalDays(), now, zone);
         ReviewSchedule next = reviewScheduleRepository.save(new ReviewSchedule(
                 memberId, current.getFlashcardId(), newSequence,
                 scheduledAt, computed.intervalDays(), computed.easeFactor()));

@@ -4,7 +4,7 @@ import ds.project.orino.domain.planner.material.entity.MaterialStatus;
 import ds.project.orino.domain.planner.material.entity.MaterialType;
 import ds.project.orino.domain.planner.material.entity.StudyMaterial;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public record MaterialResponse(
         Long id,
@@ -13,8 +13,8 @@ public record MaterialResponse(
         MaterialStatus status,
         long flashcardCount,
         long dueReviewCount,
-        LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        Instant createdAt,
+        Instant updatedAt
 ) {
     public static MaterialResponse of(StudyMaterial m, long flashcardCount, long dueReviewCount) {
         return new MaterialResponse(

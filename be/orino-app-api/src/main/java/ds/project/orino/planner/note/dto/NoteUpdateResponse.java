@@ -2,7 +2,7 @@ package ds.project.orino.planner.note.dto;
 
 import ds.project.orino.domain.planner.note.entity.Note;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public record NoteUpdateResponse(
         Long id,
@@ -10,7 +10,7 @@ public record NoteUpdateResponse(
         Long parentId,
         String title,
         int sortOrder,
-        LocalDateTime updatedAt
+        Instant updatedAt
 ) {
     public static NoteUpdateResponse of(Note note) {
         return new NoteUpdateResponse(

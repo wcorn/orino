@@ -68,13 +68,13 @@ class ReviewCalendarControllerTest extends ApiTestSupport {
 
     private ReviewSchedule pending(LocalDate date, int sequence) {
         return reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), sequence, date.atTime(4, 0), 6, new BigDecimal("2.50")));
+                member.getId(), card.getId(), sequence, atTestZone(date.atTime(4, 0)), 6, new BigDecimal("2.50")));
     }
 
     private ReviewSchedule completed(LocalDate date, int sequence, Rating rating) {
         ReviewSchedule r = new ReviewSchedule(
-                member.getId(), card.getId(), sequence, date.atTime(4, 0), 6, new BigDecimal("2.50"));
-        r.complete(rating, java.time.LocalDateTime.of(date, java.time.LocalTime.NOON));
+                member.getId(), card.getId(), sequence, atTestZone(date.atTime(4, 0)), 6, new BigDecimal("2.50"));
+        r.complete(rating, atTestZone(java.time.LocalDateTime.of(date, java.time.LocalTime.NOON)), TEST_ZONE);
         return reviewScheduleRepository.save(r);
     }
 
@@ -154,7 +154,7 @@ class ReviewCalendarControllerTest extends ApiTestSupport {
         Flashcard otherCard = flashcardRepository.save(
                 new Flashcard(otherMember.getId(), otherMaterial.getId(), "Q2", "A2"));
         reviewScheduleRepository.save(new ReviewSchedule(
-                otherMember.getId(), otherCard.getId(), 1, LocalDate.parse("2026-05-15").atTime(4, 0), 6,
+                otherMember.getId(), otherCard.getId(), 1, atTestZone(LocalDate.parse("2026-05-15").atTime(4, 0)), 6,
                 new BigDecimal("2.50")));
         pending(LocalDate.parse("2026-05-16"), 1);
 

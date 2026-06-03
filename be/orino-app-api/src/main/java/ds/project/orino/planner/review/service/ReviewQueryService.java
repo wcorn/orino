@@ -23,10 +23,13 @@ import ds.project.orino.planner.review.sm2.Sm2Calculator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import ds.project.orino.core.time.UserTimeZone;
+
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
@@ -53,8 +56,9 @@ public class ReviewQueryService {
     }
 
     public TodayReviewsResponse findToday(Long memberId) {
-        LocalDate today = LocalDate.now(clock);
-        LocalDateTime now = LocalDateTime.now(clock);
+        ZoneId zone = UserTimeZone.get();
+        Instant now = clock.instant();
+        LocalDate today = now.atZone(zone).toLocalDate();
 
         List<ReviewSchedule> reviews = reviewScheduleRepository
                 .findAllByMemberIdAndStatusAndScheduledAtLessThanEqualOrderByScheduledAtAscIdAsc(
@@ -74,7 +78,7 @@ public class ReviewQueryService {
                 .collect(Collectors.toMap(StudyMaterial::getId, Function.identity()));
 
         List<TodayReviewItem> items = reviews.stream()
-                .map(r -> toItem(r, cardById, materialById, today))
+                .map(r -> toItem(r, cardById, materialById, today, zone))
                 .toList();
 
         return new TodayReviewsResponse(today, items);
@@ -88,9 +92,13 @@ public class ReviewQueryService {
             throw new CustomException(ErrorCode.INVALID_REQUEST);
         }
 
+        ZoneId zone = UserTimeZone.get();
+        Instant fromInstant = from.atStartOfDay(zone).toInstant();
+        Instant toInstant = to.atTime(LocalTime.MAX).atZone(zone).toInstant();
+
         List<ReviewSchedule> reviews = reviewScheduleRepository
                 .findAllByMemberIdAndScheduledAtBetweenOrderByScheduledAtAscIdAsc(
-                        memberId, from.atStartOfDay(), to.atTime(LocalTime.MAX));
+                        memberId, fromInstant, toInstant);
 
         if (reviews.isEmpty()) {
             return new CalendarReviewsResponse(from, to, List.of());
@@ -130,12 +138,13 @@ public class ReviewQueryService {
     private TodayReviewItem toItem(ReviewSchedule r,
                                    Map<Long, Flashcard> cardById,
                                    Map<Long, StudyMaterial> materialById,
-                                   LocalDate today) {
+                                   LocalDate today,
+                                   ZoneId zone) {
         Flashcard card = cardById.get(r.getFlashcardId());
         StudyMaterial material = materialById.get(card.getMaterialId());
         TodayReviewFlashcard flashcardDto = TodayReviewFlashcard.of(card, TodayReviewMaterial.of(material));
         PreviewView preview = preview(r);
-        int delayDays = (int) ChronoUnit.DAYS.between(r.getScheduledAt().toLocalDate(), today);
+        int delayDays = (int) ChronoUnit.DAYS.between(r.getScheduledAt().atZone(zone).toLocalDate(), today);
         return new TodayReviewItem(
                 r.getId(), r.getScheduledAt(), delayDays,
                 r.getSequence(), r.getIntervalDays(), r.getEaseFactor(),

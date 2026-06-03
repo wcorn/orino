@@ -4,14 +4,14 @@ import ds.project.orino.domain.planner.review.entity.Rating;
 import ds.project.orino.domain.planner.review.entity.ReviewSchedule;
 import ds.project.orino.domain.planner.review.entity.ReviewStatus;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public record CompletedReviewView(
         Long id,
         ReviewStatus status,
         Rating rating,
         Integer elapsedDays,
-        LocalDateTime completedAt
+        Instant completedAt
 ) {
     public static CompletedReviewView of(ReviewSchedule r) {
         return new CompletedReviewView(

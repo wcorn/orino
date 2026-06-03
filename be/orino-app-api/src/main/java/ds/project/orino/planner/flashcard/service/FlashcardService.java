@@ -13,11 +13,13 @@ import ds.project.orino.planner.flashcard.dto.FlashcardCreateResponse;
 import ds.project.orino.planner.flashcard.dto.FlashcardResponse;
 import ds.project.orino.planner.flashcard.dto.FlashcardUpdateRequest;
 import ds.project.orino.planner.review.dto.ReviewScheduleView;
+import ds.project.orino.core.time.UserTimeZone;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,9 +66,10 @@ public class FlashcardService {
 
         Flashcard saved = flashcardRepository.save(
                 new Flashcard(memberId, materialId, request.front(), request.back()));
-        LocalDate today = LocalDate.now(clock);
+        ZoneId zone = UserTimeZone.get();
+        LocalDate today = clock.instant().atZone(zone).toLocalDate();
         ReviewSchedule firstReview = reviewScheduleRepository.save(
-                ReviewSchedule.firstReview(memberId, saved.getId(), today));
+                ReviewSchedule.firstReview(memberId, saved.getId(), today, zone));
 
         return new FlashcardCreateResponse(
                 FlashcardResponse.withoutReview(saved),
