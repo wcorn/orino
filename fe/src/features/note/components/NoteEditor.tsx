@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { DragHandle } from "@tiptap/extension-drag-handle-react";
 import Placeholder from "@tiptap/extension-placeholder";
+import { TableKit } from "@tiptap/extension-table";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
 import { EditorContent, type JSONContent, useEditor } from "@tiptap/react";
@@ -56,6 +57,7 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
         StarterKit,
         TaskList,
         TaskItem.configure({ nested: true }),
+        TableKit.configure({ table: { resizable: true } }),
         Placeholder.configure({
           placeholder: "내용을 입력하거나 페이지를 추가하세요...",
         }),
