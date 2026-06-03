@@ -300,6 +300,68 @@ describe("NoteTab", () => {
     await waitFor(() => expect(deletedId).toBe(1));
   });
 
+  it("툴바 [표 삽입] 클릭 시 표가 본문에 삽입되고 표 편집 컨트롤이 나타난다", async () => {
+    mockTree([
+      { id: 1, title: "노트", parentId: null, sortOrder: 0, children: [] },
+    ]);
+    mockNoteDetail(1, { type: "doc", content: [] }, "노트");
+
+    const user = userEvent.setup();
+    const { container } = renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("노트 제목")).toHaveValue("노트");
+    });
+
+    // 표 삽입 전에는 표가 없다
+    expect(container.querySelector("table")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "표 삽입" }));
+
+    // 표가 렌더되고 (헤더행 포함 3x3)
+    await waitFor(() => {
+      expect(container.querySelector("table")).not.toBeNull();
+    });
+    expect(container.querySelectorAll("table th")).toHaveLength(3);
+
+    // 커서가 표 안에 있으므로 표 편집 컨트롤이 노출된다
+    expect(screen.getByRole("button", { name: "열 추가" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "행 추가" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "표 삭제" })).toBeInTheDocument();
+  });
+
+  it("표 삽입 후 [행 추가]로 행이 늘고 [표 삭제]로 표가 제거된다", async () => {
+    mockTree([
+      { id: 1, title: "노트", parentId: null, sortOrder: 0, children: [] },
+    ]);
+    mockNoteDetail(1, { type: "doc", content: [] }, "노트");
+
+    const user = userEvent.setup();
+    const { container } = renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("노트 제목")).toHaveValue("노트");
+    });
+
+    await user.click(screen.getByRole("button", { name: "표 삽입" }));
+    await waitFor(() => {
+      expect(container.querySelector("table")).not.toBeNull();
+    });
+    const rowsBefore = container.querySelectorAll("table tr").length;
+
+    await user.click(screen.getByRole("button", { name: "행 추가" }));
+    await waitFor(() => {
+      expect(container.querySelectorAll("table tr").length).toBe(
+        rowsBefore + 1,
+      );
+    });
+
+    await user.click(screen.getByRole("button", { name: "표 삭제" }));
+    await waitFor(() => {
+      expect(container.querySelector("table")).toBeNull();
+    });
+  });
+
   it("자손이 있는 노트 삭제 시 확인 문구에 하위 개수를 표시한다", async () => {
     mockTree([
       {
