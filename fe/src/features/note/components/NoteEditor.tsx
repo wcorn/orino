@@ -137,7 +137,10 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    // min-w-0: 부모(md:flex-row) flex 자식의 기본 min-width:auto 때문에
+    // 넓은 표가 들어오면 에디터가 부모를 넘어 페이지 전체가 늘어난다.
+    // min-w-0으로 콘텐츠가 부모 너비를 못 넘게 하고, 표는 tableWrapper에서만 스크롤.
+    <div className="flex min-w-0 flex-col gap-3">
       <div className="flex items-center gap-3">
         <Input
           value={title}
