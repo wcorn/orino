@@ -318,16 +318,44 @@ describe("NoteTab", () => {
 
     await user.click(screen.getByRole("button", { name: "표 삽입" }));
 
-    // 표가 렌더되고 (헤더행 포함 3x3)
+    // 표가 렌더되고 (헤더행 없이 3x3 = td 9개), 제목 행은 기본값이 아니다
     await waitFor(() => {
       expect(container.querySelector("table")).not.toBeNull();
     });
-    expect(container.querySelectorAll("table th")).toHaveLength(3);
+    expect(container.querySelectorAll("table td")).toHaveLength(9);
+    expect(container.querySelectorAll("table th")).toHaveLength(0);
 
     // 커서가 표 안에 있으므로 표 편집 컨트롤이 노출된다
     expect(screen.getByRole("button", { name: "열 추가" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "행 추가" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "표 삭제" })).toBeInTheDocument();
+  });
+
+  it("표 삽입 후 [헤더] 버튼으로 제목 행을 선택적으로 켤 수 있다", async () => {
+    mockTree([
+      { id: 1, title: "노트", parentId: null, sortOrder: 0, children: [] },
+    ]);
+    mockNoteDetail(1, { type: "doc", content: [] }, "노트");
+
+    const user = userEvent.setup();
+    const { container } = renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("노트 제목")).toHaveValue("노트");
+    });
+
+    await user.click(screen.getByRole("button", { name: "표 삽입" }));
+    await waitFor(() => {
+      expect(container.querySelector("table")).not.toBeNull();
+    });
+    // 기본은 헤더 없음
+    expect(container.querySelectorAll("table th")).toHaveLength(0);
+
+    // 헤더 전환 → 첫 행이 헤더(th)가 된다
+    await user.click(screen.getByRole("button", { name: "헤더 행 전환" }));
+    await waitFor(() => {
+      expect(container.querySelectorAll("table th")).toHaveLength(3);
+    });
   });
 
   it("표 삽입 후 [행 추가]로 행이 늘고 [표 삭제]로 표가 제거된다", async () => {

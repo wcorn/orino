@@ -104,11 +104,12 @@ export function EditorToolbar({
       label: "표 삽입",
       icon: Table,
       isActive: () => editor.isActive("table"),
+      // 제목 행은 강제하지 않는다. 필요하면 표 편집의 [헤더] 버튼으로 켠다.
       onClick: () =>
         editor
           .chain()
           .focus()
-          .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+          .insertTable({ rows: 3, cols: 3, withHeaderRow: false })
           .run(),
     },
   ];
