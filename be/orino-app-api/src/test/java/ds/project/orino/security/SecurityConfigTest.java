@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class SecurityConfigTest extends ApiTestSupport {
@@ -56,10 +57,20 @@ class SecurityConfigTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("보호된 경로는 인증 없이 접근하면 403을 반환한다")
+    @DisplayName("보호된 경로는 인증 없이 접근하면 401을 반환한다")
     void protectedEndpoint_requiresAuth() throws Exception {
         mockMvc.perform(get("/api/protected"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH-ERR-002"));
+    }
+
+    @Test
+    @DisplayName("만료/유효하지 않은 토큰으로 접근하면 401을 반환한다")
+    void protectedEndpoint_withInvalidToken_returnsUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/protected")
+                        .header("Authorization", "Bearer invalid.jwt.token"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH-ERR-002"));
     }
 
     @Test
