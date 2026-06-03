@@ -23,6 +23,7 @@ spec:
         allowHeaders:
           - Authorization
           - Content-Type
+          - X-Timezone
         allowCredentials: true
         maxAge: "86400s"
       timeout: 10s
