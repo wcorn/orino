@@ -98,19 +98,28 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           lifecycle:
             preStop:
+              # endpoint deregister가 전파되어 새 트래픽이 끊길 때까지 대기한 뒤
+              # SIGTERM이 전달되어 Spring graceful shutdown이 시작된다.
               exec:
-                command: ["sh", "-c", "sleep 5"]
+                command: ["sh", "-c", "sleep 20"]
+          # 기동 완료(Liquibase 마이그레이션 포함)까지 대기. 통과 전에는
+          # liveness/readiness를 평가하지 않아 느린 기동에도 강제 재시작되지 않는다.
+          # 최대 10s * 30 = 300s 허용.
+          startupProbe:
+            httpGet:
+              path: /health/readiness
+              port: 9090
+            periodSeconds: 10
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /health/readiness
               port: 9090
-            initialDelaySeconds: 30
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health/liveness
               port: 9090
-            initialDelaySeconds: 60
             periodSeconds: 30
       volumes:
         - name: tmp
