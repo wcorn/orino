@@ -145,11 +145,18 @@
 /* 노트 에디터 표 스타일 (#431). prose 기본 표 스타일에 더해
    셀 경계선·헤더 배경·셀 선택·열 리사이즈 핸들을 명시한다. */
 .tiptap .tableWrapper {
+  /* 표만 가로 스크롤되도록 (Notion처럼 표가 부모를 넘으면 표 영역만 스크롤). */
   @apply my-2 overflow-x-auto;
 }
 
+/* Tiptap resizable 표는 colgroup의 <col> width로 열 너비를 관리한다.
+   table-fixed는 그 너비를 존중하되, w-full(width:100%)은 빼서 표가 부모에
+   강제로 맞춰지지 않고 내용(열 너비 합)만큼만 넓어지게 한다.
+   width:max-content로 prose의 width:100% 기본값을 덮는다. */
 .tiptap table {
-  @apply w-full table-fixed border-collapse;
+  @apply m-0 table-fixed border-collapse;
+  width: max-content;
+  max-width: none;
 }
 
 .tiptap table td,
