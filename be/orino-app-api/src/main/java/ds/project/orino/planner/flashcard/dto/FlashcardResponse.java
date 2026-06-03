@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import ds.project.orino.domain.planner.flashcard.entity.Flashcard;
 import ds.project.orino.planner.review.dto.ReviewScheduleView;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record FlashcardResponse(
@@ -13,7 +13,7 @@ public record FlashcardResponse(
         String front,
         String back,
         ReviewScheduleView nextReview,
-        LocalDateTime createdAt
+        Instant createdAt
 ) {
     public static FlashcardResponse of(Flashcard f, ReviewScheduleView nextReview) {
         return new FlashcardResponse(

@@ -75,7 +75,7 @@ class FlashcardControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("POST - 카드 생성 + 첫 복습(sequence=1, today+1, 1일, 2.50) 자동 생성")
     void create_with_first_review() throws Exception {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
 
         mockMvc.perform(post("/api/planner/materials/{id}/flashcards", material.getId())
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
@@ -138,12 +138,12 @@ class FlashcardControllerTest extends ApiTestSupport {
     void list_returns_cards_in_creation_order_with_next_review() throws Exception {
         Flashcard card1 = flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "Q1", "A1"));
         Flashcard card2 = flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "Q2", "A2"));
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         reviewScheduleRepository.save(
-                new ReviewSchedule(member.getId(), card1.getId(), 1, today.plusDays(1).atTime(4, 0), 1,
+                new ReviewSchedule(member.getId(), card1.getId(), 1, atTestZone(today.plusDays(1).atTime(4, 0)), 1,
                         new BigDecimal("2.50")));
         reviewScheduleRepository.save(
-                new ReviewSchedule(member.getId(), card2.getId(), 1, today.plusDays(3).atTime(4, 0), 1,
+                new ReviewSchedule(member.getId(), card2.getId(), 1, atTestZone(today.plusDays(3).atTime(4, 0)), 1,
                         new BigDecimal("2.50")));
 
         mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
@@ -163,7 +163,7 @@ class FlashcardControllerTest extends ApiTestSupport {
     @DisplayName("GET - 가장 가까운 PENDING이 nextReview로 선택된다 (COMPLETED 무시)")
     void list_next_review_picks_earliest_pending() throws Exception {
         Flashcard card = flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "Q", "A"));
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         jdbcTemplate.update("""
                 INSERT INTO review_schedule
                   (member_id, flashcard_id, sequence, scheduled_at, interval_days,
@@ -171,10 +171,10 @@ class FlashcardControllerTest extends ApiTestSupport {
                 VALUES (?, ?, 1, ?, 1, 2.50, 'COMPLETED', NOW(6), NOW(6), NOW(6))
                 """, member.getId(), card.getId(), today.minusDays(5).atStartOfDay());
         reviewScheduleRepository.save(
-                new ReviewSchedule(member.getId(), card.getId(), 3, today.plusDays(10).atTime(4, 0), 10,
+                new ReviewSchedule(member.getId(), card.getId(), 3, atTestZone(today.plusDays(10).atTime(4, 0)), 10,
                         new BigDecimal("2.50")));
         reviewScheduleRepository.save(
-                new ReviewSchedule(member.getId(), card.getId(), 2, today.plusDays(2).atTime(4, 0), 2,
+                new ReviewSchedule(member.getId(), card.getId(), 2, atTestZone(today.plusDays(2).atTime(4, 0)), 2,
                         new BigDecimal("2.50")));
 
         mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
@@ -211,9 +211,9 @@ class FlashcardControllerTest extends ApiTestSupport {
     @DisplayName("PATCH - front/back 부분 수정, 복습 일정에 영향 없음")
     void update_does_not_affect_reviews() throws Exception {
         Flashcard card = flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "Q", "A"));
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         ReviewSchedule review = reviewScheduleRepository.save(
-                new ReviewSchedule(member.getId(), card.getId(), 1, today.plusDays(1).atTime(4, 0), 1,
+                new ReviewSchedule(member.getId(), card.getId(), 1, atTestZone(today.plusDays(1).atTime(4, 0)), 1,
                         new BigDecimal("2.50")));
 
         mockMvc.perform(patch("/api/planner/flashcards/{id}", card.getId())
@@ -228,7 +228,7 @@ class FlashcardControllerTest extends ApiTestSupport {
 
         ReviewSchedule unchanged = reviewScheduleRepository.findById(review.getId()).orElseThrow();
         org.assertj.core.api.Assertions.assertThat(unchanged.getScheduledAt())
-                .isEqualTo(today.plusDays(1).atTime(4, 0));
+                .isEqualTo(atTestZone(today.plusDays(1).atTime(4, 0)));
         org.assertj.core.api.Assertions.assertThat(unchanged.getSequence()).isEqualTo(1);
     }
 
@@ -265,12 +265,12 @@ class FlashcardControllerTest extends ApiTestSupport {
     @DisplayName("DELETE - 카드 삭제 시 관련 review_schedule이 cascade 삭제된다")
     void delete_cascades_reviews() throws Exception {
         Flashcard card = flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "Q", "A"));
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         reviewScheduleRepository.save(
-                new ReviewSchedule(member.getId(), card.getId(), 1, today.plusDays(1).atTime(4, 0), 1,
+                new ReviewSchedule(member.getId(), card.getId(), 1, atTestZone(today.plusDays(1).atTime(4, 0)), 1,
                         new BigDecimal("2.50")));
         reviewScheduleRepository.save(
-                new ReviewSchedule(member.getId(), card.getId(), 2, today.plusDays(7).atTime(4, 0), 7,
+                new ReviewSchedule(member.getId(), card.getId(), 2, atTestZone(today.plusDays(7).atTime(4, 0)), 7,
                         new BigDecimal("2.50")));
 
         mockMvc.perform(delete("/api/planner/flashcards/{id}", card.getId())

@@ -68,7 +68,7 @@ class TodayReviewsControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("GET today - PENDING이 없으면 빈 배열, today 필드는 채워짐")
     void empty_returns_today_and_empty_list() throws Exception {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
 
         mockMvc.perform(get("/api/planner/reviews/today")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
@@ -80,15 +80,15 @@ class TodayReviewsControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("GET today - scheduledDate <= today AND status=PENDING 만 반환, 정렬 ASC")
     void returns_pending_due_today_or_overdue_sorted() throws Exception {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         ReviewSchedule overdue = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 2, today.minusDays(2).atTime(4, 0), 6,
+                member.getId(), card.getId(), 2, atTestZone(today.minusDays(2).atTime(4, 0)), 6,
                 new BigDecimal("2.50")));
         ReviewSchedule dueToday = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 3, today.atStartOfDay(), 15,
+                member.getId(), card.getId(), 3, atTestZone(today.atStartOfDay()), 15,
                 new BigDecimal("2.50")));
         reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 4, today.plusDays(3).atTime(4, 0), 3,
+                member.getId(), card.getId(), 4, atTestZone(today.plusDays(3).atTime(4, 0)), 3,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(get("/api/planner/reviews/today")
@@ -104,9 +104,9 @@ class TodayReviewsControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("GET today - flashcard + material을 한 응답에 동봉")
     void embeds_flashcard_and_material() throws Exception {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 1, today.atStartOfDay(), 1,
+                member.getId(), card.getId(), 1, atTestZone(today.atStartOfDay()), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(get("/api/planner/reviews/today")
@@ -123,9 +123,9 @@ class TodayReviewsControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("GET today - preview 4지가 SM-2와 일치 (sequence=2 기준)")
     void preview_matches_sm2() throws Exception {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 2, today.atStartOfDay(), 6,
+                member.getId(), card.getId(), 2, atTestZone(today.atStartOfDay()), 6,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(get("/api/planner/reviews/today")
@@ -140,16 +140,16 @@ class TodayReviewsControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("GET today - 타인 review는 제외된다")
     void excludes_other_members_reviews() throws Exception {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         StudyMaterial otherMaterial = studyMaterialRepository.save(
                 new StudyMaterial(otherMember.getId(), "남의 자료", MaterialType.BOOK));
         Flashcard otherCard = flashcardRepository.save(
                 new Flashcard(otherMember.getId(), otherMaterial.getId(), "Q2", "A2"));
         reviewScheduleRepository.save(new ReviewSchedule(
-                otherMember.getId(), otherCard.getId(), 1, today.atStartOfDay(), 1,
+                otherMember.getId(), otherCard.getId(), 1, atTestZone(today.atStartOfDay()), 1,
                 new BigDecimal("2.50")));
         reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 1, today.atStartOfDay(), 1,
+                member.getId(), card.getId(), 1, atTestZone(today.atStartOfDay()), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(get("/api/planner/reviews/today")
@@ -162,15 +162,14 @@ class TodayReviewsControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("GET today - COMPLETED 는 제외된다")
     void excludes_completed_reviews() throws Exception {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = testToday(clock);
         ReviewSchedule pending = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 2, today.atStartOfDay(), 6,
+                member.getId(), card.getId(), 2, atTestZone(today.atStartOfDay()), 6,
                 new BigDecimal("2.50")));
         ReviewSchedule completed = new ReviewSchedule(
-                member.getId(), card.getId(), 1, today.minusDays(5).atTime(4, 0), 1,
+                member.getId(), card.getId(), 1, atTestZone(today.minusDays(5).atTime(4, 0)), 1,
                 new BigDecimal("2.50"));
-        completed.complete(ds.project.orino.domain.planner.review.entity.Rating.GOOD,
-                java.time.LocalDateTime.now(clock));
+        completed.complete(ds.project.orino.domain.planner.review.entity.Rating.GOOD, clock.instant(), TEST_ZONE);
         reviewScheduleRepository.save(completed);
 
         mockMvc.perform(get("/api/planner/reviews/today")
