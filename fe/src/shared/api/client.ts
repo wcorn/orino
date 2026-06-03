@@ -13,10 +13,17 @@ const client = axios.create({
   withCredentials: true,
 });
 
+// 사용자 브라우저의 IANA 시간대. 서버는 이 값으로 저장된 UTC 시각을
+// 사용자 로컬 기준(응답 변환 + 복습 4시 롤오버 계산)으로 처리한다.
+const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 client.interceptors.request.use((config) => {
   const token = getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  if (userTimeZone) {
+    config.headers["X-Timezone"] = userTimeZone;
   }
   return config;
 });
