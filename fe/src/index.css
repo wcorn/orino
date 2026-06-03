@@ -3,6 +3,9 @@
 @import "shadcn/tailwind.css";
 @import "pretendard/dist/web/variable/pretendardvariable.css";
 
+/* 노트 본문(.prose) heading/list/blockquote 스타일. 없으면 #430처럼 전부 일반 텍스트로 보인다. */
+@plugin "@tailwindcss/typography";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
