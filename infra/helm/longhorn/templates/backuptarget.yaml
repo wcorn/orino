@@ -6,4 +6,6 @@ metadata:
 spec:
   backupTargetURL: "s3://orino-longhorn-backup@ap-northeast-2/"
   credentialSecret: "longhorn-backup-s3"
-  pollInterval: "5m0s"
+  # S3 요청 비용 절감: 단일 클러스터라 외부에서 백업이 생성되지 않으므로
+  # 잦은 폴링이 불필요. 5m → 1h 로 완화해 백업스토어 LIST/GET 요청을 12배 감축.
+  pollInterval: "1h0m0s"
