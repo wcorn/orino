@@ -34,16 +34,20 @@ public interface StudyMaterialRepository extends JpaRepository<StudyMaterial, Lo
             """, nativeQuery = true)
     List<MaterialCountRow> countFlashcardsByMaterialIds(@Param("materialIds") Collection<Long> materialIds);
 
+    // member_id 조건을 명시해 review_schedule의 (member_id, scheduled_at, status)
+    // 인덱스를 활용한다. (member_id 없이 flashcard JOIN만으로는 인덱스 효율이 낮음)
     @Query(value = """
             SELECT f.material_id AS materialId, COUNT(r.id) AS count
             FROM review_schedule r
             JOIN flashcard f ON f.id = r.flashcard_id
-            WHERE f.material_id IN (:materialIds)
+            WHERE r.member_id = :memberId
+              AND f.material_id IN (:materialIds)
               AND r.status = 'PENDING'
               AND r.scheduled_at <= :now
             GROUP BY f.material_id
             """, nativeQuery = true)
     List<MaterialCountRow> countDueReviewsByMaterialIds(
+            @Param("memberId") Long memberId,
             @Param("materialIds") Collection<Long> materialIds,
             @Param("now") Instant now);
 }

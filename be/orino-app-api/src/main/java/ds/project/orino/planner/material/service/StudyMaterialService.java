@@ -38,12 +38,12 @@ public class StudyMaterialService {
         if (materials.isEmpty()) {
             return List.of();
         }
-        return mapWithCounts(materials);
+        return mapWithCounts(memberId, materials);
     }
 
     public MaterialResponse findOne(Long memberId, Long materialId) {
         StudyMaterial material = getOwnedMaterial(memberId, materialId);
-        return mapWithCounts(List.of(material)).get(0);
+        return mapWithCounts(memberId, List.of(material)).get(0);
     }
 
     @Transactional
@@ -65,7 +65,7 @@ public class StudyMaterialService {
         if (request.status() != null) {
             material.updateStatus(request.status());
         }
-        return mapWithCounts(List.of(material)).get(0);
+        return mapWithCounts(memberId, List.of(material)).get(0);
     }
 
     @Transactional
@@ -79,12 +79,12 @@ public class StudyMaterialService {
                 .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
     }
 
-    private List<MaterialResponse> mapWithCounts(List<StudyMaterial> materials) {
+    private List<MaterialResponse> mapWithCounts(Long memberId, List<StudyMaterial> materials) {
         List<Long> ids = materials.stream().map(StudyMaterial::getId).toList();
         Map<Long, Long> flashcardCounts = toCountMap(
                 studyMaterialRepository.countFlashcardsByMaterialIds(ids));
         Map<Long, Long> dueReviewCounts = toCountMap(
-                studyMaterialRepository.countDueReviewsByMaterialIds(ids, clock.instant()));
+                studyMaterialRepository.countDueReviewsByMaterialIds(memberId, ids, clock.instant()));
         return materials.stream()
                 .map(m -> MaterialResponse.of(m,
                         flashcardCounts.getOrDefault(m.getId(), 0L),
