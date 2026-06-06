@@ -10,6 +10,7 @@ import { useLocation } from "react-router-dom";
 
 import { reissue } from "../features/auth/api/auth";
 import { getAccessToken } from "../features/auth/store/authStore";
+import { prefetchRoutes } from "./routeImports";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -48,6 +49,11 @@ function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAuthenticated = getAccessToken() !== null;
   const refresh = () => setVersion((v) => v + 1);
+
+  // 로그인 상태면 idle 시간에 페이지 청크를 미리 받아 진입 지연을 없앤다.
+  useEffect(() => {
+    if (isAuthenticated) prefetchRoutes();
+  }, [isAuthenticated]);
 
   if (loading) return null;
 
