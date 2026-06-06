@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { collectChildPageIds } from "./childPage";
+import { ChildPage, collectChildPageIds } from "./childPage";
 
 describe("collectChildPageIds", () => {
   it("중첩 doc에서 모든 childPage noteId를 수집한다", () => {
@@ -41,5 +41,12 @@ describe("collectChildPageIds", () => {
       content: [{ type: "childPage", attrs: { title: "noid" } }],
     };
     expect(collectChildPageIds(doc).size).toBe(0);
+  });
+});
+
+describe("ChildPage 노드 스펙", () => {
+  it("드래그로 순서 이동이 가능하도록 draggable=true 이다", () => {
+    // DragHandle이 블록을 드래그하려면 노드가 draggable이어야 한다.
+    expect(ChildPage.config.draggable).toBe(true);
   });
 });

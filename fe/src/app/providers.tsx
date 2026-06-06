@@ -62,7 +62,16 @@ export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
-        defaultOptions: { queries: { retry: false } },
+        defaultOptions: {
+          queries: {
+            retry: false,
+            // 탭/페이지 왕복 시 즉시 재요청하지 않도록 기본 staleTime을 둔다.
+            // (개별 훅에서 staleTime: Infinity 등으로 덮어쓸 수 있음)
+            staleTime: 60 * 1000,
+            gcTime: 10 * 60 * 1000,
+            refetchOnWindowFocus: false,
+          },
+        },
       }),
   );
   return (

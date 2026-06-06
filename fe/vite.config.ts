@@ -32,6 +32,26 @@ export default defineConfig(() => {
       // Grafana 에러 화면에서 unminified stack을 보여준다.
       // 소스는 이미 공개 저장소이므로 .map 공개 노출 무관.
       sourcemap: true,
+      rollupOptions: {
+        output: {
+          // 무거운 의존성을 별도 청크로 분리해 초기 로딩/캐시 효율을 높인다.
+          // 경로 기준이라 @tiptap/pm처럼 entry 없는 서브패키지도 안전하게 묶인다.
+          manualChunks(id) {
+            if (!id.includes("node_modules")) return undefined;
+            if (/[\\/]node_modules[\\/]@tiptap[\\/]/.test(id)) return "tiptap";
+            if (/[\\/]node_modules[\\/]prosemirror-/.test(id)) return "tiptap";
+            if (/[\\/]node_modules[\\/]@grafana[\\/]/.test(id)) return "faro";
+            if (
+              /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom)[\\/]/.test(
+                id,
+              )
+            ) {
+              return "react";
+            }
+            return undefined;
+          },
+        },
+      },
     },
     server: {
       host: "0.0.0.0",

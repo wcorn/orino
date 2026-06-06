@@ -33,7 +33,7 @@ export const ChildPage = Node.create<ChildPageOptions>({
   group: "block",
   atom: true,
   selectable: true,
-  draggable: false,
+  draggable: true,
 
   addOptions() {
     return {
