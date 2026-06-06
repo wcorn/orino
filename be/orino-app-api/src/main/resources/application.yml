@@ -18,6 +18,18 @@ jwt:
   access-token-expiration: 1800000
   refresh-token-expiration: 1209600000
 
+# 노트 이미지 저장소(MinIO, S3 호환).
+# endpoint는 브라우저가 presigned URL로 직접 PUT/GET 할 공개 주소(img.orino.dev).
+# BE는 URL 서명만 하므로 이 주소로 네트워크 호출은 하지 않는다.
+storage:
+  image:
+    endpoint: ${IMAGE_STORAGE_ENDPOINT:https://img.orino.dev}
+    bucket: ${IMAGE_STORAGE_BUCKET:note-images}
+    region: ${IMAGE_STORAGE_REGION:us-east-1}
+    access-key: ${MINIO_ROOT_USER:minioadmin}
+    secret-key: ${MINIO_ROOT_PASSWORD:minioadmin}
+    presign-expiry-seconds: ${IMAGE_STORAGE_PRESIGN_EXPIRY:300}
+
 management:
   tracing:
     sampling:
