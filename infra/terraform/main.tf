@@ -155,6 +155,8 @@ module "cloudflare_tunnel" {
     { hostname = "orino.dev", service = "http://istio-gateway.istio-ingress.svc.cluster.local:80" },
     { hostname = "api.orino.dev", service = "http://istio-gateway.istio-ingress.svc.cluster.local:80" },
     { hostname = "telemetry.orino.dev", service = "http://istio-gateway.istio-ingress.svc.cluster.local:80" },
+    # 노트 이미지: MinIO(S3 호환)로 직접 라우팅. note-images 버킷은 public read.
+    { hostname = "img.orino.dev", service = "http://minio.orino.svc.cluster.local:9000" },
     { service = "http_status:404" },
   ]
 
@@ -162,5 +164,6 @@ module "cloudflare_tunnel" {
     "orino.dev",
     "api.orino.dev",
     "telemetry.orino.dev",
+    "img.orino.dev",
   ]
 }
