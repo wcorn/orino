@@ -142,6 +142,42 @@
   }
 }
 
+/* 노트 본문 블록 간격을 Notion 수준으로 축소.
+   prose 기본 margin(문단 1.14em, heading 위 1.6em 등)이 너무 넓어 적용.
+   .tiptap 자식 셀렉터가 prose의 :where() specificity를 이긴다.
+   첫 블록의 위 여백은 제거해 상단 정렬. */
+.tiptap > :first-child {
+  margin-top: 0;
+}
+
+.tiptap p,
+.tiptap ul,
+.tiptap ol,
+.tiptap blockquote,
+.tiptap pre {
+  margin-top: 0.15em;
+  margin-bottom: 0.15em;
+}
+
+.tiptap h1,
+.tiptap h2,
+.tiptap h3,
+.tiptap h4 {
+  margin-top: 0.8em;
+  margin-bottom: 0.2em;
+  line-height: 1.3;
+}
+
+.tiptap li {
+  margin-top: 0.1em;
+  margin-bottom: 0.1em;
+}
+
+.tiptap li > p {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
 /* 노트 에디터 표 스타일 (#431). prose 기본 표 스타일에 더해
    셀 경계선·헤더 배경·셀 선택·열 리사이즈 핸들을 명시한다. */
 .tiptap .tableWrapper {
