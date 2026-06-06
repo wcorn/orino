@@ -34,8 +34,9 @@ spec:
                   echo "  size: $(du -h ${BACKUP_FILE} | cut -f1)"
 
                   echo "[2/3] awscli v2 설치"
-                  apt-get update -qq
-                  apt-get install -y -qq --no-install-recommends curl unzip ca-certificates >/dev/null
+                  # mysql:8.4.4 는 Oracle Linux 9 기반이라 apt-get 이 없다 (microdnf 사용).
+                  # curl·ca-certificates 는 이미지에 기본 포함, unzip 만 추가 설치한다.
+                  microdnf install -y unzip
                   curl -sSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscli.zip
                   unzip -q /tmp/awscli.zip -d /tmp
                   AWS=/tmp/aws/dist/aws
