@@ -13,3 +13,24 @@ resources:
   limits:
     cpu: "1"
     memory: 1Gi
+
+# 매일 mysqldump → S3 백업 (오프사이트). 덤프는 위 image 의 진짜 mysqldump,
+# 업로드는 AWS 공식 이미지 — 런타임 설치/커스텀 빌드 없음.
+backup:
+  enabled: true
+  schedule: "0 4 * * *"
+  timeZone: "Asia/Seoul"
+  awscliImage: amazon/aws-cli:2.31.21
+  mysql:
+    host: mysql.orino.svc.cluster.local
+    port: "3306"
+  s3:
+    bucket: orino-mysql-backup
+    region: ap-northeast-2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
