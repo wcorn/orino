@@ -372,12 +372,17 @@ describe("NoteTab", () => {
     ) as HTMLInputElement;
     await user.upload(input, file);
 
+    // 이미지가 즉시 삽입된다 (즉시 미리보기 → 업로드 후 공개 URL로 교체)
+    await waitFor(() => {
+      expect(container.querySelector("img")).not.toBeNull();
+    });
     await waitFor(() => expect(presignCalled).toBe(true));
     await waitFor(() => expect(putCalled).toBe(true));
+    // 업로드 완료 후 최종 src는 실제 공개 URL
     await waitFor(() => {
-      const img = container.querySelector("img");
-      expect(img).not.toBeNull();
-      expect(img?.getAttribute("src")).toBe(publicUrl);
+      expect(container.querySelector("img")?.getAttribute("src")).toBe(
+        publicUrl,
+      );
     });
   });
 
