@@ -1,0 +1,101 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mysql-backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  timeZone: {{ .Values.backup.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          # Never: 실패 파드를 남겨 로그를 보존하고, 재시도는 새 파드로 생성한다.
+          restartPolicy: Never
+          volumes:
+            # 덤프 파일을 두 컨테이너가 공유하는 임시 볼륨 (DB가 작아 부담 없음)
+            - name: dump
+              emptyDir: {}
+          # 1단계: DB와 동일한 MySQL 공식 이미지의 진짜 mysqldump 로 덤프.
+          #         --no-tablespaces 로 PROCESS 권한 없이 앱 유저로 동작.
+          initContainers:
+            - name: dump
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  echo "[dump] mysqldump → gzip"
+                  mysqldump -h "${MYSQL_HOST}" -P "${MYSQL_PORT}" \
+                    -u "${MYSQL_USER}" -p"${MYSQL_PASSWORD}" \
+                    --single-transaction --routines --triggers \
+                    --no-tablespaces --set-gtid-purged=OFF --quick \
+                    "${MYSQL_DATABASE}" \
+                    | gzip > /backup/orino.sql.gz
+                  echo "[dump] size: $(du -h /backup/orino.sql.gz | cut -f1)"
+              env:
+                - name: MYSQL_HOST
+                  value: {{ .Values.backup.mysql.host | quote }}
+                - name: MYSQL_PORT
+                  value: {{ .Values.backup.mysql.port | quote }}
+                - name: MYSQL_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-secret
+                      key: MYSQL_USER
+                - name: MYSQL_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-secret
+                      key: MYSQL_PASSWORD
+                - name: MYSQL_DATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-secret
+                      key: MYSQL_DATABASE
+              volumeMounts:
+                - name: dump
+                  mountPath: /backup
+              resources:
+                {{- toYaml .Values.backup.resources | nindent 16 }}
+          # 2단계: AWS 공식 이미지로 공유 볼륨의 덤프를 S3 에 업로드.
+          containers:
+            - name: upload
+              image: {{ .Values.backup.awscliImage | quote }}
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  TS=$(date +%Y%m%d-%H%M%S)
+                  KEY="s3://${S3_BUCKET}/orino-${TS}.sql.gz"
+                  echo "[upload] → ${KEY}"
+                  aws s3 cp /backup/orino.sql.gz "${KEY}" --region "${AWS_DEFAULT_REGION}" --no-progress
+                  echo "[upload] 완료"
+              env:
+                - name: S3_BUCKET
+                  value: {{ .Values.backup.s3.bucket | quote }}
+                - name: AWS_DEFAULT_REGION
+                  value: {{ .Values.backup.s3.region | quote }}
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-backup-secret
+                      key: AWS_ACCESS_KEY_ID
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-backup-secret
+                      key: AWS_SECRET_ACCESS_KEY
+              volumeMounts:
+                - name: dump
+                  mountPath: /backup
+                  readOnly: true
+              resources:
+                {{- toYaml .Values.backup.resources | nindent 16 }}
+{{- end }}
