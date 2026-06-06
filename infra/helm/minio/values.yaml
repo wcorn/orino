@@ -33,3 +33,7 @@ minio:
     - name: orino
       policy: none
       purge: false
+    # 노트 이미지: img.orino.dev로 공개 서빙. download = anonymous read-only.
+    - name: note-images
+      policy: download
+      purge: false
