@@ -26,12 +26,17 @@ export const importReviewCalendar = () =>
  * lazy로 초기 번들은 가볍게 유지하면서, 실제 진입 시에는 이미 캐시돼 즉시 렌더된다.
  */
 export function prefetchRoutes() {
+  // 테스트 환경에서는 prefetch를 건너뛴다. idle 콜백이 테스트 teardown 후
+  // 동적 import를 실행해 EnvironmentTeardownError를 일으키기 때문.
+  if (import.meta.env.MODE === "test") return;
+
   const run = () => {
-    void importMaterialDetail();
-    void importMaterialList();
-    void importTodayReviews();
-    void importReviewCalendar();
-    void importHome();
+    const ignore = () => {};
+    void importMaterialDetail().catch(ignore);
+    void importMaterialList().catch(ignore);
+    void importTodayReviews().catch(ignore);
+    void importReviewCalendar().catch(ignore);
+    void importHome().catch(ignore);
   };
   if (typeof requestIdleCallback === "function") {
     requestIdleCallback(run);
