@@ -1,4 +1,7 @@
 sealed-secrets:
+  # 마스터키 자동 회전 비활성화(고정 키). 오프라인 백업 1회로 영구 복원 가능해지고,
+  # 회전으로 백업이 stale 되어 복호화 불능이 되는 사고를 방지한다. (#316)
+  keyrenewperiod: "0"
   resources:
     requests:
       cpu: 50m
