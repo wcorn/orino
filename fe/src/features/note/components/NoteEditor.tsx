@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { DragHandle } from "@tiptap/extension-drag-handle-react";
+import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import { TableKit } from "@tiptap/extension-table";
 import TaskItem from "@tiptap/extension-task-item";
@@ -14,6 +15,7 @@ import { Input } from "@/components/ui/input";
 
 import type { NoteContent, NoteDetail } from "../api/notes";
 import { ChildPage, collectChildPageIds } from "../editor/childPage";
+import { extractImageFiles, uploadAndInsertImage } from "../editor/imageUpload";
 import { useAutoSaveNote } from "../hooks/useAutoSaveNote";
 import { useCreateNote, useDeleteNote } from "../hooks/useNoteMutations";
 import { noteKeys } from "../queryKeys";
@@ -50,6 +52,9 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
   // 본문에 현재 박혀 있는 childPage noteId 집합 (삭제 diff 기준).
   // NoteTab이 key={note.id}로 리마운트하므로 마운트 시점 content 기준으로 1회 초기화한다.
   const childIdsRef = useRef<Set<number>>(collectChildPageIds(note.content));
+  // editorProps 핸들러(handlePaste/handleDrop)는 생성 시점 클로저라 editor를
+  // 직접 못 잡으므로 ref로 우회한다.
+  const editorRef = useRef<ReturnType<typeof useEditor>>(null);
 
   const editor = useEditor(
     {
@@ -58,6 +63,7 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
         TaskList,
         TaskItem.configure({ nested: true }),
         TableKit.configure({ table: { resizable: true } }),
+        Image.configure({ inline: false }),
         Placeholder.configure({
           placeholder: "내용을 입력하거나 페이지를 추가하세요...",
         }),
@@ -70,6 +76,30 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
             "prose prose-sm dark:prose-invert max-w-none min-h-[40svh] focus:outline-none py-4 pr-4 pl-10",
           "aria-label": "노트 본문",
         },
+        // 클립보드 붙여넣기로 이미지 업로드
+        handlePaste: (_view, event) => {
+          const files = extractImageFiles(event.clipboardData);
+          if (files.length === 0) return false;
+          event.preventDefault();
+          files.forEach((file) => {
+            if (editorRef.current)
+              void uploadAndInsertImage(editorRef.current, file);
+          });
+          return true;
+        },
+        // 드래그앤드롭으로 이미지 업로드
+        handleDrop: (_view, event) => {
+          const files = extractImageFiles(
+            (event as DragEvent).dataTransfer ?? null,
+          );
+          if (files.length === 0) return false;
+          event.preventDefault();
+          files.forEach((file) => {
+            if (editorRef.current)
+              void uploadAndInsertImage(editorRef.current, file);
+          });
+          return true;
+        },
       },
       onUpdate: ({ editor }) => {
         const json = editor.getJSON() as NoteContent;
@@ -79,6 +109,7 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
     },
     [note.id],
   );
+  editorRef.current = editor;
 
   // 노트 전환은 NoteTab의 key={note.id} 리마운트로 처리되므로
   // setContent를 수동 호출하지 않는다. (editor 재생성마다 setContent가

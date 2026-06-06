@@ -16,6 +16,9 @@ dependencies {
     implementation 'net.logstash.logback:logstash-logback-encoder:8.0'
     implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
     implementation 'io.micrometer:micrometer-registry-prometheus'
+    // 노트 이미지 업로드: MinIO(S3 호환) presigned PUT URL 발급
+    implementation platform('software.amazon.awssdk:bom:2.34.0')
+    implementation 'software.amazon.awssdk:s3'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'

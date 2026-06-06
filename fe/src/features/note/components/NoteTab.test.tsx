@@ -331,6 +331,56 @@ describe("NoteTab", () => {
     expect(screen.getByRole("button", { name: "표 삭제" })).toBeInTheDocument();
   });
 
+  it("툴바 [이미지 추가]로 파일 선택 시 presign→PUT 후 본문에 이미지가 삽입된다", async () => {
+    mockTree([
+      { id: 1, title: "노트", parentId: null, sortOrder: 0, children: [] },
+    ]);
+    mockNoteDetail(1, { type: "doc", content: [] }, "노트");
+
+    let presignCalled = false;
+    let putCalled = false;
+    const publicUrl = "https://img.orino.dev/note-images/1/abc.png";
+    server.use(
+      http.post(`${API_BASE}/planner/images/upload-url`, () => {
+        presignCalled = true;
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            uploadUrl:
+              "https://img.orino.dev/note-images/1/abc.png?X-Amz-Signature=x",
+            publicUrl,
+          },
+        });
+      }),
+      http.put("https://img.orino.dev/note-images/:bucket/*", () => {
+        putCalled = true;
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
+
+    const user = userEvent.setup();
+    const { container } = renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("노트 제목")).toHaveValue("노트");
+    });
+    expect(container.querySelector("img")).toBeNull();
+
+    const file = new File(["fake"], "shot.png", { type: "image/png" });
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    await user.upload(input, file);
+
+    await waitFor(() => expect(presignCalled).toBe(true));
+    await waitFor(() => expect(putCalled).toBe(true));
+    await waitFor(() => {
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      expect(img?.getAttribute("src")).toBe(publicUrl);
+    });
+  });
+
   it("표 삽입 후 [헤더] 버튼으로 제목 행을 선택적으로 켤 수 있다", async () => {
     mockTree([
       { id: 1, title: "노트", parentId: null, sortOrder: 0, children: [] },

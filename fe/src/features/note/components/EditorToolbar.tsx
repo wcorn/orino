@@ -7,6 +7,7 @@ import {
   FilePlus,
   Heading1,
   Heading2,
+  ImagePlus,
   Italic,
   List,
   ListOrdered,
@@ -15,9 +16,12 @@ import {
   Table,
   Trash2,
 } from "lucide-react";
+import { useRef } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+import { uploadAndInsertImage } from "../editor/imageUpload";
 
 interface Props {
   editor: Editor | null;
@@ -42,6 +46,7 @@ export function EditorToolbar({
     editor,
     selector: ({ editor }) => editor?.isActive("table") ?? false,
   });
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   if (!editor) return null;
 
@@ -137,6 +142,28 @@ export function EditorToolbar({
           </Button>
         );
       })}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="이미지 추가"
+        onClick={() => imageInputRef.current?.click()}
+      >
+        <ImagePlus className="size-4" />
+      </Button>
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        aria-hidden
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          files.forEach((file) => void uploadAndInsertImage(editor, file));
+          e.target.value = "";
+        }}
+      />
       {onInsertPage && (
         <>
           <span className="bg-border mx-1 w-px self-stretch" aria-hidden />

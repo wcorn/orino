@@ -178,6 +178,18 @@
   margin-bottom: 0;
 }
 
+.tiptap img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+  margin: 0.5em 0;
+}
+
+/* 선택된 이미지 강조 */
+.tiptap img.ProseMirror-selectednode {
+  outline: 2px solid var(--primary);
+}
+
 /* 노트 에디터 표 스타일 (#431). prose 기본 표 스타일에 더해
    셀 경계선·헤더 배경·셀 선택·열 리사이즈 핸들을 명시한다. */
 .tiptap .tableWrapper {
