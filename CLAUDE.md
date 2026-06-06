@@ -23,6 +23,14 @@ orino/
 - 새로운 기능 작업 시 GitHub Issue가 없으면 먼저 생성한다
 - Issue/PR 생성 시 assignee를 항상 `wcorn`으로 설정한다
 
+### 엔지니어링 로그 (트러블슈팅 · 성능 개선)
+
+- 트러블슈팅, 성능 개선, 비용 최적화, 장애 대응 등 **문제→원인→조치→결과**가 있는 작업은
+  [Engineering Log (Wiki)](https://github.com/wcorn/orino/wiki/Engineering-Log)에 기록한다
+- 인덱스 페이지(`Engineering-Log`)에 리스트로 한 줄 추가하고, 항목별 **개별 페이지**(`ELOG-NNN-<slug>`)를 만든다
+- 개별 페이지는 전후 흐름이 드러나게 작성한다: 상황(Before) → 원인 분석 → 조치 → 결과(After) → 교훈 → 관련 이슈/PR
+- 템플릿은 인덱스 페이지 하단을 참고한다
+
 ## Backend (be/)
 
 **Spring Boot 4.0.3 / Java 25**, Gradle Groovy DSL
