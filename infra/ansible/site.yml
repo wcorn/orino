@@ -1,0 +1,8 @@
+---
+# Orino 노드: OS 설치를 제외한 모든 설정을 코드로 관리한다 (#461).
+# ArgoCD(워크로드) 아래의 노드 OS 레이어.
+- name: 노드 OS 설정
+  hosts: orino_nodes
+  become: true
+  roles:
+    - node-os

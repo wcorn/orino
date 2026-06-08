@@ -1,0 +1,12 @@
+---
+- name: 커널 sysctl 적용 (영구 /etc/sysctl.d + 즉시 반영)
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-orino.conf
+    sysctl_set: true
+    reload: true
+    state: present
+  loop: "{{ node_os_sysctls | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} = {{ item.value }}"
