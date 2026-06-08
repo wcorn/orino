@@ -1,0 +1,12 @@
+# 위 풀을 L2(ARP)로 광고. VIP 가 note1/note2 중 살아있는 노드에서 응답(failover).
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: {{ .Values.addressPool.name }}
+  namespace: metallb-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  ipAddressPools:
+    - {{ .Values.addressPool.name }}

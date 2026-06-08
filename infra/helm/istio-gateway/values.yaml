@@ -1,6 +1,10 @@
 gateway:
   service:
-    type: ClusterIP
+    # Cloudflare 제거 → 집 회선 직결(#456). MetalLB가 LAN VIP 192.168.0.240 할당,
+    # 공유기 443 → .240 포워딩. 80은 전환 중 cloudflared 내부 경로용으로 유지.
+    type: LoadBalancer
+    annotations:
+      metallb.universe.tf/loadBalancerIPs: "192.168.0.240"
 
   # 외부 트래픽 진입점이므로 HA 구성 (최소 2 replica)
   replicaCount: 2

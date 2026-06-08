@@ -1,0 +1,16 @@
+apiVersion: v2
+name: metallb
+description: MetalLB — 베어메탈 L2 LoadBalancer (istio gateway VIP 할당)
+type: application
+version: 1.0.0
+appVersion: "0.16.1"
+
+dependencies:
+  - name: metallb
+    version: 0.16.1
+    repository: https://metallb.github.io/metallb
+
+keywords:
+  - metallb
+  - loadbalancer
+  - bare-metal
