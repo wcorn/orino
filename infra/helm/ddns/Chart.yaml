@@ -1,0 +1,10 @@
+apiVersion: v2
+name: ddns
+description: DDNS — 집 동적 공인 IP 감지 후 Route53 A레코드 자동 갱신 (CronJob)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - ddns
+  - route53

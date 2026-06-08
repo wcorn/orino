@@ -1,0 +1,14 @@
+# amazon/aws-cli 공식 이미지(curl+aws 내장) — 런타임 설치 없음
+image: amazon/aws-cli:2.31.21
+schedule: "*/5 * * * *"     # 5분마다 IP 확인 (동적 IP는 드물게 변경됨)
+
+route53:
+  zoneId: Z018202013XAUKBKU2J8V
+  region: us-east-1          # route53는 글로벌, 리전 무관
+  ttl: 60
+  # 공백 구분. img.orino.dev는 istio VirtualService 단계에서 추가
+  records: "orino.dev api.orino.dev"
+
+resources:
+  requests: {cpu: 25m, memory: 32Mi}
+  limits: {cpu: 100m, memory: 128Mi}
