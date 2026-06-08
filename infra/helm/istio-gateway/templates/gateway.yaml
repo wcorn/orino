@@ -7,10 +7,22 @@ spec:
   selector:
     istio: gateway
   servers:
+    # 80: 전환 중 cloudflared 내부 경로용으로 유지. cloudflared 제거 시 함께 정리.
     - port:
         number: 80
         name: http
         protocol: HTTP
+      hosts:
+        - "orino.dev"
+        - "*.orino.dev"
+    # 443: 집 회선 직결 HTTPS. cert-manager 발급 TLS secret(orino-tls)으로 종단. (#456)
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: orino-tls
       hosts:
         - "orino.dev"
         - "*.orino.dev"

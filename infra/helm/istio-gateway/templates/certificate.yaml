@@ -1,0 +1,19 @@
+# cert-manager Certificate — Let's Encrypt(Route53 DNS-01)로 발급해 orino-tls Secret 생성.
+# istio Gateway 443 이 이 secret 으로 TLS 종단한다. 이슈 #456
+# (cert-manager CRD라 ArgoCD 적용 순서 대비 SkipDryRun)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: orino-tls
+  namespace: istio-ingress
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  secretName: orino-tls
+  issuerRef:
+    name: letsencrypt-route53
+    kind: ClusterIssuer
+  dnsNames:
+    - orino.dev
+    - api.orino.dev
+    - img.orino.dev
