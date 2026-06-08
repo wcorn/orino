@@ -1,0 +1,15 @@
+cert-manager:
+  # CRD(ClusterIssuer/Certificate 등) 함께 설치
+  crds:
+    enabled: true
+  resources:
+    requests: {cpu: 25m, memory: 64Mi}
+    limits: {cpu: 100m, memory: 128Mi}
+  webhook:
+    resources:
+      requests: {cpu: 25m, memory: 32Mi}
+      limits: {cpu: 100m, memory: 64Mi}
+  cainjector:
+    resources:
+      requests: {cpu: 25m, memory: 64Mi}
+      limits: {cpu: 100m, memory: 128Mi}
