@@ -19,3 +19,53 @@ output "route53_orino_name_servers" {
   description = "가비아 콘솔에 입력할 NS 4개 (orino.dev 위임용)"
   value       = aws_route53_zone.orino.name_servers
 }
+
+# DNS 자동화용 IAM (cert-manager DNS-01 TXT + DDNS A레코드 갱신 공용). 이슈 #456
+resource "aws_iam_user" "route53_dns" {
+  name = "route53-dns"
+}
+
+resource "aws_iam_user_policy" "route53_dns" {
+  name = "route53-dns"
+  user = aws_iam_user.route53_dns.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["route53:GetChange"]
+        Resource = ["arn:aws:route53:::change/*"]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "route53:ChangeResourceRecordSets",
+          "route53:ListResourceRecordSets",
+        ]
+        Resource = ["arn:aws:route53:::hostedzone/${aws_route53_zone.orino.zone_id}"]
+      },
+      {
+        # cert-manager zone 탐색 + DDNS. hostedZoneID 명시하면 cert-manager엔 불필요하나 DDNS용 유지
+        Effect   = "Allow"
+        Action   = ["route53:ListHostedZonesByName", "route53:ListHostedZones"]
+        Resource = ["*"]
+      },
+    ]
+  })
+}
+
+resource "aws_iam_access_key" "route53_dns" {
+  user = aws_iam_user.route53_dns.name
+}
+
+output "route53_dns_access_key_id" {
+  description = "Route53 DNS 자동화 IAM access key ID (cert-manager/DDNS)"
+  value       = aws_iam_access_key.route53_dns.id
+}
+
+output "route53_dns_secret_access_key" {
+  description = "Route53 DNS 자동화 IAM secret access key"
+  value       = aws_iam_access_key.route53_dns.secret
+  sensitive   = true
+}

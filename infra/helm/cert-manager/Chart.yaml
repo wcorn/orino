@@ -1,0 +1,16 @@
+apiVersion: v2
+name: cert-manager
+description: cert-manager — TLS 인증서 자동 발급/갱신 (Let's Encrypt + Route53 DNS-01)
+type: application
+version: 1.0.0
+appVersion: "v1.20.2"
+
+dependencies:
+  - name: cert-manager
+    version: v1.20.2
+    repository: https://charts.jetstack.io
+
+keywords:
+  - cert-manager
+  - tls
+  - lets-encrypt
