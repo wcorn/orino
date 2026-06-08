@@ -1,0 +1,7 @@
+---
+# 노드 커널 sysctl.
+# inotify 인스턴스 기본값(128) 고갈로 containerd 의 컨테이너 생성이 막혀
+# MySQL 백업(microdnf)·MetalLB speaker 가 "too many open files" 로 실패했음 → 상향. (#461)
+node_os_sysctls:
+  fs.inotify.max_user_instances: "1024"   # 기본 128 → 1024
+  fs.inotify.max_user_watches: "524288"   # 기본 ~119k → 524288
