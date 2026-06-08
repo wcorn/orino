@@ -6,6 +6,7 @@ metadata:
 spec:
   backupTargetURL: "s3://orino-longhorn-backup@ap-northeast-2/"
   credentialSecret: "longhorn-backup-s3"
-  # S3 요청 비용 절감: 단일 클러스터라 외부에서 백업이 생성되지 않으므로
-  # 잦은 폴링이 불필요. 5m → 1h 로 완화해 백업스토어 LIST/GET 요청을 12배 감축.
-  pollInterval: "1h0m0s"
+  # S3 요청 비용 절감: 폴링은 DR standby 가 새 백업을 동기화할 때만 의미가 있는데
+  # orino 는 단일 클러스터라 가치가 0. "0" 으로 폴링을 완전 비활성화해 backupstore
+  # LIST 요청을 제거한다(longhorn#9817, #1547). 백업(daily 04:00)·복원에는 영향 없음.
+  pollInterval: "0"
