@@ -69,3 +69,28 @@ output "route53_dns_secret_access_key" {
   value       = aws_iam_access_key.route53_dns.secret
   sensitive   = true
 }
+
+# A 레코드 — 집 공인(WAN) IP 직결. 초기값은 현재 IP, 이후 DDNS(ddns-updater)가
+# 동적 IP 변경 시 갱신하므로 records/ttl 변경은 terraform 이 무시. 이슈 #456
+# (img.orino.dev 는 istio VirtualService 단계에서 함께 추가)
+resource "aws_route53_record" "apex" {
+  zone_id = aws_route53_zone.orino.zone_id
+  name    = "orino.dev"
+  type    = "A"
+  ttl     = 60
+  records = ["210.183.38.83"]
+  lifecycle {
+    ignore_changes = [records, ttl]
+  }
+}
+
+resource "aws_route53_record" "api" {
+  zone_id = aws_route53_zone.orino.zone_id
+  name    = "api.orino.dev"
+  type    = "A"
+  ttl     = 60
+  records = ["210.183.38.83"]
+  lifecycle {
+    ignore_changes = [records, ttl]
+  }
+}
