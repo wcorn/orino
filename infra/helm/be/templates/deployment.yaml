@@ -105,6 +105,23 @@ spec:
                 secretKeyRef:
                   name: minio-secret
                   key: rootPassword
+            # Planner Google Calendar/Tasks 연동 OAuth 자격증명.
+            # google-secret SealedSecret은 Google Cloud Console 발급값으로 별도 등록한다(Epic #472 선행작업).
+            # 미등록 상태에서도 기동되도록 optional:true (스캐폴딩 단계). redirect-uri는 비밀이 아니라 values로 주입.
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: google-secret
+                  key: GOOGLE_CLIENT_ID
+                  optional: true
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: google-secret
+                  key: GOOGLE_CLIENT_SECRET
+                  optional: true
+            - name: GOOGLE_REDIRECT_URI
+              value: {{ .Values.env.GOOGLE_REDIRECT_URI | quote }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           lifecycle:

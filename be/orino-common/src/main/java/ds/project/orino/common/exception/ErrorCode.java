@@ -14,7 +14,12 @@ public enum ErrorCode {
     // STUDY PLANNER
     RESOURCE_NOT_FOUND("SP-ERR-001", "존재하지 않는 리소스입니다.", 404),
     INVALID_REQUEST("SP-ERR-002", "유효하지 않은 요청입니다.", 400),
-    INVALID_STATE("SP-ERR-003", "현재 상태에서 수행할 수 없는 작업입니다.", 409);
+    INVALID_STATE("SP-ERR-003", "현재 상태에서 수행할 수 없는 작업입니다.", 409),
+
+    // PLANNER (Google Calendar 연동)
+    GOOGLE_NOT_CONNECTED("PLN-ERR-003", "Google 연동이 필요합니다.", 409),
+    GOOGLE_API_FAILED("PLN-ERR-004", "Google API 호출에 실패했습니다.", 502),
+    GOOGLE_INVALID_GRANT("PLN-ERR-005", "Google 연동이 만료되어 재연결이 필요합니다.", 401);
 
     private final String code;
     private final String message;
