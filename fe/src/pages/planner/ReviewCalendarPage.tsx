@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { GoogleNotConnectedBanner } from "@/features/google/components/GoogleNotConnectedBanner";
 import {
   addMonths,
   groupByDate,
@@ -74,6 +75,8 @@ export function ReviewCalendarPage() {
           오늘
         </Button>
       </div>
+
+      <GoogleNotConnectedBanner />
 
       <CalendarLegend />
 

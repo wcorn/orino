@@ -5,11 +5,13 @@ import { PrivateRoute } from "../features/auth/components/PrivateRoute";
 import { PublicRoute } from "../features/auth/components/PublicRoute";
 import { LandingPage } from "../pages/LandingPage";
 import { LoginPage } from "../pages/LoginPage";
+import { PlannerCallbackRedirect } from "../pages/planner/PlannerCallbackRedirect";
 import { AppLayout } from "./layout/AppLayout";
 import {
   importHome,
   importMaterialDetail,
   importMaterialList,
+  importPlannerSettings,
   importReviewCalendar,
   importTodayReviews,
 } from "./routeImports";
@@ -21,6 +23,7 @@ const MaterialListPage = lazy(importMaterialList);
 const MaterialDetailPage = lazy(importMaterialDetail);
 const TodayReviewsPage = lazy(importTodayReviews);
 const ReviewCalendarPage = lazy(importReviewCalendar);
+const PlannerSettingsPage = lazy(importPlannerSettings);
 
 function RouteFallback() {
   return <div className="text-muted-foreground p-6 text-sm">불러오는 중…</div>;
@@ -75,6 +78,16 @@ export function AppRouter() {
               </Suspense>
             }
           />
+          <Route
+            path="/planner/settings"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <PlannerSettingsPage />
+              </Suspense>
+            }
+          />
+          {/* OAuth 콜백 복귀 지점: 토스트 후 캘린더로 */}
+          <Route path="/planner" element={<PlannerCallbackRedirect />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

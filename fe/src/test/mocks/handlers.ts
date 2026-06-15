@@ -35,4 +35,17 @@ export const handlers = [
   http.post(`${API_BASE}/auth/logout`, () => {
     return HttpResponse.json({ code: "OK", data: null });
   }),
+
+  // 기본값: Google 미연동. 연동 상태를 검증하는 테스트는 server.use로 덮어쓴다.
+  http.get(`${API_BASE}/planner/google/status`, () => {
+    return HttpResponse.json({
+      code: "OK",
+      data: {
+        connected: false,
+        googleEmail: null,
+        scopes: null,
+        connectedAt: null,
+      },
+    });
+  }),
 ];
