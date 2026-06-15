@@ -6,3 +6,5 @@
   become: true
   roles:
     - node_os
+    - kubeadm_prereqs
+    - container_runtime

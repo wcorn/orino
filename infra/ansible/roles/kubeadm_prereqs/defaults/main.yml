@@ -1,0 +1,12 @@
+---
+# kubeadm/CNI 가 요구하는 노드 사전조건. (#461 Phase 2)
+# overlay: containerd overlayfs 스냅샷터, br_netfilter: bridge 트래픽 iptables 경유.
+kubeadm_prereqs_kernel_modules:
+  - overlay
+  - br_netfilter
+
+# Pod 네트워킹 사전조건 sysctl. br_netfilter 로드 후 적용해야 한다.
+kubeadm_prereqs_sysctls:
+  net.ipv4.ip_forward: "1"
+  net.bridge.bridge-nf-call-iptables: "1"
+  net.bridge.bridge-nf-call-ip6tables: "1"
