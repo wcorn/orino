@@ -9,3 +9,4 @@
     - kubeadm_prereqs
     - container_runtime
     - kubeadm
+    - argocd_bootstrap

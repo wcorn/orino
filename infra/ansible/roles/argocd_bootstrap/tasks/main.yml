@@ -1,0 +1,83 @@
+---
+# ArgoCD 부트스트랩. (#461 Phase 4) — control-plane 에서만, 최초 1회.
+#
+# ⚠️ 안전장치: 이미 ArgoCD 가 설치돼 있으면(argocd-server 디플로이 존재) 부트스트랩
+#    블록 전체를 skip 한다. 운영 ArgoCD 에 helm 재설치/재apply 하지 않는다.
+#    → note1(설치됨) 적용 시 조회 태스크만 돌고 changed=0(무중단).
+#
+# ⚠️ 단일 클러스터라 실증 테스트 불가(역공학). 본체는 chicken-and-egg 로 GitOps 밖이며
+#    values/project/root 소스는 항상 repo main 을 가리킨다.
+
+- name: Control-plane kubeconfig 존재 확인
+  ansible.builtin.stat:
+    path: "{{ argocd_bootstrap_kubeconfig }}"
+  register: argocd_bootstrap_admin_conf
+
+- name: ArgoCD 설치 여부 확인 (control-plane)
+  ansible.builtin.command:
+    cmd: >
+      kubectl --kubeconfig {{ argocd_bootstrap_kubeconfig }}
+      -n {{ argocd_bootstrap_namespace }} get deploy argocd-server
+  register: argocd_bootstrap_check
+  changed_when: false
+  failed_when: false
+  when:
+    - inventory_hostname in groups['control_plane']
+    - argocd_bootstrap_admin_conf.stat.exists
+
+- name: ArgoCD 부트스트랩 (미설치 control-plane 에서만)
+  when:
+    - inventory_hostname in groups['control_plane']
+    - argocd_bootstrap_admin_conf.stat.exists
+    - argocd_bootstrap_check.rc is defined
+    - argocd_bootstrap_check.rc != 0
+  block:
+    - name: Helm CLI 설치 (신규 노드 부트스트랩 도구)
+      ansible.builtin.unarchive:
+        src: "https://get.helm.sh/helm-{{ argocd_bootstrap_helm_version }}-linux-amd64.tar.gz"
+        dest: /usr/local/bin
+        remote_src: true
+        extra_opts:
+          - --strip-components=1
+          - linux-amd64/helm
+        creates: /usr/local/bin/helm
+
+    - name: Argo helm 저장소 추가
+      ansible.builtin.command:
+        cmd: >
+          helm repo add {{ argocd_bootstrap_helm_repo_name }}
+          {{ argocd_bootstrap_helm_repo_url }} --force-update
+      changed_when: false
+
+    - name: Helm 저장소 갱신
+      ansible.builtin.command:
+        cmd: helm repo update {{ argocd_bootstrap_helm_repo_name }}
+      changed_when: false
+
+    - name: ArgoCD helm 설치 (values 는 repo main)
+      ansible.builtin.command:
+        cmd: >
+          helm upgrade --install argocd
+          {{ argocd_bootstrap_helm_repo_name }}/{{ argocd_bootstrap_chart }}
+          --namespace {{ argocd_bootstrap_namespace }} --create-namespace
+          --version {{ argocd_bootstrap_chart_version }}
+          -f {{ argocd_bootstrap_values_url }}
+          --kubeconfig {{ argocd_bootstrap_kubeconfig }}
+      changed_when: true
+
+    # AppProject 는 root 앱(project: orino)보다 먼저 있어야 한다.
+    - name: AppProject(orino) apply
+      ansible.builtin.command:
+        cmd: >
+          kubectl --kubeconfig {{ argocd_bootstrap_kubeconfig }}
+          apply -f {{ argocd_bootstrap_project_url }}
+      register: argocd_bootstrap_project
+      changed_when: "'created' in argocd_bootstrap_project.stdout or 'configured' in argocd_bootstrap_project.stdout"
+
+    - name: Root App-of-Apps apply (이후는 ArgoCD 가 GitOps 로 가져감)
+      ansible.builtin.command:
+        cmd: >
+          kubectl --kubeconfig {{ argocd_bootstrap_kubeconfig }}
+          apply -f {{ argocd_bootstrap_root_app_url }}
+      register: argocd_bootstrap_root
+      changed_when: "'created' in argocd_bootstrap_root.stdout or 'configured' in argocd_bootstrap_root.stdout"
