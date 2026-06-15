@@ -5,4 +5,4 @@
   hosts: orino_nodes
   become: true
   roles:
-    - node-os
+    - node_os
