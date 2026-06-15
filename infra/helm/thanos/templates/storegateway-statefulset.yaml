@@ -29,6 +29,10 @@ spec:
             - --objstore.config-file=/etc/thanos/objstore.yml
             - --http-address=0.0.0.0:9090
             - --grpc-address=0.0.0.0:10901
+            {{- if .Values.storegateway.cachingBucket.enabled }}
+            # S3 메타/청크 subrange 를 memcached 에 캐싱해 GET 호출을 대폭 줄인다.
+            - --store.caching-bucket.config-file=/etc/thanos-caching/caching-bucket.yml
+            {{- end }}
           ports:
             - name: http
               containerPort: 9090
@@ -47,12 +51,21 @@ spec:
               mountPath: /var/thanos/store
             - name: objstore-config
               mountPath: /etc/thanos
+            {{- if .Values.storegateway.cachingBucket.enabled }}
+            - name: caching-bucket-config
+              mountPath: /etc/thanos-caching
+            {{- end }}
           resources:
             {{- toYaml .Values.storegateway.resources | nindent 12 }}
       volumes:
         - name: objstore-config
           secret:
             secretName: {{ .Values.objstoreSecret }}
+        {{- if .Values.storegateway.cachingBucket.enabled }}
+        - name: caching-bucket-config
+          configMap:
+            name: thanos-caching-bucket
+        {{- end }}
   volumeClaimTemplates:
     - apiVersion: v1
       kind: PersistentVolumeClaim

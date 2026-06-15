@@ -22,6 +22,9 @@ storegateway:
   replicas: 1
   storageClass: longhorn
   storageSize: 5Gi
+  # caching bucket: S3 GET 요청 절감(메타/청크 subrange 를 memcached 캐싱)
+  cachingBucket:
+    enabled: true
   resources:
     requests:
       cpu: 100m
@@ -29,6 +32,20 @@ storegateway:
     limits:
       cpu: 500m
       memory: 512Mi
+
+# store-gateway caching-bucket 외부 backend (작게 — 취미 클러스터)
+memcached:
+  image: memcached:1.6.38-alpine
+  allocatedMemoryMB: 256
+  maxItemSize: 5m
+  maxConnections: 1024
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 320Mi
 
 compactor:
   retentionRaw: 30d
