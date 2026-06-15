@@ -7,3 +7,9 @@ tailscale-operator:
 
 # tailnet 신원 → k8s 권한 매핑. API server proxy가 이 사용자로 impersonate.
 adminUser: dsk08208@gmail.com
+
+# 집 LAN을 tailnet에 노출하는 subnet router (CI 러너가 노드 접근용)
+subnetRouter:
+  enabled: true
+  advertiseRoutes:
+    - "192.168.0.0/24"

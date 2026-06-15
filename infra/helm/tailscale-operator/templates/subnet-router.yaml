@@ -1,0 +1,16 @@
+{{- if .Values.subnetRouter.enabled }}
+# 집 LAN(192.168.0.0/24)을 tailnet에 광고하는 subnet router.
+# → tailnet 클라이언트(CI 러너 등)가 노드에 아무것도 안 깔고도 노드 LAN IP로 접근.
+# tags 기본 tag:k8s. 라우트 자동승인은 ACL autoApprovers.routes 로 설정.
+apiVersion: tailscale.com/v1alpha1
+kind: Connector
+metadata:
+  name: orino-subnet-router
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  hostname: orino-subnet-router
+  subnetRouter:
+    advertiseRoutes:
+      {{- toYaml .Values.subnetRouter.advertiseRoutes | nindent 8 }}
+{{- end }}

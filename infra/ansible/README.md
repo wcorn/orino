@@ -17,10 +17,10 @@ ansible-playbook site.yml --ask-become-pass     # sudo 비밀번호 입력
 ## 롤
 | 롤 | 내용 |
 |---|---|
-| `node-os` | 커널 sysctl (inotify 등). 값은 `roles/node-os/defaults/main.yml` 에서 관리 |
+| `node_os` | 커널 sysctl (inotify 등). 값은 `roles/node_os/defaults/main.yml` 에서 관리 |
 
 ## 로드맵 (#461)
-- [x] Phase 1: `node-os` (sysctl)
+- [x] Phase 1: `node_os` (sysctl)
 - [ ] Phase 2: `container-runtime` (containerd) + kubeadm 사전조건
 - [ ] Phase 3: `kubeadm` (init/join)
 - [ ] Phase 4: `argocd-bootstrap` (argocd 설치 + root app/project)

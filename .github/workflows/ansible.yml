@@ -1,0 +1,75 @@
+name: Ansible
+
+on:
+  pull_request:
+    paths:
+      - 'infra/ansible/**'
+      - '.github/workflows/ansible.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/ansible/**'
+
+concurrency:
+  group: ansible-apply
+  cancel-in-progress: false
+
+jobs:
+  # PR·main 모두에서 lint + syntax-check (선행작업 불필요)
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/ansible
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Ansible + ansible-lint
+        run: pip install ansible ansible-lint
+      - name: Syntax check
+        run: ansible-playbook site.yml --syntax-check
+      - name: ansible-lint
+        run: ansible-lint
+
+  # main 머지 시에만 실제 적용. tailnet(subnet router) 경유로 노드 SSH.
+  # 선행작업(시크릿/subnet router/authorized_keys) 완료 후 repo 변수
+  # ANSIBLE_APPLY_ENABLED=true 로 활성화. 그 전엔 lint만 돌고 apply는 skip.
+  apply:
+    if: github.event_name == 'push' && vars.ANSIBLE_APPLY_ENABLED == 'true'
+    needs: lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/ansible
+    steps:
+      - uses: actions/checkout@v4
+
+      # 러너를 tailnet에 ephemeral 노드로 조인 → subnet router 통해 노드 LAN 접근
+      - name: Connect to tailnet
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.ANSIBLE_SSH_KEY }}" > ~/.ssh/ci_key
+          chmod 600 ~/.ssh/ci_key
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Ansible
+        run: pip install ansible
+
+      - name: Ansible apply
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+        run: |
+          ansible-playbook site.yml \
+            -e ansible_ssh_private_key_file=~/.ssh/ci_key \
+            -e ansible_become_pass="${{ secrets.ANSIBLE_BECOME_PASS }}"
