@@ -40,7 +40,7 @@ class GoogleEventQueryServiceTest {
     private static final LocalDate TO = LocalDate.of(2026, 6, 30);
 
     private static final HttpServer EVENTS_STUB = createStub();
-    private static final AtomicInteger callCount = new AtomicInteger();
+    private static final AtomicInteger CALL_COUNT = new AtomicInteger();
     private static volatile String responseBody = "{\"items\":[]}";
 
     @Autowired
@@ -71,7 +71,7 @@ class GoogleEventQueryServiceTest {
 
     @BeforeEach
     void setUp() {
-        callCount.set(0);
+        CALL_COUNT.set(0);
         responseBody = "{\"items\":[]}";
         dbCleaner.clean();
         memberId = memberRepository.save(MemberFixture.create()).getId();
@@ -91,7 +91,7 @@ class GoogleEventQueryServiceTest {
 
         assertThat(view.connected()).isFalse();
         assertThat(view.events()).isEmpty();
-        assertThat(callCount.get()).isZero();
+        assertThat(CALL_COUNT.get()).isZero();
     }
 
     @Test
@@ -156,7 +156,7 @@ class GoogleEventQueryServiceTest {
         GoogleEventsView first = eventQueryService.getEvents(memberId, FROM, TO, SEOUL);
         GoogleEventsView second = eventQueryService.getEvents(memberId, FROM, TO, SEOUL);
 
-        assertThat(callCount.get()).isEqualTo(1);
+        assertThat(CALL_COUNT.get()).isEqualTo(1);
         assertThat(first.events()).hasSize(1);
         assertThat(second.events()).hasSize(1);
         assertThat(second.events().get(0).start()).isEqualTo("2026-06-10T14:00:00");
@@ -170,7 +170,7 @@ class GoogleEventQueryServiceTest {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/calendar/v3/calendars/primary/events", exchange -> {
-                callCount.incrementAndGet();
+                CALL_COUNT.incrementAndGet();
                 respond(exchange, 200, responseBody);
             });
             server.start();
