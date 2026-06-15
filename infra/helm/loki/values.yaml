@@ -55,10 +55,18 @@ loki:
       storageClass: longhorn
       size: 10Gi
 
+  # caching: 반복 LogQL 쿼리(Grafana 대시보드 새로고침)에서 S3 chunk GET 을 절감한다.
+  # 서브차트가 memcached 를 자체 배포 — 기본값은 수 GB라 취미 클러스터에 맞게 작게 운용.
   chunksCache:
-    enabled: false
+    enabled: true
+    allocatedMemory: 256   # memcached -m, 기본 8192MB → 256MB
+    allocatedCPU: 100m     # 기본 500m
+    writebackSizeLimit: 50MB
   resultsCache:
-    enabled: false
+    enabled: true
+    allocatedMemory: 128   # 기본 1024MB → 128MB
+    allocatedCPU: 100m
+    defaultValidity: 12h
 
   gateway:
     enabled: false
