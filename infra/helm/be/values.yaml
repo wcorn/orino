@@ -11,6 +11,8 @@ env:
   REDIS_HOST: redis.orino.svc.cluster.local
   REDIS_PORT: "6379"
   OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy.monitoring.svc.cluster.local:4318
+  # Planner Google OAuth 콜백 URI (Google Cloud Console 승인 리디렉션 URI와 일치해야 함)
+  GOOGLE_REDIRECT_URI: https://api.orino.dev/api/planner/google/oauth/callback
 
 resources:
   requests:

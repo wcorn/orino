@@ -30,6 +30,20 @@ storage:
     secret-key: ${MINIO_ROOT_PASSWORD:minioadmin}
     presign-expiry-seconds: ${IMAGE_STORAGE_PRESIGN_EXPIRY:300}
 
+# Planner Google Calendar/Tasks 연동(BFF 프록시).
+# client-id/secret은 운영에선 SealedSecret→환경변수, 로컬은 .env로 주입. 값은 Google Cloud Console 발급.
+# redirect-uri는 Console에 등록한 승인 리디렉션 URI와 정확히 일치해야 한다.
+planner:
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
+    client-secret: ${GOOGLE_CLIENT_SECRET:}
+    redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:8080/api/planner/google/oauth/callback}
+    scopes:
+      - https://www.googleapis.com/auth/calendar
+      - https://www.googleapis.com/auth/tasks
+    connect-timeout: ${GOOGLE_CONNECT_TIMEOUT:5s}
+    read-timeout: ${GOOGLE_READ_TIMEOUT:10s}
+
 management:
   tracing:
     sampling:
