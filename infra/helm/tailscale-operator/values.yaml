@@ -1,0 +1,9 @@
+tailscale-operator:
+  # OAuth는 미설정 → 별도 SealedSecret(operator-oauth, client_id/client_secret)을 사용
+  # API server proxy: tailnet 클라이언트가 kube-apiserver를 공개 노출 없이 접근.
+  apiServerProxyConfig:
+    mode: "true"               # in-process API server proxy 활성화(auth 모드)
+    allowImpersonation: "true" # 사용자 신원 impersonation용 RBAC 프로비저닝
+
+# tailnet 신원 → k8s 권한 매핑. API server proxy가 이 사용자로 impersonate.
+adminUser: dsk08208@gmail.com

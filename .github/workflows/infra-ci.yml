@@ -37,10 +37,10 @@ jobs:
         run: |
           helm repo add argoproj https://argoproj.github.io/argo-helm
           helm repo add jetstack https://charts.jetstack.io
-          helm repo add bitnami-labs https://bitnami-labs.github.io/sealed-secrets
+          helm repo add bitnami-labs https://bitnami.github.io/sealed-secrets
           helm repo add longhorn https://charts.longhorn.io
           helm repo add istio https://istio-release.storage.googleapis.com/charts
-          helm repo add cloudflare https://cloudflare.github.io/helm-charts
+          helm repo add tailscale https://pkgs.tailscale.com/helmcharts
           helm repo update
 
       - name: Helm dependency build
@@ -79,10 +79,10 @@ jobs:
         run: |
           helm repo add argoproj https://argoproj.github.io/argo-helm
           helm repo add jetstack https://charts.jetstack.io
-          helm repo add bitnami-labs https://bitnami-labs.github.io/sealed-secrets
+          helm repo add bitnami-labs https://bitnami.github.io/sealed-secrets
           helm repo add longhorn https://charts.longhorn.io
           helm repo add istio https://istio-release.storage.googleapis.com/charts
-          helm repo add cloudflare https://cloudflare.github.io/helm-charts
+          helm repo add tailscale https://pkgs.tailscale.com/helmcharts
           helm repo update
 
       - name: Validate manifests
