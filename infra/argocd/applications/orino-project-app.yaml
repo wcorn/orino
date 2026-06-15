@@ -1,0 +1,25 @@
+# AppProject 'orino'를 GitOps로 관리한다. root 앱(applications/ 관리)이 이 Application을
+# 만들고, 이 Application이 infra/argocd/project 의 AppProject를 sync → project.yaml 변경이
+# 머지만으로 반영된다. (기존엔 project가 아무 앱에도 안 잡혀 수동 apply 필요했음)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: orino-project
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: orino
+  source:
+    repoURL: https://github.com/wcorn/orino.git
+    targetRevision: main
+    path: infra/argocd/project
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: false   # AppProject 실수 삭제 방지(삭제되면 모든 앱이 project를 잃음)
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
