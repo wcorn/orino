@@ -13,7 +13,8 @@ spec:
   issuerRef:
     name: letsencrypt-route53
     kind: ClusterIssuer
+  # wildcard — 모든 서브도메인(api/img/telemetry/향후) 커버. apex는 별도 명시 필요.
+  # 새 서브도메인 추가 시 인증서 변경 불필요(VirtualService만 추가).
   dnsNames:
     - orino.dev
-    - api.orino.dev
-    - img.orino.dev
+    - "*.orino.dev"
