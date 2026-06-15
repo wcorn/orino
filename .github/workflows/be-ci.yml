@@ -49,6 +49,8 @@ jobs:
           push: false
           load: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci-scan
+          build-args: |
+            CACHEBUST=${{ github.sha }}
           cache-from: type=gha,scope=be
           cache-to: type=gha,mode=max,scope=be
 
