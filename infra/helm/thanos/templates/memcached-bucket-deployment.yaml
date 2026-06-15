@@ -1,0 +1,44 @@
+{{- if .Values.storegateway.cachingBucket.enabled }}
+# Thanos store-gateway 의 caching-bucket 외부 backend.
+# S3 의 list/exists/attributes/get-range(청크 subrange) + meta.json 을 캐싱해
+# 반복 쿼리 시 S3 GET 호출을 크게 줄인다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thanos-memcached-bucket
+  labels:
+    app.kubernetes.io/name: thanos
+    app.kubernetes.io/component: memcached-bucket
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: thanos
+      app.kubernetes.io/component: memcached-bucket
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: thanos
+        app.kubernetes.io/component: memcached-bucket
+    spec:
+      containers:
+        - name: memcached
+          image: {{ .Values.memcached.image }}
+          args:
+            - -m {{ .Values.memcached.allocatedMemoryMB }}
+            - -I {{ .Values.memcached.maxItemSize }}
+            - -c {{ .Values.memcached.maxConnections }}
+          ports:
+            - name: memcached
+              containerPort: 11211
+          readinessProbe:
+            tcpSocket: {port: memcached}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: memcached}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.memcached.resources | nindent 12 }}
+{{- end }}

@@ -1,0 +1,31 @@
+{{- if .Values.storegateway.cachingBucket.enabled }}
+# store-gateway 의 caching-bucket 설정. S3 메타데이터/청크 subrange 를 memcached 에 캐싱.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thanos-caching-bucket
+  labels:
+    app.kubernetes.io/name: thanos
+    app.kubernetes.io/component: storegateway
+data:
+  caching-bucket.yml: |
+    type: MEMCACHED
+    config:
+      addresses:
+        - thanos-memcached-bucket:11211
+      timeout: 500ms
+      max_idle_connections: 100
+      max_async_concurrency: 20
+      max_async_buffer_size: 10000
+      max_item_size: 5MiB
+      max_get_multi_concurrency: 100
+    chunk_subrange_size: 16000
+    chunk_object_attrs_ttl: 24h
+    chunk_subrange_ttl: 24h
+    max_chunks_get_range_requests: 3
+    blocks_iter_ttl: 5m
+    metafile_exists_ttl: 2h
+    metafile_doesnt_exist_ttl: 15m
+    metafile_content_ttl: 24h
+    metafile_max_size: 1MiB
+{{- end }}

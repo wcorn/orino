@@ -1,0 +1,18 @@
+{{- if .Values.storegateway.cachingBucket.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos-memcached-bucket
+  labels:
+    app.kubernetes.io/name: thanos
+    app.kubernetes.io/component: memcached-bucket
+spec:
+  clusterIP: None
+  ports:
+    - name: memcached
+      port: 11211
+      targetPort: memcached
+  selector:
+    app.kubernetes.io/name: thanos
+    app.kubernetes.io/component: memcached-bucket
+{{- end }}
