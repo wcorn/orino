@@ -2,6 +2,7 @@ package ds.project.orino.planner.google.config;
 
 import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
+import ds.project.orino.planner.google.token.GoogleUnauthorizedException;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,8 +20,9 @@ import java.nio.charset.StandardCharsets;
  * (의존성 0 추가, Jackson 재사용). OAuth 토큰 엔드포인트와 Calendar/Tasks 엔드포인트는
  * 호스트가 다르므로 baseUrl 을 두지 않고 호출부에서 절대 URI 를 지정한다.
  *
- * <p>{@code defaultStatusHandler} 가 4xx/5xx 응답을 {@link CustomException} 으로 매핑한다.
- * 응답 본문에 {@code invalid_grant} 가 있으면 재연동 필요(401)로, 그 외는 Google API 실패(502)로 본다.
+ * <p>{@code defaultStatusHandler} 가 4xx/5xx 응답을 매핑한다: API 401 → {@link GoogleUnauthorizedException}
+ * (access token 만료, {@code executeWithRetry}가 1회 갱신 후 재시도) / 본문에 {@code invalid_grant} →
+ * 재연동 필요(PLN-ERR-005) / 그 외 → Google API 실패(PLN-ERR-004).
  */
 @Configuration
 @EnableConfigurationProperties({GoogleApiProperties.class, GoogleOAuthProperties.class})
@@ -37,6 +39,9 @@ public class GoogleApiConfig {
                 .defaultStatusHandler(
                         statusCode -> statusCode.isError(),
                         (request, response) -> {
+                            if (response.getStatusCode().value() == 401) {
+                                throw new GoogleUnauthorizedException();
+                            }
                             String body = readBody(response);
                             if (body.contains("invalid_grant")) {
                                 throw new CustomException(ErrorCode.GOOGLE_INVALID_GRANT);
