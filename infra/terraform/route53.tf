@@ -94,3 +94,14 @@ resource "aws_route53_record" "api" {
     ignore_changes = [records, ttl]
   }
 }
+
+resource "aws_route53_record" "img" {
+  zone_id = aws_route53_zone.orino.zone_id
+  name    = "img.orino.dev"
+  type    = "A"
+  ttl     = 60
+  records = ["210.183.38.83"]
+  lifecycle {
+    ignore_changes = [records, ttl]
+  }
+}

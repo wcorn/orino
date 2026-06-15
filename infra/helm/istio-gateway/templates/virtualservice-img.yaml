@@ -1,0 +1,18 @@
+# img.orino.dev → MinIO(S3 호환). 브라우저가 presigned URL로 직접 PUT/GET.
+# cloudflared 직결 라우팅을 istio 경유로 이전. Host(img.orino.dev) 보존 → MinIO 서명 검증 정상. (#456)
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: img
+  namespace: istio-ingress
+spec:
+  hosts:
+    - "img.orino.dev"
+  gateways:
+    - orino-gateway
+  http:
+    - route:
+        - destination:
+            host: minio.orino.svc.cluster.local
+            port:
+              number: 9000
