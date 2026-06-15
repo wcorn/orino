@@ -41,6 +41,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/api/auth/**",
+                                "/api/planner/google/oauth/callback",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**"
                         ).permitAll()

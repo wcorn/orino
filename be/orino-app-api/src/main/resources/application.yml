@@ -43,6 +43,13 @@ planner:
       - https://www.googleapis.com/auth/tasks
     connect-timeout: ${GOOGLE_CONNECT_TIMEOUT:5s}
     read-timeout: ${GOOGLE_READ_TIMEOUT:10s}
+    oauth:
+      authorization-uri: ${GOOGLE_AUTH_URI:https://accounts.google.com/o/oauth2/v2/auth}
+      token-uri: ${GOOGLE_TOKEN_URI:https://oauth2.googleapis.com/token}
+      revoke-uri: ${GOOGLE_REVOKE_URI:https://oauth2.googleapis.com/revoke}
+      calendar-api-base-url: ${GOOGLE_CALENDAR_API_BASE_URL:https://www.googleapis.com}
+      # 콜백 후 리다이렉트할 FE base URL (local Vite 3000, prod orino.dev)
+      frontend-url: ${FRONTEND_URL:http://localhost:3000}
 
 management:
   tracing:

@@ -23,7 +23,7 @@ import java.nio.charset.StandardCharsets;
  * 응답 본문에 {@code invalid_grant} 가 있으면 재연동 필요(401)로, 그 외는 Google API 실패(502)로 본다.
  */
 @Configuration
-@EnableConfigurationProperties(GoogleApiProperties.class)
+@EnableConfigurationProperties({GoogleApiProperties.class, GoogleOAuthProperties.class})
 public class GoogleApiConfig {
 
     @Bean

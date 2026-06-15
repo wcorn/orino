@@ -122,6 +122,8 @@ spec:
                   optional: true
             - name: GOOGLE_REDIRECT_URI
               value: {{ .Values.env.GOOGLE_REDIRECT_URI | quote }}
+            - name: FRONTEND_URL
+              value: {{ .Values.env.FRONTEND_URL | quote }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           lifecycle:
