@@ -1,0 +1,16 @@
+apiVersion: v2
+name: tailscale-operator
+description: Tailscale Kubernetes operator — tailnet 위에서 kube-apiserver 보안 접근(공개 노출 없음)
+type: application
+version: 1.0.0
+appVersion: "v1.98.4"
+
+dependencies:
+  - name: tailscale-operator
+    version: 1.98.4
+    repository: https://pkgs.tailscale.com/helmcharts
+
+keywords:
+  - tailscale
+  - vpn
+  - kubectl

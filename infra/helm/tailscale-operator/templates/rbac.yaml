@@ -1,0 +1,14 @@
+# tailnet 사용자({{ .Values.adminUser }})를 cluster-admin 에 바인딩.
+# API server proxy 가 이 신원으로 요청을 impersonate → kubectl 권한 부여.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tailscale-admin
+subjects:
+  - kind: User
+    name: {{ .Values.adminUser | quote }}
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
