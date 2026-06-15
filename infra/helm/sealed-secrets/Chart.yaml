@@ -8,7 +8,7 @@ appVersion: "0.36.1"
 dependencies:
   - name: sealed-secrets
     version: 2.18.4
-    repository: https://bitnami-labs.github.io/sealed-secrets
+    repository: https://bitnami.github.io/sealed-secrets
 
 keywords:
   - sealed-secrets
