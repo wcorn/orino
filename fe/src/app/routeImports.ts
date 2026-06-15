@@ -16,9 +16,9 @@ export const importTodayReviews = () =>
   import("../pages/planner/TodayReviewsPage").then((m) => ({
     default: m.TodayReviewsPage,
   }));
-export const importReviewCalendar = () =>
-  import("../pages/planner/ReviewCalendarPage").then((m) => ({
-    default: m.ReviewCalendarPage,
+export const importPlannerCalendar = () =>
+  import("../pages/planner/PlannerCalendarPage").then((m) => ({
+    default: m.PlannerCalendarPage,
   }));
 export const importPlannerSettings = () =>
   import("../pages/planner/PlannerSettingsPage").then((m) => ({
@@ -39,7 +39,7 @@ export function prefetchRoutes() {
     void importMaterialDetail().catch(ignore);
     void importMaterialList().catch(ignore);
     void importTodayReviews().catch(ignore);
-    void importReviewCalendar().catch(ignore);
+    void importPlannerCalendar().catch(ignore);
     void importHome().catch(ignore);
   };
   if (typeof requestIdleCallback === "function") {

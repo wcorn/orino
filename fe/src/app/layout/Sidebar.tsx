@@ -14,7 +14,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/home", label: "홈", icon: Home },
   { to: "/planner/materials", label: "학습 자료", icon: BookOpen },
   { to: "/planner/reviews/today", label: "오늘 복습", icon: CheckSquare },
-  { to: "/planner/calendar", label: "복습 캘린더", icon: Calendar },
+  { to: "/planner/calendar", label: "캘린더", icon: Calendar },
   { to: "/planner/settings", label: "연동 설정", icon: Settings },
 ];
 

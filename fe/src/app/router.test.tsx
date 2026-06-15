@@ -167,6 +167,37 @@ describe("AppRouter", () => {
     });
   });
 
+  it("/planner/calendar 경로에서 통합 캘린더(일정+복습)를 렌더링한다", async () => {
+    mockEmptyTodayReviews();
+    server.use(
+      http.get(`${API_BASE}/planner/calendar`, () => {
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            from: "2026-06-01",
+            to: "2026-06-30",
+            googleConnected: false,
+            partial: false,
+            errors: [],
+            events: [],
+            tasks: [],
+            reviews: [],
+          },
+        });
+      }),
+    );
+    useAuthStore.setState({ accessToken: "valid-token" });
+
+    renderApp(["/planner/calendar"]);
+
+    // 통합 범례의 "할 일"은 통합 뷰에만 있다(기존 복습 전용 캘린더와 구분).
+    await waitFor(() => {
+      expect(screen.getByText("할 일")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "오늘" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "캘린더" })).toBeInTheDocument();
+  });
+
   it("정의되지 않은 경로는 /로 리다이렉트된다", async () => {
     renderApp(["/unknown-path"]);
 
