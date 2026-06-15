@@ -1,0 +1,13 @@
+---
+# 컨테이너 런타임(containerd) 서비스 보장. (#461 Phase 2)
+#
+# 주의: config.toml(SystemdCgroup=true 등)은 운영 클러스터 무중단을 위해
+# 이 롤에서 재작성하지 않는다. 잘못된 재템플릿/재시작은 모든 컨테이너를
+# 중단시킬 수 있다. 현재 노드는 이미 SystemdCgroup=true 로 구성돼 있으며,
+# 신규 노드 부트스트랩 시의 containerd config 관리는 kubeadm 단계(Phase 3)에서 다룬다.
+
+- name: 런타임 서비스 활성화 + 구동 (containerd, 재시작하지 않음)
+  ansible.builtin.systemd_service:
+    name: "{{ container_runtime_service }}"
+    enabled: true
+    state: started

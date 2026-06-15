@@ -1,0 +1,3 @@
+---
+# 컨테이너 런타임. 클러스터는 containerd 사용. (#461 Phase 2)
+container_runtime_service: containerd

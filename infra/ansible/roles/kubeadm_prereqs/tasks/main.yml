@@ -1,0 +1,41 @@
+---
+# kubeadm 사전조건: 커널 모듈 + 네트워크 sysctl + swap off. (#461 Phase 2)
+# 운영 클러스터는 이미 이 상태라 적용 시 거의 changed=0(무중단). 신규 노드 재현용.
+# 기존 kubeadm 생성 파일(k8s.conf 등)은 건드리지 않고 orino- 전용 파일로 관리한다.
+
+- name: 커널 모듈 부팅 시 자동 로드 (/etc/modules-load.d)
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/orino-k8s.conf
+    content: "{{ kubeadm_prereqs_kernel_modules | join('\n') }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: 커널 모듈 즉시 로드
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ kubeadm_prereqs_kernel_modules }}"
+
+- name: 네트워크 sysctl 적용 (영구 /etc/sysctl.d + 즉시 반영)
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-orino-k8s.conf
+    sysctl_set: true
+    reload: true
+    state: present
+  loop: "{{ kubeadm_prereqs_sysctls | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} = {{ item.value }}"
+
+- name: 스왑 비활성화 (현재 활성일 때만)
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb | default(0) | int > 0
+  changed_when: true
+
+- name: /etc/fstab swap 항목 주석 처리 (재부팅 후에도 off 유지)
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\bswap\b.*)$'
+    replace: '# \1'
