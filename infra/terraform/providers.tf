@@ -6,10 +6,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "~> 4.40"
-    }
     random = {
       source  = "hashicorp/random"
       version = "~> 3.6"
@@ -25,8 +21,4 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
-}
-
-provider "cloudflare" {
-  api_token = var.cloudflare_api_token
 }
