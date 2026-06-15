@@ -1,0 +1,132 @@
+---
+# kubeadm: 현 클러스터 역공학 + 신규 노드 부트스트랩. (#461 Phase 3)
+#
+# ⚠️ 안전장치: 이미 클러스터 멤버인 노드(/etc/kubernetes/kubelet.conf 존재)에는
+#    아무 것도 실행하지 않는다(블록 전체 skip). init/join 을 운영 노드에 다시 돌리면
+#    클러스터가 깨지므로, 멤버십을 먼저 확인하고 프로비저닝 블록을 통째로 가드한다.
+#    → note1/note2(기존 멤버)에는 stat 한 번만 돌고 changed=0.
+#
+# ⚠️ init/join 경로는 운영 클러스터가 하나뿐이라 실증 테스트 불가(역공학 코드).
+#    진짜 새 노드에서 검증 전까지는 "기존 클러스터 무중단"만 보증한다.
+
+- name: 클러스터 멤버십 확인 (kubelet.conf)
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: kubeadm_kubelet_conf
+
+- name: 신규 노드 프로비저닝 (기존 멤버는 전체 skip)
+  when: not kubeadm_kubelet_conf.stat.exists
+  block:
+    # --- Kubernetes apt 저장소 (현 노드와 동일) ---
+    - name: Apt 키링 디렉터리 생성
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Kubernetes apt GPG 키 설치
+      ansible.builtin.get_url:
+        url: "https://pkgs.k8s.io/core:/stable:/{{ kubeadm_repo_stream }}/deb/Release.key"
+        dest: /etc/apt/keyrings/kubernetes-apt-keyring.asc
+        mode: "0644"
+
+    - name: Kubernetes apt 저장소 등록
+      ansible.builtin.deb822_repository:
+        name: kubernetes
+        types: [deb]
+        uris: "https://pkgs.k8s.io/core:/stable:/{{ kubeadm_repo_stream }}/deb/"
+        suites: "/"
+        signed_by: /etc/apt/keyrings/kubernetes-apt-keyring.asc
+        enabled: true
+
+    # --- 패키지 설치 + hold ---
+    - name: Kubelet/kubeadm/kubectl 설치 (버전 핀)
+      ansible.builtin.apt:
+        name:
+          - "kubelet={{ kubeadm_pkg_version }}"
+          - "kubeadm={{ kubeadm_pkg_version }}"
+          - "kubectl={{ kubeadm_pkg_version }}"
+        update_cache: true
+        allow_change_held_packages: true
+
+    - name: Kubelet/kubeadm/kubectl hold (자동 업그레이드 방지)
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Kubelet 부팅 시 활성화 (start 는 kubeadm 이 수행)
+      ansible.builtin.systemd_service:
+        name: kubelet
+        enabled: true
+
+    # --- control-plane: kubeadm init (최초 1회) ---
+    - name: Kubeadm init 설정 파일 생성 (control-plane)
+      ansible.builtin.template:
+        src: kubeadm-init-config.yaml.j2
+        dest: /etc/kubernetes/orino-kubeadm-init.yaml
+        mode: "0600"
+      when: inventory_hostname in groups['control_plane']
+
+    - name: Kubeadm init 실행 (control-plane)
+      ansible.builtin.command:
+        cmd: kubeadm init --config /etc/kubernetes/orino-kubeadm-init.yaml
+        creates: /etc/kubernetes/admin.conf
+      when: inventory_hostname in groups['control_plane']
+
+    - name: Root kubeconfig 디렉터리 생성 (control-plane)
+      ansible.builtin.file:
+        path: /root/.kube
+        state: directory
+        mode: "0700"
+      when: inventory_hostname in groups['control_plane']
+
+    - name: Admin.conf 를 root kubeconfig 로 배치 (control-plane)
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: true
+        mode: "0600"
+      when: inventory_hostname in groups['control_plane']
+
+    # --- CNI: Calico (control-plane) ---
+    # 주의: podSubnet 10.244.0.0/16 사용 → 적용 전 manifest 의
+    #       CALICO_IPV4POOL_CIDR(기본 192.168.0.0/16)을 10.244.0.0/16 으로 교체해야 한다.
+    - name: Calico manifest 내려받기 (control-plane)
+      ansible.builtin.get_url:
+        url: "{{ kubeadm_calico_manifest_url }}"
+        dest: /etc/kubernetes/orino-calico.yaml
+        mode: "0644"
+      when: inventory_hostname in groups['control_plane']
+
+    - name: Calico IPPool CIDR 을 podSubnet 에 맞춤 (control-plane)
+      ansible.builtin.replace:
+        path: /etc/kubernetes/orino-calico.yaml
+        regexp: '192\.168\.0\.0/16'
+        replace: "{{ kubeadm_pod_subnet }}"
+      when: inventory_hostname in groups['control_plane']
+
+    - name: Calico 설치 (control-plane)
+      ansible.builtin.command:
+        cmd: kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f /etc/kubernetes/orino-calico.yaml
+      register: kubeadm_calico_apply
+      changed_when: "'created' in kubeadm_calico_apply.stdout or 'configured' in kubeadm_calico_apply.stdout"
+      when: inventory_hostname in groups['control_plane']
+
+    # --- worker: kubeadm join (최초 1회) ---
+    - name: Join 커맨드 생성 (control-plane 에서, 워커용)
+      ansible.builtin.command: kubeadm token create --print-join-command
+      delegate_to: "{{ groups['control_plane'][0] }}"
+      run_once: true
+      register: kubeadm_join_cmd
+      changed_when: false
+      when: inventory_hostname in groups['workers']
+
+    - name: Kubeadm join 실행 (worker)
+      ansible.builtin.command:
+        cmd: "{{ kubeadm_join_cmd.stdout }} --cri-socket {{ kubeadm_cri_socket }}"
+        creates: /etc/kubernetes/kubelet.conf
+      when: inventory_hostname in groups['workers']

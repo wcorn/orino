@@ -1,0 +1,16 @@
+# kubeadm init 설정 — 현 클러스터 역공학 (#461 Phase 3). 신규 control-plane 부트스트랩용.
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: {{ kubeadm_advertise_address }}
+nodeRegistration:
+  criSocket: {{ kubeadm_cri_socket }}
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: {{ kubeadm_kubernetes_version }}
+imageRepository: {{ kubeadm_image_repository }}
+networking:
+  podSubnet: {{ kubeadm_pod_subnet }}
+  serviceSubnet: {{ kubeadm_service_subnet }}
+  dnsDomain: {{ kubeadm_dns_domain }}

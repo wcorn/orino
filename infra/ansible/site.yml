@@ -8,3 +8,4 @@
     - node_os
     - kubeadm_prereqs
     - container_runtime
+    - kubeadm
