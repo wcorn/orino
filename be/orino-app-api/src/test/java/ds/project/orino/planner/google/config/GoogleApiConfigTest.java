@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
+import ds.project.orino.planner.google.token.GoogleUnauthorizedException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -78,6 +79,7 @@ class GoogleApiConfigTest {
             server.createContext("/ok", ex -> respond(ex, 200, "{\"ok\":true}"));
             server.createContext("/server-error", ex -> respond(ex, 500, "{\"error\":\"backendError\"}"));
             server.createContext("/invalid-grant", ex -> respond(ex, 400, "{\"error\":\"invalid_grant\"}"));
+            server.createContext("/unauthorized", ex -> respond(ex, 401, "{\"error\":\"unauthorized\"}"));
             server.start();
             baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
 
@@ -117,6 +119,14 @@ class GoogleApiConfigTest {
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(ErrorCode.GOOGLE_INVALID_GRANT);
+        }
+
+        @Test
+        @DisplayName("401 응답은 GoogleUnauthorizedException으로 매핑한다(토큰 갱신 트리거)")
+        void unauthorizedMapsToGoogleUnauthorized() {
+            assertThatThrownBy(() ->
+                    client.get().uri(baseUrl + "/unauthorized").retrieve().body(String.class))
+                    .isInstanceOf(GoogleUnauthorizedException.class);
         }
     }
 
