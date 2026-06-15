@@ -15,10 +15,11 @@ concurrency:
   group: be-ci-${{ github.ref }}
   cancel-in-progress: true
 
+# test와 image-scan은 서로 독립이다(이미지 빌드는 builder 스테이지에서 자체적으로 소스를 컴파일).
+# 한 잡에서 순차로 돌리면 wall-clock = 합(테스트+이미지빌드)이 되므로 별도 잡으로 병렬 실행한다.
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -35,13 +36,18 @@ jobs:
         working-directory: be
         run: ./gradlew build
 
+  image-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       # CD와 동일한 이미지 취약점 게이트를 PR 단계에서도 검사한다.
       # CD에만 두면 머지 후에야 push가 막혀 배포가 조용히 실패한다.
       # gha 캐시로 Docker 빌더 stage의 Gradle 의존성/컴파일 레이어를 재사용한다.
-      # scope=be로 BE CI/CD가 캐시를 공유한다.
+      # scope=be로 BE CI/CD가 캐시를 공유한다(CD가 이 캐시를 재사용해 빠르게 빌드).
       - name: Build image for scan
         uses: docker/build-push-action@v6
         with:
