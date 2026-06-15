@@ -21,7 +21,7 @@ subprojects {
 
     ext['jackson-2-bom.version'] = '2.21.2'
     ext['jackson-bom.version'] = '3.1.2'
-    ext['netty.version'] = '4.2.13.Final'
+    ext['netty.version'] = '4.2.15.Final'
     ext['spring-security.version'] = '7.0.5'
     ext['tomcat.version'] = '11.0.22'
 

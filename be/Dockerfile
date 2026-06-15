@@ -19,6 +19,9 @@ COPY . .
 RUN ./gradlew :orino-app-api:build -x test --no-daemon
 
 FROM eclipse-temurin:25-jre-alpine
+# 베이스 이미지의 alpine OS 패키지를 최신 보안 패치로 갱신한다.
+# (예: openssl/libssl3/libcrypto3 CVE-2026-45447) upstream 재빌드 전까지 신규 OS CVE를 흡수.
+RUN apk --no-cache upgrade
 WORKDIR /app
 COPY --from=builder /app/orino-app-api/build/libs/*.jar app.jar
 ENTRYPOINT ["java", "-jar", "app.jar"]
