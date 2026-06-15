@@ -11,6 +11,7 @@ public class DbCleaner {
             "flashcard",
             "note",
             "study_material",
+            "google_account",
             "member"
     };
 
