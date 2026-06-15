@@ -1,0 +1,60 @@
+name: Terraform
+
+on:
+  pull_request:
+    paths:
+      - 'infra/terraform/**'
+      - '.github/workflows/terraform.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/terraform/**'
+
+# OIDC로 AWS 자격증명을 받기 위해 id-token 필요. 정적 키 없음.
+permissions:
+  id-token: write
+  contents: read
+
+# apply 동시 실행 방지(state 잠금 + 추가 안전장치). 실행 중 취소 안 함.
+concurrency:
+  group: terraform-apply
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::012900311331:role/github-actions-terraform
+          aws-region: ap-northeast-2
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.14.8"
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform format check
+        run: terraform fmt -check -recursive
+
+      # PR: plan 만(변경 미리보기). 결과는 job summary에 출력.
+      - name: Terraform plan
+        if: github.event_name == 'pull_request'
+        run: |
+          echo '### Terraform Plan' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          terraform plan -input=false -no-color 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      # main 머지: 자동 apply.
+      - name: Terraform apply
+        if: github.event_name == 'push'
+        run: terraform apply -auto-approve -input=false
