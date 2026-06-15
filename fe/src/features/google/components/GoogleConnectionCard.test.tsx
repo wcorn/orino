@@ -98,7 +98,9 @@ describe("GoogleConnectionCard", () => {
       </>,
     );
 
-    await userEvent.click(await screen.findByRole("button", { name: "연결 해제" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "연결 해제" }),
+    );
 
     expect(await screen.findByText("연결되지 않음")).toBeInTheDocument();
     expect(

@@ -14,8 +14,9 @@ interface ApiEnvelope<T> {
 
 /** 연동 상태 조회. 미연동이면 connected=false, 나머지 null. */
 export async function fetchGoogleStatus(): Promise<GoogleStatus> {
-  const { data } =
-    await client.get<ApiEnvelope<GoogleStatus>>("/planner/google/status");
+  const { data } = await client.get<ApiEnvelope<GoogleStatus>>(
+    "/planner/google/status",
+  );
   return data.data;
 }
 
