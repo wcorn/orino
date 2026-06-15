@@ -1,0 +1,21 @@
+---
+# ArgoCD 부트스트랩 — 현 설치 역공학 (#461 Phase 4).
+# ArgoCD 본체는 chicken-and-egg 라 GitOps 관리 밖이다. helm 으로 최초 설치하고
+# AppProject(orino) + root(App-of-Apps) 를 apply 하면 그 뒤는 ArgoCD 가 가져간다.
+# (values.yaml 헤더에 기록된 수동 부트스트랩 절차를 코드화)
+
+argocd_bootstrap_namespace: argocd
+argocd_bootstrap_helm_repo_name: argo
+argocd_bootstrap_helm_repo_url: https://argoproj.github.io/argo-helm
+argocd_bootstrap_chart: argo-cd
+argocd_bootstrap_chart_version: "9.4.10"   # 현 클러스터와 동일 (app v3.3.3)
+
+# 부트스트랩 소스는 항상 repo main (GitOps 단일 진실).
+argocd_bootstrap_raw_base: "https://raw.githubusercontent.com/wcorn/orino/main/infra"
+argocd_bootstrap_values_url: "{{ argocd_bootstrap_raw_base }}/helm/argocd/values.yaml"
+argocd_bootstrap_project_url: "{{ argocd_bootstrap_raw_base }}/argocd/project/project.yaml"
+argocd_bootstrap_root_app_url: "{{ argocd_bootstrap_raw_base }}/argocd/app-of-apps/root-app.yaml"
+
+# helm CLI (부트스트랩 도구) — 신규 노드용, note1 과 동일 버전 핀.
+argocd_bootstrap_helm_version: "v3.20.1"
+argocd_bootstrap_kubeconfig: /etc/kubernetes/admin.conf
