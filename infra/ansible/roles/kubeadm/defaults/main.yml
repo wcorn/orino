@@ -1,0 +1,24 @@
+---
+# 현 클러스터 역공학 값 (#461 Phase 3). 신규 노드 부트스트랩 재현용.
+# 모두 운영 노드(note1/note2)에서 그대로 떠온 값 — 변경 시 클러스터와 어긋남 주의.
+
+# pkgs.k8s.io 저장소 마이너 스트림 + 패키지 핀(현 노드와 동일, hold).
+kubeadm_repo_stream: "v1.34"
+kubeadm_pkg_version: "1.34.5-1.1"
+kubeadm_kubernetes_version: "v1.34.5"
+
+# 클러스터 네트워킹 (kubeadm-config ClusterConfiguration 에서).
+kubeadm_pod_subnet: "10.244.0.0/16"
+kubeadm_service_subnet: "10.96.0.0/12"
+kubeadm_dns_domain: "cluster.local"
+kubeadm_image_repository: "registry.k8s.io"
+
+# 런타임/엔드포인트.
+kubeadm_cri_socket: "unix:///var/run/containerd/containerd.sock"
+kubeadm_advertise_address: "192.168.0.18"   # note1 (단일 control-plane)
+
+# CNI: Calico (manifest 설치, GitOps 미관리 → 부트스트랩 단계에서 설치).
+# 주의: 기본 manifest 의 CALICO_IPV4POOL_CIDR 은 192.168.0.0/16 이므로
+# podSubnet(10.244.0.0/16)에 맞추려면 적용 전 CIDR 을 교체해야 한다(아래 task 참고).
+kubeadm_calico_version: "v3.31.4"
+kubeadm_calico_manifest_url: "https://raw.githubusercontent.com/projectcalico/calico/v3.31.4/manifests/calico.yaml"
