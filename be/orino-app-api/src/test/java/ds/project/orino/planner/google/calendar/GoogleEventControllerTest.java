@@ -85,6 +85,8 @@ class GoogleEventControllerTest extends ApiTestSupport {
     private static final String CREATE_BODY = """
             {"title":"치과 예약","allDay":false,
              "start":"2026-06-10T14:00:00","end":"2026-06-10T15:00:00","location":"강남"}""";
+    private static final String MISSING_TITLE_BODY = """
+            {"allDay":false,"start":"2026-06-10T14:00:00","end":"2026-06-10T15:00:00"}""";
 
     @Test
     @DisplayName("POST - 일정을 생성하고 201로 정규화된 이벤트를 반환하며 캐시를 무효화한다")
@@ -150,8 +152,7 @@ class GoogleEventControllerTest extends ApiTestSupport {
         mockMvc.perform(post("/api/planner/calendar/events")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"allDay":false,"start":"2026-06-10T14:00:00","end":"2026-06-10T15:00:00"}"""))
+                        .content(MISSING_TITLE_BODY))
                 .andExpect(status().isBadRequest());
     }
 
