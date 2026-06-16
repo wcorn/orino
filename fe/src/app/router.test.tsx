@@ -190,9 +190,9 @@ describe("AppRouter", () => {
 
     renderApp(["/planner/calendar"]);
 
-    // 통합 범례의 "할 일"은 통합 뷰에만 있다(기존 복습 전용 캘린더와 구분).
+    // "+할 일" 버튼은 통합 뷰에만 있다(기존 복습 전용 캘린더와 구분).
     await waitFor(() => {
-      expect(screen.getByText("할 일")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "할 일" })).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "오늘" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "캘린더" })).toBeInTheDocument();

@@ -1,3 +1,4 @@
+import { Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,8 @@ interface Props {
   tasks: PlannerTask[];
   reviews: PlannerReview[];
   onEventClick?: (event: PlannerEvent) => void;
+  onTaskToggle?: (task: PlannerTask) => void;
+  onTaskDelete?: (task: PlannerTask) => void;
 }
 
 function formatHeading(isoDate: string): string {
@@ -26,6 +29,8 @@ export function PlannerDayDetailPanel({
   tasks,
   reviews,
   onEventClick,
+  onTaskToggle,
+  onTaskDelete,
 }: Props) {
   const isEmpty = events.length + tasks.length + reviews.length === 0;
 
@@ -88,15 +93,28 @@ export function PlannerDayDetailPanel({
                     key={task.id}
                     className="border-border bg-card flex items-center gap-2 rounded-md border p-2 text-sm"
                   >
-                    <span aria-hidden>{task.completed ? "☑" : "☐"}</span>
+                    <input
+                      type="checkbox"
+                      checked={task.completed}
+                      onChange={() => onTaskToggle?.(task)}
+                      aria-label={`${task.title} 완료`}
+                    />
                     <span
                       className={cn(
-                        "truncate",
+                        "min-w-0 flex-1 truncate",
                         task.completed && "text-muted-foreground line-through",
                       )}
                     >
                       {task.title}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => onTaskDelete?.(task)}
+                      aria-label={`${task.title} 삭제`}
+                      className="text-muted-foreground hover:text-destructive shrink-0"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
                   </li>
                 ))}
               </ul>

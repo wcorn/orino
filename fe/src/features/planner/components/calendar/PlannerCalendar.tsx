@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { CheckSquare, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
 
 import type { EventWriteRequest } from "../../api/events";
 import type { PlannerEvent } from "../../api/feed";
+import type { TaskCreateRequest } from "../../api/tasks";
 import { eventsByDate, reviewsByDate, tasksByDate } from "../../calendar";
 import {
   useCreateEvent,
@@ -20,10 +21,16 @@ import {
   useUpdateEvent,
 } from "../../hooks/useEventMutations";
 import { usePlannerCalendar } from "../../hooks/usePlannerCalendar";
+import {
+  useCreateTask,
+  useDeleteTask,
+  useUpdateTask,
+} from "../../hooks/useTaskMutations";
 import { EventFormDialog } from "./EventFormDialog";
 import { PlannerCalendarCell } from "./PlannerCalendarCell";
 import { PlannerCalendarLegend } from "./PlannerCalendarLegend";
 import { PlannerDayDetailPanel } from "./PlannerDayDetailPanel";
+import { TaskFormDialog } from "./TaskFormDialog";
 
 type DialogState = { mode: "create" | "edit"; event?: PlannerEvent };
 
@@ -77,6 +84,15 @@ export function PlannerCalendar() {
     deleteEvent.mutate(dialog.event.id, { onSuccess: () => setDialog(null) });
   };
 
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const createTask = useCreateTask();
+  const updateTask = useUpdateTask();
+  const deleteTask = useDeleteTask();
+
+  const handleTaskCreate = (values: TaskCreateRequest) => {
+    createTask.mutate(values, { onSuccess: () => setTaskDialogOpen(false) });
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -111,6 +127,13 @@ export function PlannerCalendar() {
             }}
           >
             오늘
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setTaskDialogOpen(true)}
+          >
+            <CheckSquare className="size-3.5" />할 일
           </Button>
           <Button size="sm" onClick={() => setDialog({ mode: "create" })}>
             <Plus className="size-3.5" />
@@ -190,6 +213,13 @@ export function PlannerCalendar() {
               tasks={tasksMap.get(selected) ?? []}
               reviews={reviewsMap.get(selected) ?? []}
               onEventClick={(event) => setDialog({ mode: "edit", event })}
+              onTaskToggle={(task) =>
+                updateTask.mutate({
+                  taskId: task.id,
+                  request: { completed: !task.completed },
+                })
+              }
+              onTaskDelete={(task) => deleteTask.mutate(task.id)}
             />
           </CardContent>
         </Card>
@@ -210,6 +240,15 @@ export function PlannerCalendar() {
           onDelete={dialog.mode === "edit" ? handleDelete : undefined}
         />
       )}
+
+      <TaskFormDialog
+        open={taskDialogOpen}
+        onOpenChange={setTaskDialogOpen}
+        googleConnected={googleConnected}
+        defaultDue={selected}
+        pending={createTask.isPending}
+        onSubmit={handleTaskCreate}
+      />
     </div>
   );
 }
