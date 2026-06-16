@@ -120,6 +120,14 @@ spec:
                   name: google-secret
                   key: GOOGLE_CLIENT_SECRET
                   optional: true
+            # refresh_token 암호화 키. 미설정 시 yml 기본값(개발용)으로 동작하나
+            # 운영에선 google-secret에 GOOGLE_REFRESH_TOKEN_KEY를 등록해 안정 키를 주입한다.
+            - name: GOOGLE_REFRESH_TOKEN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: google-secret
+                  key: GOOGLE_REFRESH_TOKEN_KEY
+                  optional: true
             - name: GOOGLE_REDIRECT_URI
               value: {{ .Values.env.GOOGLE_REDIRECT_URI | quote }}
             - name: FRONTEND_URL

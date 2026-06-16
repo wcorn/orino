@@ -2,6 +2,7 @@ package ds.project.orino.domain.planner.google.repository;
 
 import ds.project.orino.domain.member.entity.Member;
 import ds.project.orino.domain.member.repository.MemberRepository;
+import ds.project.orino.domain.planner.google.crypto.RefreshTokenEncryptor;
 import ds.project.orino.domain.planner.google.entity.GoogleAccount;
 import ds.project.orino.domain.support.RepositoryTest;
 import org.junit.jupiter.api.BeforeEach;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
@@ -26,11 +28,35 @@ class GoogleAccountRepositoryTest {
     @Autowired
     private MemberRepository memberRepository;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private RefreshTokenEncryptor refreshTokenEncryptor;
+
     private Long memberId;
 
     @BeforeEach
     void setUp() {
         memberId = memberRepository.save(new Member("googleuser", "encodedPassword")).getId();
+    }
+
+    @Test
+    @DisplayName("refresh_token은 DB에 암호화 저장되고 조회 시 복호화된다")
+    void refreshToken_isEncryptedAtRest() {
+        googleAccountRepository.saveAndFlush(new GoogleAccount(
+                memberId, "secret-refresh-token", null, null, null, null));
+
+        // 엔티티로 읽으면 복호화된 원문
+        assertThat(googleAccountRepository.findByMemberId(memberId).orElseThrow().getRefreshToken())
+                .isEqualTo("secret-refresh-token");
+
+        // DB 컬럼 raw 값은 암호문(평문이 아님)
+        String stored = jdbcTemplate.queryForObject(
+                "SELECT refresh_token FROM google_account WHERE member_id = ?", String.class, memberId);
+        assertThat(stored).isNotEqualTo("secret-refresh-token");
+        assertThat(refreshTokenEncryptor.isEncrypted(stored)).isTrue();
+        assertThat(refreshTokenEncryptor.decrypt(stored)).isEqualTo("secret-refresh-token");
     }
 
     @Test
