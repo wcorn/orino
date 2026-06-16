@@ -1,6 +1,8 @@
 package ds.project.orino.domain.planner.google.entity;
 
+import ds.project.orino.domain.planner.google.crypto.RefreshTokenConverter;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
@@ -34,6 +36,7 @@ public class GoogleAccount {
     @Column(name = "google_email", length = 255)
     private String googleEmail;
 
+    @Convert(converter = RefreshTokenConverter.class)
     @Column(name = "refresh_token", nullable = false, length = 512)
     private String refreshToken;
 
