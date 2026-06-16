@@ -27,17 +27,19 @@ tempo:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
-    retention: 720h  # 30일
+    retention: 168h  # 7일 (블록 수↓ → blocklist 폴링 메모리↓, OOM 재발 방지. 트레이스는 단기 디버깅 데이터)
+
+    # 차트는 컨테이너 resources를 .Values.tempo.resources(이 위치)에서 읽는다.
+    # top-level resources에 두면 무시되고 LimitRange 기본값(512Mi)이 적용돼 OOM 발생했음.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1536Mi   # 512Mi→1.5Gi: WAL replay + 블록 완료 + blocklist 폴링 OOM(137) 방지
 
   persistence:
     enabled: true
     storageClassName: longhorn
     size: 5Gi
-
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
