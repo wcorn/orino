@@ -45,6 +45,7 @@ class PlannerCalendarControllerTest extends ApiTestSupport {
     private static final HttpServer EVENTS_STUB = createStub();
     private static volatile int responseStatus = 200;
     private static volatile String responseBody = "{\"items\":[]}";
+    private static volatile String tasksBody = "{\"items\":[]}";
 
     @Autowired
     private MemberRepository memberRepository;
@@ -70,6 +71,7 @@ class PlannerCalendarControllerTest extends ApiTestSupport {
         registry.add("planner.google.client-id", () -> "test-client-id");
         registry.add("planner.google.client-secret", () -> "test-client-secret");
         registry.add("planner.google.oauth.calendar-api-base-url", () -> base);
+        registry.add("planner.google.oauth.tasks-api-base-url", () -> base);
     }
 
     @AfterAll
@@ -83,6 +85,7 @@ class PlannerCalendarControllerTest extends ApiTestSupport {
         responseBody = """
                 {"items":[{"id":"e1","summary":"회의",
                  "start":{"dateTime":"2026-06-10T05:00:00Z"},"end":{"dateTime":"2026-06-10T06:00:00Z"}}]}""";
+        tasksBody = "{\"items\":[]}";
         dbCleaner.clean();
         Member member = memberRepository.save(MemberFixture.create());
         memberId = member.getId();
@@ -160,11 +163,34 @@ class PlannerCalendarControllerTest extends ApiTestSupport {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    @DisplayName("연동 시 due가 기간 내인 할 일만 피드 tasks에 합류한다(정규화)")
+    void mergesTasks() throws Exception {
+        connectGoogle();
+        tasksBody = """
+                {"items":[
+                  {"id":"t1","title":"리포트 제출","status":"needsAction","due":"2026-06-12T00:00:00.000Z"},
+                  {"id":"t2","title":"기간 밖","status":"needsAction","due":"2026-07-15T00:00:00.000Z"},
+                  {"id":"t3","title":"마감 없음","status":"needsAction"}
+                ]}""";
+
+        requestFeed("2026-06-01", "2026-06-30")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.partial").value(false))
+                .andExpect(jsonPath("$.data.tasks.length()").value(1))
+                .andExpect(jsonPath("$.data.tasks[0].id").value("t1"))
+                .andExpect(jsonPath("$.data.tasks[0].due").value("2026-06-12"))
+                .andExpect(jsonPath("$.data.tasks[0].completed").value(false))
+                .andExpect(jsonPath("$.data.tasks[0].source").value("google"));
+    }
+
     private static HttpServer createStub() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/calendar/v3/calendars/primary/events", exchange ->
                     respond(exchange, responseStatus, responseBody));
+            server.createContext("/tasks/v1/lists/@default/tasks", exchange ->
+                    respond(exchange, 200, tasksBody));
             server.start();
             return server;
         } catch (IOException e) {

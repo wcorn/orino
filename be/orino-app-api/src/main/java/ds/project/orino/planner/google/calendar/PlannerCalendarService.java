@@ -8,6 +8,7 @@ import ds.project.orino.planner.google.calendar.dto.PlannerCalendarFeed;
 import ds.project.orino.planner.google.calendar.dto.PlannerEvent;
 import ds.project.orino.planner.google.calendar.dto.PlannerReview;
 import ds.project.orino.planner.google.calendar.dto.PlannerTask;
+import ds.project.orino.planner.google.client.GoogleTasksClient;
 import ds.project.orino.planner.review.dto.CalendarReviewItem;
 import ds.project.orino.planner.review.service.ReviewQueryService;
 import org.springframework.stereotype.Service;
@@ -30,11 +31,14 @@ public class PlannerCalendarService {
     private static final int MAX_RANGE_DAYS = 100;
 
     private final GoogleEventQueryService googleEventQueryService;
+    private final GoogleTasksClient googleTasksClient;
     private final ReviewQueryService reviewQueryService;
 
     public PlannerCalendarService(GoogleEventQueryService googleEventQueryService,
+                                  GoogleTasksClient googleTasksClient,
                                   ReviewQueryService reviewQueryService) {
         this.googleEventQueryService = googleEventQueryService;
+        this.googleTasksClient = googleTasksClient;
         this.reviewQueryService = reviewQueryService;
     }
 
@@ -67,10 +71,28 @@ public class PlannerCalendarService {
             errors.add(new FeedError("reviews", "복습을 불러오지 못했습니다."));
         }
 
-        List<PlannerTask> tasks = List.of(); // M3(#484)에서 합류
+        List<PlannerTask> tasks = List.of();
+        if (googleConnected) {
+            try {
+                tasks = googleTasksClient.listTasks(memberId, false).stream()
+                        .filter(task -> withinRange(task.due(), from, to))
+                        .toList();
+            } catch (RuntimeException e) {
+                errors.add(new FeedError("google-tasks", "할 일을 불러오지 못했습니다."));
+            }
+        }
 
         return new PlannerCalendarFeed(
                 from, to, googleConnected, !errors.isEmpty(), errors, events, tasks, reviews);
+    }
+
+    /** due(날짜) 마감이 [from, to] 구간 안인 할 일만 캘린더에 배치한다(마감 없는 할 일은 제외). */
+    private static boolean withinRange(String due, LocalDate from, LocalDate to) {
+        if (due == null) {
+            return false;
+        }
+        LocalDate dueDate = LocalDate.parse(due);
+        return !dueDate.isBefore(from) && !dueDate.isAfter(to);
     }
 
     private static PlannerReview toFeedReview(CalendarReviewItem item) {
