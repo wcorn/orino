@@ -39,7 +39,10 @@ namespaces:
         cpu: "2"
         memory: 8Gi
       limits:
-        cpu: "8"
+        # limits.cpu는 네임스페이스 정책 상한(클러스터 총합 기준 버스트 상한, 예약/하드웨어 아님).
+        # 8코어는 관측 스택 limit 합보다 작아 loki 캐시·tempo·admission job이 막혀 있었음.
+        # 클러스터 총 32코어(2노드×16) 중 절반인 16으로 상향해 스택을 여유롭게 수용.
+        cpu: "16"
         memory: 16Gi
 
   - name: argocd
