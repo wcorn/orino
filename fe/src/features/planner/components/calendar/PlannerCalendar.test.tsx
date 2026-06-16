@@ -128,6 +128,77 @@ describe("PlannerCalendar", () => {
     ).toBeInTheDocument();
   });
 
+  const taskOnToday = {
+    id: "t1",
+    title: "리포트",
+    due: TODAY,
+    completed: false,
+    notes: null,
+    source: "google",
+  };
+
+  it("할 일 완료 토글: 체크박스를 누르면 PATCH한다", async () => {
+    mockGoogleConnected(true);
+    mockFeed({ tasks: [taskOnToday] });
+    let patched: unknown = null;
+    server.use(
+      http.patch(`${API_BASE}/planner/tasks/t1`, async ({ request }) => {
+        patched = await request.json();
+        return HttpResponse.json({
+          code: "OK",
+          data: { ...taskOnToday, completed: true },
+        });
+      }),
+    );
+
+    renderWithRouter(<PlannerCalendar />);
+
+    await userEvent.click(await screen.findByLabelText("리포트 완료"));
+
+    await waitFor(() => expect(patched).toMatchObject({ completed: true }));
+  });
+
+  it("할 일 삭제: 삭제 버튼을 누르면 DELETE한다", async () => {
+    mockGoogleConnected(true);
+    mockFeed({ tasks: [taskOnToday] });
+    let deleted = false;
+    server.use(
+      http.delete(`${API_BASE}/planner/tasks/t1`, () => {
+        deleted = true;
+        return HttpResponse.json({ code: "OK", data: null });
+      }),
+    );
+
+    renderWithRouter(<PlannerCalendar />);
+
+    await userEvent.click(await screen.findByLabelText("리포트 삭제"));
+
+    await waitFor(() => expect(deleted).toBe(true));
+  });
+
+  it("+할 일로 할 일을 생성하면 POST한다", async () => {
+    mockGoogleConnected(true);
+    mockFeed({ googleConnected: true });
+    let posted: unknown = null;
+    server.use(
+      http.post(`${API_BASE}/planner/tasks`, async ({ request }) => {
+        posted = await request.json();
+        return HttpResponse.json({
+          code: "OK",
+          data: { ...taskOnToday, id: "new" },
+        });
+      }),
+    );
+
+    renderWithRouter(<PlannerCalendar />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "할 일" }));
+    await userEvent.type(await screen.findByLabelText("제목"), "리포트");
+    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => expect(posted).toMatchObject({ title: "리포트" }));
+  });
+
   it("+일정으로 일정을 생성하면 POST하고 다이얼로그를 닫는다", async () => {
     mockGoogleConnected(true);
     mockFeed({ googleConnected: true });
