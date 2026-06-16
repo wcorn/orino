@@ -1,0 +1,47 @@
+groups:
+  - name: orino-log-alerts
+    rules:
+      - alert: HighErrorLogRate
+        expr: sum(count_over_time({namespace="orino", level="error"}[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "BE 에러 로그 급증"
+          description: "최근 5분간 ERROR 로그가 10건 초과 — Grafana Logs 대시보드에서 상세 확인"
+
+      - alert: JsonParseErrors
+        expr: sum(count_over_time({namespace="orino"} |~ `(?i)(json parse|jsonparseexception|jsonmappingexception|mismatchedinputexception)`[10m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JSON 파싱 에러 발생"
+          description: "최근 10분간 JSON 파싱 관련 에러 로그 감지 — Logs 대시보드에서 확인"
+
+      - alert: OutOfMemoryErrors
+        expr: sum(count_over_time({namespace="orino"} |~ `OutOfMemoryError`[10m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "OutOfMemoryError 발생"
+          description: "최근 10분간 OOM 관련 로그 감지 — 즉시 확인 필요"
+
+      - alert: JdbcConnectionErrors
+        expr: sum(count_over_time({namespace="orino"} |~ `(?i)(unable to acquire jdbc|connection is not available|hikaripool.*timeout)`[5m])) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DB 커넥션 획득 실패 로그"
+          description: "최근 5분간 JDBC/HikariCP 커넥션 실패 로그 감지 — 커넥션 풀 점검"
+
+      - alert: UncaughtExceptionSpike
+        expr: sum(count_over_time({namespace="orino"} |~ `(?i)(unexpected error|unhandled|nullpointerexception)`[10m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "처리되지 않은 예외 급증"
+          description: "최근 10분간 미처리 예외/NPE 로그가 5건 초과 — Logs 대시보드에서 확인"
