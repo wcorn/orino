@@ -42,10 +42,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class PlannerCalendarControllerTest extends ApiTestSupport {
 
+    private static final String EMPTY_ITEMS = "{\"items\":[]}";
+
     private static final HttpServer EVENTS_STUB = createStub();
     private static volatile int responseStatus = 200;
-    private static volatile String responseBody = "{\"items\":[]}";
-    private static volatile String tasksBody = "{\"items\":[]}";
+    private static volatile String responseBody = EMPTY_ITEMS;
+    private static volatile String tasksBody = EMPTY_ITEMS;
 
     @Autowired
     private MemberRepository memberRepository;
@@ -85,7 +87,7 @@ class PlannerCalendarControllerTest extends ApiTestSupport {
         responseBody = """
                 {"items":[{"id":"e1","summary":"회의",
                  "start":{"dateTime":"2026-06-10T05:00:00Z"},"end":{"dateTime":"2026-06-10T06:00:00Z"}}]}""";
-        tasksBody = "{\"items\":[]}";
+        tasksBody = EMPTY_ITEMS;
         dbCleaner.clean();
         Member member = memberRepository.save(MemberFixture.create());
         memberId = member.getId();

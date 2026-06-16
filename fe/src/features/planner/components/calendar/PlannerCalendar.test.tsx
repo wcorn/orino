@@ -69,16 +69,11 @@ describe("PlannerCalendar", () => {
     mockFeed(
       {
         events: [
-          {
-            id: "e1",
-            title: "회의",
-            allDay: false,
+          googleEvent({
             start: `${TODAY}T14:00:00`,
             end: `${TODAY}T15:00:00`,
             location: "3층",
-            recurring: false,
-            source: "google",
-          },
+          }),
         ],
         reviews: [
           {
@@ -155,6 +150,20 @@ describe("PlannerCalendar", () => {
     source: "google",
   };
 
+  function googleEvent(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "e1",
+      title: "회의",
+      allDay: false,
+      start: `${TODAY}T09:00:00`,
+      end: `${TODAY}T10:00:00`,
+      location: null,
+      recurring: false,
+      source: "google",
+      ...overrides,
+    };
+  }
+
   it("할 일 완료 토글: 체크박스를 누르면 PATCH한다", async () => {
     mockGoogleConnected(true);
     mockFeed({ tasks: [taskOnToday] });
@@ -226,16 +235,7 @@ describe("PlannerCalendar", () => {
         posted = await request.json();
         return HttpResponse.json({
           code: "OK",
-          data: {
-            id: "new-1",
-            title: "회의",
-            allDay: false,
-            start: `${TODAY}T09:00:00`,
-            end: `${TODAY}T10:00:00`,
-            location: null,
-            recurring: false,
-            source: "google",
-          },
+          data: googleEvent({ id: "new-1" }),
         });
       }),
     );
@@ -258,18 +258,7 @@ describe("PlannerCalendar", () => {
     mockGoogleConnected(true);
     mockFeed({
       googleConnected: true,
-      events: [
-        {
-          id: "e1",
-          title: "회의",
-          allDay: false,
-          start: `${TODAY}T09:00:00`,
-          end: `${TODAY}T10:00:00`,
-          location: null,
-          recurring: false,
-          source: "google",
-        },
-      ],
+      events: [googleEvent()],
     });
 
     renderWithRouter(<PlannerCalendar />);
@@ -298,18 +287,7 @@ describe("PlannerCalendar", () => {
   it("일 뷰로 전환하면 단일 날짜의 시간축과 일정을 보여준다", async () => {
     mockGoogleConnected(true);
     mockFeed({
-      events: [
-        {
-          id: "e1",
-          title: "회의",
-          allDay: false,
-          start: `${TODAY}T09:00:00`,
-          end: `${TODAY}T10:00:00`,
-          location: null,
-          recurring: false,
-          source: "google",
-        },
-      ],
+      events: [googleEvent()],
     });
 
     renderWithRouter(<PlannerCalendar />);
