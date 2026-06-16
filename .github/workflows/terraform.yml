@@ -29,10 +29,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # PR 은 plan(읽기 전용) role, main push 는 apply(쓰기) role 을 assume.
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::012900311331:role/github-actions-terraform
+          role-to-assume: ${{ github.event_name == 'pull_request' && 'arn:aws:iam::012900311331:role/github-actions-terraform-plan' || 'arn:aws:iam::012900311331:role/github-actions-terraform' }}
           aws-region: ap-northeast-2
 
       - uses: hashicorp/setup-terraform@v3
