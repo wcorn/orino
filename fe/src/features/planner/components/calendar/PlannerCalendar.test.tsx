@@ -276,4 +276,30 @@ describe("PlannerCalendar", () => {
     expect(await screen.findByLabelText("제목")).toBeInTheDocument();
     expect(screen.getByLabelText("시작 시간")).toHaveValue("10:00");
   });
+
+  it("일 뷰로 전환하면 단일 날짜의 시간축과 일정을 보여준다", async () => {
+    mockGoogleConnected(true);
+    mockFeed({
+      events: [
+        {
+          id: "e1",
+          title: "회의",
+          allDay: false,
+          start: `${TODAY}T09:00:00`,
+          end: `${TODAY}T10:00:00`,
+          location: null,
+          recurring: false,
+          source: "google",
+        },
+      ],
+    });
+
+    renderWithRouter(<PlannerCalendar />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "일" }));
+
+    expect(await screen.findByText("9시")).toBeInTheDocument();
+    expect(await screen.findByText("회의")).toBeInTheDocument();
+    expect(screen.getByLabelText(`${TODAY} 9시 일정 추가`)).toBeInTheDocument();
+  });
 });

@@ -35,14 +35,14 @@ import { PlannerDayDetailPanel } from "./PlannerDayDetailPanel";
 import { PlannerWeekView } from "./PlannerWeekView";
 import { TaskFormDialog } from "./TaskFormDialog";
 
-type CalendarView = "month" | "week";
+type CalendarView = "month" | "week" | "day";
 type DialogState =
   | { mode: "create"; date?: string; startTime?: string }
   | { mode: "edit"; event: PlannerEvent };
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
-/** 통합 캘린더 — 월/주 뷰 전환. 일정(Google) + 할 일 + 복습(읽기 전용). */
+/** 통합 캘린더 — 월/주/일 뷰 전환. 일정(Google) + 할 일 + 복습(읽기 전용). */
 export function PlannerCalendar() {
   const today = useMemo(() => startOfDay(new Date()), []);
   const todayIso = toIsoDate(today);
@@ -56,7 +56,8 @@ export function PlannerCalendar() {
     [cursor],
   );
   const week = useMemo(() => weekDays(cursor), [cursor]);
-  const days = view === "month" ? monthDays : week;
+  const single = useMemo(() => [startOfDay(cursor)], [cursor]);
+  const days = view === "month" ? monthDays : view === "week" ? week : single;
   const from = toIsoDate(days[0]);
   const to = toIsoDate(days[days.length - 1]);
 
@@ -100,16 +101,24 @@ export function PlannerCalendar() {
     createTask.mutate(values, { onSuccess: () => setTaskDialogOpen(false) });
   };
 
+  const step = view === "month" ? 0 : view === "week" ? 7 : 1;
   const goPrev = () =>
-    setCursor((c) => (view === "month" ? addMonths(c, -1) : addDays(c, -7)));
+    setCursor((c) => (view === "month" ? addMonths(c, -1) : addDays(c, -step)));
   const goNext = () =>
-    setCursor((c) => (view === "month" ? addMonths(c, 1) : addDays(c, 7)));
+    setCursor((c) => (view === "month" ? addMonths(c, 1) : addDays(c, step)));
 
-  const periodTitle =
-    view === "month"
-      ? `${cursor.getFullYear()}년 ${cursor.getMonth() + 1}월`
-      : `${week[0].getMonth() + 1}월 ${week[0].getDate()}일 – ` +
-        `${week[6].getMonth() + 1}월 ${week[6].getDate()}일`;
+  let periodTitle: string;
+  if (view === "month") {
+    periodTitle = `${cursor.getFullYear()}년 ${cursor.getMonth() + 1}월`;
+  } else if (view === "week") {
+    periodTitle =
+      `${week[0].getMonth() + 1}월 ${week[0].getDate()}일 – ` +
+      `${week[6].getMonth() + 1}월 ${week[6].getDate()}일`;
+  } else {
+    periodTitle =
+      `${single[0].getMonth() + 1}월 ${single[0].getDate()}일 ` +
+      `(${WEEKDAYS[single[0].getDay()]})`;
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -135,22 +144,23 @@ export function PlannerCalendar() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1">
-            <Button
-              variant={view === "month" ? "default" : "outline"}
-              size="sm"
-              aria-pressed={view === "month"}
-              onClick={() => setView("month")}
-            >
-              월
-            </Button>
-            <Button
-              variant={view === "week" ? "default" : "outline"}
-              size="sm"
-              aria-pressed={view === "week"}
-              onClick={() => setView("week")}
-            >
-              주
-            </Button>
+            {(
+              [
+                ["month", "월"],
+                ["week", "주"],
+                ["day", "일"],
+              ] as const
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                variant={view === value ? "default" : "outline"}
+                size="sm"
+                aria-pressed={view === value}
+                onClick={() => setView(value)}
+              >
+                {label}
+              </Button>
+            ))}
           </div>
           <Button
             variant="outline"
@@ -189,11 +199,11 @@ export function PlannerCalendar() {
 
       <PlannerCalendarLegend />
 
-      {view === "week" ? (
+      {view !== "month" ? (
         <Card>
           <CardContent>
             <PlannerWeekView
-              days={week}
+              days={view === "week" ? week : single}
               eventsMap={eventsMap}
               tasksMap={tasksMap}
               reviewsMap={reviewsMap}

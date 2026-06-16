@@ -7,9 +7,9 @@ import { HOURS, layoutDayEvents } from "../../weekLayout";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 const HOUR_PX = 40;
-const GRID_COLS = "grid-cols-[3rem_repeat(7,minmax(0,1fr))]";
 
 interface Props {
+  /** 1일(일 뷰) 또는 7일(주 뷰). */
   days: Date[];
   eventsMap: Map<string, PlannerEvent[]>;
   tasksMap: Map<string, PlannerTask[]>;
@@ -28,11 +28,16 @@ export function PlannerWeekView({
   onEventClick,
   onSlotClick,
 }: Props) {
+  // 컬럼 수는 days 길이에 따라 동적(일=1, 주=7) — Tailwind 동적 클래스 불가라 인라인 스타일.
+  const gridStyle = {
+    gridTemplateColumns: `3rem repeat(${days.length}, minmax(0, 1fr))`,
+  };
+
   return (
     <div className="overflow-x-auto">
-      <div className="min-w-[44rem]">
+      <div style={{ minWidth: days.length > 1 ? "44rem" : undefined }}>
         {/* 요일/날짜 헤더 */}
-        <div className={cn("grid", GRID_COLS)}>
+        <div className="grid" style={gridStyle}>
           <div />
           {days.map((day) => {
             const iso = toIsoDate(day);
@@ -52,7 +57,7 @@ export function PlannerWeekView({
         </div>
 
         {/* 종일/복습/할일 레인 */}
-        <div className={cn("grid border-b", GRID_COLS)}>
+        <div className="grid border-b" style={gridStyle}>
           <div className="text-muted-foreground py-1 pr-1 text-right text-[10px]">
             종일
           </div>
@@ -97,7 +102,7 @@ export function PlannerWeekView({
         </div>
 
         {/* 시간축 그리드 */}
-        <div className={cn("grid", GRID_COLS)}>
+        <div className="grid" style={gridStyle}>
           {/* 시간 라벨 */}
           <div>
             {HOURS.map((h) => (
