@@ -11,6 +11,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param tokenUri           code/refresh → token 교환 엔드포인트
  * @param revokeUri          토큰 revoke 엔드포인트 (연동 해제)
  * @param calendarApiBaseUrl Calendar API base (primary 캘린더 조회용)
+ * @param tasksApiBaseUrl    Tasks API base (Calendar와 호스트가 다름)
  * @param frontendUrl        콜백 후 리다이렉트할 FE base URL
  */
 @ConfigurationProperties(prefix = "planner.google.oauth")
@@ -19,6 +20,7 @@ public record GoogleOAuthProperties(
         String tokenUri,
         String revokeUri,
         String calendarApiBaseUrl,
+        String tasksApiBaseUrl,
         String frontendUrl
 ) {
 }

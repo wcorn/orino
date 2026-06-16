@@ -48,6 +48,7 @@ planner:
       token-uri: ${GOOGLE_TOKEN_URI:https://oauth2.googleapis.com/token}
       revoke-uri: ${GOOGLE_REVOKE_URI:https://oauth2.googleapis.com/revoke}
       calendar-api-base-url: ${GOOGLE_CALENDAR_API_BASE_URL:https://www.googleapis.com}
+      tasks-api-base-url: ${GOOGLE_TASKS_API_BASE_URL:https://tasks.googleapis.com}
       # 콜백 후 리다이렉트할 FE base URL (local Vite 3000, prod orino.dev)
       frontend-url: ${FRONTEND_URL:http://localhost:3000}
 
