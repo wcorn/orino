@@ -9,6 +9,12 @@ spec:
   # 기존 alertmanager-discord-secret을 직접 참조한다.
   route:
     receiver: discord
+    # warning|critical만 Discord로. severity=none(Watchdog/InfoInhibitor)·info는
+    # 매칭 안 돼 base의 null receiver로 빠져 전송되지 않는다(노이즈 차단).
+    matchers:
+      - name: severity
+        matchType: "=~"
+        value: "warning|critical"
     groupBy:
       - alertname
       - namespace

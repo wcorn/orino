@@ -41,6 +41,12 @@ kube-prometheus-stack:
     enabled: false
   kubeControllerManager:
     enabled: false
+  # kube-scheduler/kube-proxy 메트릭은 127.0.0.1 바인딩이라 스크랩 불가 →
+  # 끄지 않으면 TargetDown/ScrapeTargetDown 상시 firing(노이즈). 스크랩 비활성.
+  kubeScheduler:
+    enabled: false
+  kubeProxy:
+    enabled: false
   kubelet:
     enabled: true
 
