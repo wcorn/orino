@@ -27,11 +27,38 @@ loki:
         s3ForcePathStyle: false
     limits_config:
       retention_period: 2160h
+      # structured metadata 허용 (Alloy가 logger/requestId/userId/traceId를 부착).
+      # tsdb + schema v13 전제이며 Loki 3.x 기본값이 true지만 의도를 명시.
+      allow_structured_metadata: true
+
+    # 로그 기반 알림(Loki Ruler). 룰 파일은 loki-alerting-rules ConfigMap을
+    # /rules/fake 로 마운트(auth_enabled=false → 테넌트 id "fake").
+    # 발동 알림은 monitoring 네임스페이스 Alertmanager로 전송 → 기존 Discord 라우팅 재사용.
+    rulerConfig:
+      storage:
+        type: local
+        local:
+          directory: /rules
+      rule_path: /tmp/loki/scratch
+      alertmanager_url: http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093
+      enable_alertmanager_v2: true
+      enable_api: true
+      ring:
+        kvstore:
+          store: inmemory
 
   singleBinary:
     replicas: 1
     extraArgs:
       - -config.expand-env=true
+    # Loki Ruler 룰 파일 마운트 (/rules/<tenant>/ 구조, 테넌트=fake)
+    extraVolumes:
+      - name: alerting-rules
+        configMap:
+          name: loki-alerting-rules
+    extraVolumeMounts:
+      - name: alerting-rules
+        mountPath: /rules/fake
     extraEnv:
       - name: AWS_ACCESS_KEY_ID
         valueFrom:

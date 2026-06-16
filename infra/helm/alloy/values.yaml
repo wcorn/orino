@@ -135,9 +135,22 @@ alloy:
             }
           }
 
+          // level만 스트림 라벨로 승격 (저카디널리티 — 필터/대시보드 변수용)
           stage.labels {
             values = {
               level = "",
+            }
+          }
+
+          // 나머지 고유 식별자는 structured metadata로 부착한다.
+          // 라벨이 아니라 스트림 카디널리티를 늘리지 않으면서도,
+          // Grafana 로그 패널에서 컬럼/필터로 바로 쓰고 `| json` 파싱이 불필요.
+          stage.structured_metadata {
+            values = {
+              logger     = "",
+              request_id = "",
+              user_id    = "",
+              trace_id   = "",
             }
           }
 

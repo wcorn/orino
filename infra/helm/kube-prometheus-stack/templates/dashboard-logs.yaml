@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-logs-overview
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  logs-overview.json: |-
+{{ .Files.Get "grafana-dashboards/logs-overview.json" | indent 4 }}

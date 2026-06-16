@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-alerting-rules
+  namespace: monitoring
+data:
+  # 룰 본문은 files/ 에서 그대로 로드한다(.Files.Get은 Go 템플릿을 평가하지 않음).
+  # Loki Ruler가 /rules/fake/ 아래에서 읽으며, severity 라벨로 기존
+  # Alertmanager 라우팅(critical|warning → Discord)에 합류한다.
+  orino-log-alerts.yaml: |-
+{{ .Files.Get "files/orino-log-alerts.yaml" | indent 4 }}
