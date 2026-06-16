@@ -15,6 +15,7 @@ const TODAY = toIsoDate(startOfDay(new Date()));
 interface FeedOverrides {
   googleConnected?: boolean;
   partial?: boolean;
+  errors?: { source: string; message: string }[];
   events?: unknown[];
   reviews?: unknown[];
   tasks?: unknown[];
@@ -36,7 +37,7 @@ function mockFeed(
           to: TODAY,
           googleConnected: overrides.googleConnected ?? true,
           partial: overrides.partial ?? false,
-          errors: [],
+          errors: overrides.errors ?? [],
           events: overrides.events ?? [],
           tasks: overrides.tasks ?? [],
           reviews: overrides.reviews ?? [],
@@ -125,6 +126,23 @@ describe("PlannerCalendar", () => {
 
     expect(
       await screen.findByText("일부 일정을 불러오지 못했습니다."),
+    ).toBeInTheDocument();
+  });
+
+  it("재연동 필요(invalid_grant)면 다시 연결 배너를 보여준다", async () => {
+    mockFeed({
+      googleConnected: false,
+      partial: true,
+      errors: [{ source: "google-events", message: "만료" }],
+    });
+
+    renderWithRouter(<PlannerCalendar />);
+
+    expect(
+      await screen.findByText("Google 연동이 만료되었습니다."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "다시 연결" }),
     ).toBeInTheDocument();
   });
 
