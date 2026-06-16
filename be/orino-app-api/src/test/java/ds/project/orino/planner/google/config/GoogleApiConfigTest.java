@@ -5,6 +5,8 @@ import com.sun.net.httpserver.HttpServer;
 import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
 import ds.project.orino.planner.google.token.GoogleUnauthorizedException;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,6 +22,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -33,6 +36,7 @@ class GoogleApiConfigTest {
 
         private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of())
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .withUserConfiguration(GoogleApiConfig.class);
 
         @Test
@@ -72,22 +76,30 @@ class GoogleApiConfigTest {
         private HttpServer server;
         private String baseUrl;
         private RestClient client;
+        private SimpleMeterRegistry meterRegistry;
+        private final AtomicInteger flakyHits = new AtomicInteger();
 
         @BeforeEach
         void startStubServer() throws IOException {
+            flakyHits.set(0);
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/ok", ex -> respond(ex, 200, "{\"ok\":true}"));
             server.createContext("/server-error", ex -> respond(ex, 500, "{\"error\":\"backendError\"}"));
             server.createContext("/invalid-grant", ex -> respond(ex, 400, "{\"error\":\"invalid_grant\"}"));
             server.createContext("/unauthorized", ex -> respond(ex, 401, "{\"error\":\"unauthorized\"}"));
             server.createContext("/not-found", ex -> respond(ex, 404, "{\"error\":\"notFound\"}"));
+            // 첫 호출은 503, 두 번째부터 200 → 재시도 성공 검증용
+            server.createContext("/flaky", ex ->
+                    respond(ex, flakyHits.getAndIncrement() == 0 ? 503 : 200, "{\"ok\":true}"));
             server.start();
             baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
 
+            meterRegistry = new SimpleMeterRegistry();
             GoogleApiProperties props = new GoogleApiProperties(
                     "cid", "secret", "http://localhost/cb",
-                    List.of("scope"), Duration.ofSeconds(2), Duration.ofSeconds(5));
-            client = new GoogleApiConfig().googleRestClient(props);
+                    List.of("scope"), Duration.ofSeconds(2), Duration.ofSeconds(5),
+                    2, Duration.ofMillis(1));
+            client = new GoogleApiConfig().googleRestClient(props, meterRegistry);
         }
 
         @AfterEach
@@ -138,6 +150,24 @@ class GoogleApiConfigTest {
                     .isInstanceOf(CustomException.class)
                     .extracting(e -> ((CustomException) e).getErrorCode())
                     .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+
+        @Test
+        @DisplayName("503 후 200이면 지수 백오프로 재시도해 성공한다")
+        void retriesOnServerErrorThenSucceeds() {
+            String body = client.get().uri(baseUrl + "/flaky").retrieve().body(String.class);
+
+            assertThat(body).contains("ok");
+            assertThat(flakyHits.get()).isEqualTo(2); // 503 → 재시도 → 200
+        }
+
+        @Test
+        @DisplayName("호출 결과를 google.api.calls{result} 메트릭으로 집계한다")
+        void recordsCallMetric() {
+            client.get().uri(baseUrl + "/ok").retrieve().body(String.class);
+
+            double success = meterRegistry.counter("google.api.calls", "result", "success").count();
+            assertThat(success).isEqualTo(1.0);
         }
     }
 
