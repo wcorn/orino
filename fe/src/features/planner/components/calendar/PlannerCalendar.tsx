@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -11,11 +11,21 @@ import {
   toIsoDate,
 } from "@/features/review/calendar";
 
+import type { EventWriteRequest } from "../../api/events";
+import type { PlannerEvent } from "../../api/feed";
 import { eventsByDate, reviewsByDate, tasksByDate } from "../../calendar";
+import {
+  useCreateEvent,
+  useDeleteEvent,
+  useUpdateEvent,
+} from "../../hooks/useEventMutations";
 import { usePlannerCalendar } from "../../hooks/usePlannerCalendar";
+import { EventFormDialog } from "./EventFormDialog";
 import { PlannerCalendarCell } from "./PlannerCalendarCell";
 import { PlannerCalendarLegend } from "./PlannerCalendarLegend";
 import { PlannerDayDetailPanel } from "./PlannerDayDetailPanel";
+
+type DialogState = { mode: "create" | "edit"; event?: PlannerEvent };
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -42,6 +52,31 @@ export function PlannerCalendar() {
   const tasksMap = useMemo(() => tasksByDate(data?.tasks ?? []), [data]);
   const reviewsMap = useMemo(() => reviewsByDate(data?.reviews ?? []), [data]);
 
+  const googleConnected = data?.googleConnected ?? false;
+
+  const [dialog, setDialog] = useState<DialogState | null>(null);
+  const createEvent = useCreateEvent();
+  const updateEvent = useUpdateEvent();
+  const deleteEvent = useDeleteEvent();
+  const pending =
+    createEvent.isPending || updateEvent.isPending || deleteEvent.isPending;
+
+  const handleSubmit = (values: EventWriteRequest) => {
+    if (dialog?.mode === "edit" && dialog.event) {
+      updateEvent.mutate(
+        { eventId: dialog.event.id, request: values },
+        { onSuccess: () => setDialog(null) },
+      );
+    } else {
+      createEvent.mutate(values, { onSuccess: () => setDialog(null) });
+    }
+  };
+
+  const handleDelete = () => {
+    if (dialog?.mode !== "edit" || !dialog.event) return;
+    deleteEvent.mutate(dialog.event.id, { onSuccess: () => setDialog(null) });
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -66,16 +101,22 @@ export function PlannerCalendar() {
             <ChevronRight className="size-4" />
           </Button>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setCursor(new Date(today.getFullYear(), today.getMonth(), 1));
-            setSelected(todayIso);
-          }}
-        >
-          오늘
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setCursor(new Date(today.getFullYear(), today.getMonth(), 1));
+              setSelected(todayIso);
+            }}
+          >
+            오늘
+          </Button>
+          <Button size="sm" onClick={() => setDialog({ mode: "create" })}>
+            <Plus className="size-3.5" />
+            일정
+          </Button>
+        </div>
       </div>
 
       <GoogleNotConnectedBanner />
@@ -148,10 +189,27 @@ export function PlannerCalendar() {
               events={eventsMap.get(selected) ?? []}
               tasks={tasksMap.get(selected) ?? []}
               reviews={reviewsMap.get(selected) ?? []}
+              onEventClick={(event) => setDialog({ mode: "edit", event })}
             />
           </CardContent>
         </Card>
       </div>
+
+      {dialog && (
+        <EventFormDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setDialog(null);
+          }}
+          mode={dialog.mode}
+          googleConnected={googleConnected}
+          defaultDate={selected}
+          event={dialog.event}
+          pending={pending}
+          onSubmit={handleSubmit}
+          onDelete={dialog.mode === "edit" ? handleDelete : undefined}
+        />
+      )}
     </div>
   );
 }

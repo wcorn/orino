@@ -12,6 +12,7 @@ interface Props {
   events: PlannerEvent[];
   tasks: PlannerTask[];
   reviews: PlannerReview[];
+  onEventClick?: (event: PlannerEvent) => void;
 }
 
 function formatHeading(isoDate: string): string {
@@ -24,6 +25,7 @@ export function PlannerDayDetailPanel({
   events,
   tasks,
   reviews,
+  onEventClick,
 }: Props) {
   const isEmpty = events.length + tasks.length + reviews.length === 0;
 
@@ -49,23 +51,26 @@ export function PlannerDayDetailPanel({
               </h3>
               <ul className="flex flex-col gap-1.5">
                 {events.map((event) => (
-                  <li
-                    key={event.id}
-                    className="border-border bg-card flex items-start gap-2 rounded-md border p-2 text-sm"
-                  >
-                    <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
-                      {eventTimeLabel(event)}
-                    </span>
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate">
-                        {event.title ?? "(제목 없음)"}
+                  <li key={event.id}>
+                    <button
+                      type="button"
+                      onClick={() => onEventClick?.(event)}
+                      className="border-border bg-card hover:bg-muted/50 flex w-full items-start gap-2 rounded-md border p-2 text-left text-sm transition-colors"
+                    >
+                      <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+                        {eventTimeLabel(event)}
                       </span>
-                      {event.location && (
-                        <span className="text-muted-foreground truncate text-xs">
-                          {event.location}
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate">
+                          {event.title ?? "(제목 없음)"}
                         </span>
-                      )}
-                    </div>
+                        {event.location && (
+                          <span className="text-muted-foreground truncate text-xs">
+                            {event.location}
+                          </span>
+                        )}
+                      </div>
+                    </button>
                   </li>
                 ))}
               </ul>

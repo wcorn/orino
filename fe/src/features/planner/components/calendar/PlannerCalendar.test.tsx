@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -125,5 +126,42 @@ describe("PlannerCalendar", () => {
     expect(
       await screen.findByText("일부 일정을 불러오지 못했습니다."),
     ).toBeInTheDocument();
+  });
+
+  it("+일정으로 일정을 생성하면 POST하고 다이얼로그를 닫는다", async () => {
+    mockGoogleConnected(true);
+    mockFeed({ googleConnected: true });
+    let posted: unknown = null;
+    server.use(
+      http.post(`${API_BASE}/planner/calendar/events`, async ({ request }) => {
+        posted = await request.json();
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            id: "new-1",
+            title: "회의",
+            allDay: false,
+            start: `${TODAY}T09:00:00`,
+            end: `${TODAY}T10:00:00`,
+            location: null,
+            recurring: false,
+            source: "google",
+          },
+        });
+      }),
+    );
+
+    renderWithRouter(<PlannerCalendar />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "일정" }));
+    await userEvent.type(await screen.findByLabelText("제목"), "회의");
+    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() =>
+      expect(posted).toMatchObject({ title: "회의", allDay: false }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByLabelText("제목")).not.toBeInTheDocument(),
+    );
   });
 });
