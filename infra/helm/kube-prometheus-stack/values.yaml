@@ -105,28 +105,15 @@ kube-prometheus-stack:
             datasourceUid: prometheus
 
   alertmanager:
-    config:
-      global:
-        resolve_timeout: 5m
-      route:
-        receiver: discord
-        group_by:
-          - alertname
-          - namespace
-        group_wait: 30s
-        group_interval: 5m
-        repeat_interval: 4h
-        routes:
-          - receiver: discord
-            matchers:
-              - severity=~"critical|warning"
-      receivers:
-        - name: discord
-          discord_configs:
-            - webhook_url_file: /etc/alertmanager/secrets/alertmanager-discord-secret/DISCORD_WEBHOOK_URL
+    # alertmanager.config를 직접 지정하지 않는다 → 차트 기본 config(null receiver +
+    # Watchdog→null + inhibit_rules)를 그대로 사용. Watchdog(항상 firing)는 null로 버려진다.
+    # 실제 Discord 라우팅은 AlertmanagerConfig CRD(orino-discord)가 catch-all로 담당한다.
+    # (raw config에 discord를 넣으면 operator가 webhook_url_file를 거부해 전체가 null로
+    #  fallback됐던 문제 회피 — CRD의 apiURL(SecretKeySelector)로 secret 안전 참조)
     alertmanagerSpec:
-      secrets:
-        - alertmanager-discord-secret
+      # CRD 라우트를 네임스페이스로 가두지 않음 → orino 등 전 네임스페이스 알림 catch-all
+      alertmanagerConfigMatcherStrategy:
+        type: None
       resources:
         requests:
           cpu: 50m
