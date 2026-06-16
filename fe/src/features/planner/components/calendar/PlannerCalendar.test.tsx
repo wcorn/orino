@@ -235,4 +235,45 @@ describe("PlannerCalendar", () => {
       expect(screen.queryByLabelText("제목")).not.toBeInTheDocument(),
     );
   });
+
+  it("주 뷰로 전환하면 시간축과 시간대 일정 블록을 보여준다", async () => {
+    mockGoogleConnected(true);
+    mockFeed({
+      googleConnected: true,
+      events: [
+        {
+          id: "e1",
+          title: "회의",
+          allDay: false,
+          start: `${TODAY}T09:00:00`,
+          end: `${TODAY}T10:00:00`,
+          location: null,
+          recurring: false,
+          source: "google",
+        },
+      ],
+    });
+
+    renderWithRouter(<PlannerCalendar />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "주" }));
+
+    expect(await screen.findByText("9시")).toBeInTheDocument();
+    expect(await screen.findByText("회의")).toBeInTheDocument();
+  });
+
+  it("주 뷰 빈 시간대 클릭 시 그 시각으로 생성 다이얼로그가 열린다", async () => {
+    mockGoogleConnected(true);
+    mockFeed({ googleConnected: true });
+
+    renderWithRouter(<PlannerCalendar />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "주" }));
+    await userEvent.click(
+      await screen.findByLabelText(`${TODAY} 10시 일정 추가`),
+    );
+
+    expect(await screen.findByLabelText("제목")).toBeInTheDocument();
+    expect(screen.getByLabelText("시작 시간")).toHaveValue("10:00");
+  });
 });

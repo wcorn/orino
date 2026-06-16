@@ -26,6 +26,8 @@ interface Props {
   googleConnected: boolean;
   /** 생성 시 기본 날짜(YYYY-MM-DD) */
   defaultDate: string;
+  /** 생성 시 기본 시작 시각("HH:mm"). 주 뷰 슬롯 클릭에서 사용. */
+  defaultStartTime?: string;
   /** 편집 대상 일정 */
   event?: PlannerEvent;
   pending?: boolean;
@@ -33,9 +35,16 @@ interface Props {
   onDelete?: () => void;
 }
 
+/** "09:00" → "10:00" (다음 정시, 23시는 23:59). */
+function nextHour(time: string): string {
+  const hour = Number(time.slice(0, 2));
+  return hour >= 23 ? "23:59" : `${String(hour + 1).padStart(2, "0")}:00`;
+}
+
 function initialState(
   mode: "create" | "edit",
   defaultDate: string,
+  defaultStartTime: string,
   event?: PlannerEvent,
 ): FormState {
   if (mode === "edit" && event) {
@@ -55,9 +64,9 @@ function initialState(
     title: "",
     allDay: false,
     startDate: defaultDate,
-    startTime: "09:00",
+    startTime: defaultStartTime,
     endDate: defaultDate,
-    endTime: "10:00",
+    endTime: nextHour(defaultStartTime),
     location: "",
     description: "",
   };
@@ -69,6 +78,7 @@ export function EventFormDialog({
   mode,
   googleConnected,
   defaultDate,
+  defaultStartTime = "09:00",
   event,
   pending = false,
   onSubmit,
@@ -76,12 +86,12 @@ export function EventFormDialog({
 }: Props) {
   const titleId = useId();
   const [form, setForm] = useState<FormState>(() =>
-    initialState(mode, defaultDate, event),
+    initialState(mode, defaultDate, defaultStartTime, event),
   );
 
   useEffect(() => {
     if (open) {
-      setForm(initialState(mode, defaultDate, event));
+      setForm(initialState(mode, defaultDate, defaultStartTime, event));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
