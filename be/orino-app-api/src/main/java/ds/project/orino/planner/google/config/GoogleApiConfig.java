@@ -6,11 +6,12 @@ import ds.project.orino.planner.google.token.GoogleUnauthorizedException;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
+import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -30,8 +31,12 @@ public class GoogleApiConfig {
 
     @Bean
     public RestClient googleRestClient(GoogleApiProperties props) {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(props.connectTimeout());
+        // JDK HttpURLConnection(SimpleClientHttpRequestFactory)은 PATCH를 지원하지 않으므로
+        // java.net.http 기반 JdkClientHttpRequestFactory를 쓴다(의존성 추가 없음, PATCH 지원).
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(props.connectTimeout())
+                .build();
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
         factory.setReadTimeout(props.readTimeout());
 
         return RestClient.builder()
@@ -39,8 +44,12 @@ public class GoogleApiConfig {
                 .defaultStatusHandler(
                         statusCode -> statusCode.isError(),
                         (request, response) -> {
-                            if (response.getStatusCode().value() == 401) {
+                            int statusCode = response.getStatusCode().value();
+                            if (statusCode == 401) {
                                 throw new GoogleUnauthorizedException();
+                            }
+                            if (statusCode == 404) {
+                                throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
                             }
                             String body = readBody(response);
                             if (body.contains("invalid_grant")) {

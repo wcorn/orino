@@ -80,6 +80,7 @@ class GoogleApiConfigTest {
             server.createContext("/server-error", ex -> respond(ex, 500, "{\"error\":\"backendError\"}"));
             server.createContext("/invalid-grant", ex -> respond(ex, 400, "{\"error\":\"invalid_grant\"}"));
             server.createContext("/unauthorized", ex -> respond(ex, 401, "{\"error\":\"unauthorized\"}"));
+            server.createContext("/not-found", ex -> respond(ex, 404, "{\"error\":\"notFound\"}"));
             server.start();
             baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
 
@@ -127,6 +128,16 @@ class GoogleApiConfigTest {
             assertThatThrownBy(() ->
                     client.get().uri(baseUrl + "/unauthorized").retrieve().body(String.class))
                     .isInstanceOf(GoogleUnauthorizedException.class);
+        }
+
+        @Test
+        @DisplayName("404 응답은 RESOURCE_NOT_FOUND(404)로 매핑한다")
+        void notFoundMapsToResourceNotFound() {
+            assertThatThrownBy(() ->
+                    client.get().uri(baseUrl + "/not-found").retrieve().body(String.class))
+                    .isInstanceOf(CustomException.class)
+                    .extracting(e -> ((CustomException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
         }
     }
 

@@ -5,6 +5,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Duration;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 통합 피드 일정 조회의 단기 캐시. 키 {@code google:cal-cache:{memberId}:{from}:{to}}.
@@ -29,6 +30,14 @@ public class GoogleCalendarCacheRepository {
 
     public Optional<String> find(Long memberId, String from, String to) {
         return Optional.ofNullable(redisTemplate.opsForValue().get(key(memberId, from, to)));
+    }
+
+    /** 해당 사용자의 모든 기간 캐시를 무효화한다(쓰기 후 호출). 단일 사용자/저트래픽이라 keys 패턴 삭제로 충분. */
+    public void evictAll(Long memberId) {
+        Set<String> keys = redisTemplate.keys(KEY_PREFIX + memberId + ":*");
+        if (keys != null && !keys.isEmpty()) {
+            redisTemplate.delete(keys);
+        }
     }
 
     private String key(Long memberId, String from, String to) {

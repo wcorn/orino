@@ -1,5 +1,8 @@
 package ds.project.orino.planner.google.client;
 
+import ds.project.orino.planner.google.calendar.dto.EventRequest;
+import ds.project.orino.planner.google.calendar.dto.GoogleEventWriteBody;
+import ds.project.orino.planner.google.calendar.dto.GoogleEventWriteBody.GoogleEventTime;
 import ds.project.orino.planner.google.calendar.dto.GoogleEventsResponse;
 import ds.project.orino.planner.google.calendar.dto.GoogleEventsResponse.GoogleEventDateTime;
 import ds.project.orino.planner.google.calendar.dto.GoogleEventsResponse.GoogleEventItem;
@@ -7,6 +10,7 @@ import ds.project.orino.planner.google.calendar.dto.PlannerEvent;
 import ds.project.orino.planner.google.config.GoogleOAuthProperties;
 import ds.project.orino.planner.google.token.GoogleTokenProvider;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -71,6 +75,76 @@ public class GoogleCalendarClient {
         return response.items().stream()
                 .map(item -> normalize(item, zone))
                 .toList();
+    }
+
+    /** 일정 생성. 생성된 이벤트를 정규화해 반환한다. */
+    public PlannerEvent insertEvent(Long memberId, EventRequest request, ZoneId zone) {
+        URI uri = UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
+                .path(PRIMARY_CALENDAR_PATH)
+                .build()
+                .toUri();
+
+        GoogleEventWriteBody body = toWriteBody(request, zone);
+        GoogleEventItem item = tokenProvider.executeWithRetry(memberId, accessToken ->
+                googleRestClient.post()
+                        .uri(uri)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .body(GoogleEventItem.class));
+        return normalize(item, zone);
+    }
+
+    /** 일정 단일 인스턴스 수정(patch). 없는 id면 404(RESOURCE_NOT_FOUND). */
+    public PlannerEvent patchEvent(Long memberId, String eventId, EventRequest request, ZoneId zone) {
+        URI uri = eventUri(eventId);
+        GoogleEventWriteBody body = toWriteBody(request, zone);
+        GoogleEventItem item = tokenProvider.executeWithRetry(memberId, accessToken ->
+                googleRestClient.patch()
+                        .uri(uri)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .body(GoogleEventItem.class));
+        return normalize(item, zone);
+    }
+
+    /** 일정 삭제. 없는 id면 404(RESOURCE_NOT_FOUND). */
+    public void deleteEvent(Long memberId, String eventId) {
+        URI uri = eventUri(eventId);
+        tokenProvider.executeWithRetry(memberId, accessToken -> {
+            googleRestClient.delete()
+                    .uri(uri)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                    .retrieve()
+                    .toBodilessEntity();
+            return null;
+        });
+    }
+
+    private URI eventUri(String eventId) {
+        return UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
+                .path(PRIMARY_CALENDAR_PATH)
+                .pathSegment(eventId)
+                .build()
+                .toUri();
+    }
+
+    private GoogleEventWriteBody toWriteBody(EventRequest request, ZoneId zone) {
+        GoogleEventTime start;
+        GoogleEventTime end;
+        if (request.allDay()) {
+            start = new GoogleEventTime(null, request.start(), null);
+            // Google 종일 종료는 배타적(다음 날) → 사용자 inclusive end + 1일
+            end = new GoogleEventTime(null, LocalDate.parse(request.end()).plusDays(1).toString(), null);
+        } else {
+            start = new GoogleEventTime(request.start(), null, zone.getId());
+            end = new GoogleEventTime(request.end(), null, zone.getId());
+        }
+        return new GoogleEventWriteBody(
+                request.title(), request.location(), request.description(), start, end);
     }
 
     private PlannerEvent normalize(GoogleEventItem item, ZoneId zone) {
