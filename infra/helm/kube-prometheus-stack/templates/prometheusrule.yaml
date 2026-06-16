@@ -152,22 +152,38 @@ spec:
         # 가용성 SLI: 5xx / 전체 요청 비율
         - record: slo:availability:error_ratio:rate5m
           expr: |
-            sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination",response_code=~"5.."}[5m]))
+            (
+              sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination",response_code=~"5.."}[5m]))
+              or
+              0 * sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination"}[5m]))
+            )
             /
             sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination"}[5m]))
         - record: slo:availability:error_ratio:rate30m
           expr: |
-            sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination",response_code=~"5.."}[30m]))
+            (
+              sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination",response_code=~"5.."}[30m]))
+              or
+              0 * sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination"}[30m]))
+            )
             /
             sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination"}[30m]))
         - record: slo:availability:error_ratio:rate1h
           expr: |
-            sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination",response_code=~"5.."}[1h]))
+            (
+              sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination",response_code=~"5.."}[1h]))
+              or
+              0 * sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination"}[1h]))
+            )
             /
             sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination"}[1h]))
         - record: slo:availability:error_ratio:rate6h
           expr: |
-            sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination",response_code=~"5.."}[6h]))
+            (
+              sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination",response_code=~"5.."}[6h]))
+              or
+              0 * sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination"}[6h]))
+            )
             /
             sum by (destination_service_name) (rate(istio_requests_total{destination_service_name=~"be|fe",reporter="destination"}[6h]))
 
@@ -177,7 +193,7 @@ spec:
             (
               sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[5m]))
               -
-              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{destination_service_name=~"be|fe",reporter="destination",le="500"}[5m]))
+              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{destination_service_name=~"be|fe",reporter="destination",le="500.0"}[5m]))
             )
             /
             sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[5m]))
@@ -186,7 +202,7 @@ spec:
             (
               sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[30m]))
               -
-              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{destination_service_name=~"be|fe",reporter="destination",le="500"}[30m]))
+              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{destination_service_name=~"be|fe",reporter="destination",le="500.0"}[30m]))
             )
             /
             sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[30m]))
@@ -195,7 +211,7 @@ spec:
             (
               sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[1h]))
               -
-              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{destination_service_name=~"be|fe",reporter="destination",le="500"}[1h]))
+              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{destination_service_name=~"be|fe",reporter="destination",le="500.0"}[1h]))
             )
             /
             sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[1h]))
@@ -204,7 +220,7 @@ spec:
             (
               sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[6h]))
               -
-              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{destination_service_name=~"be|fe",reporter="destination",le="500"}[6h]))
+              sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{destination_service_name=~"be|fe",reporter="destination",le="500.0"}[6h]))
             )
             /
             sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_service_name=~"be|fe",reporter="destination"}[6h]))

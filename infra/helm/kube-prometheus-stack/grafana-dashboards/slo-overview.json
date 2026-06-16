@@ -252,7 +252,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "1 - ((sum(rate(istio_request_duration_milliseconds_count{destination_service_name=\"$service\",reporter=\"destination\"}[30d])) - sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name=\"$service\",reporter=\"destination\",le=\"500\"}[30d]))) / sum(rate(istio_request_duration_milliseconds_count{destination_service_name=\"$service\",reporter=\"destination\"}[30d])))",
+          "expr": "1 - ((sum(rate(istio_request_duration_milliseconds_count{destination_service_name=\"$service\",reporter=\"destination\"}[30d])) - sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name=\"$service\",reporter=\"destination\",le=\"500.0\"}[30d]))) / sum(rate(istio_request_duration_milliseconds_count{destination_service_name=\"$service\",reporter=\"destination\"}[30d])))",
           "legendFormat": "30d fast_ratio",
           "refId": "A"
         }
@@ -320,7 +320,7 @@
       "description": "30일 윈도우 누적 위반율을 SLO 5% 예산 대비 환산.",
       "targets": [
         {
-          "expr": "((sum(rate(istio_request_duration_milliseconds_count{destination_service_name=\"$service\",reporter=\"destination\"}[30d])) - sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name=\"$service\",reporter=\"destination\",le=\"500\"}[30d]))) / sum(rate(istio_request_duration_milliseconds_count{destination_service_name=\"$service\",reporter=\"destination\"}[30d]))) / 0.05",
+          "expr": "((sum(rate(istio_request_duration_milliseconds_count{destination_service_name=\"$service\",reporter=\"destination\"}[30d])) - sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name=\"$service\",reporter=\"destination\",le=\"500.0\"}[30d]))) / sum(rate(istio_request_duration_milliseconds_count{destination_service_name=\"$service\",reporter=\"destination\"}[30d]))) / 0.05",
           "legendFormat": "budget_used",
           "refId": "A"
         }
