@@ -46,9 +46,9 @@ kube-prometheus-stack:
 
   grafana:
     adminPassword: admin
-    # 표준 Kubernetes/노드/파드 대시보드 활성화 — 로그 조사 시 리소스 컨텍스트 확보.
-    # 커스텀 대시보드(SLO·Logs)는 grafana_dashboard ConfigMap으로 별도 프로비저닝.
-    defaultDashboardsEnabled: true
+    # 표준 대시보드 비활성화 — 안 보는 대시보드는 노이즈.
+    # 실제로 쓰는 커스텀 대시보드(SLO·Logs)만 grafana_dashboard ConfigMap으로 프로비저닝.
+    defaultDashboardsEnabled: false
     resources:
       requests:
         cpu: 100m
