@@ -150,7 +150,8 @@ class GoogleEventControllerTest extends ApiTestSupport {
         mockMvc.perform(post("/api/planner/calendar/events")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"allDay\":false,\"start\":\"2026-06-10T14:00:00\",\"end\":\"2026-06-10T15:00:00\"}"))
+                        .content("""
+                                {"allDay":false,"start":"2026-06-10T14:00:00","end":"2026-06-10T15:00:00"}"""))
                 .andExpect(status().isBadRequest());
     }
 
