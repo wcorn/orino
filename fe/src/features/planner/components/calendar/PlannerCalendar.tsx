@@ -3,7 +3,6 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { GoogleNotConnectedBanner } from "@/features/google/components/GoogleNotConnectedBanner";
 import {
   addDays,
   addMonths,
@@ -31,6 +30,7 @@ import { weekDays } from "../../weekLayout";
 import { EventFormDialog } from "./EventFormDialog";
 import { PlannerCalendarCell } from "./PlannerCalendarCell";
 import { PlannerCalendarLegend } from "./PlannerCalendarLegend";
+import { PlannerConnectionBanner } from "./PlannerConnectionBanner";
 import { PlannerDayDetailPanel } from "./PlannerDayDetailPanel";
 import { PlannerWeekView } from "./PlannerWeekView";
 import { TaskFormDialog } from "./TaskFormDialog";
@@ -186,16 +186,7 @@ export function PlannerCalendar() {
         </div>
       </div>
 
-      <GoogleNotConnectedBanner />
-
-      {data?.partial && (
-        <div
-          role="alert"
-          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
-        >
-          일부 일정을 불러오지 못했습니다.
-        </div>
-      )}
+      <PlannerConnectionBanner feed={data} />
 
       <PlannerCalendarLegend />
 
