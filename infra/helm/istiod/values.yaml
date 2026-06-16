@@ -3,7 +3,7 @@ istiod:
     enablePrometheusMerge: true
     defaultConfig:
       tracing:
-        sampling: 100
+        sampling: 10   # 100→10: 트레이스 인입량↓ (tempo 블록 증가 억제). Telemetry API와 일치
     extensionProviders:
       - name: tempo
         opentelemetry:
