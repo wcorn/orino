@@ -1,0 +1,24 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: orino-discord
+  namespace: monitoring
+spec:
+  # matchers 없음 → (alertmanagerConfigMatcherStrategy: None과 함께) 전 네임스페이스 catch-all.
+  # operator가 거부하던 raw discord webhook_url_file 대신, CRD의 apiURL(SecretKeySelector)로
+  # 기존 alertmanager-discord-secret을 직접 참조한다.
+  route:
+    receiver: discord
+    groupBy:
+      - alertname
+      - namespace
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 4h
+  receivers:
+    - name: discord
+      discordConfigs:
+        - apiURL:
+            name: alertmanager-discord-secret
+            key: DISCORD_WEBHOOK_URL
+          sendResolved: true
