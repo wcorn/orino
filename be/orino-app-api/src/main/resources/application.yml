@@ -43,6 +43,8 @@ planner:
       - https://www.googleapis.com/auth/tasks
     connect-timeout: ${GOOGLE_CONNECT_TIMEOUT:5s}
     read-timeout: ${GOOGLE_READ_TIMEOUT:10s}
+    retry-max-attempts: ${GOOGLE_RETRY_MAX_ATTEMPTS:2}
+    retry-backoff: ${GOOGLE_RETRY_BACKOFF:200ms}
     oauth:
       authorization-uri: ${GOOGLE_AUTH_URI:https://accounts.google.com/o/oauth2/v2/auth}
       token-uri: ${GOOGLE_TOKEN_URI:https://oauth2.googleapis.com/token}

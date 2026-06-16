@@ -3,6 +3,7 @@ package ds.project.orino.planner.google.config;
 import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
 import ds.project.orino.planner.google.token.GoogleUnauthorizedException;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,13 +25,16 @@ import java.nio.charset.StandardCharsets;
  * <p>{@code defaultStatusHandler} 가 4xx/5xx 응답을 매핑한다: API 401 → {@link GoogleUnauthorizedException}
  * (access token 만료, {@code executeWithRetry}가 1회 갱신 후 재시도) / 본문에 {@code invalid_grant} →
  * 재연동 필요(PLN-ERR-005) / 그 외 → Google API 실패(PLN-ERR-004).
+ *
+ * <p>{@link GoogleApiRetryInterceptor} 가 429/5xx에 지수 백오프 재시도 + {@code google.api.calls{result}}
+ * 메트릭을 집계한다.
  */
 @Configuration
 @EnableConfigurationProperties({GoogleApiProperties.class, GoogleOAuthProperties.class})
 public class GoogleApiConfig {
 
     @Bean
-    public RestClient googleRestClient(GoogleApiProperties props) {
+    public RestClient googleRestClient(GoogleApiProperties props, MeterRegistry meterRegistry) {
         // JDK HttpURLConnection(SimpleClientHttpRequestFactory)은 PATCH를 지원하지 않으므로
         // java.net.http 기반 JdkClientHttpRequestFactory를 쓴다(의존성 추가 없음, PATCH 지원).
         HttpClient httpClient = HttpClient.newBuilder()
@@ -41,6 +45,8 @@ public class GoogleApiConfig {
 
         return RestClient.builder()
                 .requestFactory(factory)
+                .requestInterceptor(new GoogleApiRetryInterceptor(
+                        meterRegistry, props.retryMaxAttempts(), props.retryBackoff()))
                 .defaultStatusHandler(
                         statusCode -> statusCode.isError(),
                         (request, response) -> {

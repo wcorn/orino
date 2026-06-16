@@ -15,8 +15,10 @@ import java.util.List;
  * @param clientSecret   OAuth 2.0 클라이언트 secret
  * @param redirectUri    승인된 리디렉션 URI (Google Cloud Console 등록값과 일치해야 함)
  * @param scopes         요청 scope 목록 (calendar + tasks)
- * @param connectTimeout Google API 연결 타임아웃
- * @param readTimeout    Google API 응답 타임아웃
+ * @param connectTimeout   Google API 연결 타임아웃
+ * @param readTimeout      Google API 응답 타임아웃
+ * @param retryMaxAttempts 429/5xx 시 재시도 횟수(지수 백오프)
+ * @param retryBackoff     첫 재시도 기본 대기(이후 2배씩)
  */
 @ConfigurationProperties(prefix = "planner.google")
 public record GoogleApiProperties(
@@ -25,6 +27,8 @@ public record GoogleApiProperties(
         String redirectUri,
         List<String> scopes,
         Duration connectTimeout,
-        Duration readTimeout
+        Duration readTimeout,
+        int retryMaxAttempts,
+        Duration retryBackoff
 ) {
 }
