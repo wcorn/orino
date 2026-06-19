@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 
 interface Props {
   count: number;
@@ -8,7 +9,7 @@ interface Props {
 
 export function CompletionState({ count }: Props) {
   return (
-    <div className="flex min-h-[40svh] flex-col items-center justify-center gap-4 text-center">
+    <EmptyState>
       <p className="text-foreground text-2xl font-medium">
         🎉 오늘 복습 {count}개 모두 완료!
       </p>
@@ -21,6 +22,6 @@ export function CompletionState({ count }: Props) {
           <Button>학습 자료 보기</Button>
         </Link>
       </div>
-    </div>
+    </EmptyState>
   );
 }

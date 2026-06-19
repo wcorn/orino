@@ -4,6 +4,9 @@ import { useSearchParams } from "react-router-dom";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FieldError } from "@/components/ui/field-error";
+import { LoadingText } from "@/components/ui/loading-text";
 
 import type { NoteTreeNode } from "../api/notes";
 import { useNoteDetail } from "../hooks/useNoteDetail";
@@ -93,23 +96,21 @@ export function NoteTab({ materialId }: Props) {
   };
 
   if (treeQuery.isLoading) {
-    return <p className="text-muted-foreground text-sm">불러오는 중...</p>;
+    return <LoadingText />;
   }
   if (treeQuery.isError) {
-    return (
-      <p className="text-destructive text-sm">노트를 불러오지 못했어요.</p>
-    );
+    return <FieldError>노트를 불러오지 못했어요.</FieldError>;
   }
 
   // 빈 상태: 노트 0개 + 선택된 노트도 없음 (생성 직후 refetch 전이면 에디터로 진행)
   if (tree.length === 0 && activeNoteId == null) {
     return (
-      <div className="flex min-h-[40svh] flex-col items-center justify-center gap-4 text-center">
+      <EmptyState>
         <p className="text-muted-foreground text-sm">아직 노트가 없습니다.</p>
         <Button onClick={handleAddRoot} disabled={createNote.isPending}>
           <Plus className="size-4" /> 첫 노트 만들기
         </Button>
-      </div>
+      </EmptyState>
     );
   }
 
@@ -148,9 +149,9 @@ export function NoteTab({ materialId }: Props) {
             왼쪽에서 노트를 선택하거나 새로 만드세요.
           </p>
         ) : detailQuery.isLoading ? (
-          <p className="text-muted-foreground text-sm">불러오는 중...</p>
+          <LoadingText />
         ) : detailQuery.isError || !detailQuery.data ? (
-          <p className="text-destructive text-sm">노트를 불러오지 못했어요.</p>
+          <FieldError>노트를 불러오지 못했어요.</FieldError>
         ) : (
           <NoteEditor
             key={detailQuery.data.id}

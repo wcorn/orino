@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { FieldError } from "@/components/ui/field-error";
+import { LoadingText } from "@/components/ui/loading-text";
 import { type TodayReview } from "@/features/review/api/reviews";
 import { CompletionState } from "@/features/review/components/CompletionState";
 import { EmptyTodayState } from "@/features/review/components/EmptyTodayState";
@@ -21,12 +23,10 @@ export function TodayReviewsPage() {
   }, [data, queue]);
 
   if (isLoading || (data && queue === null)) {
-    return <p className="text-muted-foreground text-sm">불러오는 중...</p>;
+    return <LoadingText />;
   }
   if (isError || !data || !queue) {
-    return (
-      <p className="text-destructive text-sm">복습을 불러오지 못했어요.</p>
-    );
+    return <FieldError>복습을 불러오지 못했어요.</FieldError>;
   }
 
   const reviews = queue;

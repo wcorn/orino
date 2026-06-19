@@ -1,6 +1,8 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { LoadingText } from "@/components/ui/loading-text";
+
 import { PrivateRoute } from "../features/auth/components/PrivateRoute";
 import { PublicRoute } from "../features/auth/components/PublicRoute";
 import { LandingPage } from "../pages/LandingPage";
@@ -26,7 +28,7 @@ const PlannerCalendarPage = lazy(importPlannerCalendar);
 const PlannerSettingsPage = lazy(importPlannerSettings);
 
 function RouteFallback() {
-  return <div className="text-muted-foreground p-6 text-sm">불러오는 중…</div>;
+  return <LoadingText className="p-6" />;
 }
 
 export function AppRouter() {
