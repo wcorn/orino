@@ -2,7 +2,11 @@ import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { DialogPopup } from "@/components/ui/dialog-popup";
+import { DialogFooter } from "@/components/ui/dialog-footer";
+import { FieldError } from "@/components/ui/field-error";
+import { FormField } from "@/components/ui/form-field";
+import { Modal } from "@/components/ui/modal";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 const MAX_LEN = 1000;
@@ -60,68 +64,61 @@ export function FlashcardFormDialog({
   };
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm transition-opacity duration-150 data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
-        <DialogPopup className="max-w-md">
-          <Dialog.Title className="text-base font-semibold">
-            {mode === "create" ? "카드 추가" : "카드 편집"}
-          </Dialog.Title>
+    <Modal open={open} onOpenChange={onOpenChange} className="max-w-md">
+      <Dialog.Title className="text-base font-semibold">
+        {mode === "create" ? "카드 추가" : "카드 편집"}
+      </Dialog.Title>
 
-          <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
-            <CharField
-              id={frontId}
-              label="앞면 (질문)"
-              rows={3}
-              value={front}
-              onChange={setFront}
-              max={MAX_LEN}
-              autoFocus
-            />
-            <CharField
-              id={backId}
-              label="뒷면 (답)"
-              rows={4}
-              value={back}
-              onChange={setBack}
-              max={MAX_LEN}
-            />
+      <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
+        <CharField
+          id={frontId}
+          label="앞면 (질문)"
+          rows={3}
+          value={front}
+          onChange={setFront}
+          max={MAX_LEN}
+          autoFocus
+        />
+        <CharField
+          id={backId}
+          label="뒷면 (답)"
+          rows={4}
+          value={back}
+          onChange={setBack}
+          max={MAX_LEN}
+        />
 
-            {errorMessage && (
-              <p className="text-destructive text-sm">{errorMessage}</p>
-            )}
+        {errorMessage && <FieldError>{errorMessage}</FieldError>}
 
-            <div className="mt-1 flex items-center justify-between gap-2">
-              {mode === "edit" && onDelete ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="text-destructive"
-                  disabled={pending}
-                  onClick={onDelete}
-                >
-                  삭제
+        <DialogFooter className="mt-1 justify-between">
+          {mode === "edit" && onDelete ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-destructive"
+              disabled={pending}
+              onClick={onDelete}
+            >
+              삭제
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Dialog.Close
+              render={
+                <Button variant="ghost" type="button" disabled={pending}>
+                  취소
                 </Button>
-              ) : (
-                <span />
-              )}
-              <div className="flex gap-2">
-                <Dialog.Close
-                  render={
-                    <Button variant="ghost" type="button" disabled={pending}>
-                      취소
-                    </Button>
-                  }
-                />
-                <Button type="submit" disabled={!valid || !dirty || pending}>
-                  {pending ? "저장 중..." : "저장"}
-                </Button>
-              </div>
-            </div>
-          </form>
-        </DialogPopup>
-      </Dialog.Portal>
-    </Dialog.Root>
+              }
+            />
+            <Button type="submit" disabled={!valid || !dirty || pending}>
+              {pending ? "저장 중..." : "저장"}
+            </Button>
+          </div>
+        </DialogFooter>
+      </form>
+    </Modal>
   );
 }
 
@@ -146,17 +143,13 @@ function CharField({
 }: CharFieldProps) {
   const over = value.length > max;
   return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium">
-        {label}
-      </label>
-      <textarea
+    <FormField label={label} htmlFor={id}>
+      <Textarea
         id={id}
         rows={rows}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         autoFocus={autoFocus}
-        className="border-input bg-background focus-visible:ring-ring/30 min-h-[3rem] resize-y rounded-md border p-2 text-sm shadow-xs focus-visible:ring-2 focus-visible:outline-none"
       />
       <span
         className={cn(
@@ -166,6 +159,6 @@ function CharField({
       >
         {value.length} / {max}
       </span>
-    </div>
+    </FormField>
   );
 }

@@ -2,8 +2,12 @@ import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { DialogPopup } from "@/components/ui/dialog-popup";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DialogFooter } from "@/components/ui/dialog-footer";
+import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { Textarea } from "@/components/ui/textarea";
 import { GoogleConnectButton } from "@/features/google/components/GoogleConnectButton";
 
 import type { EventWriteRequest } from "../../api/events";
@@ -124,152 +128,128 @@ export function EventFormDialog({
   };
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm transition-opacity duration-150 data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
-        <DialogPopup className="max-w-md">
-          <Dialog.Title className="text-base font-semibold">
-            {mode === "create" ? "일정 추가" : "일정 편집"}
-          </Dialog.Title>
+    <Modal open={open} onOpenChange={onOpenChange} className="max-w-md">
+      <Dialog.Title className="text-base font-semibold">
+        {mode === "create" ? "일정 추가" : "일정 편집"}
+      </Dialog.Title>
 
-          {!googleConnected ? (
-            <div className="mt-4 flex flex-col gap-4">
-              <p className="text-muted-foreground text-sm">
-                Google 연결이 필요합니다.
-              </p>
-              <div className="flex justify-end gap-2">
-                <Dialog.Close
-                  render={
-                    <Button variant="ghost" type="button">
-                      닫기
-                    </Button>
-                  }
+      {!googleConnected ? (
+        <div className="mt-4 flex flex-col gap-4">
+          <p className="text-muted-foreground text-sm">
+            Google 연결이 필요합니다.
+          </p>
+          <DialogFooter className="mt-0">
+            <Dialog.Close
+              render={
+                <Button variant="ghost" type="button">
+                  닫기
+                </Button>
+              }
+            />
+            <GoogleConnectButton />
+          </DialogFooter>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">
+          <FormField label="제목" htmlFor={titleId}>
+            <Input
+              id={titleId}
+              value={form.title}
+              onChange={(e) => set("title", e.target.value)}
+              autoFocus
+            />
+          </FormField>
+
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={form.allDay}
+              onChange={(e) => set("allDay", e.target.checked)}
+            />
+            종일
+          </label>
+
+          <FormField label="시작">
+            <div className="flex gap-2">
+              <Input
+                type="date"
+                aria-label="시작 날짜"
+                value={form.startDate}
+                onChange={(e) => set("startDate", e.target.value)}
+              />
+              {!form.allDay && (
+                <Input
+                  type="time"
+                  aria-label="시작 시간"
+                  value={form.startTime}
+                  onChange={(e) => set("startTime", e.target.value)}
                 />
-                <GoogleConnectButton />
-              </div>
+              )}
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">
-              <Field label="제목" htmlFor={titleId}>
+          </FormField>
+
+          <FormField label="종료">
+            <div className="flex gap-2">
+              <Input
+                type="date"
+                aria-label="종료 날짜"
+                value={form.endDate}
+                onChange={(e) => set("endDate", e.target.value)}
+              />
+              {!form.allDay && (
                 <Input
-                  id={titleId}
-                  value={form.title}
-                  onChange={(e) => set("title", e.target.value)}
-                  autoFocus
+                  type="time"
+                  aria-label="종료 시간"
+                  value={form.endTime}
+                  onChange={(e) => set("endTime", e.target.value)}
                 />
-              </Field>
+              )}
+            </div>
+          </FormField>
 
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.allDay}
-                  onChange={(e) => set("allDay", e.target.checked)}
-                />
-                종일
-              </label>
+          <FormField label="장소 (선택)">
+            <Input
+              value={form.location}
+              onChange={(e) => set("location", e.target.value)}
+            />
+          </FormField>
 
-              <Field label="시작">
-                <div className="flex gap-2">
-                  <Input
-                    type="date"
-                    aria-label="시작 날짜"
-                    value={form.startDate}
-                    onChange={(e) => set("startDate", e.target.value)}
-                  />
-                  {!form.allDay && (
-                    <Input
-                      type="time"
-                      aria-label="시작 시간"
-                      value={form.startTime}
-                      onChange={(e) => set("startTime", e.target.value)}
-                    />
-                  )}
-                </div>
-              </Field>
+          <FormField label="메모 (선택)">
+            <Textarea
+              rows={2}
+              value={form.description}
+              onChange={(e) => set("description", e.target.value)}
+            />
+          </FormField>
 
-              <Field label="종료">
-                <div className="flex gap-2">
-                  <Input
-                    type="date"
-                    aria-label="종료 날짜"
-                    value={form.endDate}
-                    onChange={(e) => set("endDate", e.target.value)}
-                  />
-                  {!form.allDay && (
-                    <Input
-                      type="time"
-                      aria-label="종료 시간"
-                      value={form.endTime}
-                      onChange={(e) => set("endTime", e.target.value)}
-                    />
-                  )}
-                </div>
-              </Field>
-
-              <Field label="장소 (선택)">
-                <Input
-                  value={form.location}
-                  onChange={(e) => set("location", e.target.value)}
-                />
-              </Field>
-
-              <Field label="메모 (선택)">
-                <textarea
-                  rows={2}
-                  value={form.description}
-                  onChange={(e) => set("description", e.target.value)}
-                  className="border-input bg-background focus-visible:ring-ring/30 resize-y rounded-md border p-2 text-sm shadow-xs focus-visible:ring-2 focus-visible:outline-none"
-                />
-              </Field>
-
-              <div className="mt-1 flex items-center justify-between gap-2">
-                {mode === "edit" && onDelete ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="text-destructive"
-                    disabled={pending}
-                    onClick={onDelete}
-                  >
-                    삭제
+          <DialogFooter className="mt-1 justify-between">
+            {mode === "edit" && onDelete ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-destructive"
+                disabled={pending}
+                onClick={onDelete}
+              >
+                삭제
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2">
+              <Dialog.Close
+                render={
+                  <Button variant="ghost" type="button" disabled={pending}>
+                    취소
                   </Button>
-                ) : (
-                  <span />
-                )}
-                <div className="flex gap-2">
-                  <Dialog.Close
-                    render={
-                      <Button variant="ghost" type="button" disabled={pending}>
-                        취소
-                      </Button>
-                    }
-                  />
-                  <Button type="submit" disabled={!valid || pending}>
-                    {pending ? "저장 중..." : "저장"}
-                  </Button>
-                </div>
-              </div>
-            </form>
-          )}
-        </DialogPopup>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
-}
-
-interface FieldProps {
-  label: string;
-  htmlFor?: string;
-  children: React.ReactNode;
-}
-
-function Field({ label, htmlFor, children }: FieldProps) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={htmlFor} className="text-sm font-medium">
-        {label}
-      </label>
-      {children}
-    </div>
+                }
+              />
+              <Button type="submit" disabled={!valid || pending}>
+                {pending ? "저장 중..." : "저장"}
+              </Button>
+            </div>
+          </DialogFooter>
+        </form>
+      )}
+    </Modal>
   );
 }

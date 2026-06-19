@@ -1,11 +1,13 @@
 import { Dialog } from "@base-ui/react/dialog";
-import { Select } from "@base-ui/react/select";
-import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { DialogPopup } from "@/components/ui/dialog-popup";
+import { DialogFooter } from "@/components/ui/dialog-footer";
+import { FieldError } from "@/components/ui/field-error";
+import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { Select, type SelectOption } from "@/components/ui/select";
 
 import type { Material, MaterialStatus } from "../api/materials";
 import { useUpdateMaterial } from "../hooks/useUpdateMaterial";
@@ -16,7 +18,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-const STATUS_OPTIONS: { value: MaterialStatus; label: string }[] = [
+const STATUS_OPTIONS: SelectOption<MaterialStatus>[] = [
   { value: "ACTIVE", label: "진행 중" },
   { value: "COMPLETED", label: "완료" },
 ];
@@ -54,98 +56,53 @@ export function EditMaterialDialog({ material, open, onOpenChange }: Props) {
   };
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm transition-opacity duration-150 data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
-        <DialogPopup className="max-w-sm">
-          <Dialog.Title className="text-base font-semibold">
-            자료 편집
-          </Dialog.Title>
+    <Modal open={open} onOpenChange={onOpenChange} className="max-w-sm">
+      <Dialog.Title className="text-base font-semibold">자료 편집</Dialog.Title>
 
-          <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor={titleId} className="text-sm font-medium">
-                제목
-              </label>
-              <Input
-                id={titleId}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                maxLength={200}
-                autoFocus
-              />
-            </div>
+      <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
+        <FormField label="제목" htmlFor={titleId}>
+          <Input
+            id={titleId}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            maxLength={200}
+            autoFocus
+          />
+        </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <span id={statusLabelId} className="text-sm font-medium">
-                상태
-              </span>
-              <Select.Root
-                value={status}
-                onValueChange={(value) => setStatus(value as MaterialStatus)}
-              >
-                <Select.Trigger
-                  aria-labelledby={statusLabelId}
-                  className="border-input bg-background focus-visible:ring-ring/30 flex h-9 items-center justify-between gap-2 rounded-md border px-3 text-sm shadow-xs focus-visible:ring-2 focus-visible:outline-none"
-                >
-                  <Select.Value>
-                    {(value) =>
-                      STATUS_OPTIONS.find((opt) => opt.value === value)?.label
-                    }
-                  </Select.Value>
-                  <Select.Icon>
-                    <ChevronDown className="size-4 opacity-60" />
-                  </Select.Icon>
-                </Select.Trigger>
-                <Select.Portal>
-                  <Select.Positioner sideOffset={4} className="z-50">
-                    <Select.Popup className="bg-popover text-popover-foreground min-w-(--anchor-width) overflow-hidden rounded-md border p-1 shadow-md">
-                      {STATUS_OPTIONS.map((opt) => (
-                        <Select.Item
-                          key={opt.value}
-                          value={opt.value}
-                          className="data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground flex cursor-pointer items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-sm outline-none"
-                        >
-                          <Select.ItemText>{opt.label}</Select.ItemText>
-                          <Select.ItemIndicator>
-                            <Check className="size-3.5" />
-                          </Select.ItemIndicator>
-                        </Select.Item>
-                      ))}
-                    </Select.Popup>
-                  </Select.Positioner>
-                </Select.Portal>
-              </Select.Root>
-            </div>
+        <FormField label="상태" labelId={statusLabelId}>
+          <Select
+            value={status}
+            onValueChange={setStatus}
+            options={STATUS_OPTIONS}
+            ariaLabelledby={statusLabelId}
+          />
+        </FormField>
 
-            {mutation.isError && (
-              <p className="text-destructive text-sm">
-                저장에 실패했어요. 잠시 후 다시 시도해주세요.
-              </p>
-            )}
+        {mutation.isError && (
+          <FieldError>저장에 실패했어요. 잠시 후 다시 시도해주세요.</FieldError>
+        )}
 
-            <div className="mt-1 flex justify-end gap-2">
-              <Dialog.Close
-                render={
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    disabled={mutation.isPending}
-                  >
-                    취소
-                  </Button>
-                }
-              />
+        <DialogFooter className="mt-1">
+          <Dialog.Close
+            render={
               <Button
-                type="submit"
-                disabled={!titleValid || !dirty || mutation.isPending}
+                variant="ghost"
+                type="button"
+                disabled={mutation.isPending}
               >
-                {mutation.isPending ? "저장 중..." : "저장"}
+                취소
               </Button>
-            </div>
-          </form>
-        </DialogPopup>
-      </Dialog.Portal>
-    </Dialog.Root>
+            }
+          />
+          <Button
+            type="submit"
+            disabled={!titleValid || !dirty || mutation.isPending}
+          >
+            {mutation.isPending ? "저장 중..." : "저장"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </Modal>
   );
 }
