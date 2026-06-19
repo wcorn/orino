@@ -17,7 +17,8 @@ controller:
       cpu: 250m
       memory: 512Mi
     limits:
-      cpu: 500m
+      # 자기관리 편입으로 관리 앱이 1개 늘어 reconcile 부하 증가 → 500m에서 29% throttle.
+      cpu: 750m
       memory: 1Gi
 
 server:
@@ -63,7 +64,8 @@ dex:
       memory: 32Mi
     limits:
       cpu: 50m
-      memory: 64Mi
+      # 평상 사용량이 ~57Mi라 64Mi limit의 90%에 상시 근접(ContainerMemoryNearLimit) → 128Mi.
+      memory: 128Mi
 
 notifications:
   # 컨트롤러만 이 차트가 띄운다. config(cm/secret)는 전용 argocd-notifications 앱이 소유하므로
