@@ -25,7 +25,7 @@ export function Toaster() {
           role="status"
           aria-live="polite"
           className={cn(
-            "pointer-events-auto flex w-72 items-start justify-between gap-2 rounded-lg border px-3 py-2 text-sm shadow-md",
+            "pointer-events-auto flex w-72 max-w-[calc(100vw-2rem)] items-start justify-between gap-2 rounded-lg border px-3 py-2 text-sm shadow-md",
             VARIANT_STYLES[toast.variant],
           )}
         >
