@@ -61,7 +61,7 @@ export function PlannerCalendarCell({
       aria-pressed={isSelected}
       onClick={() => onSelect(isoDate)}
       className={cn(
-        "flex min-h-16 flex-col gap-1 rounded-md border p-1.5 text-left transition-colors",
+        "flex aspect-square flex-col gap-1 overflow-hidden rounded-md border p-1.5 text-left transition-colors",
         inMonth ? "bg-card" : "bg-muted/30 text-muted-foreground",
         isToday ? "border-primary" : "border-border",
         isSelected && "ring-primary ring-2",
