@@ -1,11 +1,11 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
 interface MenuProps {
-  /** 트리거로 렌더할 요소(보통 <Button size="icon-sm">). */
-  trigger: ReactNode;
+  /** 트리거로 렌더할 요소(보통 <Button size="icon-sm">). render에 전달되므로 단일 element여야 한다. */
+  trigger: ReactElement;
   children: ReactNode;
 }
 
