@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useToastStore } from "@/shared/lib/toast";
 
@@ -30,14 +31,15 @@ export function Toaster() {
           )}
         >
           <span className="flex-1">{toast.message}</span>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={() => dismiss(toast.id)}
             aria-label="알림 닫기"
-            className="opacity-70 hover:opacity-100"
+            className="size-6 shrink-0 opacity-70 hover:opacity-100"
           >
             <X className="size-3.5" />
-          </button>
+          </Button>
         </div>
       ))}
     </div>

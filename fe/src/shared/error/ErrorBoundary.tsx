@@ -1,6 +1,8 @@
 import { faro } from "@grafana/faro-react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
+import { Button } from "@/components/ui/button";
+
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
@@ -35,12 +37,9 @@ export class ErrorBoundary extends Component<Props, State> {
             <p className="text-muted-foreground text-sm">
               문제가 발생했습니다.
             </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="text-primary text-sm underline"
-            >
+            <Button variant="link" onClick={() => window.location.reload()}>
               새로고침
-            </button>
+            </Button>
           </div>
         )
       );
