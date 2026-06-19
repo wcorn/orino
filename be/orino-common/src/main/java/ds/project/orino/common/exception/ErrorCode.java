@@ -17,6 +17,7 @@ public enum ErrorCode {
     INVALID_STATE("SP-ERR-003", "현재 상태에서 수행할 수 없는 작업입니다.", 409),
 
     // PLANNER (Google Calendar 연동)
+    ROUTINE_INVALID_RULE("PLN-ERR-002", "유효하지 않은 반복 규칙입니다.", 400),
     GOOGLE_NOT_CONNECTED("PLN-ERR-003", "Google 연동이 필요합니다.", 409),
     GOOGLE_API_FAILED("PLN-ERR-004", "Google API 호출에 실패했습니다.", 502),
     GOOGLE_INVALID_GRANT("PLN-ERR-005", "Google 연동이 만료되어 재연결이 필요합니다.", 401);

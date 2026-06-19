@@ -11,6 +11,7 @@ package ds.project.orino.planner.google.calendar.dto;
  * @param location  장소(null 가능)
  * @param recurring 반복 일정의 인스턴스 여부
  * @param source    항상 "google"
+ * @param routine   루틴 인스턴스면 주석(type/recurringEventId/done), 아니면 null
  */
 public record PlannerEvent(
         String id,
@@ -20,6 +21,13 @@ public record PlannerEvent(
         String end,
         String location,
         boolean recurring,
-        String source
+        String source,
+        RoutineMeta routine
 ) {
+
+    /** 루틴 주석 없는 일반 일정. */
+    public PlannerEvent(String id, String title, boolean allDay, String start, String end,
+                        String location, boolean recurring, String source) {
+        this(id, title, allDay, start, end, location, recurring, source, null);
+    }
 }

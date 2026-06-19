@@ -8,6 +8,7 @@ import ds.project.orino.planner.google.calendar.dto.GoogleEventsResponse.GoogleE
 import ds.project.orino.planner.google.calendar.dto.GoogleEventsResponse.GoogleEventItem;
 import ds.project.orino.planner.google.calendar.dto.GoogleExtendedProperties;
 import ds.project.orino.planner.google.calendar.dto.PlannerEvent;
+import ds.project.orino.planner.google.calendar.dto.RoutineMeta;
 import ds.project.orino.planner.google.config.GoogleOAuthProperties;
 import ds.project.orino.planner.google.recurrence.RecurrenceRule;
 import ds.project.orino.planner.google.recurrence.RecurrenceRuleFactory;
@@ -27,6 +28,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Google Calendar API 래퍼. {@code events.list}를 라이브 프록시하고 응답을 사용자 시간대로 정규화한다.
@@ -297,7 +299,24 @@ public class GoogleCalendarClient {
                 endValue,
                 item.location(),
                 item.recurringEventId() != null,
-                "google");
+                "google",
+                toRoutineMeta(item));
+    }
+
+    /** extendedProperties에 루틴 태그가 있으면 피드 주석(type/recurringEventId/done)을 만든다. done은 R3에서 조인. */
+    private RoutineMeta toRoutineMeta(GoogleEventItem item) {
+        if (item.extendedProperties() == null) {
+            return null;
+        }
+        Map<String, String> priv = item.extendedProperties().privateProperties();
+        if (!RoutineTag.isRoutine(priv)) {
+            return null;
+        }
+        RoutineType type = RoutineTag.routineType(priv);
+        return new RoutineMeta(
+                type == null ? null : type.code(),
+                item.recurringEventId(),
+                false);
     }
 
     private String toLocalDateTime(GoogleEventDateTime dateTime, ZoneId zone) {
