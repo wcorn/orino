@@ -211,7 +211,7 @@ export function PlannerCalendar() {
           </CardContent>
         </Card>
       ) : (
-        <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1fr_24rem]">
+        <div className="grid gap-6 lg:grid-cols-[1fr_24rem]">
           <Card>
             <CardContent className="flex flex-col gap-2">
               <div className="grid grid-cols-7 gap-1">
@@ -235,7 +235,7 @@ export function PlannerCalendar() {
                   {Array.from({ length: 42 }, (_, i) => (
                     <div
                       key={i}
-                      className="bg-muted/50 aspect-square animate-pulse rounded-md"
+                      className="bg-muted/50 min-h-20 animate-pulse rounded-md sm:min-h-24 lg:min-h-28"
                     />
                   ))}
                 </div>
