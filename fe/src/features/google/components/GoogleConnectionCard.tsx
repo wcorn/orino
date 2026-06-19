@@ -26,7 +26,7 @@ export function GoogleConnectionCard() {
           <p className="text-muted-foreground text-sm">불러오는 중…</p>
         ) : status?.connected ? (
           <>
-            <dl className="grid grid-cols-[5rem_1fr] gap-y-1 text-sm">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm sm:grid-cols-[5rem_1fr]">
               <dt className="text-muted-foreground">상태</dt>
               <dd>연결됨</dd>
               {status.googleEmail && (

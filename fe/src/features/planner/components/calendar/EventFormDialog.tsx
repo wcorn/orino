@@ -2,6 +2,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { DialogPopup } from "@/components/ui/dialog-popup";
 import { Input } from "@/components/ui/input";
 import { GoogleConnectButton } from "@/features/google/components/GoogleConnectButton";
 
@@ -126,7 +127,7 @@ export function EventFormDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm transition-opacity duration-150 data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
-        <Dialog.Popup className="bg-background fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border p-6 shadow-lg transition-all duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0">
+        <DialogPopup className="max-w-md">
           <Dialog.Title className="text-base font-semibold">
             {mode === "create" ? "일정 추가" : "일정 편집"}
           </Dialog.Title>
@@ -250,7 +251,7 @@ export function EventFormDialog({
               </div>
             </form>
           )}
-        </Dialog.Popup>
+        </DialogPopup>
       </Dialog.Portal>
     </Dialog.Root>
   );
