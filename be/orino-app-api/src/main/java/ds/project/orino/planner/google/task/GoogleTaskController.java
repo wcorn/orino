@@ -2,7 +2,6 @@ package ds.project.orino.planner.google.task;
 
 import ds.project.orino.common.response.ApiResponse;
 import ds.project.orino.planner.google.calendar.dto.PlannerTask;
-import ds.project.orino.planner.google.client.GoogleTasksClient;
 import ds.project.orino.planner.google.task.dto.TaskCreateRequest;
 import ds.project.orino.planner.google.task.dto.TaskUpdateRequest;
 import ds.project.orino.planner.google.task.dto.TasksResponse;
@@ -27,10 +26,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/planner/tasks")
 public class GoogleTaskController {
 
-    private final GoogleTasksClient googleTasksClient;
+    private final GoogleTasksQueryService googleTasksQueryService;
+    private final GoogleTasksCommandService googleTasksCommandService;
 
-    public GoogleTaskController(GoogleTasksClient googleTasksClient) {
-        this.googleTasksClient = googleTasksClient;
+    public GoogleTaskController(GoogleTasksQueryService googleTasksQueryService,
+                                GoogleTasksCommandService googleTasksCommandService) {
+        this.googleTasksQueryService = googleTasksQueryService;
+        this.googleTasksCommandService = googleTasksCommandService;
     }
 
     @GetMapping
@@ -38,14 +40,14 @@ public class GoogleTaskController {
             @AuthenticationPrincipal Long memberId,
             @RequestParam(defaultValue = "false") boolean showCompleted) {
         return ApiResponse.success(
-                new TasksResponse(googleTasksClient.listTasks(memberId, showCompleted)));
+                new TasksResponse(googleTasksQueryService.listTasks(memberId, showCompleted)));
     }
 
     @PostMapping
     public ResponseEntity<ApiResponse<PlannerTask>> create(
             @AuthenticationPrincipal Long memberId,
             @Valid @RequestBody TaskCreateRequest request) {
-        PlannerTask created = googleTasksClient.insertTask(memberId, request);
+        PlannerTask created = googleTasksCommandService.create(memberId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(created));
     }
 
@@ -54,14 +56,14 @@ public class GoogleTaskController {
             @AuthenticationPrincipal Long memberId,
             @PathVariable String taskId,
             @RequestBody TaskUpdateRequest request) {
-        return ApiResponse.success(googleTasksClient.patchTask(memberId, taskId, request));
+        return ApiResponse.success(googleTasksCommandService.update(memberId, taskId, request));
     }
 
     @DeleteMapping("/{taskId}")
     public ApiResponse<Void> delete(
             @AuthenticationPrincipal Long memberId,
             @PathVariable String taskId) {
-        googleTasksClient.deleteTask(memberId, taskId);
+        googleTasksCommandService.delete(memberId, taskId);
         return ApiResponse.success();
     }
 }
