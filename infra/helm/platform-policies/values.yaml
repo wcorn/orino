@@ -36,7 +36,10 @@ namespaces:
     resourceQuota:
       enabled: true
       requests:
-        cpu: "2"
+        # requests.cpu는 네임스페이스 reservation 캡. 관측 스택 requests 합(약 1845m)이
+        # hard=2에 92% 도달해 KubeQuotaAlmostFull 발화·신규 파드 admission이 막힘.
+        # 클러스터 총 32코어(2노드×16) 기준 3으로 상향해 여유 확보(약 61%).
+        cpu: "3"
         memory: 8Gi
       limits:
         # limits.cpu는 네임스페이스 정책 상한(클러스터 총합 기준 버스트 상한, 예약/하드웨어 아님).
