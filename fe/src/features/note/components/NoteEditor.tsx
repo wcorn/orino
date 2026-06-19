@@ -194,9 +194,15 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
           insertPagePending={createNote.isPending}
         />
         {editor && (
-          // nested: 불릿/태스크 리스트 항목 등 중첩 블록도 개별 드래그 타깃이 되게 한다.
-          // (기본 false면 리스트 전체를 한 블록으로만 잡음)
-          <DragHandle editor={editor} nested className="z-10">
+          // nested: 리스트 항목 등 중첩 블록도 개별(한 줄) 드래그 타깃이 되게 한다.
+          // edgeDetection "none": 기본값(left,top)은 항목 왼쪽 가장자리에서 부모(리스트)를
+          // 우선해 하위 불릿 왼쪽에 호버 시 항목 핸들이 안 뜨고 글자에 대야 떴다. none이면
+          // 커서 위치와 무관하게 가장 깊은 항목이 일관되게 잡혀 행 어디서나 핸들이 뜬다.
+          <DragHandle
+            editor={editor}
+            nested={{ edgeDetection: "none" }}
+            className="z-10"
+          >
             <button
               type="button"
               aria-label="블록 이동"
