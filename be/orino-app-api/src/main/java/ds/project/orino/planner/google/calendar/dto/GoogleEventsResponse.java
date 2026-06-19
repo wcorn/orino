@@ -15,7 +15,9 @@ public record GoogleEventsResponse(List<GoogleEventItem> items) {
             String location,
             String recurringEventId,
             GoogleEventDateTime start,
-            GoogleEventDateTime end
+            GoogleEventDateTime end,
+            List<String> recurrence,
+            GoogleExtendedProperties extendedProperties
     ) {
     }
 
