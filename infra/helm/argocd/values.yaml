@@ -43,7 +43,8 @@ repoServer:
       cpu: 50m
       memory: 128Mi
     limits:
-      cpu: 500m
+      # 매니페스트 생성 버스트로 500m에서 32% CPU throttle 발생 → 750m로 상향.
+      cpu: 750m
       memory: 768Mi
 
 # ApplicationSet 미사용 중이지만 App of Apps 보완재로 구동

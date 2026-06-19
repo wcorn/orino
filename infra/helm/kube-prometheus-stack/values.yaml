@@ -152,5 +152,6 @@ kube-prometheus-stack:
         cpu: 50m
         memory: 32Mi
       limits:
-        cpu: 200m
+        # scrape 시 버스트로 200m에서 25% CPU throttle 발생 → 300m로 상향.
+        cpu: 300m
         memory: 128Mi
