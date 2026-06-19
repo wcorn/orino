@@ -2,6 +2,8 @@ package ds.project.orino.planner.google.routine;
 
 import ds.project.orino.common.response.ApiResponse;
 import ds.project.orino.core.time.UserTimeZone;
+import ds.project.orino.planner.google.routine.dto.RoutineCheckRequest;
+import ds.project.orino.planner.google.routine.dto.RoutineCheckResponse;
 import ds.project.orino.planner.google.routine.dto.RoutineCreateRequest;
 import ds.project.orino.planner.google.routine.dto.RoutineListResponse;
 import ds.project.orino.planner.google.routine.dto.RoutineSeriesSummary;
@@ -10,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,11 +28,14 @@ public class RoutineController {
 
     private final RoutineService routineService;
     private final RoutineQueryService routineQueryService;
+    private final RoutineCheckService routineCheckService;
 
     public RoutineController(RoutineService routineService,
-                             RoutineQueryService routineQueryService) {
+                             RoutineQueryService routineQueryService,
+                             RoutineCheckService routineCheckService) {
         this.routineService = routineService;
         this.routineQueryService = routineQueryService;
+        this.routineCheckService = routineCheckService;
     }
 
     @PostMapping
@@ -44,5 +50,15 @@ public class RoutineController {
     public ApiResponse<RoutineListResponse> list(@AuthenticationPrincipal Long memberId) {
         return ApiResponse.success(
                 new RoutineListResponse(routineQueryService.list(memberId, UserTimeZone.get())));
+    }
+
+    /** 습관 완료 체크 토글. schedule 루틴에 호출하면 400(체크 비대상). */
+    @PostMapping("/{recurringEventId}/check")
+    public ApiResponse<RoutineCheckResponse> check(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable String recurringEventId,
+            @Valid @RequestBody RoutineCheckRequest request) {
+        return ApiResponse.success(
+                routineCheckService.toggle(memberId, recurringEventId, request.date(), request.done()));
     }
 }

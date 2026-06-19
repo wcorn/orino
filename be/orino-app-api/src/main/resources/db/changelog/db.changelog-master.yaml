@@ -45,3 +45,5 @@ databaseChangeLog:
       file: db/changelog/changes/022-review-schedule-datetime.yaml
   - include:
       file: db/changelog/changes/023-create-google-account.yaml
+  - include:
+      file: db/changelog/changes/024-create-routine-check.yaml

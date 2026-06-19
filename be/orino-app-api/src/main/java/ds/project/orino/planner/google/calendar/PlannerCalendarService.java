@@ -2,12 +2,15 @@ package ds.project.orino.planner.google.calendar;
 
 import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
+import ds.project.orino.domain.planner.routine.repository.RoutineCheckRepository;
 import ds.project.orino.planner.google.calendar.dto.FeedError;
 import ds.project.orino.planner.google.calendar.dto.GoogleEventsView;
 import ds.project.orino.planner.google.calendar.dto.PlannerCalendarFeed;
 import ds.project.orino.planner.google.calendar.dto.PlannerEvent;
 import ds.project.orino.planner.google.calendar.dto.PlannerReview;
 import ds.project.orino.planner.google.calendar.dto.PlannerTask;
+import ds.project.orino.planner.google.calendar.dto.RoutineMeta;
+import ds.project.orino.planner.google.routine.RoutineType;
 import ds.project.orino.planner.google.task.GoogleTasksQueryService;
 import ds.project.orino.planner.review.dto.CalendarReviewItem;
 import ds.project.orino.planner.review.service.ReviewQueryService;
@@ -19,8 +22,10 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.stream.Collectors;
 
 /**
  * 통합 캘린더 피드 조립. 일정(Google)·할 일(M3)·복습(orino 오버레이)을 한 응답으로 모은다.
@@ -40,15 +45,18 @@ public class PlannerCalendarService {
     private final GoogleEventQueryService googleEventQueryService;
     private final GoogleTasksQueryService googleTasksQueryService;
     private final ReviewQueryService reviewQueryService;
+    private final RoutineCheckRepository routineCheckRepository;
     private final ExecutorService plannerFeedExecutor;
 
     public PlannerCalendarService(GoogleEventQueryService googleEventQueryService,
                                   GoogleTasksQueryService googleTasksQueryService,
                                   ReviewQueryService reviewQueryService,
+                                  RoutineCheckRepository routineCheckRepository,
                                   ExecutorService plannerFeedExecutor) {
         this.googleEventQueryService = googleEventQueryService;
         this.googleTasksQueryService = googleTasksQueryService;
         this.reviewQueryService = reviewQueryService;
+        this.routineCheckRepository = routineCheckRepository;
         this.plannerFeedExecutor = plannerFeedExecutor;
     }
 
@@ -72,14 +80,64 @@ public class PlannerCalendarService {
         reviewsResult.error().ifPresent(errors::add);
         tasksResult.error().ifPresent(errors::add);
 
+        // 습관 인스턴스 done 오버레이는 요청 스레드(OSIV)에서 DB batch 로드로 적용한다.
+        List<PlannerEvent> events = applyRoutineChecks(memberId, eventsResult.events(), from, to);
+
         return new PlannerCalendarFeed(
                 from, to,
                 eventsResult.connected(),
                 !errors.isEmpty(),
                 errors,
-                eventsResult.events(),
+                events,
                 tasksResult.tasks(),
                 reviewsResult.reviews());
+    }
+
+    /**
+     * habit 루틴 인스턴스에 {@code routine_check} 완료 여부를 조인한다. 기간 내 체크 행을 한 번에 로드해(N+1 회피)
+     * {@code (recurringEventId, instanceDate)}로 매칭한다. habit 인스턴스가 없으면 DB를 건드리지 않고,
+     * 오버레이 실패 시에는 피드를 막지 않도록 원본(done=false)을 유지한다.
+     */
+    private List<PlannerEvent> applyRoutineChecks(Long memberId, List<PlannerEvent> events,
+                                                  LocalDate from, LocalDate to) {
+        if (events.stream().noneMatch(PlannerCalendarService::isHabitInstance)) {
+            return events;
+        }
+        try {
+            Set<String> checkedKeys = routineCheckRepository
+                    .findByMemberIdAndInstanceDateBetween(memberId, from, to).stream()
+                    .map(c -> checkKey(c.getRecurringEventId(), c.getInstanceDate().toString()))
+                    .collect(Collectors.toSet());
+            return events.stream()
+                    .map(event -> applyDone(event, checkedKeys))
+                    .toList();
+        } catch (RuntimeException e) {
+            return events;
+        }
+    }
+
+    private static boolean isHabitInstance(PlannerEvent event) {
+        return event.routine() != null
+                && RoutineType.HABIT.code().equals(event.routine().type());
+    }
+
+    private static PlannerEvent applyDone(PlannerEvent event, Set<String> checkedKeys) {
+        if (!isHabitInstance(event)) {
+            return event;
+        }
+        boolean done = checkedKeys.contains(
+                checkKey(event.routine().recurringEventId(), event.start()));
+        if (done == event.routine().done()) {
+            return event;
+        }
+        RoutineMeta updated = new RoutineMeta(
+                event.routine().type(), event.routine().recurringEventId(), done);
+        return new PlannerEvent(event.id(), event.title(), event.allDay(), event.start(),
+                event.end(), event.location(), event.recurring(), event.source(), updated);
+    }
+
+    private static String checkKey(String recurringEventId, String instanceDate) {
+        return recurringEventId + "|" + instanceDate;
     }
 
     private EventsResult fetchEvents(Long memberId, LocalDate from, LocalDate to, ZoneId zone) {

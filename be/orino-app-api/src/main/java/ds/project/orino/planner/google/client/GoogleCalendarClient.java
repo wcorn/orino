@@ -84,6 +84,20 @@ public class GoogleCalendarClient {
                 .toList();
     }
 
+    /**
+     * 단일 이벤트를 원본(raw) 형태로 조회한다. extendedProperties·recurrence를 그대로 노출해 호출부가
+     * 루틴 종류 판별 등에 사용한다. 없는 id면 404(RESOURCE_NOT_FOUND).
+     */
+    public GoogleEventItem getEvent(Long memberId, String eventId) {
+        URI uri = eventUri(eventId);
+        return tokenProvider.executeWithRetry(memberId, accessToken ->
+                googleRestClient.get()
+                        .uri(uri)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .retrieve()
+                        .body(GoogleEventItem.class));
+    }
+
     /** 일정 생성. 생성된 이벤트를 정규화해 반환한다. */
     public PlannerEvent insertEvent(Long memberId, EventRequest request, ZoneId zone) {
         URI uri = UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
