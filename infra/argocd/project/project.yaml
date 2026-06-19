@@ -10,6 +10,8 @@ spec:
 
   sourceRepos:
     - https://github.com/wcorn/orino.git
+    # ArgoCD 자기관리 Application(argocd-app.yaml)이 upstream argo-cd 차트를 multi-source로 참조.
+    - https://argoproj.github.io/argo-helm
 
   destinations:
     - server: https://kubernetes.default.svc

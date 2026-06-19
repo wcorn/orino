@@ -1,11 +1,10 @@
-# ArgoCD 본체는 chicken-and-egg 문제로 GitOps 관리 밖이다.
-# 배포/업그레이드는 note1에서 수동으로 실행한다:
-#
-#   ssh note1 "helm repo update argo && \
-#     helm upgrade argocd argo/argo-cd --namespace argocd --version 9.4.10 \
-#       -f values.yaml"
-#
-# values 변경 시 이 파일을 먼저 갱신한 뒤 수동 apply.
+# ArgoCD 본체 values. 단일 진실(single source of truth)로 두 경로가 공유한다:
+#   1. 최초 설치(chicken-and-egg): Ansible argocd_bootstrap role 이
+#      `helm upgrade --install argocd argo/argo-cd --version 9.4.10 -f <이 파일>` 로 부트스트랩.
+#   2. 이후 업그레이드: 자기관리 Application(infra/argocd/applications/argocd-app.yaml)이
+#      이 파일을 $values 로 참조해 GitOps 자동 반영(self-heal). 수동 helm upgrade 불필요.
+# 차트 버전(9.4.10)을 올릴 때는 argocd-app.yaml 의 targetRevision 과
+# argocd_bootstrap 의 chart_version 을 함께 맞춘다.
 
 configs:
   params:
