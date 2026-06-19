@@ -10,7 +10,11 @@ import { useLocation } from "react-router-dom";
 
 import { reissue } from "../features/auth/api/auth";
 import { getAccessToken } from "../features/auth/store/authStore";
+import { installFocusRevalidation } from "./focusRevalidation";
 import { prefetchRoutes } from "./routeImports";
+
+// 복귀(visibilitychange + window focus) 시 활성 쿼리를 재검증하도록 focus 신호를 구독한다.
+installFocusRevalidation();
 
 interface AuthContextType {
   isAuthenticated: boolean;
