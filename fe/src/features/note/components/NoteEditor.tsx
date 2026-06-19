@@ -194,7 +194,9 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
           insertPagePending={createNote.isPending}
         />
         {editor && (
-          <DragHandle editor={editor} className="z-10">
+          // nested: 불릿/태스크 리스트 항목 등 중첩 블록도 개별 드래그 타깃이 되게 한다.
+          // (기본 false면 리스트 전체를 한 블록으로만 잡음)
+          <DragHandle editor={editor} nested className="z-10">
             <button
               type="button"
               aria-label="블록 이동"
