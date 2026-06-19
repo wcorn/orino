@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import type { PlannerEvent, PlannerReview, PlannerTask } from "../../api/feed";
 import { eventTimeLabel } from "../../calendar";
 import { HOURS, layoutDayEvents } from "../../weekLayout";
+import { EVENT_DOT, TASK_DOT } from "./sourceStyles";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 const HOUR_PX = 40;
@@ -78,7 +79,10 @@ export function PlannerWeekView({
                     key={e.id}
                     type="button"
                     onClick={() => onEventClick(e)}
-                    className="truncate rounded bg-blue-500 px-1 text-left text-[10px] text-white"
+                    className={cn(
+                      "truncate rounded px-1 text-left text-[10px] text-white",
+                      EVENT_DOT,
+                    )}
                   >
                     {e.title ?? "(제목 없음)"}
                   </button>
@@ -86,7 +90,10 @@ export function PlannerWeekView({
                 {dayTasks.map((t) => (
                   <span
                     key={t.id}
-                    className="truncate rounded bg-emerald-500 px-1 text-[10px] text-white"
+                    className={cn(
+                      "truncate rounded px-1 text-[10px] text-white",
+                      TASK_DOT,
+                    )}
                   >
                     ☑ {t.title}
                   </span>
@@ -147,7 +154,10 @@ export function PlannerWeekView({
                       left: `${p.left * 100}%`,
                       width: `${p.width * 100}%`,
                     }}
-                    className="absolute overflow-hidden rounded border border-blue-600 bg-blue-500 px-1 py-0.5 text-left text-[10px] leading-tight text-white"
+                    className={cn(
+                      "absolute overflow-hidden rounded border border-blue-600 px-1 py-0.5 text-left text-[10px] leading-tight text-white",
+                      EVENT_DOT,
+                    )}
                   >
                     <span className="block truncate font-medium">
                       {p.event.title ?? "(제목 없음)"}
