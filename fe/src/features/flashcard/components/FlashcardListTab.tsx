@@ -3,6 +3,8 @@ import { useState } from "react";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/ui/field-error";
+import { LoadingText } from "@/components/ui/loading-text";
 import { toast } from "@/shared/lib/toast";
 
 import type { Flashcard } from "../api/flashcards";
@@ -55,12 +57,10 @@ export function FlashcardListTab({ materialId }: Props) {
   };
 
   if (flashcardsQuery.isLoading) {
-    return <p className="text-muted-foreground text-sm">불러오는 중...</p>;
+    return <LoadingText />;
   }
   if (flashcardsQuery.isError || !flashcardsQuery.data) {
-    return (
-      <p className="text-destructive text-sm">카드를 불러오지 못했어요.</p>
-    );
+    return <FieldError>카드를 불러오지 못했어요.</FieldError>;
   }
 
   const flashcards = flashcardsQuery.data;

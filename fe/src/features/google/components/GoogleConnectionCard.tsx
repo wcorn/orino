@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoadingText } from "@/components/ui/loading-text";
 
 import { useDisconnectGoogle } from "../hooks/useDisconnectGoogle";
 import { useGoogleStatus } from "../hooks/useGoogleStatus";
@@ -23,7 +24,7 @@ export function GoogleConnectionCard() {
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {isLoading ? (
-          <p className="text-muted-foreground text-sm">불러오는 중…</p>
+          <LoadingText />
         ) : status?.connected ? (
           <>
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm sm:grid-cols-[5rem_1fr]">

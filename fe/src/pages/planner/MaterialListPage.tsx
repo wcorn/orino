@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { LoadingText } from "@/components/ui/loading-text";
 import { AddMaterialDialog } from "@/features/material/components/AddMaterialDialog";
 import { EmptyMaterialState } from "@/features/material/components/EmptyMaterialState";
 import { MaterialCard } from "@/features/material/components/MaterialCard";
@@ -27,7 +28,7 @@ export function MaterialListPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-muted-foreground text-sm">불러오는 중...</p>
+        <LoadingText />
       ) : !materials || materials.length === 0 ? (
         <EmptyMaterialState onAdd={() => setDialogOpen(true)} />
       ) : (

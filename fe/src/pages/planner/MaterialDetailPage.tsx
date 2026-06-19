@@ -1,6 +1,8 @@
 import { Tabs } from "@base-ui/react/tabs";
 import { useParams, useSearchParams } from "react-router-dom";
 
+import { FieldError } from "@/components/ui/field-error";
+import { LoadingText } from "@/components/ui/loading-text";
 import { FlashcardListTab } from "@/features/flashcard/components/FlashcardListTab";
 import { MaterialHeader } from "@/features/material/components/MaterialHeader";
 import { useMaterial } from "@/features/material/hooks/useMaterial";
@@ -38,12 +40,10 @@ export function MaterialDetailPage() {
   const materialQuery = useMaterial(materialId);
 
   if (materialQuery.isLoading) {
-    return <p className="text-muted-foreground text-sm">불러오는 중...</p>;
+    return <LoadingText />;
   }
   if (materialQuery.isError || !materialQuery.data) {
-    return (
-      <p className="text-destructive text-sm">자료를 불러오지 못했어요.</p>
-    );
+    return <FieldError>자료를 불러오지 못했어요.</FieldError>;
   }
 
   return (
