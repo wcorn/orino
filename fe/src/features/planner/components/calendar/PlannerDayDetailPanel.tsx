@@ -2,6 +2,7 @@ import { Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { parseIsoDate } from "@/features/review/calendar";
 import { cn } from "@/lib/utils";
 
@@ -93,8 +94,7 @@ export function PlannerDayDetailPanel({
                     key={task.id}
                     className="border-border bg-card flex items-center gap-2 rounded-md border p-2 text-sm"
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={task.completed}
                       onChange={() => onTaskToggle?.(task)}
                       aria-label={`${task.title} 완료`}

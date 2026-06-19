@@ -1,4 +1,3 @@
-import { Menu } from "@base-ui/react/menu";
 import {
   ChevronDown,
   ChevronRight,
@@ -10,6 +9,7 @@ import {
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Menu, MenuItem } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
 
 import type { NoteTreeNode } from "../api/notes";
@@ -125,32 +125,22 @@ function NoteTreeItem({
           <span className="truncate">{node.title}</span>
         </button>
 
-        <Menu.Root>
-          <Menu.Trigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`${node.title} 메뉴`}
-                className="size-6 shrink-0 opacity-0 group-hover/note:opacity-100 data-[popup-open]:opacity-100"
-              >
-                <MoreHorizontal className="size-3.5" />
-              </Button>
-            }
-          />
-          <Menu.Portal>
-            <Menu.Positioner sideOffset={4} align="end" className="z-50">
-              <Menu.Popup className="bg-popover text-popover-foreground min-w-28 rounded-md border p-1 shadow-md">
-                <Menu.Item
-                  onClick={() => onRequestDelete(node)}
-                  className="text-destructive data-[highlighted]:bg-destructive/10 flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none"
-                >
-                  <Trash2 className="size-3.5" /> 삭제
-                </Menu.Item>
-              </Menu.Popup>
-            </Menu.Positioner>
-          </Menu.Portal>
-        </Menu.Root>
+        <Menu
+          trigger={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`${node.title} 메뉴`}
+              className="size-6 shrink-0 opacity-0 group-hover/note:opacity-100 data-[popup-open]:opacity-100"
+            >
+              <MoreHorizontal className="size-3.5" />
+            </Button>
+          }
+        >
+          <MenuItem variant="destructive" onClick={() => onRequestDelete(node)}>
+            <Trash2 className="size-3.5" /> 삭제
+          </MenuItem>
+        </Menu>
       </div>
       {hasChildren && expanded && (
         <ul className="flex flex-col gap-0.5">

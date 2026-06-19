@@ -1,10 +1,10 @@
-import { Menu } from "@base-ui/react/menu";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { Menu, MenuItem } from "@/components/ui/menu";
 
 import type { Material } from "../api/materials";
 import { useDeleteMaterial } from "../hooks/useDeleteMaterial";
@@ -55,33 +55,20 @@ export function MaterialHeader({ material }: Props) {
         </div>
       </div>
 
-      <Menu.Root>
-        <Menu.Trigger
-          render={
-            <Button variant="ghost" size="icon-sm" aria-label="자료 메뉴">
-              <MoreHorizontal className="size-4" />
-            </Button>
-          }
-        />
-        <Menu.Portal>
-          <Menu.Positioner sideOffset={4} align="end" className="z-50">
-            <Menu.Popup className="bg-popover text-popover-foreground min-w-32 rounded-md border p-1 shadow-md">
-              <Menu.Item
-                onClick={() => setEditOpen(true)}
-                className="data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none"
-              >
-                <Pencil className="size-3.5" /> 편집
-              </Menu.Item>
-              <Menu.Item
-                onClick={() => setDeleteOpen(true)}
-                className="text-destructive data-[highlighted]:bg-destructive/10 flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none"
-              >
-                <Trash2 className="size-3.5" /> 삭제
-              </Menu.Item>
-            </Menu.Popup>
-          </Menu.Positioner>
-        </Menu.Portal>
-      </Menu.Root>
+      <Menu
+        trigger={
+          <Button variant="ghost" size="icon-sm" aria-label="자료 메뉴">
+            <MoreHorizontal className="size-4" />
+          </Button>
+        }
+      >
+        <MenuItem onClick={() => setEditOpen(true)}>
+          <Pencil className="size-3.5" /> 편집
+        </MenuItem>
+        <MenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+          <Trash2 className="size-3.5" /> 삭제
+        </MenuItem>
+      </Menu>
 
       <EditMaterialDialog
         material={material}
