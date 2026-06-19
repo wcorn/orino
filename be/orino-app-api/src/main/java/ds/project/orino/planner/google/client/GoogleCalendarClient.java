@@ -6,8 +6,13 @@ import ds.project.orino.planner.google.calendar.dto.GoogleEventWriteBody.GoogleE
 import ds.project.orino.planner.google.calendar.dto.GoogleEventsResponse;
 import ds.project.orino.planner.google.calendar.dto.GoogleEventsResponse.GoogleEventDateTime;
 import ds.project.orino.planner.google.calendar.dto.GoogleEventsResponse.GoogleEventItem;
+import ds.project.orino.planner.google.calendar.dto.GoogleExtendedProperties;
 import ds.project.orino.planner.google.calendar.dto.PlannerEvent;
 import ds.project.orino.planner.google.config.GoogleOAuthProperties;
+import ds.project.orino.planner.google.recurrence.RecurrenceRule;
+import ds.project.orino.planner.google.recurrence.RecurrenceRuleFactory;
+import ds.project.orino.planner.google.routine.RoutineTag;
+import ds.project.orino.planner.google.routine.RoutineType;
 import ds.project.orino.planner.google.token.GoogleTokenProvider;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -111,6 +116,107 @@ public class GoogleCalendarClient {
         return normalize(item, zone);
     }
 
+    /**
+     * 루틴(반복) 이벤트 생성. {@code recurrence}(RRULE)와 루틴 식별 태그를 함께 기록한다.
+     * 생성된 마스터 이벤트를 정규화해 반환한다.
+     */
+    public PlannerEvent insertRoutineEvent(Long memberId, EventRequest request,
+                                           RecurrenceRule rule, RoutineType type, ZoneId zone) {
+        URI uri = UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
+                .path(PRIMARY_CALENDAR_PATH)
+                .build()
+                .toUri();
+
+        GoogleEventWriteBody body = toRoutineWriteBody(request, rule, type, zone);
+        GoogleEventItem item = tokenProvider.executeWithRetry(memberId, accessToken ->
+                googleRestClient.post()
+                        .uri(uri)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .body(GoogleEventItem.class));
+        return normalize(item, zone);
+    }
+
+    /**
+     * 루틴 마스터 이벤트 수정(patch). 반복 규칙·내용·태그를 갱신한다.
+     * {@code rule}이 null이면 recurrence는 건드리지 않는다(내용만 patch).
+     */
+    public PlannerEvent patchRoutineEvent(Long memberId, String eventId, EventRequest request,
+                                          RecurrenceRule rule, RoutineType type, ZoneId zone) {
+        URI uri = eventUri(eventId);
+        GoogleEventWriteBody body = toRoutineWriteBody(request, rule, type, zone);
+        GoogleEventItem item = tokenProvider.executeWithRetry(memberId, accessToken ->
+                googleRestClient.patch()
+                        .uri(uri)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .body(GoogleEventItem.class));
+        return normalize(item, zone);
+    }
+
+    /**
+     * 루틴 마스터 시리즈 목록 조회. {@code singleEvents=false}로 RRULE을 펼치지 않고 마스터 이벤트를,
+     * {@code privateExtendedProperty=orinoRoutine=1}로 루틴만 필터링해 받는다.
+     *
+     * <p>마스터의 {@code recurrence}·{@code extendedProperties}를 그대로 노출하므로 호출부(시리즈 목록 API)가
+     * RRULE 역파싱과 종류 판별을 수행한다.
+     */
+    public List<GoogleEventItem> listRoutineMasters(Long memberId) {
+        URI uri = UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
+                .path(PRIMARY_CALENDAR_PATH)
+                .queryParam("singleEvents", "false")
+                .queryParam("privateExtendedProperty", RoutineTag.LIST_FILTER)
+                .queryParam("maxResults", "2500")
+                .build()
+                .toUri();
+
+        GoogleEventsResponse response = tokenProvider.executeWithRetry(memberId, accessToken ->
+                googleRestClient.get()
+                        .uri(uri)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .retrieve()
+                        .body(GoogleEventsResponse.class));
+
+        if (response == null || response.items() == null) {
+            return List.of();
+        }
+        return response.items();
+    }
+
+    /**
+     * 단일 반복 이벤트({@code recurringEventId})를 [timeMin, timeMax) 구간 인스턴스로 펼쳐 조회한다.
+     * events.instances 엔드포인트를 사용하며 응답을 사용자 시간대로 정규화한다.
+     */
+    public List<PlannerEvent> listInstances(Long memberId, String eventId,
+                                            Instant timeMin, Instant timeMax, ZoneId zone) {
+        URI uri = UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
+                .path(PRIMARY_CALENDAR_PATH)
+                .pathSegment(eventId, "instances")
+                .queryParam("timeMin", timeMin.toString())
+                .queryParam("timeMax", timeMax.toString())
+                .queryParam("maxResults", "2500")
+                .build()
+                .toUri();
+
+        GoogleEventsResponse response = tokenProvider.executeWithRetry(memberId, accessToken ->
+                googleRestClient.get()
+                        .uri(uri)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .retrieve()
+                        .body(GoogleEventsResponse.class));
+
+        if (response == null || response.items() == null) {
+            return List.of();
+        }
+        return response.items().stream()
+                .map(item -> normalize(item, zone))
+                .toList();
+    }
+
     /** 일정 삭제. 없는 id면 404(RESOURCE_NOT_FOUND). */
     public void deleteEvent(Long memberId, String eventId) {
         URI uri = eventUri(eventId);
@@ -133,18 +239,36 @@ public class GoogleCalendarClient {
     }
 
     private GoogleEventWriteBody toWriteBody(EventRequest request, ZoneId zone) {
-        GoogleEventTime start;
-        GoogleEventTime end;
-        if (request.allDay()) {
-            start = new GoogleEventTime(null, request.start(), null);
-            // Google 종일 종료는 배타적(다음 날) → 사용자 inclusive end + 1일
-            end = new GoogleEventTime(null, LocalDate.parse(request.end()).plusDays(1).toString(), null);
-        } else {
-            start = new GoogleEventTime(request.start(), null, zone.getId());
-            end = new GoogleEventTime(request.end(), null, zone.getId());
-        }
         return new GoogleEventWriteBody(
-                request.title(), request.location(), request.description(), start, end);
+                request.title(), request.location(), request.description(),
+                startTime(request, zone), endTime(request, zone));
+    }
+
+    /** 루틴 쓰기 바디: 기본 필드 + recurrence(RRULE) + 루틴 태그. rule이 null이면 recurrence는 비운다. */
+    private GoogleEventWriteBody toRoutineWriteBody(EventRequest request, RecurrenceRule rule,
+                                                    RoutineType type, ZoneId zone) {
+        List<String> recurrence = rule == null
+                ? null
+                : List.of(RecurrenceRuleFactory.toRRule(rule, zone));
+        GoogleExtendedProperties extended =
+                GoogleExtendedProperties.ofPrivate(RoutineTag.privateProperties(type));
+        return new GoogleEventWriteBody(
+                request.title(), request.location(), request.description(),
+                startTime(request, zone), endTime(request, zone), recurrence, extended);
+    }
+
+    private GoogleEventTime startTime(EventRequest request, ZoneId zone) {
+        return request.allDay()
+                ? new GoogleEventTime(null, request.start(), null)
+                : new GoogleEventTime(request.start(), null, zone.getId());
+    }
+
+    private GoogleEventTime endTime(EventRequest request, ZoneId zone) {
+        if (request.allDay()) {
+            // Google 종일 종료는 배타적(다음 날) → 사용자 inclusive end + 1일
+            return new GoogleEventTime(null, LocalDate.parse(request.end()).plusDays(1).toString(), null);
+        }
+        return new GoogleEventTime(request.end(), null, zone.getId());
     }
 
     private PlannerEvent normalize(GoogleEventItem item, ZoneId zone) {
