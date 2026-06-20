@@ -1,5 +1,12 @@
 import { client } from "@/shared/api";
 
+/** 루틴 인스턴스 주석. 루틴이 아니면 null. habit done은 routine_check 조인 결과. */
+export interface RoutineMeta {
+  type: "habit" | "schedule";
+  recurringEventId: string;
+  done: boolean;
+}
+
 export interface PlannerEvent {
   id: string;
   title: string | null;
@@ -10,6 +17,7 @@ export interface PlannerEvent {
   location: string | null;
   recurring: boolean;
   source: "google";
+  routine?: RoutineMeta | null;
 }
 
 export interface PlannerTask {

@@ -21,12 +21,14 @@ import {
   useUpdateEvent,
 } from "../../hooks/useEventMutations";
 import { usePlannerCalendar } from "../../hooks/usePlannerCalendar";
+import { useRoutineCheck } from "../../hooks/useRoutineCheck";
 import {
   useCreateTask,
   useDeleteTask,
   useUpdateTask,
 } from "../../hooks/useTaskMutations";
 import { weekDays } from "../../weekLayout";
+import { TodayRoutines } from "../routine/TodayRoutines";
 import { EventFormDialog } from "./EventFormDialog";
 import { PlannerCalendarCell } from "./PlannerCalendarCell";
 import { PlannerCalendarLegend } from "./PlannerCalendarLegend";
@@ -91,6 +93,8 @@ export function PlannerCalendar() {
     if (dialog?.mode !== "edit") return;
     deleteEvent.mutate(dialog.event.id, { onSuccess: () => setDialog(null) });
   };
+
+  const routineCheck = useRoutineCheck();
 
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const createTask = useCreateTask();
@@ -188,6 +192,8 @@ export function PlannerCalendar() {
 
       <PlannerConnectionBanner feed={data} />
 
+      <TodayRoutines />
+
       <PlannerCalendarLegend />
 
       {view !== "month" ? (
@@ -279,6 +285,14 @@ export function PlannerCalendar() {
                   })
                 }
                 onTaskDelete={(task) => deleteTask.mutate(task.id)}
+                onRoutineCheck={(event) =>
+                  event.routine &&
+                  routineCheck.mutate({
+                    recurringEventId: event.routine.recurringEventId,
+                    date: event.start.slice(0, 10),
+                    done: !event.routine.done,
+                  })
+                }
               />
             </CardContent>
           </Card>
