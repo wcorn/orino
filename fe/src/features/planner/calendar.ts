@@ -74,3 +74,30 @@ export function eventTimeLabel(event: PlannerEvent): string {
   const time = event.start.slice(11, 16);
   return time || "종일";
 }
+
+/**
+ * 일 상세 아젠다용 시작/종료 시각. 종일이면 {start:"종일", end:null},
+ * 시간 일정이면 {start:"14:00", end:"15:00"|null}.
+ */
+export function eventTimeParts(event: PlannerEvent): {
+  start: string;
+  end: string | null;
+} {
+  if (event.allDay) {
+    return { start: "종일", end: null };
+  }
+  return {
+    start: event.start.slice(11, 16),
+    end: event.end ? event.end.slice(11, 16) : null,
+  };
+}
+
+/** 일 상세 일정 정렬: 종일을 먼저, 그다음 시작 시각 오름차순. 원본은 변경하지 않는다. */
+export function sortDayEvents(events: PlannerEvent[]): PlannerEvent[] {
+  return [...events].sort((a, b) => {
+    if (a.allDay !== b.allDay) {
+      return a.allDay ? -1 : 1;
+    }
+    return a.start.localeCompare(b.start);
+  });
+}

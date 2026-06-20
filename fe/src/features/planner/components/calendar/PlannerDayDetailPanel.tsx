@@ -7,7 +7,7 @@ import { parseIsoDate } from "@/features/review/calendar";
 import { cn } from "@/lib/utils";
 
 import type { PlannerEvent, PlannerReview, PlannerTask } from "../../api/feed";
-import { eventTimeLabel } from "../../calendar";
+import { eventTimeParts, sortDayEvents } from "../../calendar";
 import { RoutineCheckCircle } from "../routine/RoutineCheckCircle";
 
 interface Props {
@@ -58,54 +58,79 @@ export function PlannerDayDetailPanel({
               <h3 className="text-muted-foreground text-xs font-medium">
                 일정 ({events.length})
               </h3>
-              <ul className="flex flex-col gap-1.5">
-                {events.map((event) => {
+              <ul className="flex flex-col">
+                {sortDayEvents(events).map((event, index, sorted) => {
                   const isHabit = event.routine?.type === "habit";
                   const isSchedule = event.routine?.type === "schedule";
                   const done = event.routine?.done ?? false;
+                  const time = eventTimeParts(event);
+                  const isLast = index === sorted.length - 1;
                   return (
-                    <li
-                      key={event.id}
-                      className="border-border bg-card flex items-center gap-2 rounded-md border p-2 text-sm"
-                    >
-                      {isHabit && (
-                        <RoutineCheckCircle
-                          checked={done}
-                          label={`${event.title ?? "(제목 없음)"} 완료 토글`}
-                          onToggle={() => onRoutineCheck?.(event)}
-                        />
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => onEventClick?.(event)}
-                        className="hover:bg-muted/50 flex min-w-0 flex-1 items-start gap-2 rounded-sm text-left transition-colors"
+                    <li key={event.id} className="flex gap-2.5">
+                      {/* 시간 컬럼: 시작 위, 종료 아래 */}
+                      <div className="w-11 shrink-0 pt-2 text-right text-[11px] leading-tight tabular-nums">
+                        <div className="font-medium">{time.start}</div>
+                        {time.end && (
+                          <div className="text-muted-foreground">
+                            {time.end}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 타임라인 레일: 점 + 연결선 */}
+                      <div
+                        className="flex flex-col items-center"
+                        aria-hidden="true"
                       >
-                        <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
-                          {eventTimeLabel(event)}
-                        </span>
-                        <div className="flex min-w-0 flex-1 flex-col">
-                          <span
-                            className={cn(
-                              "flex items-center gap-1 truncate",
-                              done &&
-                                "text-muted-foreground line-through opacity-70",
-                            )}
-                          >
-                            {isSchedule && (
-                              <Repeat
-                                className="size-3.5 shrink-0"
-                                aria-label="반복 일정"
-                              />
-                            )}
-                            {event.title ?? "(제목 없음)"}
-                          </span>
-                          {event.location && (
-                            <span className="text-muted-foreground truncate text-xs">
-                              {event.location}
-                            </span>
+                        <span
+                          className={cn(
+                            "mt-2.5 size-2 shrink-0 rounded-full",
+                            done ? "bg-primary" : "bg-blue-500",
                           )}
+                        />
+                        {!isLast && (
+                          <span className="bg-border mt-0.5 w-px grow" />
+                        )}
+                      </div>
+
+                      {/* 내용 카드 */}
+                      <div className="min-w-0 flex-1 pb-1.5">
+                        <div className="border-border bg-card flex items-center gap-2 rounded-md border p-2 text-sm">
+                          {isHabit && (
+                            <RoutineCheckCircle
+                              checked={done}
+                              label={`${event.title ?? "(제목 없음)"} 완료 토글`}
+                              onToggle={() => onRoutineCheck?.(event)}
+                            />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => onEventClick?.(event)}
+                            className="hover:bg-muted/50 flex min-w-0 flex-1 flex-col rounded-sm text-left transition-colors"
+                          >
+                            <span
+                              className={cn(
+                                "flex items-center gap-1 truncate",
+                                done &&
+                                  "text-muted-foreground line-through opacity-70",
+                              )}
+                            >
+                              {isSchedule && (
+                                <Repeat
+                                  className="size-3.5 shrink-0"
+                                  aria-label="반복 일정"
+                                />
+                              )}
+                              {event.title ?? "(제목 없음)"}
+                            </span>
+                            {event.location && (
+                              <span className="text-muted-foreground truncate text-xs">
+                                {event.location}
+                              </span>
+                            )}
+                          </button>
                         </div>
-                      </button>
+                      </div>
                     </li>
                   );
                 })}
