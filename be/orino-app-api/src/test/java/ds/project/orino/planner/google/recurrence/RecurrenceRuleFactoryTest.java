@@ -57,6 +57,15 @@ class RecurrenceRuleFactoryTest {
         }
 
         @Test
+        @DisplayName("매월 31일은 BYMONTHDAY=31로 그대로 출력한다 (31일 없는 달은 Google이 건너뜀)")
+        void monthlyDay31() {
+            RecurrenceRule rule = RecurrenceRule.monthly(List.of(31), null);
+
+            assertThat(RecurrenceRuleFactory.toRRule(rule, SEOUL))
+                    .isEqualTo("RRULE:FREQ=MONTHLY;BYMONTHDAY=31");
+        }
+
+        @Test
         @DisplayName("UNTIL은 사용자 TZ 마지막날 23:59:59를 UTC로 변환한다 (KST → -9h)")
         void untilUtcSeoul() {
             RecurrenceRule rule = RecurrenceRule.daily(LocalDate.of(2026, 12, 31));
@@ -114,6 +123,10 @@ class RecurrenceRuleFactoryTest {
             RecurrenceRule monthly = RecurrenceRuleFactory.parse(
                     "RRULE:FREQ=MONTHLY;BYMONTHDAY=1,15", SEOUL);
             assertThat(monthly.byMonthDay()).containsExactly(1, 15);
+
+            RecurrenceRule day31 = RecurrenceRuleFactory.parse(
+                    "RRULE:FREQ=MONTHLY;BYMONTHDAY=31", SEOUL);
+            assertThat(day31.byMonthDay()).containsExactly(31);
         }
 
         @Test

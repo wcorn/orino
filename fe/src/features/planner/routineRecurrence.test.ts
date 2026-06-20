@@ -24,6 +24,21 @@ describe("recurrenceText", () => {
     expect(
       recurrenceText({ freq: "MONTHLY", interval: 3, byMonthDay: [1] }),
     ).toBe("3개월마다 1일");
+    // 31일 없는 달은 Google이 건너뛰지만 표시 문구는 그대로 31일
+    expect(recurrenceText({ freq: "MONTHLY", byMonthDay: [31] })).toBe(
+      "매월 31일",
+    );
+  });
+
+  it("요일/일자가 비면 접두사만, 매주 7요일 전체도 처리", () => {
+    expect(recurrenceText({ freq: "WEEKLY", byDay: [] })).toBe("매주");
+    expect(recurrenceText({ freq: "MONTHLY", byMonthDay: [] })).toBe("매월");
+    expect(
+      recurrenceText({
+        freq: "WEEKLY",
+        byDay: ["MO", "TU", "WE", "TH", "FR", "SA", "SU"],
+      }),
+    ).toBe("매주 월·화·수·목·금·토·일");
   });
 });
 
@@ -39,5 +54,9 @@ describe("recurrencePreview", () => {
     expect(
       recurrencePreview({ freq: "DAILY", until: "2026-12-31" }, "2026-06-20"),
     ).toBe("매일 · 2026-06-20부터 ~ 2026-12-31까지");
+  });
+
+  it("시작일이 없으면 반복 문구만 보여준다", () => {
+    expect(recurrencePreview({ freq: "DAILY" }, "")).toBe("매일");
   });
 });
