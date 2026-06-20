@@ -13,6 +13,7 @@ import { GoogleConnectButton } from "@/features/google/components/GoogleConnectB
 import type {
   RoutineCreateRequest,
   RoutineRecurrence,
+  RoutineSeriesSummary,
   RoutineType,
   Weekday,
 } from "../../api/routines";
@@ -54,6 +55,8 @@ interface Props {
   googleConnected: boolean;
   /** 생성 시 기본 시작일(YYYY-MM-DD) */
   defaultDate: string;
+  /** 편집 대상 시리즈. 있으면 편집 모드(폼 prefill, 종류 변경 불가). */
+  series?: RoutineSeriesSummary;
   pending?: boolean;
   onSubmit: (values: RoutineCreateRequest) => void;
 }
@@ -72,6 +75,32 @@ function initialState(type: RoutineType, defaultDate: string): FormState {
     byMonthDay: [],
     noEnd: true,
     untilDate: "",
+    memo: "",
+  };
+}
+
+/** 시리즈 요약(파싱된 recurrence 포함)을 폼 상태로 역매핑한다(편집 prefill). */
+function stateFromSeries(series: RoutineSeriesSummary): FormState {
+  const r = series.recurrence;
+  const interval = r.interval ?? 1;
+  let segment: Segment = "DAILY";
+  if (r.freq === "WEEKLY") segment = "WEEKLY";
+  else if (r.freq === "MONTHLY") segment = "MONTHLY";
+  else if (interval > 1) segment = "NDAY";
+
+  return {
+    type: series.type,
+    title: series.title,
+    allDay: series.allDay,
+    startDate: series.start.slice(0, 10),
+    startTime: series.allDay ? "10:00" : series.start.slice(11, 16) || "10:00",
+    endTime: series.end ? series.end.slice(11, 16) || "11:00" : "11:00",
+    segment,
+    interval: interval > 1 ? interval : 3,
+    byDay: r.byDay ?? [],
+    byMonthDay: r.byMonthDay ?? [],
+    noEnd: !r.until,
+    untilDate: r.until ?? "",
     memo: "",
   };
 }
@@ -95,18 +124,22 @@ export function RoutineFormDialog({
   onOpenChange,
   googleConnected,
   defaultDate,
+  series,
   pending = false,
   onSubmit,
 }: Props) {
+  const editing = !!series;
   const titleId = useId();
   const [form, setForm] = useState<FormState>(() =>
-    initialState("habit", defaultDate),
+    series ? stateFromSeries(series) : initialState("habit", defaultDate),
   );
   const [monthDayInput, setMonthDayInput] = useState("");
 
   useEffect(() => {
     if (open) {
-      setForm(initialState("habit", defaultDate));
+      setForm(
+        series ? stateFromSeries(series) : initialState("habit", defaultDate),
+      );
       setMonthDayInput("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,7 +216,9 @@ export function RoutineFormDialog({
 
   return (
     <Modal open={open} onOpenChange={onOpenChange} className="max-w-md">
-      <Dialog.Title className="text-base font-semibold">새 루틴</Dialog.Title>
+      <Dialog.Title className="text-base font-semibold">
+        {editing ? "루틴 편집" : "새 루틴"}
+      </Dialog.Title>
 
       {!googleConnected ? (
         <div className="mt-4 flex flex-col gap-4">
@@ -216,6 +251,7 @@ export function RoutineFormDialog({
                   type="button"
                   variant={form.type === opt.value ? "default" : "outline"}
                   aria-pressed={form.type === opt.value}
+                  disabled={editing}
                   onClick={() => setType(opt.value)}
                 >
                   {opt.label}
