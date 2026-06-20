@@ -5,7 +5,11 @@ import {
 import { cn } from "@/lib/utils";
 
 import type { PlannerEvent, PlannerReview, PlannerTask } from "../../api/feed";
-import { classifyFeedReview } from "../../calendar";
+import {
+  classifyFeedReview,
+  eventTimeLabel,
+  sortDayEvents,
+} from "../../calendar";
 import { EVENT_DOT, TASK_DOT } from "./sourceStyles";
 
 interface Props {
@@ -21,7 +25,12 @@ interface Props {
   onSelect: (isoDate: string) => void;
 }
 
-const MAX_DOTS = 5;
+/** 셀에 한 줄로 보여줄 최대 항목 수. 초과분은 "+N개"로 접는다. */
+const MAX_LINES = 3;
+
+function Dot({ className }: { className: string }) {
+  return <span className={cn("size-1.5 shrink-0 rounded-full", className)} />;
+}
 
 export function PlannerCalendarCell({
   date,
@@ -35,18 +44,59 @@ export function PlannerCalendarCell({
   today,
   onSelect,
 }: Props) {
-  const reviewDots = BUCKET_ORDER.flatMap((bucket) =>
-    reviews
-      .filter((r) => classifyFeedReview(r, today) === bucket)
-      .map(() => BUCKET_DOT[bucket]),
-  );
-  const dots = [
-    ...events.map(() => EVENT_DOT),
-    ...tasks.map(() => TASK_DOT),
-    ...reviewDots,
+  const reviewDot =
+    BUCKET_ORDER.map((bucket) =>
+      reviews.some((r) => classifyFeedReview(r, today) === bucket)
+        ? BUCKET_DOT[bucket]
+        : null,
+    ).find(Boolean) ?? BUCKET_DOT[BUCKET_ORDER[0]];
+
+  // 점 + (시작 시각) + 제목 한 줄. 일정 → 할 일 → 복습(묶음) 순.
+  const lines = [
+    ...sortDayEvents(events).map((event) => (
+      <span
+        key={`e-${event.id}`}
+        className="flex items-center gap-1 text-[10px] leading-tight"
+      >
+        <Dot className={EVENT_DOT} />
+        {!event.allDay && (
+          <span className="text-muted-foreground shrink-0 tabular-nums">
+            {eventTimeLabel(event)}
+          </span>
+        )}
+        <span className="truncate">{event.title ?? "(제목 없음)"}</span>
+      </span>
+    )),
+    ...tasks.map((task) => (
+      <span
+        key={`t-${task.id}`}
+        className="flex items-center gap-1 text-[10px] leading-tight"
+      >
+        <Dot className={TASK_DOT} />
+        <span
+          className={cn(
+            "truncate",
+            task.completed && "line-through opacity-60",
+          )}
+        >
+          {task.title}
+        </span>
+      </span>
+    )),
+    ...(reviews.length > 0
+      ? [
+          <span
+            key="reviews"
+            className="flex items-center gap-1 text-[10px] leading-tight"
+          >
+            <Dot className={reviewDot} />
+            <span className="truncate">복습 {reviews.length}</span>
+          </span>,
+        ]
+      : []),
   ];
-  const shown = dots.slice(0, MAX_DOTS);
-  const overflow = dots.length - shown.length;
+  const shown = lines.slice(0, MAX_LINES);
+  const hidden = lines.length - shown.length;
   const total = events.length + tasks.length + reviews.length;
 
   return (
@@ -61,7 +111,7 @@ export function PlannerCalendarCell({
       aria-pressed={isSelected}
       onClick={() => onSelect(isoDate)}
       className={cn(
-        "flex min-h-20 flex-col gap-1 rounded-md border p-1.5 text-left transition-colors sm:min-h-24 lg:min-h-28",
+        "flex min-h-20 flex-col gap-0.5 rounded-md border p-1.5 text-left transition-colors sm:min-h-24 lg:min-h-28",
         inMonth ? "bg-card" : "bg-muted/30 text-muted-foreground",
         isToday ? "border-primary" : "border-border",
         isSelected && "ring-primary ring-2",
@@ -75,18 +125,12 @@ export function PlannerCalendarCell({
       >
         {date.getDate()}
       </span>
-      {shown.length > 0 && (
-        <span className="flex flex-wrap items-center gap-0.5">
-          {shown.map((dot, i) => (
-            <span key={i} className={cn("size-1.5 rounded-full", dot)} />
-          ))}
-          {overflow > 0 && (
-            <span className="text-muted-foreground text-[10px]">
-              +{overflow}
-            </span>
-          )}
-        </span>
-      )}
+      <span className="flex min-w-0 flex-col gap-0.5">
+        {shown}
+        {hidden > 0 && (
+          <span className="text-muted-foreground text-[10px]">+{hidden}개</span>
+        )}
+      </span>
     </button>
   );
 }
