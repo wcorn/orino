@@ -1,20 +1,20 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { DialogFooter } from "@/components/ui/dialog-footer";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingText } from "@/components/ui/loading-text";
-import { Modal } from "@/components/ui/modal";
 import { GoogleConnectButton } from "@/features/google/components/GoogleConnectButton";
 import { useGoogleStatus } from "@/features/google/hooks/useGoogleStatus";
 import type {
   RoutineCreateRequest,
+  RoutineEditRequest,
+  RoutineScope,
   RoutineSeriesSummary,
 } from "@/features/planner/api/routines";
 import { RoutineFormDialog } from "@/features/planner/components/routine/RoutineFormDialog";
 import { RoutineListItem } from "@/features/planner/components/routine/RoutineListItem";
+import { RoutineScopeDialog } from "@/features/planner/components/routine/RoutineScopeDialog";
 import { useRoutineList } from "@/features/planner/hooks/useRoutineList";
 import {
   useCreateRoutine,
@@ -68,6 +68,10 @@ export function RoutinesPage() {
   const [editTarget, setEditTarget] = useState<RoutineSeriesSummary | null>(
     null,
   );
+  const [pendingEdit, setPendingEdit] = useState<{
+    series: RoutineSeriesSummary;
+    request: RoutineEditRequest;
+  } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RoutineSeriesSummary | null>(
     null,
   );
@@ -75,22 +79,39 @@ export function RoutinesPage() {
   const handleCreate = (values: RoutineCreateRequest) =>
     createRoutine.mutate(values, { onSuccess: () => setCreateOpen(false) });
 
-  const handleUpdate = (values: RoutineCreateRequest) => {
+  // 폼 저장 → 범위 선택 다이얼로그로 넘긴다(종류·색상은 편집 대상이 아님).
+  const handleEditSubmit = (values: RoutineCreateRequest) => {
     if (!editTarget) return;
-    // scope=all 고정(전체 시리즈). 범위 선택 다이얼로그는 R4(#581)에서 추가.
     const { type: _type, color: _color, ...request } = values;
     void _type;
     void _color;
+    setPendingEdit({ series: editTarget, request });
+    setEditTarget(null);
+  };
+
+  const confirmEdit = (scope: RoutineScope) => {
+    if (!pendingEdit) return;
+    const instanceDate = pendingEdit.series.start.slice(0, 10);
     updateRoutine.mutate(
-      { eventId: editTarget.recurringEventId, request, scope: "all" },
-      { onSuccess: () => setEditTarget(null) },
+      {
+        eventId: pendingEdit.series.recurringEventId,
+        request: pendingEdit.request,
+        scope,
+        instanceDate: scope === "all" ? undefined : instanceDate,
+      },
+      { onSuccess: () => setPendingEdit(null) },
     );
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = (scope: RoutineScope) => {
     if (!deleteTarget) return;
+    const instanceDate = deleteTarget.start.slice(0, 10);
     deleteRoutine.mutate(
-      { eventId: deleteTarget.recurringEventId, scope: "all" },
+      {
+        eventId: deleteTarget.recurringEventId,
+        scope,
+        instanceDate: scope === "all" ? undefined : instanceDate,
+      },
       { onSuccess: () => setDeleteTarget(null) },
     );
   };
@@ -168,37 +189,28 @@ export function RoutinesPage() {
         defaultDate={localToday()}
         series={editTarget ?? undefined}
         pending={updateRoutine.isPending}
-        onSubmit={handleUpdate}
+        onSubmit={handleEditSubmit}
       />
 
-      <Modal
+      <RoutineScopeDialog
+        open={!!pendingEdit}
+        onOpenChange={(open) => !open && setPendingEdit(null)}
+        mode="edit"
+        instanceDate={pendingEdit?.series.start.slice(0, 10)}
+        defaultScope="all"
+        pending={updateRoutine.isPending}
+        onConfirm={confirmEdit}
+      />
+
+      <RoutineScopeDialog
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-        className="max-w-sm"
-      >
-        <Dialog.Title className="text-base font-semibold">
-          루틴 삭제
-        </Dialog.Title>
-        <p className="text-muted-foreground mt-2 text-sm">
-          ‘{deleteTarget?.title}’ 루틴을 삭제할까요?
-        </p>
-        <DialogFooter>
-          <Dialog.Close
-            render={
-              <Button variant="ghost" type="button">
-                취소
-              </Button>
-            }
-          />
-          <Button
-            variant="destructive"
-            onClick={confirmDelete}
-            disabled={deleteRoutine.isPending}
-          >
-            삭제
-          </Button>
-        </DialogFooter>
-      </Modal>
+        mode="delete"
+        instanceDate={deleteTarget?.start.slice(0, 10)}
+        defaultScope="all"
+        pending={deleteRoutine.isPending}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

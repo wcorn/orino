@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -105,5 +105,34 @@ describe("RoutinesPage", () => {
     expect(
       screen.getByRole("button", { name: "Google 연결" }),
     ).toBeInTheDocument();
+  });
+
+  it("삭제: 범위(이후 모두) 선택 시 scope·instanceDate 파라미터로 DELETE한다", async () => {
+    connectedStatus();
+    routinesResponse([HABIT]);
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.delete(`${API_BASE}/planner/routines/r-habit-1`, ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({ code: "OK", data: null });
+      }),
+    );
+
+    renderWithRouter(<RoutinesPage />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "운동하기 메뉴" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: "삭제" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("radio", { name: "이 날짜 이후 모두" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "확인" }));
+
+    await waitFor(() => expect(capturedUrl).toBeDefined());
+    expect(capturedUrl?.searchParams.get("scope")).toBe("following");
+    expect(capturedUrl?.searchParams.get("instanceDate")).toBe("2026-06-20");
   });
 });
