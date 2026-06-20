@@ -29,6 +29,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Google Calendar API 래퍼. {@code events.list}를 라이브 프록시하고 응답을 사용자 시간대로 정규화한다.
@@ -143,7 +144,7 @@ public class GoogleCalendarClient {
                 .build()
                 .toUri();
 
-        GoogleEventWriteBody body = toRoutineWriteBody(request, rule, type, zone);
+        GoogleEventWriteBody body = toRoutineWriteBody(request, rule, RoutineTag.privateProperties(type), zone);
         GoogleEventItem item = tokenProvider.executeWithRetry(memberId, accessToken ->
                 googleRestClient.post()
                         .uri(uri)
@@ -162,7 +163,7 @@ public class GoogleCalendarClient {
     public PlannerEvent patchRoutineEvent(Long memberId, String eventId, EventRequest request,
                                           RecurrenceRule rule, RoutineType type, ZoneId zone) {
         URI uri = eventUri(eventId);
-        GoogleEventWriteBody body = toRoutineWriteBody(request, rule, type, zone);
+        GoogleEventWriteBody body = toRoutineWriteBody(request, rule, RoutineTag.privateProperties(type), zone);
         GoogleEventItem item = tokenProvider.executeWithRetry(memberId, accessToken ->
                 googleRestClient.patch()
                         .uri(uri)
@@ -172,6 +173,65 @@ public class GoogleCalendarClient {
                         .retrieve()
                         .body(GoogleEventItem.class));
         return normalize(item, zone);
+    }
+
+    /**
+     * 마스터의 recurrence(RRULE)만 patch한다. start/end/내용은 건드리지 않는다(Google patch 병합).
+     * following 분할 시 마스터 UNTIL 절단에 쓴다.
+     */
+    public PlannerEvent patchEventRecurrence(Long memberId, String eventId, RecurrenceRule rule, ZoneId zone) {
+        URI uri = eventUri(eventId);
+        GoogleEventWriteBody body = new GoogleEventWriteBody(
+                null, null, null, null, null,
+                List.of(RecurrenceRuleFactory.toRRule(rule, zone)), null);
+        GoogleEventItem item = tokenProvider.executeWithRetry(memberId, accessToken ->
+                googleRestClient.patch()
+                        .uri(uri)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .body(GoogleEventItem.class));
+        return normalize(item, zone);
+    }
+
+    /**
+     * following 분할로 새 루틴 시리즈를 생성한다. 루틴 태그 + 분할 출처 마커({@code orinoRoutineSplitOf})를 함께
+     * 기록해 재시도 시 {@link #findForkedSeries}로 중복 생성을 막는다.
+     */
+    public PlannerEvent insertForkedSeries(Long memberId, EventRequest request, RecurrenceRule rule,
+                                           RoutineType type, String splitMarker, ZoneId zone) {
+        URI uri = UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
+                .path(PRIMARY_CALENDAR_PATH)
+                .build()
+                .toUri();
+
+        GoogleEventWriteBody body =
+                toRoutineWriteBody(request, rule, RoutineTag.splitProperties(type, splitMarker), zone);
+        GoogleEventItem item = tokenProvider.executeWithRetry(memberId, accessToken ->
+                googleRestClient.post()
+                        .uri(uri)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .body(GoogleEventItem.class));
+        return normalize(item, zone);
+    }
+
+    /** 주어진 분할 마커로 이미 생성된 forked 시리즈를 찾는다(idempotent 복구용). */
+    public Optional<GoogleEventItem> findForkedSeries(Long memberId, String splitMarker) {
+        return listRoutineMasters(memberId).stream()
+                .filter(item -> splitMarker.equals(splitMarkerOf(item)))
+                .findFirst();
+    }
+
+    private static String splitMarkerOf(GoogleEventItem item) {
+        if (item.extendedProperties() == null
+                || item.extendedProperties().privateProperties() == null) {
+            return null;
+        }
+        return item.extendedProperties().privateProperties().get(RoutineTag.KEY_SPLIT_OF);
     }
 
     /**
@@ -262,12 +322,11 @@ public class GoogleCalendarClient {
 
     /** 루틴 쓰기 바디: 기본 필드 + recurrence(RRULE) + 루틴 태그. rule이 null이면 recurrence는 비운다. */
     private GoogleEventWriteBody toRoutineWriteBody(EventRequest request, RecurrenceRule rule,
-                                                    RoutineType type, ZoneId zone) {
+                                                    Map<String, String> privateProps, ZoneId zone) {
         List<String> recurrence = rule == null
                 ? null
                 : List.of(RecurrenceRuleFactory.toRRule(rule, zone));
-        GoogleExtendedProperties extended =
-                GoogleExtendedProperties.ofPrivate(RoutineTag.privateProperties(type));
+        GoogleExtendedProperties extended = GoogleExtendedProperties.ofPrivate(privateProps);
         return new GoogleEventWriteBody(
                 request.title(), request.location(), request.description(),
                 startTime(request, zone), endTime(request, zone), recurrence, extended);
