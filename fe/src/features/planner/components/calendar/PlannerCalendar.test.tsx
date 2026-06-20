@@ -94,7 +94,8 @@ describe("PlannerCalendar", () => {
 
     expect(screen.getByLabelText("불러오는 중")).toBeInTheDocument();
 
-    expect(await screen.findByText("회의")).toBeInTheDocument();
+    // 월 셀과 그날 상세 양쪽에 제목이 나타날 수 있다(최소 1개).
+    expect((await screen.findAllByText("회의")).length).toBeGreaterThan(0);
     expect(screen.getByText("이펙티브 자바")).toBeInTheDocument();
     expect(screen.getByText("Q1")).toBeInTheDocument();
     expect(
