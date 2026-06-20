@@ -24,6 +24,10 @@ export const importPlannerSettings = () =>
   import("../pages/planner/PlannerSettingsPage").then((m) => ({
     default: m.PlannerSettingsPage,
   }));
+export const importRoutines = () =>
+  import("../pages/planner/RoutinesPage").then((m) => ({
+    default: m.RoutinesPage,
+  }));
 
 /**
  * 로그인 후 idle 시간에 페이지 청크를 미리 받아둔다.

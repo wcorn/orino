@@ -1,4 +1,11 @@
-import { BookOpen, Calendar, CheckSquare, Home, Settings } from "lucide-react";
+import {
+  BookOpen,
+  Calendar,
+  CheckSquare,
+  Home,
+  Repeat,
+  Settings,
+} from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 import { useTodayReviews } from "@/features/review/hooks/useTodayReviews";
@@ -15,6 +22,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/planner/materials", label: "학습 자료", icon: BookOpen },
   { to: "/planner/reviews/today", label: "오늘 복습", icon: CheckSquare },
   { to: "/planner/calendar", label: "캘린더", icon: Calendar },
+  { to: "/planner/routines", label: "루틴", icon: Repeat },
   { to: "/planner/settings", label: "연동 설정", icon: Settings },
 ];
 

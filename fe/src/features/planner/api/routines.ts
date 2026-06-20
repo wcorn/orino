@@ -37,9 +37,29 @@ export interface RoutineSeriesSummary {
   color?: string | null;
 }
 
+/** 편집/삭제 적용 범위. following/instance는 instanceDate가 필요하다. */
+export type RoutineScope = "all" | "following" | "instance";
+
+export interface RoutineEditRequest {
+  title: string;
+  allDay: boolean;
+  start: string;
+  end: string;
+  recurrence: RoutineRecurrence;
+  memo: string | null;
+}
+
 interface ApiEnvelope<T> {
   code: string;
   data: T;
+}
+
+export async function listRoutines(): Promise<RoutineSeriesSummary[]> {
+  const { data } =
+    await client.get<ApiEnvelope<{ routines: RoutineSeriesSummary[] }>>(
+      "/planner/routines",
+    );
+  return data.data.routines;
 }
 
 export async function createRoutine(
@@ -50,4 +70,31 @@ export async function createRoutine(
     request,
   );
   return data.data;
+}
+
+interface ScopeParams {
+  scope: RoutineScope;
+  instanceDate?: string;
+}
+
+export async function updateRoutine(
+  eventId: string,
+  request: RoutineEditRequest,
+  { scope, instanceDate }: ScopeParams,
+): Promise<RoutineSeriesSummary> {
+  const { data } = await client.patch<ApiEnvelope<RoutineSeriesSummary>>(
+    `/planner/routines/${eventId}`,
+    request,
+    { params: { scope, instanceDate } },
+  );
+  return data.data;
+}
+
+export async function deleteRoutine(
+  eventId: string,
+  { scope, instanceDate }: ScopeParams,
+): Promise<void> {
+  await client.delete(`/planner/routines/${eventId}`, {
+    params: { scope, instanceDate },
+  });
 }
