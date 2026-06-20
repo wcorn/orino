@@ -20,8 +20,8 @@ function event(partial: Partial<PlannerEvent>): PlannerEvent {
   };
 }
 
-describe("PlannerDayDetailPanel 일정 아젠다", () => {
-  it("시작·종료 시각을 함께 보여주고 종일 먼저·시간순으로 정렬한다", () => {
+describe("PlannerDayDetailPanel 일정 타임라인", () => {
+  it("종일은 상단 줄, 시간 일정은 시작·종료가 붙은 블럭으로 보여준다", () => {
     const events = [
       event({
         id: "pm",
@@ -53,16 +53,18 @@ describe("PlannerDayDetailPanel 일정 아젠다", () => {
       />,
     );
 
-    // 시작·종료 동시 표기
-    expect(screen.getByText("14:00")).toBeInTheDocument();
-    expect(screen.getByText("15:00")).toBeInTheDocument();
+    // 종일 일정은 상단 줄
+    expect(screen.getByText("여행")).toBeInTheDocument();
     expect(screen.getByText("종일")).toBeInTheDocument();
 
-    // 정렬: 종일(여행) → 09:00(회의) → 14:00(치과 예약)
-    const titles = screen
-      .getAllByRole("button")
-      .map((b) => b.textContent)
-      .filter((t) => t && /여행|회의|치과 예약/.test(t));
-    expect(titles).toEqual(["여행", "회의", "치과 예약"]);
+    // 시간 일정은 시작–종료가 붙은 블럭
+    expect(screen.getByText("회의")).toBeInTheDocument();
+    expect(screen.getByText(/09:00.10:00/)).toBeInTheDocument();
+    expect(screen.getByText("치과 예약")).toBeInTheDocument();
+    expect(screen.getByText(/14:00.15:00/)).toBeInTheDocument();
+
+    // 24시간 그리드(시간 라벨)
+    expect(screen.getByText("0시")).toBeInTheDocument();
+    expect(screen.getByText("23시")).toBeInTheDocument();
   });
 });

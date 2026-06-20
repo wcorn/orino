@@ -293,6 +293,13 @@ export function PlannerCalendar() {
                     done: !event.routine.done,
                   })
                 }
+                onSlotClick={(isoDate, hour) =>
+                  setDialog({
+                    mode: "create",
+                    date: isoDate,
+                    startTime: `${String(hour).padStart(2, "0")}:00`,
+                  })
+                }
               />
             </CardContent>
           </Card>
