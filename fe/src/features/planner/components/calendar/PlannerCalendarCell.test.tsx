@@ -28,7 +28,7 @@ const baseProps = {
   onSelect: () => {},
   tasks: [],
   reviews: [],
-} as const;
+};
 
 describe("PlannerCalendarCell 일정 라인", () => {
   it("시간 일정은 시작 시각 + 제목, 종일은 제목만 보여준다", () => {
