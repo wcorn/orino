@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react";
+import { Repeat, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 
 import type { PlannerEvent, PlannerReview, PlannerTask } from "../../api/feed";
 import { eventTimeLabel } from "../../calendar";
+import { RoutineCheckCircle } from "../routine/RoutineCheckCircle";
 
 interface Props {
   isoDate: string;
@@ -17,6 +18,7 @@ interface Props {
   onEventClick?: (event: PlannerEvent) => void;
   onTaskToggle?: (task: PlannerTask) => void;
   onTaskDelete?: (task: PlannerTask) => void;
+  onRoutineCheck?: (event: PlannerEvent) => void;
 }
 
 function formatHeading(isoDate: string): string {
@@ -32,6 +34,7 @@ export function PlannerDayDetailPanel({
   onEventClick,
   onTaskToggle,
   onTaskDelete,
+  onRoutineCheck,
 }: Props) {
   const isEmpty = events.length + tasks.length + reviews.length === 0;
 
@@ -56,29 +59,56 @@ export function PlannerDayDetailPanel({
                 일정 ({events.length})
               </h3>
               <ul className="flex flex-col gap-1.5">
-                {events.map((event) => (
-                  <li key={event.id}>
-                    <button
-                      type="button"
-                      onClick={() => onEventClick?.(event)}
-                      className="border-border bg-card hover:bg-muted/50 flex w-full items-start gap-2 rounded-md border p-2 text-left text-sm transition-colors"
+                {events.map((event) => {
+                  const isHabit = event.routine?.type === "habit";
+                  const isSchedule = event.routine?.type === "schedule";
+                  const done = event.routine?.done ?? false;
+                  return (
+                    <li
+                      key={event.id}
+                      className="border-border bg-card flex items-center gap-2 rounded-md border p-2 text-sm"
                     >
-                      <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
-                        {eventTimeLabel(event)}
-                      </span>
-                      <div className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate">
-                          {event.title ?? "(제목 없음)"}
+                      {isHabit && (
+                        <RoutineCheckCircle
+                          checked={done}
+                          label={`${event.title ?? "(제목 없음)"} 완료 토글`}
+                          onToggle={() => onRoutineCheck?.(event)}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onEventClick?.(event)}
+                        className="hover:bg-muted/50 flex min-w-0 flex-1 items-start gap-2 rounded-sm text-left transition-colors"
+                      >
+                        <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+                          {eventTimeLabel(event)}
                         </span>
-                        {event.location && (
-                          <span className="text-muted-foreground truncate text-xs">
-                            {event.location}
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <span
+                            className={cn(
+                              "flex items-center gap-1 truncate",
+                              done &&
+                                "text-muted-foreground line-through opacity-70",
+                            )}
+                          >
+                            {isSchedule && (
+                              <Repeat
+                                className="size-3.5 shrink-0"
+                                aria-label="반복 일정"
+                              />
+                            )}
+                            {event.title ?? "(제목 없음)"}
                           </span>
-                        )}
-                      </div>
-                    </button>
-                  </li>
-                ))}
+                          {event.location && (
+                            <span className="text-muted-foreground truncate text-xs">
+                              {event.location}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           )}

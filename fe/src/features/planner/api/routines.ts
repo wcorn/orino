@@ -98,3 +98,22 @@ export async function deleteRoutine(
     params: { scope, instanceDate },
   });
 }
+
+export interface RoutineCheckResult {
+  recurringEventId: string;
+  date: string;
+  done: boolean;
+}
+
+/** 습관 완료 체크 토글. done=true upsert / false delete. */
+export async function checkRoutine(
+  recurringEventId: string,
+  date: string,
+  done: boolean,
+): Promise<RoutineCheckResult> {
+  const { data } = await client.post<ApiEnvelope<RoutineCheckResult>>(
+    `/planner/routines/${recurringEventId}/check`,
+    { date, done },
+  );
+  return data.data;
+}
