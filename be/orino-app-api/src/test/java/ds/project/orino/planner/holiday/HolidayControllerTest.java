@@ -120,6 +120,25 @@ class HolidayControllerTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("제헌절은 isHoliday=Y여도 빨간날에서 제외한다")
+    void excludesConstitutionDay() {
+        responseBody = """
+                {"response":{"header":{"resultCode":"00","resultMsg":"NORMAL SERVICE."},
+                 "body":{"items":{"item":[
+                   {"dateKind":"01","dateName":"제헌절","isHoliday":"Y","locdate":20260717},
+                   {"dateKind":"01","dateName":"광복절","isHoliday":"Y","locdate":20260815}
+                 ]},"numOfRows":100,"pageNo":1,"totalCount":2}}}""";
+
+        int count = holidaySyncService.sync(2026);
+
+        assertThat(count).isEqualTo(1);
+        assertThat(holidayRepository.findByDate(java.time.LocalDate.of(2026, 7, 17)))
+                .isEmpty();
+        assertThat(holidayRepository.findByDate(java.time.LocalDate.of(2026, 8, 15)))
+                .isPresent();
+    }
+
+    @Test
     @DisplayName("같은 날짜 재동기화는 멱등(중복 생성 없음)")
     void idempotentSync() {
         holidaySyncService.sync(2026);

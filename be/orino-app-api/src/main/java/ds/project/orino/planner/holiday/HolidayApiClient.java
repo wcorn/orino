@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 한국천문연구원 특일정보 {@code getRestDeInfo}(공휴일) 호출 래퍼.
@@ -24,6 +25,11 @@ import java.util.List;
 public class HolidayApiClient {
 
     private static final DateTimeFormatter LOCDATE = DateTimeFormatter.ofPattern("yyyyMMdd");
+    /**
+     * 특일정보가 {@code isHoliday=Y}로 주지만 실제 관공서 휴무일이 아니라 빨간날에서 제외할 이름.
+     * 제헌절은 2008년부터 공휴일(휴무)이 아니다. (노동절은 근로자 휴일이라 포함 유지)
+     */
+    private static final Set<String> EXCLUDED_NAMES = Set.of("제헌절");
 
     private final RestClient restClient;
     private final HolidayProperties properties;
@@ -88,7 +94,7 @@ public class HolidayApiClient {
         }
         String locdate = node.path("locdate").asString("");
         String name = node.path("dateName").asString("");
-        if (locdate.isBlank() || name.isBlank()) {
+        if (locdate.isBlank() || name.isBlank() || EXCLUDED_NAMES.contains(name)) {
             return;
         }
         result.add(new HolidayItem(LocalDate.parse(locdate, LOCDATE), name));
