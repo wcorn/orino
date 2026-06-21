@@ -20,6 +20,7 @@ import {
   useDeleteEvent,
   useUpdateEvent,
 } from "../../hooks/useEventMutations";
+import { useHolidays } from "../../hooks/useHolidays";
 import { usePlannerCalendar } from "../../hooks/usePlannerCalendar";
 import { useRoutineCheck } from "../../hooks/useRoutineCheck";
 import {
@@ -64,10 +65,15 @@ export function PlannerCalendar() {
   const to = toIsoDate(days[days.length - 1]);
 
   const { data, isLoading } = usePlannerCalendar(from, to);
+  const { data: holidays } = useHolidays(from, to);
 
   const eventsMap = useMemo(() => eventsByDate(data?.events ?? []), [data]);
   const tasksMap = useMemo(() => tasksByDate(data?.tasks ?? []), [data]);
   const reviewsMap = useMemo(() => reviewsByDate(data?.reviews ?? []), [data]);
+  const holidayMap = useMemo(
+    () => new Map((holidays ?? []).map((h) => [h.date, h.name])),
+    [holidays],
+  );
 
   const googleConnected = data?.googleConnected ?? false;
 
@@ -261,6 +267,7 @@ export function PlannerCalendar() {
                         tasks={tasksMap.get(iso) ?? []}
                         reviews={reviewsMap.get(iso) ?? []}
                         today={today}
+                        holidayName={holidayMap.get(iso)}
                         onSelect={setSelected}
                       />
                     );
@@ -277,6 +284,7 @@ export function PlannerCalendar() {
                 events={eventsMap.get(selected) ?? []}
                 tasks={tasksMap.get(selected) ?? []}
                 reviews={reviewsMap.get(selected) ?? []}
+                holidayName={holidayMap.get(selected)}
                 onEventClick={(event) => setDialog({ mode: "edit", event })}
                 onTaskToggle={(task) =>
                   updateTask.mutate({

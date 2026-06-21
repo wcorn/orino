@@ -8,3 +8,8 @@ export const routineKeys = {
   all: ["routine"] as const,
   list: () => ["routine", "list"] as const,
 };
+
+export const holidayKeys = {
+  all: ["holiday"] as const,
+  range: (from: string, to: string) => ["holiday", from, to] as const,
+};

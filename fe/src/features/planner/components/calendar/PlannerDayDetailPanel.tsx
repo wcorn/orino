@@ -14,6 +14,7 @@ interface Props {
   events: PlannerEvent[];
   tasks: PlannerTask[];
   reviews: PlannerReview[];
+  holidayName?: string;
   onEventClick?: (event: PlannerEvent) => void;
   onTaskToggle?: (task: PlannerTask) => void;
   onTaskDelete?: (task: PlannerTask) => void;
@@ -31,6 +32,7 @@ export function PlannerDayDetailPanel({
   events,
   tasks,
   reviews,
+  holidayName,
   onEventClick,
   onTaskToggle,
   onTaskDelete,
@@ -42,7 +44,14 @@ export function PlannerDayDetailPanel({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-medium">{formatHeading(isoDate)}</h2>
+        <h2 className="text-base font-medium">
+          {formatHeading(isoDate)}
+          {holidayName && (
+            <span className="ml-2 text-sm font-normal text-red-500">
+              {holidayName}
+            </span>
+          )}
+        </h2>
         {reviews.length > 0 && (
           <Link to="/planner/reviews/today">
             <Button size="sm">오늘 복습 하러가기</Button>
