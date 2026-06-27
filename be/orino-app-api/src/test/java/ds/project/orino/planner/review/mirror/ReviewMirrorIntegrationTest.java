@@ -117,6 +117,19 @@ class ReviewMirrorIntegrationTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("연동 만료(revoked) 중에는 미러를 건너뛴다 — 매핑·Google 호출 없음")
+    void revoked_account_skips_mirror() throws Exception {
+        GoogleAccount account = googleAccountRepository.findByMemberId(memberId).orElseThrow();
+        account.markRevoked(); // 미러는 켜져 있으나 토큰이 무효화된 상태
+        googleAccountRepository.save(account);
+
+        createCard("Q1");
+
+        assertThat(mirrorRepository.findAllByMemberId(memberId)).isEmpty();
+        assertThat(REQUESTS).isEmpty();
+    }
+
+    @Test
     @DisplayName("플래시카드 생성 → 첫 복습 dueDate에 '복습 1개' 종일 이벤트를 insert하고 매핑을 저장한다")
     void create_inserts_bundle() throws Exception {
         createCard("Q1");

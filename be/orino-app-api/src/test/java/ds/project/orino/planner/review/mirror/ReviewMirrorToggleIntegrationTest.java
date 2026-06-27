@@ -168,6 +168,60 @@ class ReviewMirrorToggleIntegrationTest extends ApiTestSupport {
         assertThat(account.getReviewCalendarId()).isEqualTo("review-cal");
     }
 
+    @Test
+    @DisplayName("ON - 오버듀(지난 날) PENDING도 백필해 묶음을 유지한다")
+    void enable_backfills_overdue() throws Exception {
+        connectGoogle(null, false);
+        accessTokenRepository.save(memberId, "test-access", Duration.ofMinutes(30));
+        seedPendingReview(today.minusDays(2)); // 지난 날인데 아직 PENDING(오버듀)
+
+        toggle(true).andExpect(status().isOk());
+
+        assertThat(mirrorRepository.findByMemberIdAndDueDate(memberId, today.minusDays(2)))
+                .isPresent();
+    }
+
+    @Test
+    @DisplayName("ON - 같은 날 여러 자료는 설명을 자료 제목별로 묶는다")
+    void enable_groups_description_by_material() throws Exception {
+        connectGoogle(null, false);
+        accessTokenRepository.save(memberId, "test-access", Duration.ofMinutes(30));
+        Long english = studyMaterialRepository.save(
+                new StudyMaterial(memberId, "영어", MaterialType.BOOK)).getId();
+        seedPendingReviewIn(materialId, today.plusDays(1)); // 수학 1개
+        seedPendingReviewIn(english, today.plusDays(1));    // 영어 1개
+
+        toggle(true).andExpect(status().isOk());
+
+        CapturedRequest insert = REQUESTS.stream()
+                .filter(r -> r.method.equals("POST") && r.path.endsWith("/events"))
+                .reduce((first, second) -> second).orElseThrow();
+        assertThat(insert.body).contains("복습 2개");
+        assertThat(insert.body).contains("수학: 1개");
+        assertThat(insert.body).contains("영어: 1개");
+    }
+
+    @Test
+    @DisplayName("OFF→ON - 다시 켜면 백필로 묶음을 재생성한다(보조 캘린더는 재사용)")
+    void disable_then_enable_rebackfills() throws Exception {
+        connectGoogle(null, false);
+        accessTokenRepository.save(memberId, "test-access", Duration.ofMinutes(30));
+        seedPendingReview(today.plusDays(1));
+
+        toggle(true).andExpect(status().isOk());
+        assertThat(mirrorRepository.findAllByMemberId(memberId)).hasSize(1);
+
+        toggle(false).andExpect(status().isOk());
+        assertThat(mirrorRepository.findAllByMemberId(memberId)).isEmpty();
+
+        REQUESTS.clear();
+        toggle(true).andExpect(status().isOk());
+        assertThat(mirrorRepository.findByMemberIdAndDueDate(memberId, today.plusDays(1)))
+                .isPresent();
+        // 보조 캘린더는 보존됐으므로 재생성(calendars.insert) 없이 재사용한다
+        assertThat(REQUESTS).noneMatch(r -> r.path.equals("/calendar/v3/calendars"));
+    }
+
     private void connectGoogle(String reviewCalendarId, boolean mirrorEnabled) {
         GoogleAccount account = new GoogleAccount(
                 memberId, "refresh", "scope", "me@gmail.com", "primary", "@default");
@@ -181,7 +235,11 @@ class ReviewMirrorToggleIntegrationTest extends ApiTestSupport {
     }
 
     private void seedPendingReview(LocalDate dueDate) {
-        Flashcard card = flashcardRepository.save(new Flashcard(memberId, materialId, "Q", "A"));
+        seedPendingReviewIn(materialId, dueDate);
+    }
+
+    private void seedPendingReviewIn(Long material, LocalDate dueDate) {
+        Flashcard card = flashcardRepository.save(new Flashcard(memberId, material, "Q", "A"));
         reviewScheduleRepository.save(new ReviewSchedule(
                 memberId, card.getId(), 1, atTestZone(dueDate.atTime(4, 0)), 1, EF));
     }
