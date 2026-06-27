@@ -1,0 +1,207 @@
+{
+  "uid": "node-hardware",
+  "title": "Node Hardware",
+  "tags": ["orino", "node", "hardware"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "CPU 온도 (k10temp)",
+      "description": "AMD Ryzen Tctl 센서. 스로틀링은 보통 ~95°C. warning 85 / critical 90.",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "max by (instance) (node_hwmon_temp_celsius * on (instance, chip) group_left node_hwmon_chip_names{chip_name=\"k10temp\"}) * on (instance) group_left(nodename) node_uname_info",
+          "legendFormat": "{{nodename}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "decimals": 1,
+          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 80},
+              {"color": "red", "value": 90}
+            ]
+          }
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["last", "max"]},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "팬 속도 (RPM)",
+      "description": "asus_nb_wmi fan1/fan2. 온도에 따라 팬이 오르내리는 패턴(팬 펌핑) 확인.",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "node_hwmon_fan_rpm * on (instance) group_left(nodename) node_uname_info",
+          "legendFormat": "{{nodename}} {{sensor}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "rotrpm",
+          "decimals": 0,
+          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["last", "max"]},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "GPU · NVMe 온도",
+      "description": "내장 GPU(amdgpu edge)와 NVMe SSD 온도.",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "node_hwmon_temp_celsius * on (instance, chip) group_left node_hwmon_chip_names{chip_name=\"amdgpu\"} * on (instance) group_left(nodename) node_uname_info",
+          "legendFormat": "{{nodename}} GPU",
+          "refId": "A"
+        },
+        {
+          "expr": "max by (instance) (node_hwmon_temp_celsius * on (instance, chip) group_left node_hwmon_chip_names{chip_name=\"nvme\"}) * on (instance) group_left(nodename) node_uname_info",
+          "legendFormat": "{{nodename}} NVMe",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "decimals": 1,
+          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 70},
+              {"color": "red", "value": 85}
+            ]
+          }
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["last", "max"]},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "전원 · 배터리",
+      "description": "AC 연결(1=연결) 및 배터리 잔량(%). 정전 시 AC0가 0으로 떨어진다.",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "node_power_supply_online{power_supply=~\"AC.*\"} * 100 * on (instance) group_left(nodename) node_uname_info",
+          "legendFormat": "{{nodename}} AC 연결(%)",
+          "refId": "A"
+        },
+        {
+          "expr": "node_power_supply_capacity{power_supply=~\"BAT.*\"} * on (instance) group_left(nodename) node_uname_info",
+          "legendFormat": "{{nodename}} 배터리(%)",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 5}
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["last"]},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "노드 버전 정보 (OS · 커널 · kubelet · containerd)",
+      "description": "kube_node_info 기반. 노드별 OS·커널·런타임·kubelet 버전.",
+      "gridPos": {"x": 0, "y": 16, "w": 24, "h": 7},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "kube_node_info",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "container": true,
+              "endpoint": true,
+              "instance": true,
+              "job": true,
+              "namespace": true,
+              "pod": true,
+              "service": true,
+              "provider_id": true,
+              "pod_cidr": true,
+              "system_uuid": true,
+              "kubeproxy_version": true
+            },
+            "renameByName": {
+              "node": "노드",
+              "internal_ip": "IP",
+              "os_image": "OS",
+              "kernel_version": "커널",
+              "kubelet_version": "kubelet",
+              "container_runtime_version": "런타임"
+            },
+            "indexByName": {
+              "node": 0,
+              "internal_ip": 1,
+              "os_image": 2,
+              "kernel_version": 3,
+              "kubelet_version": 4,
+              "container_runtime_version": 5
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    }
+  ]
+}

@@ -100,6 +100,34 @@ spec:
             summary: "노드 {{ "{{" }} $labels.instance {{ "}}" }} 디스크 사용률 높음"
             description: "디스크 사용률이 85% 초과 (현재: {{ "{{" }} $value | printf \"%.1f\" {{ "}}" }}%)"
 
+        # CPU 온도 — k10temp(AMD Ryzen) 센서로 한정. chip_name으로 join해 칩 경로 하드코딩을 피한다.
+        # AMD Tctl 스로틀링은 보통 ~95°C 이상 → warning 85 / critical 90 으로 여유를 둔다.
+        - alert: NodeHighTemperature
+          expr: |
+            max by (instance) (
+              node_hwmon_temp_celsius
+              * on (instance, chip) group_left node_hwmon_chip_names{chip_name="k10temp"}
+            ) > 85
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "노드 {{ "{{" }} $labels.instance {{ "}}" }} CPU 온도 높음"
+            description: "CPU 온도가 5분간 85°C 초과 (현재: {{ "{{" }} $value | printf \"%.1f\" {{ "}}" }}°C) — 쿨링/통풍 점검"
+
+        - alert: NodeCriticalTemperature
+          expr: |
+            max by (instance) (
+              node_hwmon_temp_celsius
+              * on (instance, chip) group_left node_hwmon_chip_names{chip_name="k10temp"}
+            ) > 90
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "노드 {{ "{{" }} $labels.instance {{ "}}" }} CPU 온도 위험"
+            description: "CPU 온도가 2분간 90°C 초과 (현재: {{ "{{" }} $value | printf \"%.1f\" {{ "}}" }}°C) — 스로틀링 임박, 즉시 조치"
+
     - name: longhorn-alerts
       rules:
         - alert: LonghornBackupFailed
