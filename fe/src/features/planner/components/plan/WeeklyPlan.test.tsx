@@ -90,6 +90,30 @@ describe("WeeklyPlan", () => {
     ).toBeInTheDocument();
   });
 
+  it("편집을 취소하면 블록이 추가되지 않고 누적되지 않는다", async () => {
+    mockPlan([]);
+    const user = userEvent.setup();
+    renderWithRouter(<WeeklyPlan />);
+
+    // 두 번 생성 시도 후 모두 취소 → 블록 누적 0, 미저장 변경 없음
+    for (let i = 0; i < 2; i++) {
+      await user.click(await screen.findByLabelText("수요일 9시 추가"));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("button", { name: "취소" }));
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+      );
+    }
+
+    expect(
+      screen.queryByRole("button", { name: /\(라벨 없음\)/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/빈 한 주입니다/)).toBeInTheDocument();
+    expect(
+      screen.queryByText("저장되지 않은 변경이 있습니다"),
+    ).not.toBeInTheDocument();
+  });
+
   it("저장은 PUT으로 전량 교체하고 성공 토스트를 띄운다", async () => {
     mockPlan([
       {
