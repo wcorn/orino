@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   blockAtHour,
+  blockFromRange,
   type EditableBlock,
   isReversed,
   layoutDay,
@@ -9,6 +10,7 @@ import {
   nextKey,
   snap,
   timeToMinutes,
+  yToMinutes,
 } from "./planGrid";
 
 function block(start: string, end: string): EditableBlock {
@@ -36,6 +38,30 @@ describe("planGrid", () => {
     expect(snap(46)).toBe(60);
     expect(snap(74)).toBe(60);
     expect(snap(75)).toBe(90); // 정확히 중간은 올림
+  });
+
+  it("snap은 step 단위(60/15/5)로 스냅한다", () => {
+    expect(snap(40, 60)).toBe(60);
+    expect(snap(40, 15)).toBe(45);
+    expect(snap(42, 5)).toBe(40);
+  });
+
+  it("yToMinutes는 픽셀→분을 step 단위로 스냅(height=1440이면 1px=1분)", () => {
+    expect(yToMinutes(545, 1440, 30)).toBe(540); // 09:00
+    expect(yToMinutes(550, 1440, 15)).toBe(555); // 09:15
+    expect(yToMinutes(542, 1440, 5)).toBe(540);
+  });
+
+  it("blockFromRange는 역방향 보정·최소 한 칸 보장", () => {
+    expect(blockFromRange(1, 600, 540, 30)).toMatchObject({
+      startTime: "09:00",
+      endTime: "10:00",
+    });
+    // 같은 지점(클릭)은 최소 step 길이
+    expect(blockFromRange(1, 540, 540, 30)).toMatchObject({
+      startTime: "09:00",
+      endTime: "09:30",
+    });
   });
 
   it("isReversed는 종료<=시작이면 true", () => {
