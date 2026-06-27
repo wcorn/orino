@@ -22,6 +22,8 @@ interface Props {
   tasks: PlannerTask[];
   reviews: PlannerReview[];
   today: Date;
+  /** 공휴일이면 이름(빨간날 표시). 아니면 undefined. */
+  holidayName?: string;
   onSelect: (isoDate: string) => void;
 }
 
@@ -42,6 +44,7 @@ export function PlannerCalendarCell({
   tasks,
   reviews,
   today,
+  holidayName,
   onSelect,
 }: Props) {
   const reviewDot =
@@ -98,12 +101,14 @@ export function PlannerCalendarCell({
   const shown = lines.slice(0, MAX_LINES);
   const hidden = lines.length - shown.length;
   const total = events.length + tasks.length + reviews.length;
+  const holiday = holidayName;
 
   return (
     <button
       type="button"
       aria-label={
         `${isoDate}` +
+        (holiday ? ` ${holiday}` : "") +
         (total > 0
           ? ` 일정 ${events.length} 할일 ${tasks.length} 복습 ${reviews.length}`
           : "")
@@ -120,12 +125,18 @@ export function PlannerCalendarCell({
       <span
         className={cn(
           "text-xs font-medium",
+          holiday && "text-red-500",
           isToday && "text-primary font-semibold",
         )}
       >
         {date.getDate()}
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
+        {holiday && (
+          <span className="truncate text-[10px] leading-tight text-red-500">
+            {holiday}
+          </span>
+        )}
         {shown}
         {hidden > 0 && (
           <span className="text-muted-foreground text-[10px]">+{hidden}개</span>

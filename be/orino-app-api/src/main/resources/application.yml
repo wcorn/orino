@@ -56,6 +56,16 @@ planner:
       # 콜백 후 리다이렉트할 FE base URL (local Vite 3000, prod orino.dev)
       frontend-url: ${FRONTEND_URL:http://localhost:3000}
 
+# 공휴일(한국천문연구원 특일정보, 공공데이터포털 data 15012690) 동기화.
+# service-key는 디코딩 일반 인증키. 운영=SealedSecret→env, 로컬=.secrets/.env. 매일 00:00(KST) job이 DB 갱신.
+holiday:
+  service-key: ${HOLIDAY_SERVICE_KEY:}
+  base-url: ${HOLIDAY_API_BASE_URL:https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService}
+  # 동기화 대상 연도 수(올해부터 N개년). 2 = 올해+내년.
+  sync-years: ${HOLIDAY_SYNC_YEARS:2}
+  connect-timeout: ${HOLIDAY_CONNECT_TIMEOUT:5s}
+  read-timeout: ${HOLIDAY_READ_TIMEOUT:10s}
+
 management:
   tracing:
     sampling:

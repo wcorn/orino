@@ -65,4 +65,13 @@ describe("PlannerCalendarCell 일정 라인", () => {
 
     expect(screen.getByText("+2개")).toBeInTheDocument();
   });
+
+  it("공휴일이면 이름을 표시하고 aria-label에 포함한다", () => {
+    render(
+      <PlannerCalendarCell {...baseProps} events={[]} holidayName="현충일" />,
+    );
+
+    expect(screen.getByText("현충일")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /현충일/ })).toBeInTheDocument();
+  });
 });

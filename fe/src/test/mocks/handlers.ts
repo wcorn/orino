@@ -48,4 +48,9 @@ export const handlers = [
       },
     });
   }),
+
+  // 기본값: 공휴일 없음. 공휴일 표시 검증 테스트는 server.use로 덮어쓴다.
+  http.get(`${API_BASE}/planner/holidays`, () => {
+    return HttpResponse.json({ code: "OK", data: [] });
+  }),
 ];
