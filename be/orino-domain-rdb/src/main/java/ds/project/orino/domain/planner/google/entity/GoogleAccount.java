@@ -49,6 +49,14 @@ public class GoogleAccount {
     @Column(name = "task_list_id", length = 255)
     private String taskListId;
 
+    /** 복습 미러용 보조 캘린더("orino 복습") ID. 최초 enable 시 생성·기록 후 재사용. */
+    @Column(name = "review_calendar_id", length = 255)
+    private String reviewCalendarId;
+
+    /** 복습 → 보조 캘린더 단방향 미러 on/off 토글. */
+    @Column(name = "review_mirror_enabled", nullable = false)
+    private boolean reviewMirrorEnabled = false;
+
     @Column(name = "connected_at", nullable = false)
     private Instant connectedAt;
 
@@ -95,6 +103,21 @@ public class GoogleAccount {
         this.revoked = true;
     }
 
+    /**
+     * 복습 미러를 켠다. 보조 캘린더가 새로 생성됐으면 그 ID를 기록하고, 이미 있으면(재-enable) 기존 ID를 유지한다.
+     */
+    public void enableReviewMirror(String reviewCalendarId) {
+        if (reviewCalendarId != null) {
+            this.reviewCalendarId = reviewCalendarId;
+        }
+        this.reviewMirrorEnabled = true;
+    }
+
+    /** 복습 미러를 끈다. 빠른 재-enable을 위해 보조 캘린더 ID는 보존한다. */
+    public void disableReviewMirror() {
+        this.reviewMirrorEnabled = false;
+    }
+
     public Long getId() {
         return id;
     }
@@ -121,6 +144,14 @@ public class GoogleAccount {
 
     public String getTaskListId() {
         return taskListId;
+    }
+
+    public String getReviewCalendarId() {
+        return reviewCalendarId;
+    }
+
+    public boolean isReviewMirrorEnabled() {
+        return reviewMirrorEnabled;
     }
 
     public Instant getConnectedAt() {

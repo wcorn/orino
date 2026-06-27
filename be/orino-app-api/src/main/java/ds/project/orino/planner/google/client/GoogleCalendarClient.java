@@ -1,8 +1,11 @@
 package ds.project.orino.planner.google.client;
 
 import ds.project.orino.planner.google.calendar.dto.EventRequest;
+import ds.project.orino.planner.google.calendar.dto.GoogleCalendarResource;
+import ds.project.orino.planner.google.calendar.dto.GoogleCalendarWriteBody;
 import ds.project.orino.planner.google.calendar.dto.GoogleEventWriteBody;
 import ds.project.orino.planner.google.calendar.dto.GoogleEventWriteBody.GoogleEventTime;
+import ds.project.orino.planner.google.calendar.dto.GoogleEventWriteBody.GoogleReminders;
 import ds.project.orino.planner.google.calendar.dto.GoogleEventsResponse;
 import ds.project.orino.planner.google.calendar.dto.GoogleEventsResponse.GoogleEventDateTime;
 import ds.project.orino.planner.google.calendar.dto.GoogleEventsResponse.GoogleEventItem;
@@ -44,7 +47,7 @@ public class GoogleCalendarClient {
     /** 사용자 TZ 로컬 datetime 포맷(오프셋 없이 "2026-06-10T14:00:00"). */
     private static final DateTimeFormatter LOCAL_DATETIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
-    private static final String PRIMARY_CALENDAR_PATH = "/calendar/v3/calendars/primary/events";
+    private static final String PRIMARY_CALENDAR_ID = "primary";
 
     private final GoogleTokenProvider tokenProvider;
     private final RestClient googleRestClient;
@@ -60,8 +63,7 @@ public class GoogleCalendarClient {
 
     /** [timeMin, timeMax) 구간의 primary 캘린더 일정을 조회해 사용자 시간대로 정규화한다. */
     public List<PlannerEvent> listEvents(Long memberId, Instant timeMin, Instant timeMax, ZoneId zone) {
-        URI uri = UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
-                .path(PRIMARY_CALENDAR_PATH)
+        URI uri = eventsBuilder(PRIMARY_CALENDAR_ID)
                 .queryParam("timeMin", timeMin.toString())
                 .queryParam("timeMax", timeMax.toString())
                 .queryParam("singleEvents", "true")
@@ -101,10 +103,7 @@ public class GoogleCalendarClient {
 
     /** 일정 생성. 생성된 이벤트를 정규화해 반환한다. */
     public PlannerEvent insertEvent(Long memberId, EventRequest request, ZoneId zone) {
-        URI uri = UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
-                .path(PRIMARY_CALENDAR_PATH)
-                .build()
-                .toUri();
+        URI uri = eventsBuilder(PRIMARY_CALENDAR_ID).build().toUri();
 
         GoogleEventWriteBody body = toWriteBody(request, zone);
         GoogleEventItem item = tokenProvider.executeWithRetry(memberId, accessToken ->
@@ -139,10 +138,7 @@ public class GoogleCalendarClient {
      */
     public PlannerEvent insertRoutineEvent(Long memberId, EventRequest request,
                                            RecurrenceRule rule, RoutineType type, ZoneId zone) {
-        URI uri = UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
-                .path(PRIMARY_CALENDAR_PATH)
-                .build()
-                .toUri();
+        URI uri = eventsBuilder(PRIMARY_CALENDAR_ID).build().toUri();
 
         GoogleEventWriteBody body = toRoutineWriteBody(request, rule, RoutineTag.privateProperties(type), zone);
         GoogleEventItem item = tokenProvider.executeWithRetry(memberId, accessToken ->
@@ -201,10 +197,7 @@ public class GoogleCalendarClient {
      */
     public PlannerEvent insertForkedSeries(Long memberId, EventRequest request, RecurrenceRule rule,
                                            RoutineType type, String splitMarker, ZoneId zone) {
-        URI uri = UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
-                .path(PRIMARY_CALENDAR_PATH)
-                .build()
-                .toUri();
+        URI uri = eventsBuilder(PRIMARY_CALENDAR_ID).build().toUri();
 
         GoogleEventWriteBody body =
                 toRoutineWriteBody(request, rule, RoutineTag.splitProperties(type, splitMarker), zone);
@@ -242,8 +235,7 @@ public class GoogleCalendarClient {
      * RRULE 역파싱과 종류 판별을 수행한다.
      */
     public List<GoogleEventItem> listRoutineMasters(Long memberId) {
-        URI uri = UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
-                .path(PRIMARY_CALENDAR_PATH)
+        URI uri = eventsBuilder(PRIMARY_CALENDAR_ID)
                 .queryParam("singleEvents", "false")
                 .queryParam("privateExtendedProperty", RoutineTag.LIST_FILTER)
                 .queryParam("maxResults", "2500")
@@ -269,8 +261,7 @@ public class GoogleCalendarClient {
      */
     public List<PlannerEvent> listInstances(Long memberId, String eventId,
                                             Instant timeMin, Instant timeMax, ZoneId zone) {
-        URI uri = UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
-                .path(PRIMARY_CALENDAR_PATH)
+        URI uri = eventsBuilder(PRIMARY_CALENDAR_ID)
                 .pathSegment(eventId, "instances")
                 .queryParam("timeMin", timeMin.toString())
                 .queryParam("timeMax", timeMax.toString())
@@ -293,9 +284,14 @@ public class GoogleCalendarClient {
                 .toList();
     }
 
-    /** 일정 삭제. 없는 id면 404(RESOURCE_NOT_FOUND). */
+    /** primary 캘린더 일정 삭제. 없는 id면 404(RESOURCE_NOT_FOUND). */
     public void deleteEvent(Long memberId, String eventId) {
-        URI uri = eventUri(eventId);
+        deleteEvent(memberId, PRIMARY_CALENDAR_ID, eventId);
+    }
+
+    /** 지정 캘린더의 일정 삭제. 없는 id면 404(RESOURCE_NOT_FOUND). */
+    public void deleteEvent(Long memberId, String calendarId, String eventId) {
+        URI uri = eventUri(calendarId, eventId);
         tokenProvider.executeWithRetry(memberId, accessToken -> {
             googleRestClient.delete()
                     .uri(uri)
@@ -306,12 +302,81 @@ public class GoogleCalendarClient {
         });
     }
 
-    private URI eventUri(String eventId) {
+    /** {@code /calendars/{calendarId}/events} 컬렉션 빌더(쓰기/목록 공용). calendarId는 자동 URL 인코딩된다. */
+    private UriComponentsBuilder eventsBuilder(String calendarId) {
         return UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
-                .path(PRIMARY_CALENDAR_PATH)
-                .pathSegment(eventId)
+                .pathSegment("calendar", "v3", "calendars", calendarId, "events");
+    }
+
+    private URI eventUri(String eventId) {
+        return eventUri(PRIMARY_CALENDAR_ID, eventId);
+    }
+
+    private URI eventUri(String calendarId, String eventId) {
+        return eventsBuilder(calendarId).pathSegment(eventId).build().toUri();
+    }
+
+    // ── 복습 미러: 보조 캘린더 + 종일 이벤트 ──
+
+    /**
+     * 보조 캘린더("orino 복습")를 생성하고 그 calendarId를 반환한다. 미러 최초 enable 시 1회 호출한다.
+     */
+    public String createSecondaryCalendar(Long memberId, String summary) {
+        URI uri = UriComponentsBuilder.fromUriString(oauthProperties.calendarApiBaseUrl())
+                .pathSegment("calendar", "v3", "calendars")
                 .build()
                 .toUri();
+        GoogleCalendarWriteBody body = new GoogleCalendarWriteBody(summary);
+        GoogleCalendarResource created = tokenProvider.executeWithRetry(memberId, accessToken ->
+                googleRestClient.post()
+                        .uri(uri)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .body(GoogleCalendarResource.class));
+        return created == null ? null : created.id();
+    }
+
+    /**
+     * 보조 캘린더에 하루짜리 종일 이벤트를 생성하고 생성된 eventId를 반환한다. 알림은 계정 기본(useDefault).
+     */
+    public String insertAllDayEvent(Long memberId, String calendarId, String summary, LocalDate date) {
+        URI uri = eventsBuilder(calendarId).build().toUri();
+        GoogleEventWriteBody body = allDayBody(summary, date);
+        GoogleEventItem item = tokenProvider.executeWithRetry(memberId, accessToken ->
+                googleRestClient.post()
+                        .uri(uri)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .body(GoogleEventItem.class));
+        return item == null ? null : item.id();
+    }
+
+    /**
+     * 보조 캘린더 종일 이벤트의 제목만 patch한다(복습 개수 변동 반영). 없는 id면 404(RESOURCE_NOT_FOUND).
+     */
+    public void patchEventSummary(Long memberId, String calendarId, String eventId, String summary) {
+        URI uri = eventUri(calendarId, eventId);
+        GoogleEventWriteBody body = new GoogleEventWriteBody(summary, null, null, null, null);
+        tokenProvider.executeWithRetry(memberId, accessToken ->
+                googleRestClient.patch()
+                        .uri(uri)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .body(GoogleEventItem.class));
+    }
+
+    /** 하루짜리 종일 이벤트 바디(useDefault 알림). Google 종일 종료는 배타적이라 end=date+1일. */
+    private GoogleEventWriteBody allDayBody(String summary, LocalDate date) {
+        GoogleEventTime start = new GoogleEventTime(null, date.toString(), null);
+        GoogleEventTime end = new GoogleEventTime(null, date.plusDays(1).toString(), null);
+        return new GoogleEventWriteBody(
+                summary, null, null, start, end, null, null, GoogleReminders.defaults());
     }
 
     private GoogleEventWriteBody toWriteBody(EventRequest request, ZoneId zone) {
