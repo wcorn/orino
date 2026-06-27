@@ -10,7 +10,8 @@ import {
   topRatio,
 } from "./planGrid";
 
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
+// 0~24시 눈금(처음 00:00 · 끝 24:00 포함).
+const HOUR_TICKS = Array.from({ length: 25 }, (_, i) => i);
 const COLUMN_HEIGHT = 24 * HOUR_PX;
 
 interface WeeklyPlanGridProps {
@@ -45,15 +46,23 @@ export function WeeklyPlanGrid({
           </div>
         ))}
 
-        {/* 시간 눈금 거터 */}
+        {/* 시간 눈금 거터(00:00~24:00) */}
         <div className="relative" style={{ height: COLUMN_HEIGHT }}>
-          {HOURS.map((hour) => (
+          {HOUR_TICKS.map((hour) => (
             <div
               key={hour}
-              className="text-muted-foreground absolute right-1 -translate-y-1/2 text-[10px]"
+              className={cn(
+                "text-muted-foreground absolute right-1 text-[10px]",
+                // 처음/끝은 잘리지 않게 위·아래 끝에 맞춰 정렬
+                hour === 0
+                  ? ""
+                  : hour === 24
+                    ? "-translate-y-full"
+                    : "-translate-y-1/2",
+              )}
               style={{ top: hour * HOUR_PX }}
             >
-              {hour > 0 ? `${String(hour).padStart(2, "0")}:00` : ""}
+              {`${String(hour).padStart(2, "0")}:00`}
             </div>
           ))}
         </div>
@@ -65,8 +74,8 @@ export function WeeklyPlanGrid({
             className="border-border relative border-l"
             style={{ height: COLUMN_HEIGHT }}
           >
-            {/* 시간 격자선 */}
-            {HOURS.map((hour) => (
+            {/* 시간 격자선(0~24, 끝선 포함) */}
+            {HOUR_TICKS.map((hour) => (
               <div
                 key={hour}
                 className="border-border/40 absolute inset-x-0 border-t"
