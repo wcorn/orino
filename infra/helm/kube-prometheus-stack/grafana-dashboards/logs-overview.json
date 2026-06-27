@@ -23,11 +23,11 @@
         "current": { "text": "orino", "value": "orino" }
       },
       {
-        "name": "app",
-        "label": "App",
+        "name": "service_name",
+        "label": "Service",
         "type": "query",
         "datasource": { "type": "loki", "uid": "loki" },
-        "query": "label_values({namespace=~\"$namespace\"}, app)",
+        "query": "label_values({namespace=~\"$namespace\"}, service_name)",
         "refresh": 2,
         "multi": true,
         "includeAll": true,
@@ -41,7 +41,7 @@
         "query": "error,warn,info,debug,trace",
         "multi": true,
         "includeAll": true,
-        "allValue": ".+",
+        "allValue": ".*",
         "current": { "text": "All", "value": "$__all" }
       },
       {
@@ -63,7 +63,7 @@
       "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" }, "unit": "short" } },
       "targets": [
         { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "instant",
-          "expr": "sum(count_over_time({namespace=~\"$namespace\", app=~\"$app\", level=\"error\"}[$__range]))" }
+          "expr": "sum(count_over_time({namespace=~\"$namespace\", service_name=~\"$service_name\", level=\"error\"}[$__range]))" }
       ]
     },
     {
@@ -75,7 +75,7 @@
       "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "orange" }, "unit": "short" } },
       "targets": [
         { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "instant",
-          "expr": "sum(count_over_time({namespace=~\"$namespace\", app=~\"$app\", level=\"warn\"}[$__range]))" }
+          "expr": "sum(count_over_time({namespace=~\"$namespace\", service_name=~\"$service_name\", level=\"warn\"}[$__range]))" }
       ]
     },
     {
@@ -87,7 +87,7 @@
       "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" }, "unit": "short" } },
       "targets": [
         { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "instant",
-          "expr": "sum(count_over_time({namespace=~\"$namespace\", app=~\"$app\", level=\"info\"}[$__range]))" }
+          "expr": "sum(count_over_time({namespace=~\"$namespace\", service_name=~\"$service_name\", level=\"info\"}[$__range]))" }
       ]
     },
     {
@@ -99,7 +99,7 @@
       "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" }, "unit": "short" } },
       "targets": [
         { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "instant",
-          "expr": "sum(count_over_time({namespace=~\"$namespace\", app=~\"$app\"}[$__range]))" }
+          "expr": "sum(count_over_time({namespace=~\"$namespace\", service_name=~\"$service_name\"}[$__range]))" }
       ]
     },
     {
@@ -123,7 +123,7 @@
       "targets": [
         { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "range",
           "legendFormat": "{{level}}",
-          "expr": "sum by (level) (count_over_time({namespace=~\"$namespace\", app=~\"$app\"}[$__auto]))" }
+          "expr": "sum by (level) (count_over_time({namespace=~\"$namespace\", service_name=~\"$service_name\"}[$__auto]))" }
       ]
     },
     {
@@ -135,7 +135,7 @@
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "targets": [
         { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "instant", "format": "table",
-          "expr": "topk(15, sum by (logger) (count_over_time({namespace=~\"$namespace\", app=~\"$app\", level=\"error\"} | logger != \"\" [$__range])))" }
+          "expr": "topk(15, sum by (logger) (count_over_time({namespace=~\"$namespace\", service_name=~\"$service_name\", level=\"error\"} | logger != \"\" [$__range])))" }
       ]
     },
     {
@@ -155,7 +155,7 @@
       },
       "targets": [
         { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "range",
-          "expr": "{namespace=~\"$namespace\", app=~\"$app\", level=~\"$level\"} |~ \"(?i)$search\"" }
+          "expr": "{namespace=~\"$namespace\", service_name=~\"$service_name\", level=~\"$level\"} |~ \"(?i)$search\"" }
       ]
     }
   ]
