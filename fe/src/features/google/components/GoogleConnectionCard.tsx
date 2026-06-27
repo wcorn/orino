@@ -1,10 +1,14 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoadingText } from "@/components/ui/loading-text";
+import { Switch } from "@/components/ui/switch";
 
 import { useDisconnectGoogle } from "../hooks/useDisconnectGoogle";
 import { useGoogleStatus } from "../hooks/useGoogleStatus";
+import { useReviewMirrorToggle } from "../hooks/useReviewMirrorToggle";
 import { GoogleConnectButton } from "./GoogleConnectButton";
+
+const REVIEW_MIRROR_LABEL = "복습 일정을 Google 캘린더에 표시";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "-";
@@ -16,6 +20,7 @@ function formatDate(iso: string | null): string {
 export function GoogleConnectionCard() {
   const { data: status, isLoading } = useGoogleStatus();
   const disconnect = useDisconnectGoogle();
+  const mirror = useReviewMirrorToggle();
 
   return (
     <Card>
@@ -39,6 +44,30 @@ export function GoogleConnectionCard() {
               <dt className="text-muted-foreground">연결일</dt>
               <dd>{formatDate(status.connectedAt)}</dd>
             </dl>
+            <div className="flex items-start justify-between gap-3 border-t pt-3">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">
+                  {REVIEW_MIRROR_LABEL}
+                </span>
+                <p className="text-muted-foreground text-xs">
+                  복습 일정을 보조 캘린더 &ldquo;orino 복습&rdquo;에 단방향으로
+                  표시합니다. orino가 원본이며 Google에는 사본만 올라갑니다.
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {mirror.isPending && (
+                  <span className="text-muted-foreground text-xs">
+                    {status.reviewMirrorEnabled ? "끄는 중…" : "켜는 중…"}
+                  </span>
+                )}
+                <Switch
+                  checked={status.reviewMirrorEnabled}
+                  disabled={mirror.isPending}
+                  onCheckedChange={(next) => mirror.mutate(next)}
+                  aria-label={REVIEW_MIRROR_LABEL}
+                />
+              </div>
+            </div>
             <div>
               <Button
                 variant="outline"

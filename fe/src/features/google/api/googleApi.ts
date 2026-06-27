@@ -5,6 +5,13 @@ export interface GoogleStatus {
   googleEmail: string | null;
   scopes: string[] | null;
   connectedAt: string | null;
+  reviewMirrorEnabled: boolean;
+}
+
+/** 복습 미러 토글 결과. reviewCalendarId는 OFF여도 보존된다(빠른 재-enable). */
+export interface ReviewMirrorStatus {
+  enabled: boolean;
+  reviewCalendarId: string | null;
 }
 
 interface ApiEnvelope<T> {
@@ -31,4 +38,17 @@ export async function fetchGoogleAuthUrl(): Promise<string> {
 /** 연동 해제 (revoke + 삭제). */
 export async function disconnectGoogle(): Promise<void> {
   await client.post("/planner/google/disconnect");
+}
+
+/**
+ * 복습 → 보조 캘린더 미러 on/off. ON이면 서버가 보조 캘린더 보장 + 전체 백필을 수행하므로 응답까지 다소 걸린다.
+ */
+export async function setReviewMirror(
+  enabled: boolean,
+): Promise<ReviewMirrorStatus> {
+  const { data } = await client.put<ApiEnvelope<ReviewMirrorStatus>>(
+    "/planner/reviews/mirror",
+    { enabled },
+  );
+  return data.data;
 }
