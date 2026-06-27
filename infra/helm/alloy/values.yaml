@@ -166,6 +166,22 @@ alloy:
             }
           }
 
+          // istio-proxy(사이드카) 로그는 plain text라 자체 ts·level·scope를
+          // 본문에 담는다(예: "2026-...Z\tinfo\txdsproxy\tconnected..."). ts·level을
+          // 떼고 나머지(scope+메시지)를 message로 추출 → Grafana ts/level과 중복
+          // 제거되고 본문이 짧아져 BE/FE와 통일된다. level은 라벨로 승격한다.
+          stage.match {
+            selector = "{container=\"istio-proxy\"}"
+            stage.regex {
+              expression = "^[^\\t]+\\t(?P<level>\\w+)\\t(?P<message>.*)$"
+            }
+            stage.labels {
+              values = {
+                level = "",
+              }
+            }
+          }
+
           // BE JSON 로그는 본문을 message만 남긴다. message가 추출된 경우
           // (JSON 파싱 성공)에만 본문을 교체하고, FE nginx 등 plain text는
           // message 키가 없어 stage.output이 no-op 처리되어 원본 라인을 유지한다.
