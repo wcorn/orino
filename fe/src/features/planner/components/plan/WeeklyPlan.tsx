@@ -9,6 +9,8 @@ import { PlanBlockEditor } from "./PlanBlockEditor";
 import {
   DAY_LABELS,
   type EditableBlock,
+  SNAP_OPTIONS,
+  type SnapMinutes,
   toEditable,
   toInput,
 } from "./planGrid";
@@ -44,6 +46,7 @@ export function WeeklyPlan() {
   const [dirty, setDirty] = useState(false);
   const [editing, setEditing] = useState<EditableBlock | null>(null);
   const [mobileDay, setMobileDay] = useState(new Date().getDay());
+  const [snapMinutes, setSnapMinutes] = useState<SnapMinutes>(30);
 
   useEffect(() => {
     if (data) {
@@ -92,13 +95,37 @@ export function WeeklyPlan() {
             </p>
           )}
         </div>
-        <Button
-          size="sm"
-          onClick={handleSaveAll}
-          disabled={!dirty || save.isPending}
-        >
-          {save.isPending ? "저장 중…" : "저장"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <div
+            className="flex overflow-hidden rounded-md border"
+            role="group"
+            aria-label="스냅 단위"
+          >
+            {SNAP_OPTIONS.map((min) => (
+              <button
+                key={min}
+                type="button"
+                aria-pressed={snapMinutes === min}
+                onClick={() => setSnapMinutes(min)}
+                className={cn(
+                  "px-2 py-1 text-xs font-medium",
+                  snapMinutes === min
+                    ? "bg-primary text-primary-foreground"
+                    : "text-foreground/70 hover:bg-muted",
+                )}
+              >
+                {min}분
+              </button>
+            ))}
+          </div>
+          <Button
+            size="sm"
+            onClick={handleSaveAll}
+            disabled={!dirty || save.isPending}
+          >
+            {save.isPending ? "저장 중…" : "저장"}
+          </Button>
+        </div>
       </header>
 
       {narrow && (
@@ -139,6 +166,7 @@ export function WeeklyPlan() {
           <WeeklyPlanGrid
             blocks={blocks}
             days={days}
+            snapMinutes={snapMinutes}
             onCreate={handleCreate}
             onSelect={setEditing}
           />

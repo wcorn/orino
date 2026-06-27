@@ -1,68 +1,110 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
-import { blockColorClass, DEFAULT_COLOR } from "./planColors";
+import { blockColorClass } from "./planColors";
 import {
+  blockAtHour,
+  blockFromRange,
   DAY_LABELS,
   DAY_LABELS_LONG,
   type EditableBlock,
   heightRatio,
   HOUR_PX,
   layoutDay,
-  MAX_MINUTE,
-  minutesToTime,
-  nextKey,
   topRatio,
+  yToMinutes,
 } from "./planGrid";
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const COLUMN_HEIGHT = 24 * HOUR_PX;
+const DAY_MINUTES = 24 * 60;
 
 interface WeeklyPlanGridProps {
   blocks: EditableBlock[];
   /** 표시할 요일 인덱스(데스크탑 0~6, 모바일 단일). */
   days: number[];
-  /** 빈 영역 클릭/드래그로 새 블록 생성. */
+  /** 드래그/클릭 생성 스냅 단위(분). */
+  snapMinutes: number;
+  /** 빈 영역 클릭(1시간)/드래그(구간)로 새 블록 생성. */
   onCreate: (block: EditableBlock) => void;
   /** 블록 클릭 → 편집. */
   onSelect: (block: EditableBlock) => void;
 }
 
-/** 일~토 × 시간축 그리드. 시간 칸 클릭=1시간 생성, 세로 드래그=구간 생성, 블록 클릭=편집. */
+interface Draft {
+  day: number;
+  startMin: number;
+  endMin: number;
+}
+
+/** 일~토 × 시간축 그리드. 빈 영역 세로 드래그=구간 생성(연속·스냅), 칸 클릭=1시간, 블록 클릭=편집. */
 export function WeeklyPlanGrid({
   blocks,
   days,
+  snapMinutes,
   onCreate,
   onSelect,
 }: WeeklyPlanGridProps) {
-  const dragRef = useRef<{ day: number; start: number; end: number } | null>(
-    null,
-  );
+  const dragRef = useRef<{
+    day: number;
+    startMin: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
+  const [draft, setDraft] = useState<Draft | null>(null);
 
-  const startDrag = (day: number, hour: number) => {
-    dragRef.current = { day, start: hour, end: hour };
+  const minuteAt = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return yToMinutes(e.clientY - rect.top, rect.height, snapMinutes);
   };
-  const extendDrag = (day: number, hour: number) => {
-    if (dragRef.current && dragRef.current.day === day) {
-      dragRef.current.end = hour;
+
+  const handlePointerDown = (
+    day: number,
+    e: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    // 블록 위에서 시작한 포인터는 편집(클릭)이므로 드래그 생성 시작 안 함
+    if ((e.target as HTMLElement).closest("[data-plan-block]")) return;
+    const startMin = minuteAt(e);
+    dragRef.current = { day, startMin, moved: false };
+    setDraft({ day, startMin, endMin: startMin });
+    if (e.currentTarget.setPointerCapture) {
+      e.currentTarget.setPointerCapture(e.pointerId);
     }
   };
-  const endDrag = () => {
+
+  const handlePointerMove = (
+    day: number,
+    e: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    const drag = dragRef.current;
+    if (!drag || drag.day !== day) return;
+    const endMin = minuteAt(e);
+    if (Math.abs(endMin - drag.startMin) >= snapMinutes) drag.moved = true;
+    setDraft({ day, startMin: drag.startMin, endMin });
+  };
+
+  const handlePointerUp = (
+    day: number,
+    e: React.PointerEvent<HTMLDivElement>,
+  ) => {
     const drag = dragRef.current;
     dragRef.current = null;
-    if (!drag) return;
-    const lo = Math.min(drag.start, drag.end);
-    const hi = Math.max(drag.start, drag.end);
-    onCreate({
-      key: nextKey(),
-      id: null,
-      dayOfWeek: drag.day,
-      startTime: minutesToTime(lo * 60),
-      endTime: minutesToTime(Math.min((hi + 1) * 60, MAX_MINUTE)),
-      label: "",
-      color: DEFAULT_COLOR,
-    });
+    setDraft(null);
+    if (!drag || drag.day !== day) return;
+    suppressClickRef.current = drag.moved;
+    if (drag.moved) {
+      onCreate(blockFromRange(day, drag.startMin, minuteAt(e), snapMinutes));
+    }
+  };
+
+  const handleHourClick = (day: number, hour: number) => {
+    // 드래그로 생성한 경우 뒤따르는 click은 무시(중복 방지)
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    onCreate(blockAtHour(day, hour));
   };
 
   return (
@@ -70,10 +112,9 @@ export function WeeklyPlanGrid({
       <div
         className="grid min-w-fit"
         style={{
-          gridTemplateColumns: `3rem repeat(${days.length}, minmax(6rem, 1fr))`,
+          gridTemplateColumns: `3rem repeat(${days.length}, minmax(5rem, 1fr))`,
         }}
       >
-        {/* 헤더: 빈 코너 + 요일 */}
         <div className="border-border bg-background sticky top-0 z-10 border-b" />
         {days.map((day) => (
           <div
@@ -101,11 +142,13 @@ export function WeeklyPlanGrid({
         {days.map((day) => (
           <div
             key={day}
-            className="border-border relative border-l"
+            className="border-border relative touch-none border-l"
             style={{ height: COLUMN_HEIGHT }}
-            onPointerUp={endDrag}
+            onPointerDown={(e) => handlePointerDown(day, e)}
+            onPointerMove={(e) => handlePointerMove(day, e)}
+            onPointerUp={(e) => handlePointerUp(day, e)}
           >
-            {/* 시간 칸(생성용) */}
+            {/* 시간 칸(클릭=1시간 생성) */}
             {HOURS.map((hour) => (
               <button
                 key={hour}
@@ -113,20 +156,36 @@ export function WeeklyPlanGrid({
                 aria-label={`${DAY_LABELS_LONG[day]} ${hour}시 추가`}
                 className="border-border/40 hover:bg-muted/40 absolute inset-x-0 border-t"
                 style={{ top: hour * HOUR_PX, height: HOUR_PX }}
-                onPointerDown={() => startDrag(day, hour)}
-                onPointerEnter={() => extendDrag(day, hour)}
+                onClick={() => handleHourClick(day, hour)}
               />
             ))}
+
+            {/* 드래그 미리보기 */}
+            {draft && draft.day === day && (
+              <div
+                className="bg-primary/30 border-primary pointer-events-none absolute inset-x-0 rounded border"
+                style={{
+                  top:
+                    (Math.min(draft.startMin, draft.endMin) / DAY_MINUTES) *
+                    COLUMN_HEIGHT,
+                  height:
+                    (Math.abs(draft.endMin - draft.startMin) / DAY_MINUTES) *
+                    COLUMN_HEIGHT,
+                }}
+              />
+            )}
 
             {/* 블록 */}
             {layoutDay(blocks.filter((b) => b.dayOfWeek === day)).map((b) => (
               <button
                 key={b.key}
                 type="button"
+                data-plan-block
                 aria-label={`${b.label || "(라벨 없음)"} ${b.startTime}~${b.endTime}`}
                 onClick={() => onSelect(b)}
                 className={cn(
-                  "absolute overflow-hidden rounded px-1 py-0.5 text-left text-[11px] leading-tight text-white shadow-sm",
+                  // border-background로 인접(같은 색) 블록 사이에 seam을 만든다
+                  "border-background absolute overflow-hidden rounded border px-1 py-0.5 text-left text-[11px] leading-tight text-white shadow-sm",
                   blockColorClass(b.color),
                 )}
                 style={{
@@ -136,7 +195,10 @@ export function WeeklyPlanGrid({
                   width: `${b.width * 100}%`,
                 }}
               >
-                <span className="font-semibold">{b.startTime}</span> {b.label}
+                <span className="block font-semibold">
+                  {b.startTime}–{b.endTime}
+                </span>
+                <span className="block truncate">{b.label}</span>
               </button>
             ))}
           </div>

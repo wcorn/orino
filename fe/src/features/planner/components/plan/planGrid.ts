@@ -15,9 +15,12 @@ export const DAY_LABELS_LONG = [
   "토요일",
 ];
 
-export const HOUR_PX = 44;
+export const HOUR_PX = 32; // 더 컴팩트하게(0~24 더 한눈에)
 export const DAY_MINUTES = 24 * 60;
 export const SNAP_MINUTES = 30;
+/** 사용자가 고를 수 있는 스냅 단위(분). */
+export const SNAP_OPTIONS = [60, 30, 15, 5] as const;
+export type SnapMinutes = (typeof SNAP_OPTIONS)[number];
 export const MAX_MINUTE = DAY_MINUTES - 1; // 23:59
 
 /** 클라이언트 편집용 블록. 저장 전(id=null)·저장 후(id) 모두 표현하며 React key로 {@link EditableBlock.key} 사용. */
@@ -76,10 +79,36 @@ export function heightRatio(startTime: string, endTime: string): number {
   return (timeToMinutes(endTime) - timeToMinutes(startTime)) / DAY_MINUTES;
 }
 
-/** 그리드 세로 픽셀 → 스냅된 분(0..1440). 드래그/클릭 위치 계산용. */
-export function yToMinutes(y: number, heightPx: number): number {
+/** 그리드 세로 픽셀 → 스냅된 분(0..1440). 드래그/클릭 위치 계산용(step 단위 스냅). */
+export function yToMinutes(
+  y: number,
+  heightPx: number,
+  step: number = SNAP_MINUTES,
+): number {
   const ratio = heightPx <= 0 ? 0 : Math.max(0, Math.min(1, y / heightPx));
-  return snap(Math.round(ratio * DAY_MINUTES));
+  return snap(Math.round(ratio * DAY_MINUTES), step);
+}
+
+/** 드래그 구간(분) → 블록. 최소 한 칸(step) 보장하고 23:59로 클램프. */
+export function blockFromRange(
+  dayOfWeek: number,
+  startMin: number,
+  endMin: number,
+  step: number = SNAP_MINUTES,
+  color: string | null = DEFAULT_COLOR,
+): EditableBlock {
+  const lo = Math.min(startMin, endMin);
+  const hi = Math.max(startMin, endMin);
+  const end = Math.min(Math.max(hi, lo + step), MAX_MINUTE);
+  return {
+    key: nextKey(),
+    id: null,
+    dayOfWeek,
+    startTime: minutesToTime(lo),
+    endTime: minutesToTime(end),
+    label: "",
+    color,
+  };
 }
 
 /** 특정 요일·시(hour)에 1시간 기본 블록 생성(마지막 시간대는 23:59까지). */
