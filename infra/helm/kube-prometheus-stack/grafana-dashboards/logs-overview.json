@@ -130,7 +130,7 @@
       "type": "table",
       "title": "로거별 에러 Top 15",
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "x": 0, "y": 12, "w": 8, "h": 12 },
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 8 },
       "options": { "showHeader": true },
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "targets": [
@@ -142,20 +142,20 @@
       "type": "logs",
       "title": "로그 (level=$level, search=$search)",
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "x": 8, "y": 12, "w": 16, "h": 12 },
+      "gridPos": { "x": 0, "y": 20, "w": 24, "h": 16 },
       "options": {
         "showTime": true,
         "showLabels": false,
-        "showCommonLabels": false,
+        "showCommonLabels": true,
         "wrapLogMessage": true,
         "prettifyLogMessage": true,
         "enableLogDetails": true,
-        "dedupStrategy": "none",
+        "dedupStrategy": "signature",
         "sortOrder": "Descending"
       },
       "targets": [
         { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "range",
-          "expr": "{namespace=~\"$namespace\", service_name=~\"$service_name\", level=~\"$level\"} |~ \"(?i)$search\"" }
+          "expr": "{namespace=~\"$namespace\", service_name=~\"$service_name\", level=~\"$level\"} != \"kube-probe\" |~ \"(?i)$search\"" }
       ]
     }
   ]
