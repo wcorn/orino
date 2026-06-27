@@ -28,4 +28,7 @@ public interface ReviewScheduleRepository extends JpaRepository<ReviewSchedule, 
      */
     List<ReviewSchedule> findAllByMemberIdAndStatusAndScheduledAt(
             Long memberId, ReviewStatus status, Instant scheduledAt);
+
+    /** 미러 enable 백필용 — 멤버의 모든 PENDING 복습(과거·미래 포함). */
+    List<ReviewSchedule> findAllByMemberIdAndStatus(Long memberId, ReviewStatus status);
 }

@@ -121,7 +121,8 @@ public class GoogleOAuthService {
                 .map(account -> GoogleStatusResponse.connected(
                         account.getGoogleEmail(),
                         splitScopes(account.getScopes()),
-                        account.getConnectedAt()))
+                        account.getConnectedAt(),
+                        account.isReviewMirrorEnabled()))
                 .orElseGet(GoogleStatusResponse::disconnected);
     }
 

@@ -166,7 +166,23 @@ class GoogleOAuthControllerTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.data.connected").value(true))
                 .andExpect(jsonPath("$.data.googleEmail").value("me@gmail.com"))
                 .andExpect(jsonPath("$.data.scopes.length()").value(2))
-                .andExpect(jsonPath("$.data.connectedAt").exists());
+                .andExpect(jsonPath("$.data.connectedAt").exists())
+                .andExpect(jsonPath("$.data.reviewMirrorEnabled").value(false));
+    }
+
+    @Test
+    @DisplayName("GET /status - 복습 미러가 켜져 있으면 reviewMirrorEnabled=true")
+    void status_reviewMirrorEnabled() throws Exception {
+        GoogleAccount account = new GoogleAccount(
+                memberId, "refresh", "scope", "me@gmail.com", "primary", "@default");
+        account.enableReviewMirror("c_review@group.calendar.google.com");
+        accountRepository.save(account);
+
+        mockMvc.perform(get("/api/planner/google/status")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.connected").value(true))
+                .andExpect(jsonPath("$.data.reviewMirrorEnabled").value(true));
     }
 
     @Test

@@ -14,6 +14,7 @@ import ds.project.orino.domain.planner.review.entity.ReviewStatus;
 import ds.project.orino.domain.planner.review.repository.ReviewCalendarMirrorRepository;
 import ds.project.orino.domain.planner.review.repository.ReviewScheduleRepository;
 import ds.project.orino.planner.google.client.GoogleCalendarClient;
+import ds.project.orino.planner.review.dto.ReviewMirrorStatusResponse;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -51,6 +52,8 @@ public class ReviewMirrorService {
     private static final String CALENDAR_SUMMARY_PREFIX = "복습 ";
     private static final String CALENDAR_SUMMARY_SUFFIX = "개";
     private static final String NO_MATERIAL_LABEL = "(자료 없음)";
+    /** 보조 캘린더 제목. */
+    private static final String SECONDARY_CALENDAR_SUMMARY = "orino 복습";
 
     private final GoogleAccountRepository googleAccountRepository;
     private final ReviewScheduleRepository reviewScheduleRepository;
@@ -78,6 +81,62 @@ public class ReviewMirrorService {
         this.calendarClient = calendarClient;
         this.clock = clock;
         this.self = self;
+    }
+
+    /**
+     * 미러를 켠다. 보조 캘린더가 없으면 생성·저장하고(enabled 커밋), 모든 PENDING 복습 날짜를 백필 reconcile한다.
+     * 미연동(또는 revoked)이면 {@link ErrorCode#GOOGLE_NOT_CONNECTED}(409).
+     *
+     * <p>활성화 커밋을 백필보다 먼저 끝내야 reconcileDate(REQUIRES_NEW)가 enabled=true를 본다.
+     */
+    public ReviewMirrorStatusResponse enableMirror(Long memberId, ZoneId zone) {
+        String calendarId = self.activateMirror(memberId);
+        backfill(memberId, zone);
+        return new ReviewMirrorStatusResponse(true, calendarId);
+    }
+
+    /** 미러를 끈다. mirror 이벤트·행을 모두 정리하고 enabled=0으로 둔다(빈 보조 캘린더는 보존). 미연동이면 409. */
+    @Transactional
+    public ReviewMirrorStatusResponse disableMirror(Long memberId) {
+        GoogleAccount account = requireConnected(memberId);
+        String calendarId = account.getReviewCalendarId();
+        if (calendarId != null) {
+            for (ReviewCalendarMirror mirror : mirrorRepository.findAllByMemberId(memberId)) {
+                deleteEventQuietly(memberId, calendarId, mirror.getGoogleEventId());
+            }
+            mirrorRepository.deleteByMemberId(memberId);
+        }
+        account.disableReviewMirror();
+        googleAccountRepository.save(account);
+        return new ReviewMirrorStatusResponse(false, calendarId);
+    }
+
+    /** 보조 캘린더를 보장(없으면 생성)하고 enabled=true로 만든 뒤 calendarId를 반환한다(독립 트랜잭션으로 커밋). */
+    @Transactional
+    public String activateMirror(Long memberId) {
+        GoogleAccount account = requireConnected(memberId);
+        String calendarId = account.getReviewCalendarId();
+        if (calendarId == null) {
+            calendarId = calendarClient.createSecondaryCalendar(memberId, SECONDARY_CALENDAR_SUMMARY);
+        }
+        account.enableReviewMirror(calendarId);
+        googleAccountRepository.save(account);
+        return calendarId;
+    }
+
+    /** 모든 PENDING 복습의 dueDate(04:00 롤오버 날짜)를 멱등 reconcile한다(이미 커밋된 enabled 계정 기준). */
+    private void backfill(Long memberId, ZoneId zone) {
+        Set<LocalDate> dueDates = reviewScheduleRepository
+                .findAllByMemberIdAndStatus(memberId, ReviewStatus.PENDING).stream()
+                .map(review -> review.getScheduledAt().atZone(zone).toLocalDate())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        dueDates.forEach(date -> self.reconcileDate(memberId, date, zone));
+    }
+
+    private GoogleAccount requireConnected(Long memberId) {
+        return googleAccountRepository.findByMemberId(memberId)
+                .filter(account -> !account.isRevoked())
+                .orElseThrow(() -> new CustomException(ErrorCode.GOOGLE_NOT_CONNECTED));
     }
 
     /**
