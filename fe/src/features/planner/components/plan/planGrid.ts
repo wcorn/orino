@@ -2,7 +2,6 @@ import type {
   WeeklyPlanBlock,
   WeeklyPlanBlockInput,
 } from "../../api/weeklyPlan";
-import { DEFAULT_COLOR } from "./planColors";
 
 export const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 export const DAY_LABELS_LONG = [
@@ -15,12 +14,8 @@ export const DAY_LABELS_LONG = [
   "토요일",
 ];
 
-export const HOUR_PX = 32; // 더 컴팩트하게(0~24 더 한눈에)
+export const HOUR_PX = 32; // 컴팩트하게(0~24 더 한눈에)
 export const DAY_MINUTES = 24 * 60;
-export const SNAP_MINUTES = 30;
-/** 사용자가 고를 수 있는 스냅 단위(분). */
-export const SNAP_OPTIONS = [60, 30, 15, 5] as const;
-export type SnapMinutes = (typeof SNAP_OPTIONS)[number];
 export const MAX_MINUTE = DAY_MINUTES - 1; // 23:59
 
 /** 클라이언트 편집용 블록. 저장 전(id=null)·저장 후(id) 모두 표현하며 React key로 {@link EditableBlock.key} 사용. */
@@ -61,11 +56,6 @@ export function minutesToTime(minutes: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-/** 가장 가까운 step(기본 30분) 격자로 스냅. */
-export function snap(minutes: number, step = SNAP_MINUTES): number {
-  return Math.round(minutes / step) * step;
-}
-
 /** 종료 ≤ 시작이면 역전(저장 불가). */
 export function isReversed(startTime: string, endTime: string): boolean {
   return timeToMinutes(endTime) <= timeToMinutes(startTime);
@@ -79,51 +69,23 @@ export function heightRatio(startTime: string, endTime: string): number {
   return (timeToMinutes(endTime) - timeToMinutes(startTime)) / DAY_MINUTES;
 }
 
-/** 그리드 세로 픽셀 → 스냅된 분(0..1440). 드래그/클릭 위치 계산용(step 단위 스냅). */
-export function yToMinutes(
-  y: number,
-  heightPx: number,
-  step: number = SNAP_MINUTES,
-): number {
-  const ratio = heightPx <= 0 ? 0 : Math.max(0, Math.min(1, y / heightPx));
-  return snap(Math.round(ratio * DAY_MINUTES), step);
-}
-
-/** 드래그 구간(분) → 블록. 최소 한 칸(step) 보장하고 23:59로 클램프. */
-export function blockFromRange(
-  dayOfWeek: number,
-  startMin: number,
-  endMin: number,
-  step: number = SNAP_MINUTES,
-  color: string | null = DEFAULT_COLOR,
-): EditableBlock {
-  const lo = Math.min(startMin, endMin);
-  const hi = Math.max(startMin, endMin);
-  const end = Math.min(Math.max(hi, lo + step), MAX_MINUTE);
-  return {
+/** 선택한 여러 요일 각각에 같은 시간/라벨/색의 블록을 만든다(+ 버튼 생성). */
+export function createBlocks(
+  days: number[],
+  startTime: string,
+  endTime: string,
+  label: string,
+  color: string | null,
+): EditableBlock[] {
+  return days.map((dayOfWeek) => ({
     key: nextKey(),
     id: null,
     dayOfWeek,
-    startTime: minutesToTime(lo),
-    endTime: minutesToTime(end),
-    label: "",
+    startTime,
+    endTime,
+    label,
     color,
-  };
-}
-
-/** 특정 요일·시(hour)에 1시간 기본 블록 생성(마지막 시간대는 23:59까지). */
-export function blockAtHour(dayOfWeek: number, hour: number): EditableBlock {
-  const startMin = hour * 60;
-  const endMin = Math.min(startMin + 60, MAX_MINUTE);
-  return {
-    key: nextKey(),
-    id: null,
-    dayOfWeek,
-    startTime: minutesToTime(startMin),
-    endTime: minutesToTime(endMin),
-    label: "",
-    color: DEFAULT_COLOR,
-  };
+  }));
 }
 
 /** 서버 블록 → 편집 블록. */

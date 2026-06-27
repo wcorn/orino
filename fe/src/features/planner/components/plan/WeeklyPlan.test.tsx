@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -20,7 +20,6 @@ function mockPlan(blocks: unknown[]) {
   );
 }
 
-/** 모바일(좁은 폭) matchMedia로 위장. 기본(데스크탑)은 jsdom에 matchMedia가 없어 자동. */
 function setNarrowViewport() {
   window.matchMedia = ((query: string) => ({
     matches: query.includes("767"),
@@ -70,85 +69,47 @@ describe("WeeklyPlan", () => {
     expect(await screen.findByText(/빈 한 주입니다/)).toBeInTheDocument();
   });
 
-  it("시간 칸을 눌러 블록을 만들고 편집 후 그리드에 반영한다", async () => {
+  it("[+ 추가]로 여러 요일에 블록을 한 번에 만든다", async () => {
     mockPlan([]);
     const user = userEvent.setup();
     renderWithRouter(<WeeklyPlan />);
 
-    // 수요일(dayOfWeek=3) 9시 칸 → 09:00~10:00 블록 생성 + 편집 모달
-    await user.click(await screen.findByLabelText("수요일 9시 추가"));
-
+    await user.click(await screen.findByRole("button", { name: "추가" }));
     const dialog = await screen.findByRole("dialog");
-    await user.type(within(dialog).getByLabelText("라벨"), "회의");
-    await user.click(within(dialog).getByRole("button", { name: "적용" }));
 
+    // 요일 미선택 → 추가 비활성
+    expect(within(dialog).getByRole("button", { name: "추가" })).toBeDisabled();
+
+    await user.click(within(dialog).getByRole("checkbox", { name: "월" }));
+    await user.click(within(dialog).getByRole("checkbox", { name: "수" }));
+    await user.type(within(dialog).getByLabelText("라벨"), "공부");
+    await user.click(within(dialog).getByRole("button", { name: "추가" }));
+
+    // 월·수 두 블록 생성
     expect(
-      await screen.findByRole("button", { name: "회의 09:00~10:00" }),
-    ).toBeInTheDocument();
+      await screen.findAllByRole("button", { name: "공부 09:00~10:00" }),
+    ).toHaveLength(2);
     expect(
       screen.getByText("저장되지 않은 변경이 있습니다"),
     ).toBeInTheDocument();
   });
 
-  it("세로 드래그로 구간 블록을 만든다(스냅 단위)", async () => {
-    mockPlan([]);
-    const user = userEvent.setup();
-    // 컬럼 높이를 1440px로 고정 → 1px = 1분
-    const originalRect = Element.prototype.getBoundingClientRect;
-    Element.prototype.getBoundingClientRect = () =>
-      ({
-        top: 0,
-        left: 0,
-        right: 100,
-        bottom: 1440,
-        width: 100,
-        height: 1440,
-        x: 0,
-        y: 0,
-        toJSON: () => {},
-      }) as DOMRect;
-    try {
-      renderWithRouter(<WeeklyPlan />);
-
-      // 수요일 컬럼 = "수요일 0시 추가" 칸의 부모
-      const column = (await screen.findByLabelText("수요일 0시 추가"))
-        .parentElement as HTMLElement;
-      // 09:00(540) → 11:30(690) 드래그
-      fireEvent.pointerDown(column, { clientY: 540, pointerId: 1 });
-      fireEvent.pointerMove(column, { clientY: 690, pointerId: 1 });
-      fireEvent.pointerUp(column, { clientY: 690, pointerId: 1 });
-
-      const dialog = await screen.findByRole("dialog");
-      await user.type(within(dialog).getByLabelText("라벨"), "공부");
-      await user.click(within(dialog).getByRole("button", { name: "적용" }));
-
-      expect(
-        await screen.findByRole("button", { name: "공부 09:00~11:30" }),
-      ).toBeInTheDocument();
-    } finally {
-      Element.prototype.getBoundingClientRect = originalRect;
-    }
-  });
-
-  it("편집을 취소하면 블록이 추가되지 않고 누적되지 않는다", async () => {
+  it("추가를 취소하면 블록이 생성되지 않는다", async () => {
     mockPlan([]);
     const user = userEvent.setup();
     renderWithRouter(<WeeklyPlan />);
 
-    // 두 번 생성 시도 후 모두 취소 → 블록 누적 0, 미저장 변경 없음
-    for (let i = 0; i < 2; i++) {
-      await user.click(await screen.findByLabelText("수요일 9시 추가"));
-      const dialog = await screen.findByRole("dialog");
-      await user.click(within(dialog).getByRole("button", { name: "취소" }));
-      await waitFor(() =>
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-      );
-    }
+    await user.click(await screen.findByRole("button", { name: "추가" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("checkbox", { name: "월" }));
+    await user.click(within(dialog).getByRole("button", { name: "취소" }));
 
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
     expect(
-      screen.queryByRole("button", { name: /\(라벨 없음\)/ }),
+      screen.queryByRole("button", { name: /09:00~10:00/ }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(/빈 한 주입니다/)).toBeInTheDocument();
     expect(
       screen.queryByText("저장되지 않은 변경이 있습니다"),
     ).not.toBeInTheDocument();
@@ -189,11 +150,12 @@ describe("WeeklyPlan", () => {
       </>,
     );
 
-    // 블록 추가로 dirty 만들기
-    await user.click(await screen.findByLabelText("토요일 10시 추가"));
+    // 토요일에 블록 추가로 dirty
+    await user.click(await screen.findByRole("button", { name: "추가" }));
     const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("checkbox", { name: "토" }));
     await user.type(within(dialog).getByLabelText("라벨"), "운동");
-    await user.click(within(dialog).getByRole("button", { name: "적용" }));
+    await user.click(within(dialog).getByRole("button", { name: "추가" }));
 
     await user.click(screen.getByRole("button", { name: "저장" }));
 
@@ -224,7 +186,6 @@ describe("WeeklyPlan", () => {
       await screen.findByRole("button", { name: "공부 10:00~11:00" }),
     );
     const dialog = await screen.findByRole("dialog");
-    // 종료를 시작보다 이르게
     const end = within(dialog).getByLabelText("종료");
     await user.clear(end);
     await user.type(end, "09:00");
@@ -251,13 +212,11 @@ describe("WeeklyPlan", () => {
     renderWithRouter(<WeeklyPlan />);
 
     const tablist = await screen.findByRole("tablist", { name: "요일 선택" });
-    // 화요일 탭 → 공부 블록 보임
     await user.click(within(tablist).getByRole("tab", { name: "화" }));
     expect(
       await screen.findByRole("button", { name: "공부 10:00~11:00" }),
     ).toBeInTheDocument();
 
-    // 수요일 탭으로 전환하면 화요일 블록은 사라진다(1일 뷰)
     await user.click(within(tablist).getByRole("tab", { name: "수" }));
     expect(
       screen.queryByRole("button", { name: "공부 10:00~11:00" }),
