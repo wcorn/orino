@@ -52,14 +52,19 @@ export function WeeklyPlan() {
     }
   }, [data]);
 
+  // 새 블록은 draft로 모달만 연다(아직 grid에 추가하지 않음).
+  // 적용을 눌러야 확정되므로 backdrop/취소로 닫으면 누적되지 않는다.
   const handleCreate = (block: EditableBlock) => {
-    setBlocks((prev) => [...prev, block]);
-    setDirty(true);
     setEditing(block);
   };
 
+  // 적용: 기존 블록이면 교체, draft(미존재)면 추가(확정).
   const handleSaveBlock = (updated: EditableBlock) => {
-    setBlocks((prev) => prev.map((b) => (b.key === updated.key ? updated : b)));
+    setBlocks((prev) =>
+      prev.some((b) => b.key === updated.key)
+        ? prev.map((b) => (b.key === updated.key ? updated : b))
+        : [...prev, updated],
+    );
     setDirty(true);
     setEditing(null);
   };
