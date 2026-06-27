@@ -63,10 +63,13 @@ describe("WeeklyPlan", () => {
     ).toBeInTheDocument();
   });
 
-  it("블록이 없으면 빈 상태 안내를 보여준다", async () => {
+  it("블록이 없어도 그리드를 렌더하고 빈 상태 안내 문구는 없다", async () => {
     mockPlan([]);
     renderWithRouter(<WeeklyPlan />);
-    expect(await screen.findByText(/빈 한 주입니다/)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "추가" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/빈 한 주입니다/)).not.toBeInTheDocument();
   });
 
   it("[+ 추가]로 여러 요일에 블록을 한 번에 만든다", async () => {
