@@ -11,5 +11,7 @@ FROM nginx:alpine
 ARG CACHEBUST=unknown
 RUN echo "cachebust ${CACHEBUST}" && apk update && apk upgrade --no-cache && rm -rf /var/cache/apk/*
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# nginx.conf=메인(error_log warn), default.conf=server(+access log JSON)
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY default.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
