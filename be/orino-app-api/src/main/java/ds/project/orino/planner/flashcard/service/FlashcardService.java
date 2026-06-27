@@ -13,6 +13,7 @@ import ds.project.orino.planner.flashcard.dto.FlashcardCreateResponse;
 import ds.project.orino.planner.flashcard.dto.FlashcardResponse;
 import ds.project.orino.planner.flashcard.dto.FlashcardUpdateRequest;
 import ds.project.orino.planner.review.dto.ReviewScheduleView;
+import ds.project.orino.planner.review.service.ReviewMirrorService;
 import ds.project.orino.core.time.UserTimeZone;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,15 +32,18 @@ public class FlashcardService {
     private final FlashcardRepository flashcardRepository;
     private final ReviewScheduleRepository reviewScheduleRepository;
     private final StudyMaterialRepository studyMaterialRepository;
+    private final ReviewMirrorService reviewMirrorService;
     private final Clock clock;
 
     public FlashcardService(FlashcardRepository flashcardRepository,
                             ReviewScheduleRepository reviewScheduleRepository,
                             StudyMaterialRepository studyMaterialRepository,
+                            ReviewMirrorService reviewMirrorService,
                             Clock clock) {
         this.flashcardRepository = flashcardRepository;
         this.reviewScheduleRepository = reviewScheduleRepository;
         this.studyMaterialRepository = studyMaterialRepository;
+        this.reviewMirrorService = reviewMirrorService;
         this.clock = clock;
     }
 
@@ -70,6 +74,10 @@ public class FlashcardService {
         LocalDate today = clock.instant().atZone(zone).toLocalDate();
         ReviewSchedule firstReview = reviewScheduleRepository.save(
                 ReviewSchedule.firstReview(memberId, saved.getId(), today, zone));
+
+        // 첫 복습 dueDate를 보조 캘린더에 미러(커밋 후, 미러 활성 시에만)
+        reviewMirrorService.reconcileAfterCommit(memberId,
+                List.of(firstReview.getScheduledAt().atZone(zone).toLocalDate()), zone);
 
         return new FlashcardCreateResponse(
                 FlashcardResponse.withoutReview(saved),

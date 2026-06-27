@@ -16,16 +16,21 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 
 @Service
 public class ReviewCompletionService {
 
     private final ReviewScheduleRepository reviewScheduleRepository;
+    private final ReviewMirrorService reviewMirrorService;
     private final Clock clock;
 
-    public ReviewCompletionService(ReviewScheduleRepository reviewScheduleRepository, Clock clock) {
+    public ReviewCompletionService(ReviewScheduleRepository reviewScheduleRepository,
+                                   ReviewMirrorService reviewMirrorService, Clock clock) {
         this.reviewScheduleRepository = reviewScheduleRepository;
+        this.reviewMirrorService = reviewMirrorService;
         this.clock = clock;
     }
 
@@ -52,6 +57,12 @@ public class ReviewCompletionService {
         ReviewSchedule next = reviewScheduleRepository.save(new ReviewSchedule(
                 memberId, current.getFlashcardId(), newSequence,
                 scheduledAt, computed.intervalDays(), computed.easeFactor()));
+
+        // 완료된 dueDate(감소)와 다음 dueDate(증가) 묶음을 모두 재동기화(커밋 후, 미러 활성 시에만).
+        // AGAIN은 04:00 정각이 아니어서 reconcile 집계에서 자연히 제외된다.
+        LocalDate completedDate = current.getScheduledAt().atZone(zone).toLocalDate();
+        LocalDate nextDate = next.getScheduledAt().atZone(zone).toLocalDate();
+        reviewMirrorService.reconcileAfterCommit(memberId, List.of(completedDate, nextDate), zone);
 
         return new ReviewCompletionResponse(
                 CompletedReviewView.of(current),

@@ -87,18 +87,19 @@ class GoogleCalendarClientTest {
     }
 
     @Test
-    @DisplayName("insertAllDayEvent는 종일(date) 이벤트 + useDefault 알림으로 생성하고 eventId를 반환한다")
+    @DisplayName("insertAllDayEvent는 종일(date) 이벤트 + 설명 + useDefault 알림으로 생성하고 eventId를 반환한다")
     void insertAllDayEvent() {
         nextResponse = "{\"id\":\"evt-1\"}";
 
         String eventId = client.insertAllDayEvent(
-                MEMBER_ID, CALENDAR_ID, "복습 2개", LocalDate.of(2026, 6, 20));
+                MEMBER_ID, CALENDAR_ID, "복습 2개", "수학: 2개", LocalDate.of(2026, 6, 20));
 
         assertThat(eventId).isEqualTo("evt-1");
         CapturedRequest req = last();
         assertThat(req.method).isEqualTo("POST");
         assertThat(req.path).isEqualTo("/calendar/v3/calendars/" + CALENDAR_ID + "/events");
         assertThat(req.body).contains("\"summary\":\"복습 2개\"");
+        assertThat(req.body).contains("\"description\":\"수학: 2개\"");
         // 종일은 date(시간 없음), Google 종료는 배타적 → end=date+1일
         assertThat(req.body).contains("\"start\":{\"date\":\"2026-06-20\"}");
         assertThat(req.body).contains("\"end\":{\"date\":\"2026-06-21\"}");
@@ -109,16 +110,17 @@ class GoogleCalendarClientTest {
     }
 
     @Test
-    @DisplayName("patchEventSummary는 제목만 patch한다(start/end 미포함)")
-    void patchEventSummary() {
+    @DisplayName("patchAllDayEvent는 제목·설명만 patch한다(start/end 미포함)")
+    void patchAllDayEvent() {
         nextResponse = "{\"id\":\"evt-1\",\"summary\":\"복습 3개\"}";
 
-        client.patchEventSummary(MEMBER_ID, CALENDAR_ID, "evt-1", "복습 3개");
+        client.patchAllDayEvent(MEMBER_ID, CALENDAR_ID, "evt-1", "복습 3개", "수학: 3개");
 
         CapturedRequest req = last();
         assertThat(req.method).isEqualTo("PATCH");
         assertThat(req.path).isEqualTo("/calendar/v3/calendars/" + CALENDAR_ID + "/events/evt-1");
         assertThat(req.body).contains("\"summary\":\"복습 3개\"");
+        assertThat(req.body).contains("\"description\":\"수학: 3개\"");
         assertThat(req.body).doesNotContain("start");
         assertThat(req.body).doesNotContain("end");
     }
