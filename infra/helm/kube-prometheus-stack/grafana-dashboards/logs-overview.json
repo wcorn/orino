@@ -139,23 +139,47 @@
       ]
     },
     {
-      "type": "logs",
-      "title": "로그 (level=$level, search=$search)",
+      "type": "table",
+      "title": "로그 (service=$service_name, level=$level, search=$search)",
       "datasource": { "type": "loki", "uid": "loki" },
       "gridPos": { "x": 0, "y": 20, "w": 24, "h": 16 },
+      "description": "service·level·message를 컬럼으로 분리해 어느 서비스 로그인지 한눈에 보이게 한다. Time 컬럼이 따로 있어 본문 타임스탬프와 중복되지 않는다. 헤더로 정렬·필터 가능.",
       "options": {
-        "showTime": true,
-        "showLabels": false,
-        "showCommonLabels": true,
-        "wrapLogMessage": true,
-        "prettifyLogMessage": true,
-        "enableLogDetails": true,
-        "dedupStrategy": "signature",
-        "sortOrder": "Descending"
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": { "show": false },
+        "sortBy": [ { "displayName": "Time", "desc": true } ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "filterable": true, "align": "left", "cellOptions": { "type": "auto", "wrapText": true } }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Time" }, "properties": [ { "id": "custom.width", "value": 175 } ] },
+          { "matcher": { "id": "byName", "options": "service" }, "properties": [ { "id": "custom.width", "value": 140 } ] },
+          { "matcher": { "id": "byName", "options": "level" }, "properties": [
+            { "id": "custom.width", "value": 75 },
+            { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+            { "id": "mappings", "value": [ { "type": "value", "options": {
+              "error": { "color": "red", "index": 0 },
+              "warn":  { "color": "orange", "index": 1 },
+              "info":  { "color": "green", "index": 2 },
+              "debug": { "color": "blue", "index": 3 }
+            } } ] }
+          ] }
+        ]
       },
       "targets": [
-        { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "range",
+        { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "range", "maxLines": 1000,
           "expr": "{namespace=~\"$namespace\", service_name=~\"$service_name\", level=~\"$level\"} != \"kube-probe\" |~ \"(?i)$search\"" }
+      ],
+      "transformations": [
+        { "id": "extractFields", "options": { "source": "labels" } },
+        { "id": "filterFieldsByName", "options": { "include": { "names": ["Time", "service_name", "level", "Line"] } } },
+        { "id": "organize", "options": {
+            "indexByName": { "Time": 0, "service_name": 1, "level": 2, "Line": 3 },
+            "renameByName": { "Line": "message", "service_name": "service" }
+        } }
       ]
     }
   ]
