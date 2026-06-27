@@ -148,6 +148,9 @@ alloy:
           // 나머지 고유 식별자는 structured metadata로 부착한다.
           // 라벨이 아니라 스트림 카디널리티를 늘리지 않으면서도,
           // Grafana 로그 패널에서 컬럼/필터로 바로 쓰고 `| json` 파싱이 불필요.
+          // 식별 필드 + 예외 스택은 structured metadata로 보존한다(라벨 아님 →
+          // 스트림 카디널리티 무관). 본문을 message로 줄여도 stack_trace는
+          // 로그 디테일에서 그대로 조회된다.
           stage.structured_metadata {
             values = {
               logger      = "",
@@ -155,19 +158,16 @@ alloy:
               user_id     = "",
               trace_id    = "",
               thread_name = "",
+              stack_trace = "",
             }
           }
 
-          // BE JSON 로그는 본문을 message(+stack_trace)로 축약한다.
-          // 장황한 raw JSON 대신 사람이 읽는 message만 저장하고, 식별 필드는
-          // 위 structured metadata로 보존한다. message가 추출된 경우에만
-          // 교체하고, FE nginx 등 plain text는 원본 라인(.Entry)을 유지한다.
-          stage.template {
-            source   = "log_line"
-            template = "{{ if .message }}{{ .message }}{{ if .stack_trace }}\n{{ .stack_trace }}{{ end }}{{ else }}{{ .Entry }}{{ end }}"
-          }
+          // BE JSON 로그는 본문을 message만 남긴다. message가 추출된 경우
+          // (JSON 파싱 성공)에만 본문을 교체하고, FE nginx 등 plain text는
+          // message 키가 없어 stage.output이 no-op 처리되어 원본 라인을 유지한다.
+          // Go template 표현식은 alloy 차트의 Helm tpl 렌더와 충돌하므로 쓰지 않는다.
           stage.output {
-            source = "log_line"
+            source = "message"
           }
 
           forward_to = [loki.write.default.receiver]
