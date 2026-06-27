@@ -1,16 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  blockAtHour,
-  blockFromRange,
+  createBlocks,
   type EditableBlock,
   isReversed,
   layoutDay,
   minutesToTime,
   nextKey,
-  snap,
   timeToMinutes,
-  yToMinutes,
 } from "./planGrid";
 
 function block(start: string, end: string): EditableBlock {
@@ -33,53 +30,27 @@ describe("planGrid", () => {
     expect(minutesToTime(1500)).toBe("23:59"); // 클램프
   });
 
-  it("snap은 30분 격자로 반올림", () => {
-    expect(snap(40)).toBe(30);
-    expect(snap(46)).toBe(60);
-    expect(snap(74)).toBe(60);
-    expect(snap(75)).toBe(90); // 정확히 중간은 올림
-  });
-
-  it("snap은 step 단위(60/15/5)로 스냅한다", () => {
-    expect(snap(40, 60)).toBe(60);
-    expect(snap(40, 15)).toBe(45);
-    expect(snap(42, 5)).toBe(40);
-  });
-
-  it("yToMinutes는 픽셀→분을 step 단위로 스냅(height=1440이면 1px=1분)", () => {
-    expect(yToMinutes(545, 1440, 30)).toBe(540); // 09:00
-    expect(yToMinutes(550, 1440, 15)).toBe(555); // 09:15
-    expect(yToMinutes(542, 1440, 5)).toBe(540);
-  });
-
-  it("blockFromRange는 역방향 보정·최소 한 칸 보장", () => {
-    expect(blockFromRange(1, 600, 540, 30)).toMatchObject({
-      startTime: "09:00",
-      endTime: "10:00",
-    });
-    // 같은 지점(클릭)은 최소 step 길이
-    expect(blockFromRange(1, 540, 540, 30)).toMatchObject({
-      startTime: "09:00",
-      endTime: "09:30",
-    });
-  });
-
   it("isReversed는 종료<=시작이면 true", () => {
     expect(isReversed("10:00", "09:00")).toBe(true);
     expect(isReversed("10:00", "10:00")).toBe(true);
     expect(isReversed("09:00", "10:00")).toBe(false);
   });
 
-  it("blockAtHour는 1시간 기본 블록, 23시는 23:59까지", () => {
-    expect(blockAtHour(2, 9)).toMatchObject({
-      dayOfWeek: 2,
-      startTime: "09:00",
-      endTime: "10:00",
+  it("createBlocks는 선택한 여러 요일 각각에 동일 블록을 만든다", () => {
+    const blocks = createBlocks([1, 3, 5], "09:00", "10:30", "공부", "sky");
+    expect(blocks).toHaveLength(3);
+    expect(blocks.map((b) => b.dayOfWeek)).toEqual([1, 3, 5]);
+    blocks.forEach((b) => {
+      expect(b).toMatchObject({
+        startTime: "09:00",
+        endTime: "10:30",
+        label: "공부",
+        color: "sky",
+        id: null,
+      });
     });
-    expect(blockAtHour(2, 23)).toMatchObject({
-      startTime: "23:00",
-      endTime: "23:59",
-    });
+    // 각 블록은 고유 key
+    expect(new Set(blocks.map((b) => b.key)).size).toBe(3);
   });
 
   it("겹치지 않는 블록은 전체 폭(width=1)", () => {
