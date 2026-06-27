@@ -33,3 +33,17 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
+        # redis_exporter 사이드카 — Prometheus가 metrics(9121)를 스크랩한다.
+        - name: redis-exporter
+          image: oliver006/redis_exporter:v1.66.0
+          args: ["--redis.addr=redis://localhost:6379"]
+          ports:
+            - containerPort: 9121
+              name: metrics
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
