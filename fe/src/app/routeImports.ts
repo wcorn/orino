@@ -28,6 +28,10 @@ export const importRoutines = () =>
   import("../pages/planner/RoutinesPage").then((m) => ({
     default: m.RoutinesPage,
   }));
+export const importWeeklyPlan = () =>
+  import("../pages/planner/WeeklyPlanPage").then((m) => ({
+    default: m.WeeklyPlanPage,
+  }));
 
 /**
  * 로그인 후 idle 시간에 페이지 청크를 미리 받아둔다.
