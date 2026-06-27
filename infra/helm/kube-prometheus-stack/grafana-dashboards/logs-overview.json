@@ -181,6 +181,27 @@
             "renameByName": { "Line": "message", "service_name": "service" }
         } }
       ]
+    },
+    {
+      "type": "logs",
+      "title": "상세 로그 (라인 클릭 → 메타데이터·trace)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "x": 0, "y": 36, "w": 24, "h": 12 },
+      "description": "위 table에서 본 로그의 상세. 라인을 클릭하면 Structured Metadata(logger·request_id·user_id·trace_id·thread_name·client_ip·user_agent·stack_trace)와 derived field(trace_id → Tempo) 링크가 그룹으로 펼쳐진다. table은 식별·개요, 이 패널은 상세·추적용.",
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "queryType": "range",
+          "expr": "{namespace=~\"$namespace\", service_name=~\"$service_name\", level=~\"$level\"} != \"kube-probe\" |~ \"(?i)$search\"" }
+      ]
     }
   ]
 }
