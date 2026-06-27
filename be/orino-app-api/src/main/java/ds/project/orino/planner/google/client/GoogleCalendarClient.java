@@ -340,10 +340,12 @@ public class GoogleCalendarClient {
 
     /**
      * 보조 캘린더에 하루짜리 종일 이벤트를 생성하고 생성된 eventId를 반환한다. 알림은 계정 기본(useDefault).
+     * {@code description}은 자료별 묶음 설명(null 가능).
      */
-    public String insertAllDayEvent(Long memberId, String calendarId, String summary, LocalDate date) {
+    public String insertAllDayEvent(Long memberId, String calendarId, String summary,
+                                    String description, LocalDate date) {
         URI uri = eventsBuilder(calendarId).build().toUri();
-        GoogleEventWriteBody body = allDayBody(summary, date);
+        GoogleEventWriteBody body = allDayBody(summary, description, date);
         GoogleEventItem item = tokenProvider.executeWithRetry(memberId, accessToken ->
                 googleRestClient.post()
                         .uri(uri)
@@ -356,11 +358,12 @@ public class GoogleCalendarClient {
     }
 
     /**
-     * 보조 캘린더 종일 이벤트의 제목만 patch한다(복습 개수 변동 반영). 없는 id면 404(RESOURCE_NOT_FOUND).
+     * 보조 캘린더 종일 이벤트의 제목·설명을 patch한다(복습 개수/자료 변동 반영). 없는 id면 404(RESOURCE_NOT_FOUND).
      */
-    public void patchEventSummary(Long memberId, String calendarId, String eventId, String summary) {
+    public void patchAllDayEvent(Long memberId, String calendarId, String eventId,
+                                 String summary, String description) {
         URI uri = eventUri(calendarId, eventId);
-        GoogleEventWriteBody body = new GoogleEventWriteBody(summary, null, null, null, null);
+        GoogleEventWriteBody body = new GoogleEventWriteBody(summary, null, description, null, null);
         tokenProvider.executeWithRetry(memberId, accessToken ->
                 googleRestClient.patch()
                         .uri(uri)
@@ -372,11 +375,11 @@ public class GoogleCalendarClient {
     }
 
     /** 하루짜리 종일 이벤트 바디(useDefault 알림). Google 종일 종료는 배타적이라 end=date+1일. */
-    private GoogleEventWriteBody allDayBody(String summary, LocalDate date) {
+    private GoogleEventWriteBody allDayBody(String summary, String description, LocalDate date) {
         GoogleEventTime start = new GoogleEventTime(null, date.toString(), null);
         GoogleEventTime end = new GoogleEventTime(null, date.plusDays(1).toString(), null);
         return new GoogleEventWriteBody(
-                summary, null, null, start, end, null, null, GoogleReminders.defaults());
+                summary, null, description, start, end, null, null, GoogleReminders.defaults());
     }
 
     private GoogleEventWriteBody toWriteBody(EventRequest request, ZoneId zone) {
