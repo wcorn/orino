@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-redis-overview
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  redis-overview.json: |-
+{{ .Files.Get "grafana-dashboards/redis-overview.json" | indent 4 }}
