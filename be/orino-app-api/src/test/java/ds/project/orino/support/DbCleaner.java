@@ -8,6 +8,8 @@ public class DbCleaner {
 
     private static final String[] TABLES_IN_FK_ORDER = {
             "holiday",
+            "day_plan_block",
+            "day_plan",
             "routine_check",
             "review_calendar_mirror",
             "review_schedule",
