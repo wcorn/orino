@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { Toaster } from "@/components/Toaster";
 import { useToastStore } from "@/shared/lib/toast";
@@ -20,9 +20,29 @@ function mockPlan(blocks: unknown[]) {
   );
 }
 
+/** 모바일(좁은 폭) matchMedia로 위장. 기본(데스크탑)은 jsdom에 matchMedia가 없어 자동. */
+function setNarrowViewport() {
+  window.matchMedia = ((query: string) => ({
+    matches: query.includes("767"),
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
+
 describe("WeeklyPlan", () => {
+  const originalMatchMedia = window.matchMedia;
+
   beforeEach(() => {
     useToastStore.setState({ toasts: [] });
+  });
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
   });
 
   it("기존 블록을 로드해 그리드에 렌더한다", async () => {
@@ -149,6 +169,35 @@ describe("WeeklyPlan", () => {
       within(dialog).getByText("종료가 시작보다 늦어야 합니다."),
     ).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "적용" })).toBeDisabled();
+  });
+
+  it("모바일에서는 요일 탭으로 1일 뷰를 전환한다", async () => {
+    setNarrowViewport();
+    mockPlan([
+      {
+        id: 1,
+        dayOfWeek: 2,
+        startTime: "10:00",
+        endTime: "11:00",
+        label: "공부",
+        color: "sky",
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithRouter(<WeeklyPlan />);
+
+    const tablist = await screen.findByRole("tablist", { name: "요일 선택" });
+    // 화요일 탭 → 공부 블록 보임
+    await user.click(within(tablist).getByRole("tab", { name: "화" }));
+    expect(
+      await screen.findByRole("button", { name: "공부 10:00~11:00" }),
+    ).toBeInTheDocument();
+
+    // 수요일 탭으로 전환하면 화요일 블록은 사라진다(1일 뷰)
+    await user.click(within(tablist).getByRole("tab", { name: "수" }));
+    expect(
+      screen.queryByRole("button", { name: "공부 10:00~11:00" }),
+    ).not.toBeInTheDocument();
   });
 
   it("블록을 삭제한다", async () => {

@@ -1,5 +1,6 @@
 package ds.project.orino.planner.dayplan;
 
+import com.jayway.jsonpath.JsonPath;
 import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.domain.planner.dayplan.repository.DayPlanBlockRepository;
 import ds.project.orino.support.ApiTestSupport;
@@ -90,6 +91,25 @@ class DayPlanControllerTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.data.blocks[0].label").value("회의"));
 
         assertThat(blockRepository.findAllByMemberId(memberId)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("PUT - 같은 내용 2회 전량 교체는 멱등(중복 누적 없이 동일 블록, 새 id)")
+    void put_idempotent() throws Exception {
+        String first = mockMvc.perform(putBlocks(WEEKLY_BLOCKS))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.blocks", hasSize(3)))
+                .andReturn().getResponse().getContentAsString();
+        long firstWakeId = ((Number) JsonPath.read(first, "$.data.blocks[0].id")).longValue();
+
+        mockMvc.perform(putBlocks(WEEKLY_BLOCKS))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.blocks", hasSize(3)))
+                .andExpect(jsonPath("$.data.blocks[0].label").value("기상"))
+                // 전량 교체라 새 row → id가 바뀐다(누적 아님)
+                .andExpect(jsonPath("$.data.blocks[0].id").value(org.hamcrest.Matchers.not((int) firstWakeId)));
+
+        assertThat(blockRepository.findAllByMemberId(memberId)).hasSize(3); // 6 아님
     }
 
     @Test
