@@ -17,6 +17,7 @@ import {
   importPlannerSettings,
   importRoutines,
   importTodayReviews,
+  importWeeklyPlan,
 } from "./routeImports";
 
 // 로그인 후에만 쓰는 페이지들은 lazy 로드해 초기 번들에서 분리한다.
@@ -28,6 +29,7 @@ const TodayReviewsPage = lazy(importTodayReviews);
 const PlannerCalendarPage = lazy(importPlannerCalendar);
 const PlannerSettingsPage = lazy(importPlannerSettings);
 const RoutinesPage = lazy(importRoutines);
+const WeeklyPlanPage = lazy(importWeeklyPlan);
 
 function RouteFallback() {
   return <LoadingText className="p-6" />;
@@ -87,6 +89,14 @@ export function AppRouter() {
             element={
               <Suspense fallback={<RouteFallback />}>
                 <RoutinesPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/planner/plan"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <WeeklyPlanPage />
               </Suspense>
             }
           />
