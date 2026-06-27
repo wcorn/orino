@@ -127,11 +127,14 @@ alloy:
         loki.process "json_parse" {
           stage.json {
             expressions = {
-              level      = "level",
-              logger     = "logger_name",
-              request_id = "requestId",
-              user_id    = "userId",
-              trace_id   = "traceId",
+              level       = "level",
+              logger      = "logger_name",
+              request_id  = "requestId",
+              user_id     = "userId",
+              trace_id    = "traceId",
+              thread_name = "thread_name",
+              message     = "message",
+              stack_trace = "stack_trace",
             }
           }
 
@@ -147,11 +150,24 @@ alloy:
           // Grafana 로그 패널에서 컬럼/필터로 바로 쓰고 `| json` 파싱이 불필요.
           stage.structured_metadata {
             values = {
-              logger     = "",
-              request_id = "",
-              user_id    = "",
-              trace_id   = "",
+              logger      = "",
+              request_id  = "",
+              user_id     = "",
+              trace_id    = "",
+              thread_name = "",
             }
+          }
+
+          // BE JSON 로그는 본문을 message(+stack_trace)로 축약한다.
+          // 장황한 raw JSON 대신 사람이 읽는 message만 저장하고, 식별 필드는
+          // 위 structured metadata로 보존한다. message가 추출된 경우에만
+          // 교체하고, FE nginx 등 plain text는 원본 라인(.Entry)을 유지한다.
+          stage.template {
+            source   = "log_line"
+            template = "{{ if .message }}{{ .message }}{{ if .stack_trace }}\n{{ .stack_trace }}{{ end }}{{ else }}{{ .Entry }}{{ end }}"
+          }
+          stage.output {
+            source = "log_line"
           }
 
           forward_to = [loki.write.default.receiver]
