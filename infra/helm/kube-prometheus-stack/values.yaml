@@ -51,7 +51,13 @@ kube-prometheus-stack:
     enabled: true
 
   grafana:
-    adminPassword: admin
+    # admin 자격증명은 SealedSecret(grafana-admin-secret)으로 관리한다.
+    # values 평문 adminPassword는 persistence DB 비밀번호와 어긋나
+    # datasource sidecar의 provisioning reload가 401로 실패하던 문제를 유발했다.
+    admin:
+      existingSecret: grafana-admin-secret
+      userKey: admin-user
+      passwordKey: admin-password
     # 표준 대시보드 비활성화 — 안 보는 대시보드는 노이즈.
     # 실제로 쓰는 커스텀 대시보드(SLO·Logs)만 grafana_dashboard ConfigMap으로 프로비저닝.
     defaultDashboardsEnabled: false
