@@ -45,6 +45,29 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
+        # mysqld_exporter 사이드카 — exporter 전용 유저(최소 권한)로 localhost 접속.
+        # metrics(9104)는 mysql-metrics(ClusterIP) + ServiceMonitor로 내부 수집.
+        - name: mysqld-exporter
+          image: prom/mysqld-exporter:v0.16.0
+          args:
+            - "--mysqld.address=localhost:3306"
+            - "--mysqld.username=exporter"
+          env:
+            - name: MYSQLD_EXPORTER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-exporter-secret
+                  key: password
+          ports:
+            - containerPort: 9104
+              name: metrics
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
       volumes:
         - name: mysql-data
           persistentVolumeClaim:

@@ -1,0 +1,44 @@
+# exporter 전용 DB 유저(최소 권한: PROCESS, REPLICATION CLIENT, SELECT)를 생성한다.
+# 기존 PVC라 initdb.d가 안 돌므로 ArgoCD PostSync hook Job으로 멱등 생성한다.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mysql-exporter-user
+  namespace: orino
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-exporter-user
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              until mysqladmin ping -h mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --silent; do
+                echo "waiting for mysql..."; sleep 3
+              done
+              mysql -h mysql -uroot -p"$MYSQL_ROOT_PASSWORD" <<SQL
+              CREATE USER IF NOT EXISTS 'exporter'@'%' IDENTIFIED BY '$EXPORTER_PASSWORD' WITH MAX_USER_CONNECTIONS 3;
+              ALTER USER 'exporter'@'%' IDENTIFIED BY '$EXPORTER_PASSWORD';
+              GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'exporter'@'%';
+              FLUSH PRIVILEGES;
+              SQL
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_ROOT_PASSWORD
+            - name: EXPORTER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-exporter-secret
+                  key: password

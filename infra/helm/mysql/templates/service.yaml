@@ -2,6 +2,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: mysql
+  labels:
+    app: mysql
 spec:
   type: NodePort
   selector:
@@ -12,3 +14,21 @@ spec:
       port: 3306
       targetPort: 3306
       nodePort: 30306
+---
+# metrics는 내부 전용(ClusterIP). ServiceMonitor가 pod endpoints(9104)를
+# 클러스터 내부에서 스크랩하므로 NodePort 외부 노출이 불필요하다.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-metrics
+  labels:
+    app: mysql
+    component: metrics
+spec:
+  type: ClusterIP
+  selector:
+    app: mysql
+  ports:
+    - name: metrics
+      port: 9104
+      targetPort: 9104
