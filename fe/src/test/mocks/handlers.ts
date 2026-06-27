@@ -45,6 +45,7 @@ export const handlers = [
         googleEmail: null,
         scopes: null,
         connectedAt: null,
+        reviewMirrorEnabled: false,
       },
     });
   }),
