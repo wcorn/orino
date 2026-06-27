@@ -135,14 +135,7 @@ export function WeeklyPlan() {
           주간 계획표를 불러오지 못했습니다.
         </p>
       ) : (
-        <>
-          {blocks.length === 0 && (
-            <p className="text-muted-foreground rounded-md border border-dashed p-4 text-center text-sm">
-              빈 한 주입니다. 오른쪽 위 [+ 추가]로 블록을 추가하세요.
-            </p>
-          )}
-          <WeeklyPlanGrid blocks={blocks} days={days} onSelect={setEditing} />
-        </>
+        <WeeklyPlanGrid blocks={blocks} days={days} onSelect={setEditing} />
       )}
 
       <PlanBlockCreate
