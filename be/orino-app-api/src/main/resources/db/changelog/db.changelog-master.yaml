@@ -53,3 +53,5 @@ databaseChangeLog:
       file: db/changelog/changes/026-add-google-account-review-mirror.yaml
   - include:
       file: db/changelog/changes/027-create-review-calendar-mirror.yaml
+  - include:
+      file: db/changelog/changes/028-create-day-plan.yaml
