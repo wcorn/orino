@@ -1,3 +1,4 @@
+import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -5,12 +6,11 @@ import { LoadingText } from "@/components/ui/loading-text";
 import { cn } from "@/lib/utils";
 
 import { useSaveWeeklyPlan, useWeeklyPlan } from "../../hooks/useWeeklyPlan";
+import { PlanBlockCreate } from "./PlanBlockCreate";
 import { PlanBlockEditor } from "./PlanBlockEditor";
 import {
   DAY_LABELS,
   type EditableBlock,
-  SNAP_OPTIONS,
-  type SnapMinutes,
   toEditable,
   toInput,
 } from "./planGrid";
@@ -45,8 +45,8 @@ export function WeeklyPlan() {
   const [blocks, setBlocks] = useState<EditableBlock[]>([]);
   const [dirty, setDirty] = useState(false);
   const [editing, setEditing] = useState<EditableBlock | null>(null);
+  const [creating, setCreating] = useState(false);
   const [mobileDay, setMobileDay] = useState(new Date().getDay());
-  const [snapMinutes, setSnapMinutes] = useState<SnapMinutes>(30);
 
   useEffect(() => {
     if (data) {
@@ -55,19 +55,15 @@ export function WeeklyPlan() {
     }
   }, [data]);
 
-  // 새 블록은 draft로 모달만 연다(아직 grid에 추가하지 않음).
-  // 적용을 눌러야 확정되므로 backdrop/취소로 닫으면 누적되지 않는다.
-  const handleCreate = (block: EditableBlock) => {
-    setEditing(block);
+  // + 버튼 생성: 선택한 여러 요일에 블록을 한 번에 추가.
+  const handleCreate = (created: EditableBlock[]) => {
+    setBlocks((prev) => [...prev, ...created]);
+    setDirty(true);
+    setCreating(false);
   };
 
-  // 적용: 기존 블록이면 교체, draft(미존재)면 추가(확정).
   const handleSaveBlock = (updated: EditableBlock) => {
-    setBlocks((prev) =>
-      prev.some((b) => b.key === updated.key)
-        ? prev.map((b) => (b.key === updated.key ? updated : b))
-        : [...prev, updated],
-    );
+    setBlocks((prev) => prev.map((b) => (b.key === updated.key ? updated : b)));
     setDirty(true);
     setEditing(null);
   };
@@ -96,28 +92,10 @@ export function WeeklyPlan() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <div
-            className="flex overflow-hidden rounded-md border"
-            role="group"
-            aria-label="스냅 단위"
-          >
-            {SNAP_OPTIONS.map((min) => (
-              <button
-                key={min}
-                type="button"
-                aria-pressed={snapMinutes === min}
-                onClick={() => setSnapMinutes(min)}
-                className={cn(
-                  "px-2 py-1 text-xs font-medium",
-                  snapMinutes === min
-                    ? "bg-primary text-primary-foreground"
-                    : "text-foreground/70 hover:bg-muted",
-                )}
-              >
-                {min}분
-              </button>
-            ))}
-          </div>
+          <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
+            <Plus className="size-4" />
+            추가
+          </Button>
           <Button
             size="sm"
             onClick={handleSaveAll}
@@ -160,18 +138,18 @@ export function WeeklyPlan() {
         <>
           {blocks.length === 0 && (
             <p className="text-muted-foreground rounded-md border border-dashed p-4 text-center text-sm">
-              빈 한 주입니다. 시간대를 눌러 블록을 추가하세요.
+              빈 한 주입니다. 오른쪽 위 [+ 추가]로 블록을 추가하세요.
             </p>
           )}
-          <WeeklyPlanGrid
-            blocks={blocks}
-            days={days}
-            snapMinutes={snapMinutes}
-            onCreate={handleCreate}
-            onSelect={setEditing}
-          />
+          <WeeklyPlanGrid blocks={blocks} days={days} onSelect={setEditing} />
         </>
       )}
+
+      <PlanBlockCreate
+        open={creating}
+        onCreate={handleCreate}
+        onClose={() => setCreating(false)}
+      />
 
       <PlanBlockEditor
         block={editing}
