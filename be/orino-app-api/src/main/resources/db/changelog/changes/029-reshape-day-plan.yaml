@@ -1,0 +1,87 @@
+databaseChangeLog:
+  - changeSet:
+      id: 029-reshape-day-plan
+      author: wcorn
+      comment: |
+        주간 계획표 재설계(#630) — 옛 "반복 하루 템플릿 + 차임" 스키마(028)를 갈아엎는다.
+        day_plan(wrapper)·반복 컬럼·chime·google_event_id 제거. 멤버당 단일 주간 템플릿이라
+        day_plan_block이 member_id를 직접 보유하고 day_of_week·color를 가진다.
+        사용자 노출 0 → drop-and-recreate 안전.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: day_plan
+      changes:
+        # 옛 테이블 제거(자식 먼저). day_plan_block의 FK는 테이블 drop 시 함께 제거된다.
+        - dropTable:
+            tableName: day_plan_block
+        - dropTable:
+            tableName: day_plan
+        # 평면 주간 블록 테이블 재생성
+        - createTable:
+            tableName: day_plan_block
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_day_plan_block_member
+                    references: member(id)
+                    deleteCascade: true
+              - column:
+                  name: day_of_week
+                  type: TINYINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: start_time
+                  type: TIME
+                  constraints:
+                    nullable: false
+              - column:
+                  name: end_time
+                  type: TIME
+                  constraints:
+                    nullable: false
+              - column:
+                  name: label
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: color
+                  type: VARCHAR(20)
+              - column:
+                  name: sort_order
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: day_plan_block
+            indexName: idx_day_plan_block_member_day_start
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: day_of_week
+              - column:
+                  name: start_time

@@ -3,13 +3,12 @@ package ds.project.orino.domain.planner.dayplan.entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -18,8 +17,8 @@ import java.time.Instant;
 import java.time.LocalTime;
 
 /**
- * 플랜 타임박스 블록. 하루 중 한 구간(또는 시점)을 나타낸다.
- * {@code endTime}이 null이면 시점 블록(예: 기상 알람).
+ * 주간 계획표의 시간 블록(한 칸). 멤버당 모든 블록의 집합이 곧 "단일 주간 템플릿"이다.
+ * wrapper 엔티티 없이 {@code member_id}를 직접 보유하고 요일·구간만 가진다(반복·차임·미러 없음).
  */
 @Entity
 @EntityListeners(AuditingEntityListener.class)
@@ -30,21 +29,26 @@ public class DayPlanBlock {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "plan_id", nullable = false)
-    private DayPlan plan;
+    @Column(name = "member_id", nullable = false)
+    private Long memberId;
+
+    /** 요일 0=일 … 6=토. */
+    @JdbcTypeCode(SqlTypes.TINYINT)
+    @Column(name = "day_of_week", nullable = false)
+    private int dayOfWeek;
 
     @Column(name = "start_time", nullable = false)
     private LocalTime startTime;
 
-    @Column(name = "end_time")
+    /** 종료(벽시계). 항상 {@code > startTime}(구간 블록, 자정 넘김 불가). */
+    @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
 
     @Column(nullable = false, length = 100)
     private String label;
 
-    @Column(nullable = false)
-    private boolean chime;
+    @Column(length = 20)
+    private String color;
 
     @Column(name = "sort_order", nullable = false)
     private int sortOrder;
@@ -60,21 +64,14 @@ public class DayPlanBlock {
     protected DayPlanBlock() {
     }
 
-    public DayPlanBlock(DayPlan plan, LocalTime startTime, LocalTime endTime,
-                        String label, boolean chime, int sortOrder) {
-        this.plan = plan;
+    public DayPlanBlock(Long memberId, int dayOfWeek, LocalTime startTime, LocalTime endTime,
+                        String label, String color, int sortOrder) {
+        this.memberId = memberId;
+        this.dayOfWeek = dayOfWeek;
         this.startTime = startTime;
         this.endTime = endTime;
         this.label = label;
-        this.chime = chime;
-        this.sortOrder = sortOrder;
-    }
-
-    public void update(LocalTime startTime, LocalTime endTime, String label, boolean chime, int sortOrder) {
-        this.startTime = startTime;
-        this.endTime = endTime;
-        this.label = label;
-        this.chime = chime;
+        this.color = color;
         this.sortOrder = sortOrder;
     }
 
@@ -82,8 +79,12 @@ public class DayPlanBlock {
         return id;
     }
 
-    public DayPlan getPlan() {
-        return plan;
+    public Long getMemberId() {
+        return memberId;
+    }
+
+    public int getDayOfWeek() {
+        return dayOfWeek;
     }
 
     public LocalTime getStartTime() {
@@ -98,8 +99,8 @@ public class DayPlanBlock {
         return label;
     }
 
-    public boolean isChime() {
-        return chime;
+    public String getColor() {
+        return color;
     }
 
     public int getSortOrder() {
