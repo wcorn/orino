@@ -1,0 +1,65 @@
+databaseChangeLog:
+  - changeSet:
+      id: 027-create-review-calendar-mirror
+      author: wcorn
+      comment: |
+        복습 묶음 ↔ Google 보조 캘린더 종일 이벤트 매핑 (#584).
+        dueDate당 "복습 N개" 종일 이벤트 1개. UNIQUE(member_id, due_date)로 멱등 upsert.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: review_calendar_mirror
+      changes:
+        - createTable:
+            tableName: review_calendar_mirror
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_review_calendar_mirror_member
+                    references: member(id)
+                    deleteCascade: true
+              - column:
+                  name: due_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: google_event_id
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: pending_count
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: synced_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: review_calendar_mirror
+            columnNames: member_id, due_date
+            constraintName: uk_review_calendar_mirror_member_date

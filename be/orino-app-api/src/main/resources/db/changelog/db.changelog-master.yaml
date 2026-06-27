@@ -49,3 +49,7 @@ databaseChangeLog:
       file: db/changelog/changes/024-create-routine-check.yaml
   - include:
       file: db/changelog/changes/025-create-holiday.yaml
+  - include:
+      file: db/changelog/changes/026-add-google-account-review-mirror.yaml
+  - include:
+      file: db/changelog/changes/027-create-review-calendar-mirror.yaml

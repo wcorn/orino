@@ -1,0 +1,29 @@
+databaseChangeLog:
+  - changeSet:
+      id: 026-add-google-account-review-mirror
+      author: wcorn
+      comment: |
+        복습 → 보조 캘린더 단방향 미러 토글 상태 (#584).
+        review_calendar_id: 최초 enable 시 생성한 "orino 복습" 보조 캘린더 ID(이후 재사용).
+        review_mirror_enabled: 미러 on/off 토글.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: google_account
+                columnName: review_mirror_enabled
+      changes:
+        - addColumn:
+            tableName: google_account
+            columns:
+              - column:
+                  name: review_calendar_id
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: true
+              - column:
+                  name: review_mirror_enabled
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false

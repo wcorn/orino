@@ -127,6 +127,45 @@ class GoogleAccountRepositoryTest {
     }
 
     @Test
+    @DisplayName("review_mirror_enabled는 기본 false, review_calendar_id는 기본 null")
+    void reviewMirror_defaults() {
+        googleAccountRepository.save(new GoogleAccount(memberId, "t", null, null, null, null));
+
+        GoogleAccount saved = googleAccountRepository.findByMemberId(memberId).orElseThrow();
+        assertThat(saved.isReviewMirrorEnabled()).isFalse();
+        assertThat(saved.getReviewCalendarId()).isNull();
+    }
+
+    @Test
+    @DisplayName("enableReviewMirror는 보조 캘린더 ID를 기록하고 토글을 켠다")
+    void enableReviewMirror() {
+        GoogleAccount account = googleAccountRepository.save(
+                new GoogleAccount(memberId, "t", null, null, null, null));
+
+        account.enableReviewMirror("c_review@group.calendar.google.com");
+        googleAccountRepository.save(account);
+
+        GoogleAccount reloaded = googleAccountRepository.findByMemberId(memberId).orElseThrow();
+        assertThat(reloaded.isReviewMirrorEnabled()).isTrue();
+        assertThat(reloaded.getReviewCalendarId()).isEqualTo("c_review@group.calendar.google.com");
+    }
+
+    @Test
+    @DisplayName("disableReviewMirror는 토글만 끄고 보조 캘린더 ID는 보존한다")
+    void disableReviewMirror_keepsCalendarId() {
+        GoogleAccount account = new GoogleAccount(memberId, "t", null, null, null, null);
+        account.enableReviewMirror("c_review@group.calendar.google.com");
+        googleAccountRepository.save(account);
+
+        account.disableReviewMirror();
+        googleAccountRepository.save(account);
+
+        GoogleAccount reloaded = googleAccountRepository.findByMemberId(memberId).orElseThrow();
+        assertThat(reloaded.isReviewMirrorEnabled()).isFalse();
+        assertThat(reloaded.getReviewCalendarId()).isEqualTo("c_review@group.calendar.google.com");
+    }
+
+    @Test
     @DisplayName("reconnect는 refresh token·메타데이터를 갱신하고 revoked를 해제한다")
     void reconnect() {
         GoogleAccount account = new GoogleAccount(memberId, "old-token", "old-scope", null, null, null);
