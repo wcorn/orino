@@ -1,0 +1,11 @@
+{
+  "projectId": "00735845-fe68-4ca7-a7c9-b0ae7c92e8b4",
+  "shape": "package",
+  "pkg": "orino-fe",
+  "globalName": "OrinoUI",
+  "srcDir": "src/components",
+  "tsconfig": "tsconfig.app.json",
+  "cssEntry": "dist/assets/index-CUGrMVGd.css",
+  "extraFonts": ["dist/assets/PretendardVariable-CJuje-Rk.woff2"],
+  "readmeHeader": ".design-sync/conventions.md"
+}
