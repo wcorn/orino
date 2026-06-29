@@ -1,4 +1,3 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
 import { FormField } from "@/components/ui/form-field";
@@ -48,11 +47,7 @@ export function TaskFormDialog({
   };
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange} className="max-w-sm">
-      <Dialog.Title className="text-base font-semibold">
-        할 일 추가
-      </Dialog.Title>
-
+    <Modal open={open} onOpenChange={onOpenChange} title="할 일 추가" size="sm">
       {!googleConnected ? (
         <GoogleRequiredState />
       ) : (
@@ -74,7 +69,7 @@ export function TaskFormDialog({
             />
           </FormField>
 
-          <Modal.FormFooter
+          <Modal.Footer
             submitLabel="저장"
             pendingLabel="저장 중..."
             pending={pending}

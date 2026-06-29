@@ -1,4 +1,3 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
 import { FieldError } from "@/components/ui/field-error";
@@ -58,11 +57,12 @@ export function AddMaterialDialog({ open, onOpenChange, onCreated }: Props) {
   };
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange} className="max-w-sm">
-      <Dialog.Title className="text-base font-semibold">
-        학습 자료 추가
-      </Dialog.Title>
-
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title="학습 자료 추가"
+      size="sm"
+    >
       <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
         <FormField label="제목" htmlFor={titleId}>
           <Input
@@ -90,7 +90,7 @@ export function AddMaterialDialog({ open, onOpenChange, onCreated }: Props) {
           </FieldError>
         )}
 
-        <Modal.FormFooter
+        <Modal.Footer
           submitLabel="추가"
           pendingLabel="추가 중..."
           pending={mutation.isPending}

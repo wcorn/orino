@@ -1,4 +1,3 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -214,11 +213,11 @@ export function RoutineFormDialog({
   };
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange} className="max-w-md">
-      <Dialog.Title className="text-base font-semibold">
-        {editing ? "루틴 편집" : "새 루틴"}
-      </Dialog.Title>
-
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={editing ? "루틴 편집" : "새 루틴"}
+    >
       {!googleConnected ? (
         <GoogleRequiredState />
       ) : (
@@ -423,7 +422,7 @@ export function RoutineFormDialog({
             {recurrencePreview(recurrence, form.startDate)}
           </p>
 
-          <Modal.FormFooter
+          <Modal.Footer
             submitLabel="저장"
             pendingLabel="저장 중..."
             pending={pending}

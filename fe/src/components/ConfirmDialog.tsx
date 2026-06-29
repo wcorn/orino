@@ -1,7 +1,5 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { type ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 
 interface ConfirmDialogProps {
@@ -16,6 +14,7 @@ interface ConfirmDialogProps {
   pending?: boolean;
 }
 
+/** Modal 위에 얹은 확인/삭제 프리셋. */
 export function ConfirmDialog({
   open,
   onOpenChange,
@@ -28,30 +27,21 @@ export function ConfirmDialog({
   pending = false,
 }: ConfirmDialogProps) {
   return (
-    <Modal open={open} onOpenChange={onOpenChange} className="max-w-sm">
-      <Dialog.Title className="text-base font-semibold">{title}</Dialog.Title>
-      {description && (
-        <Dialog.Description className="text-muted-foreground mt-2 text-sm">
-          {description}
-        </Dialog.Description>
-      )}
-      <Modal.Footer>
-        <Dialog.Close
-          render={
-            <Button variant="ghost" type="button" disabled={pending}>
-              {cancelLabel}
-            </Button>
-          }
-        />
-        <Button
-          type="button"
-          variant={destructive ? "destructive" : "default"}
-          onClick={onConfirm}
-          disabled={pending}
-        >
-          {pending ? "처리 중..." : confirmLabel}
-        </Button>
-      </Modal.Footer>
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={title}
+      description={description}
+      size="sm"
+    >
+      <Modal.Footer
+        cancelLabel={cancelLabel}
+        submitLabel={confirmLabel}
+        onSubmit={onConfirm}
+        destructive={destructive}
+        pending={pending}
+        pendingLabel="처리 중..."
+      />
     </Modal>
   );
 }

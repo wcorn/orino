@@ -1,7 +1,5 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
@@ -69,10 +67,9 @@ export function PlanBlockCreate({
     <Modal
       open={open}
       onOpenChange={(o) => !o && onClose()}
-      className="max-w-sm"
+      title="블록 추가"
+      size="sm"
     >
-      <Dialog.Title className="text-base font-semibold">블록 추가</Dialog.Title>
-
       <div className="mt-4 flex flex-col gap-3">
         <FormField
           label="요일(복수 선택)"
@@ -136,14 +133,11 @@ export function PlanBlockCreate({
         </FormField>
       </div>
 
-      <div className="mt-5 flex justify-end gap-2">
-        <Dialog.Close render={<Button variant="outline" size="sm" />}>
-          취소
-        </Dialog.Close>
-        <Button size="sm" onClick={handleSubmit} disabled={invalid}>
-          추가
-        </Button>
-      </div>
+      <Modal.Footer
+        submitLabel="추가"
+        onSubmit={handleSubmit}
+        submitDisabled={invalid}
+      />
     </Modal>
   );
 }

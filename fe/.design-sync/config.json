@@ -9,10 +9,5 @@
   "extraFonts": [
     "dist/assets/PretendardVariable-CJuje-Rk.woff2"
   ],
-  "readmeHeader": ".design-sync/conventions.md",
-  "componentSrcMap": {
-    "DialogPopup": null,
-    "DialogFooter": null,
-    "DialogFormFooter": null
-  }
+  "readmeHeader": ".design-sync/conventions.md"
 }

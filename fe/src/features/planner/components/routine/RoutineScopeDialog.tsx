@@ -51,11 +51,12 @@ export function RoutineScopeDialog({
     ];
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange} className="max-w-sm">
-      <Dialog.Title className="text-base font-semibold">
-        {mode === "edit" ? "이 루틴을 수정" : "이 루틴을 삭제"}
-      </Dialog.Title>
-
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={mode === "edit" ? "이 루틴을 수정" : "이 루틴을 삭제"}
+      size="sm"
+    >
       <fieldset className="mt-4 flex flex-col gap-2">
         {options.map((opt) => {
           const disabled = opt.needsDate && !instanceDate;
