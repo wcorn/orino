@@ -1,7 +1,6 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
-import { DialogFormFooter } from "@/components/ui/dialog-form-footer";
 import { FieldError } from "@/components/ui/field-error";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
@@ -82,7 +81,7 @@ export function EditMaterialDialog({ material, open, onOpenChange }: Props) {
           <FieldError>저장에 실패했어요. 잠시 후 다시 시도해주세요.</FieldError>
         )}
 
-        <DialogFormFooter
+        <Modal.FormFooter
           submitLabel="저장"
           pendingLabel="저장 중..."
           pending={mutation.isPending}

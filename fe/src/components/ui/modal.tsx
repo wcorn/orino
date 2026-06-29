@@ -1,6 +1,8 @@
 import { Dialog } from "@base-ui/react/dialog";
 import type { ReactNode } from "react";
 
+import { DialogFooter } from "./dialog-footer";
+import { DialogFormFooter } from "./dialog-form-footer";
 import { DialogPopup } from "./dialog-popup";
 
 const BACKDROP_CLASS =
@@ -18,7 +20,7 @@ interface ModalProps {
  * 표준 모달 골격: Root + Portal + Backdrop + DialogPopup을 한 번에 캡슐화한다.
  * 내부에서 base-ui의 Dialog.Title / Dialog.Close 등을 children으로 그대로 사용한다.
  */
-function Modal({ open, onOpenChange, className, children }: ModalProps) {
+function ModalRoot({ open, onOpenChange, className, children }: ModalProps) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -28,5 +30,16 @@ function Modal({ open, onOpenChange, className, children }: ModalProps) {
     </Dialog.Root>
   );
 }
+
+/**
+ * 모달의 단일 진입점. 푸터는 서브컴포넌트로 노출한다:
+ * - `<Modal.Footer>` — 취소/확인 등 자유 구성 푸터
+ * - `<Modal.FormFooter submitLabel pending onDelete>` — 폼 제출 푸터(취소+제출+삭제)
+ * DialogPopup/DialogFooter/DialogFormFooter는 내부 구현이며 직접 import 대신 위를 쓴다.
+ */
+const Modal = Object.assign(ModalRoot, {
+  Footer: DialogFooter,
+  FormFooter: DialogFormFooter,
+});
 
 export { Modal };

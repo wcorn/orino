@@ -1,7 +1,6 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
-import { DialogFormFooter } from "@/components/ui/dialog-form-footer";
 import { FieldError } from "@/components/ui/field-error";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
@@ -91,7 +90,7 @@ export function AddMaterialDialog({ open, onOpenChange, onCreated }: Props) {
           </FieldError>
         )}
 
-        <DialogFormFooter
+        <Modal.FormFooter
           submitLabel="추가"
           pendingLabel="추가 중..."
           pending={mutation.isPending}

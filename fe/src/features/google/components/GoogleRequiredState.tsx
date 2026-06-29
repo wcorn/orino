@@ -2,7 +2,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
-import { DialogFooter } from "@/components/ui/dialog-footer";
+import { Modal } from "@/components/ui/modal";
 
 import { GoogleConnectButton } from "./GoogleConnectButton";
 
@@ -21,7 +21,7 @@ export function GoogleRequiredState({
   return (
     <div className="mt-4 flex flex-col gap-4">
       <p className="text-muted-foreground text-sm">{message}</p>
-      <DialogFooter className="mt-0">
+      <Modal.Footer className="mt-0">
         <Dialog.Close
           render={
             <Button variant="ghost" type="button">
@@ -30,7 +30,7 @@ export function GoogleRequiredState({
           }
         />
         <GoogleConnectButton />
-      </DialogFooter>
+      </Modal.Footer>
     </div>
   );
 }

@@ -2,7 +2,6 @@ import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { DialogFooter } from "@/components/ui/dialog-footer";
 import { Modal } from "@/components/ui/modal";
 
 import type { RoutineScope } from "../../api/routines";
@@ -80,7 +79,7 @@ export function RoutineScopeDialog({
         })}
       </fieldset>
 
-      <DialogFooter>
+      <Modal.Footer>
         <Dialog.Close
           render={
             <Button variant="ghost" type="button" disabled={pending}>
@@ -96,7 +95,7 @@ export function RoutineScopeDialog({
         >
           확인
         </Button>
-      </DialogFooter>
+      </Modal.Footer>
     </Modal>
   );
 }
