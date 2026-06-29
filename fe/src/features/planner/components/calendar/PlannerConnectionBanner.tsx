@@ -49,10 +49,10 @@ function Banner({ message, action }: BannerProps) {
   return (
     <div
       role="alert"
-      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900/60 dark:bg-amber-950/40"
+      className="border-warning/40 bg-warning/10 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm"
     >
-      <span className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
-        <AlertTriangle className="size-4" />
+      <span className="flex items-center gap-2">
+        <AlertTriangle className="text-warning size-4" />
         {message}
       </span>
       {action && (
