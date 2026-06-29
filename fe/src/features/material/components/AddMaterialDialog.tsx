@@ -1,8 +1,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { DialogFooter } from "@/components/ui/dialog-footer";
+import { DialogFormFooter } from "@/components/ui/dialog-form-footer";
 import { FieldError } from "@/components/ui/field-error";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
@@ -92,22 +91,12 @@ export function AddMaterialDialog({ open, onOpenChange, onCreated }: Props) {
           </FieldError>
         )}
 
-        <DialogFooter className="mt-1">
-          <Dialog.Close
-            render={
-              <Button
-                variant="ghost"
-                type="button"
-                disabled={mutation.isPending}
-              >
-                취소
-              </Button>
-            }
-          />
-          <Button type="submit" disabled={!titleValid || mutation.isPending}>
-            {mutation.isPending ? "추가 중..." : "추가"}
-          </Button>
-        </DialogFooter>
+        <DialogFormFooter
+          submitLabel="추가"
+          pendingLabel="추가 중..."
+          pending={mutation.isPending}
+          submitDisabled={!titleValid || mutation.isPending}
+        />
       </form>
     </Modal>
   );
