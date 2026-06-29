@@ -28,14 +28,14 @@ const RATING_BUTTONS: RatingButton[] = [
     key: "1",
     // AGAIN은 당일 10분 뒤 재복습 (일 단위 아님)
     previewLabel: () => "10분",
-    textClass: "text-red-500",
+    textClass: "text-destructive",
   },
   {
     rating: "HARD",
     label: "Hard",
     key: "2",
     previewLabel: (r) => `${r.preview.hard}d`,
-    textClass: "text-orange-500",
+    textClass: "text-warning",
   },
   {
     rating: "GOOD",
@@ -49,7 +49,7 @@ const RATING_BUTTONS: RatingButton[] = [
     label: "Easy",
     key: "4",
     previewLabel: (r) => `${r.preview.easy}d`,
-    textClass: "text-green-500",
+    textClass: "text-success",
   },
 ];
 
