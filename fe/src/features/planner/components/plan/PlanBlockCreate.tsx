@@ -16,6 +16,7 @@ import {
   type EditableBlock,
   isReversed,
 } from "./planGrid";
+import { TimeRangeFields } from "./TimeRangeFields";
 
 interface PlanBlockCreateProps {
   open: boolean;
@@ -117,38 +118,14 @@ export function PlanBlockCreate({
           />
         </FormField>
 
-        <div className="flex gap-3">
-          <FormField label="시작" htmlFor="create-start" className="flex-1">
-            <Input
-              id="create-start"
-              type="time"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
-          </FormField>
-          <FormField
-            label="종료"
-            htmlFor="create-end"
-            className="flex-1"
-            error={reversed ? "종료가 시작보다 늦어야 합니다." : undefined}
-          >
-            <Input
-              id="create-end"
-              type="time"
-              value={endTime === "24:00" ? "" : endTime}
-              disabled={endTime === "24:00"}
-              onChange={(e) => setEndTime(e.target.value)}
-            />
-          </FormField>
-        </div>
-
-        <label className="flex items-center gap-1.5 text-xs">
-          <Checkbox
-            checked={endTime === "24:00"}
-            onChange={(e) => setEndTime(e.target.checked ? "24:00" : "23:00")}
-          />
-          종료를 자정(24:00)으로
-        </label>
+        <TimeRangeFields
+          startTime={startTime}
+          endTime={endTime}
+          onStartChange={setStartTime}
+          onEndChange={setEndTime}
+          reversed={reversed}
+          idPrefix="create"
+        />
 
         <FormField label="색" labelId="create-color">
           <ColorSwatchSelector
