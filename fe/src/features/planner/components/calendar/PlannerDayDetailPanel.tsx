@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 
 import type { PlannerEvent, PlannerReview, PlannerTask } from "../../api/feed";
 import { DayTimeline } from "./DayTimeline";
+import { CARD_ROW_SURFACE } from "./rowStyles";
 
 interface Props {
   isoDate: string;
@@ -91,7 +92,10 @@ export function PlannerDayDetailPanel({
                 {tasks.map((task) => (
                   <li
                     key={task.id}
-                    className="border-border bg-card flex items-center gap-2 rounded-md border p-2 text-sm"
+                    className={cn(
+                      CARD_ROW_SURFACE,
+                      "flex items-center gap-2 p-2",
+                    )}
                   >
                     <Checkbox
                       checked={task.completed}
@@ -129,7 +133,7 @@ export function PlannerDayDetailPanel({
                 {reviews.map((review) => (
                   <li
                     key={review.id}
-                    className="border-border bg-card flex flex-col rounded-md border p-2 text-sm"
+                    className={cn(CARD_ROW_SURFACE, "flex flex-col p-2")}
                   >
                     <span className="text-muted-foreground truncate text-xs">
                       {review.materialTitle}
