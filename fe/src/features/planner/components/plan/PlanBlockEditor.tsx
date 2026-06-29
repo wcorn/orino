@@ -2,7 +2,6 @@ import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -10,6 +9,7 @@ import { Select, type SelectOption } from "@/components/ui/select";
 
 import { ColorSwatchSelector } from "./ColorSwatchSelector";
 import { DAY_LABELS, type EditableBlock, isReversed } from "./planGrid";
+import { TimeRangeFields } from "./TimeRangeFields";
 
 const DAY_OPTIONS: SelectOption<string>[] = DAY_LABELS.map((label, i) => ({
   value: String(i),
@@ -77,45 +77,14 @@ export function PlanBlockEditor({
           />
         </FormField>
 
-        <div className="flex gap-3">
-          <FormField label="시작" htmlFor="block-start" className="flex-1">
-            <Input
-              id="block-start"
-              type="time"
-              value={draft.startTime}
-              onChange={(e) =>
-                setDraft({ ...draft, startTime: e.target.value })
-              }
-            />
-          </FormField>
-          <FormField
-            label="종료"
-            htmlFor="block-end"
-            className="flex-1"
-            error={reversed ? "종료가 시작보다 늦어야 합니다." : undefined}
-          >
-            <Input
-              id="block-end"
-              type="time"
-              value={draft.endTime === "24:00" ? "" : draft.endTime}
-              disabled={draft.endTime === "24:00"}
-              onChange={(e) => setDraft({ ...draft, endTime: e.target.value })}
-            />
-          </FormField>
-        </div>
-
-        <label className="flex items-center gap-1.5 text-xs">
-          <Checkbox
-            checked={draft.endTime === "24:00"}
-            onChange={(e) =>
-              setDraft({
-                ...draft,
-                endTime: e.target.checked ? "24:00" : "23:00",
-              })
-            }
-          />
-          종료를 자정(24:00)으로
-        </label>
+        <TimeRangeFields
+          startTime={draft.startTime}
+          endTime={draft.endTime}
+          onStartChange={(v) => setDraft({ ...draft, startTime: v })}
+          onEndChange={(v) => setDraft({ ...draft, endTime: v })}
+          reversed={reversed}
+          idPrefix="block"
+        />
 
         <FormField label="색" labelId="block-color">
           <ColorSwatchSelector
