@@ -2,6 +2,7 @@ import { Plus } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { LoadingText } from "@/components/ui/loading-text";
 import { AddMaterialDialog } from "@/features/material/components/AddMaterialDialog";
@@ -20,12 +21,14 @@ export function MaterialListPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">학습 자료</h1>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="size-4" /> 자료 추가
-        </Button>
-      </div>
+      <PageHeader
+        title="학습 자료"
+        actions={
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="size-4" /> 자료 추가
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <LoadingText />

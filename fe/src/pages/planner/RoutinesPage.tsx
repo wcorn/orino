@@ -1,6 +1,7 @@
 import { Plus } from "lucide-react";
 import { useState } from "react";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingText } from "@/components/ui/loading-text";
@@ -122,12 +123,14 @@ export function RoutinesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">루틴</h1>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="size-4" /> 새 루틴
-        </Button>
-      </div>
+      <PageHeader
+        title="루틴"
+        actions={
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" /> 새 루틴
+          </Button>
+        }
+      />
 
       {status.isLoading ? (
         <LoadingText />
