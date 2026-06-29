@@ -10,6 +10,7 @@ import {
   eventTimeLabel,
   sortDayEvents,
 } from "../../calendar";
+import { ColorDot } from "./ColorDot";
 import { EVENT_DOT, TASK_DOT } from "./sourceStyles";
 
 interface Props {
@@ -29,10 +30,6 @@ interface Props {
 
 /** 셀에 한 줄로 보여줄 최대 항목 수. 초과분은 "+N개"로 접는다. */
 const MAX_LINES = 3;
-
-function Dot({ className }: { className: string }) {
-  return <span className={cn("size-1.5 shrink-0 rounded-full", className)} />;
-}
 
 export function PlannerCalendarCell({
   date,
@@ -61,7 +58,7 @@ export function PlannerCalendarCell({
         key={`e-${event.id}`}
         className="flex items-center gap-1 text-[10px] leading-tight"
       >
-        <Dot className={EVENT_DOT} />
+        <ColorDot size="xs" className={EVENT_DOT} />
         {!event.allDay && (
           <span className="text-muted-foreground shrink-0 tabular-nums">
             {eventTimeLabel(event)}
@@ -75,7 +72,7 @@ export function PlannerCalendarCell({
         key={`t-${task.id}`}
         className="flex items-center gap-1 text-[10px] leading-tight"
       >
-        <Dot className={TASK_DOT} />
+        <ColorDot size="xs" className={TASK_DOT} />
         <span
           className={cn(
             "truncate",
@@ -92,7 +89,7 @@ export function PlannerCalendarCell({
             key="reviews"
             className="flex items-center gap-1 text-[10px] leading-tight"
           >
-            <Dot className={reviewDot} />
+            <ColorDot size="xs" className={reviewDot} />
             <span className="truncate">복습 {reviews.length}</span>
           </span>,
         ]

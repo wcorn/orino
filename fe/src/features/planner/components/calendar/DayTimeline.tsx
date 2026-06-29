@@ -7,6 +7,7 @@ import type { PlannerEvent } from "../../api/feed";
 import { eventTimeParts, sortDayEvents } from "../../calendar";
 import { HOURS, layoutDayEvents } from "../../weekLayout";
 import { RoutineCheckCircle } from "../routine/RoutineCheckCircle";
+import { CARD_ROW_SURFACE } from "./rowStyles";
 import { EVENT_DOT } from "./sourceStyles";
 
 const HOUR_PX = 44;
@@ -57,7 +58,10 @@ export function DayTimeline({
             return (
               <li
                 key={event.id}
-                className="border-border bg-card flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm"
+                className={cn(
+                  CARD_ROW_SURFACE,
+                  "flex items-center gap-2 px-2 py-1.5",
+                )}
               >
                 {isHabit ? (
                   <RoutineCheckCircle
