@@ -46,20 +46,12 @@ export function WeeklyPlanGrid({
           </div>
         ))}
 
-        {/* 시간 눈금 거터(00:00~24:00) */}
+        {/* 시간 눈금 거터(00:00~24:00). 모든 라벨을 자기 격자선 바로 아래에 균일 정렬. */}
         <div className="relative" style={{ height: COLUMN_HEIGHT }}>
           {HOUR_TICKS.map((hour) => (
             <div
               key={hour}
-              className={cn(
-                "text-muted-foreground absolute right-1 text-[10px]",
-                // 처음/끝은 잘리지 않게 위·아래 끝에 맞춰 정렬
-                hour === 0
-                  ? ""
-                  : hour === 24
-                    ? "-translate-y-full"
-                    : "-translate-y-1/2",
-              )}
+              className="text-muted-foreground absolute right-1 pt-0.5 text-[10px] leading-none"
               style={{ top: hour * HOUR_PX }}
             >
               {`${String(hour).padStart(2, "0")}:00`}

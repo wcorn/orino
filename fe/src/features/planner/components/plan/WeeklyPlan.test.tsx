@@ -3,7 +3,6 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { Toaster } from "@/components/Toaster";
 import { useToastStore } from "@/shared/lib/toast";
 import { server } from "@/test/mocks/server";
 import { renderWithRouter } from "@/test/render";
@@ -92,9 +91,6 @@ describe("WeeklyPlan", () => {
     expect(
       await screen.findAllByRole("button", { name: "공부 09:00~10:00" }),
     ).toHaveLength(2);
-    expect(
-      screen.getByText("저장되지 않은 변경이 있습니다"),
-    ).toBeInTheDocument();
   });
 
   it("추가를 취소하면 블록이 생성되지 않는다", async () => {
@@ -113,12 +109,9 @@ describe("WeeklyPlan", () => {
     expect(
       screen.queryByRole("button", { name: /09:00~10:00/ }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("저장되지 않은 변경이 있습니다"),
-    ).not.toBeInTheDocument();
   });
 
-  it("저장은 PUT으로 전량 교체하고 성공 토스트를 띄운다", async () => {
+  it("추가하면 [저장] 버튼 없이 즉시 PUT으로 전량 교체된다(자동 저장)", async () => {
     mockPlan([
       {
         id: 1,
@@ -146,29 +139,20 @@ describe("WeeklyPlan", () => {
     );
 
     const user = userEvent.setup();
-    renderWithRouter(
-      <>
-        <WeeklyPlan />
-        <Toaster />
-      </>,
-    );
+    renderWithRouter(<WeeklyPlan />);
 
-    // 토요일에 블록 추가로 dirty
     await user.click(await screen.findByRole("button", { name: "추가" }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("checkbox", { name: "토" }));
     await user.type(within(dialog).getByLabelText("라벨"), "운동");
     await user.click(within(dialog).getByRole("button", { name: "추가" }));
 
-    await user.click(screen.getByRole("button", { name: "저장" }));
-
-    await waitFor(() =>
-      expect(
-        screen.getByText("주간 계획표를 저장했습니다."),
-      ).toBeInTheDocument(),
-    );
-    expect(putBody).not.toBeNull();
+    // 별도 [저장] 버튼 없이 PUT이 자동 발생
+    await waitFor(() => expect(putBody).not.toBeNull());
     expect(putBody!.blocks).toHaveLength(2); // 기존 1 + 신규 1, 전량 교체
+    expect(
+      screen.queryByRole("button", { name: "저장" }),
+    ).not.toBeInTheDocument();
   });
 
   it("블록 편집에서 종료가 시작보다 빠르면 적용을 막는다", async () => {
