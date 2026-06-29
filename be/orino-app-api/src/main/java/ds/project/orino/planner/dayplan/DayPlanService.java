@@ -36,7 +36,7 @@ public class DayPlanService {
     public DayPlanResponse getWeeklyPlan(Long memberId) {
         List<DayPlanBlockResponse> blocks = blockRepository.findAllByMemberId(memberId).stream()
                 .sorted(Comparator.comparingInt(DayPlanBlock::getDayOfWeek)
-                        .thenComparing(DayPlanBlock::getStartTime))
+                        .thenComparingInt(DayPlanBlock::getStartMinute))
                 .map(DayPlanBlockResponse::of)
                 .toList();
         return new DayPlanResponse(blocks);
@@ -45,41 +45,61 @@ public class DayPlanService {
     /** 주간 템플릿 전량 교체. 기존 블록을 모두 지우고 요청 블록으로 대체한다(요일 내 시작시각 순 sort_order). */
     @Transactional
     public DayPlanResponse replace(Long memberId, DayPlanRequest request) {
-        validate(request.blocks());
+        List<ParsedBlock> parsed = request.blocks().stream()
+                .map(this::parseAndValidate)
+                .toList();
 
         blockRepository.deleteByMemberId(memberId);
         blockRepository.flush();
-        blockRepository.saveAll(buildBlocks(memberId, request.blocks()));
+        blockRepository.saveAll(buildBlocks(memberId, parsed));
 
         return getWeeklyPlan(memberId);
     }
 
-    /** 요일 범위·시간 역전·라벨 공백 검증. 위반 시 400 PLN-ERR-002. 같은 요일 겹침은 허용(약한 검증). */
-    private void validate(List<DayPlanBlockRequest> blocks) {
-        for (DayPlanBlockRequest block : blocks) {
-            boolean invalid = block.dayOfWeek() < MIN_DAY_OF_WEEK || block.dayOfWeek() > MAX_DAY_OF_WEEK
-                    || block.label() == null || block.label().isBlank()
-                    || !block.endTime().isAfter(block.startTime());
-            if (invalid) {
-                throw new CustomException(ErrorCode.ROUTINE_INVALID_RULE);
-            }
-        }
+    /** 검증 통과한 블록(분 단위). */
+    private record ParsedBlock(int dayOfWeek, int startMinute, int endMinute, String label, String color) {
     }
 
-    private List<DayPlanBlock> buildBlocks(Long memberId, List<DayPlanBlockRequest> requests) {
-        List<DayPlanBlockRequest> sorted = requests.stream()
-                .sorted(Comparator.comparingInt(DayPlanBlockRequest::dayOfWeek)
-                        .thenComparing(DayPlanBlockRequest::startTime))
+    /**
+     * 시각 파싱 + 요일 범위·시간 역전·라벨 공백 검증. 위반 시 400 PLN-ERR-002.
+     * start 0~1439, end 1~1440(1440=자정), end&gt;start. 같은 요일 겹침은 허용(약한 검증).
+     */
+    private ParsedBlock parseAndValidate(DayPlanBlockRequest block) {
+        int startMinute;
+        int endMinute;
+        try {
+            startMinute = WeeklyPlanTime.toMinutes(block.startTime());
+            endMinute = WeeklyPlanTime.toMinutes(block.endTime());
+        } catch (RuntimeException e) {
+            throw new CustomException(ErrorCode.ROUTINE_INVALID_RULE);
+        }
+
+        boolean invalid = block.dayOfWeek() < MIN_DAY_OF_WEEK || block.dayOfWeek() > MAX_DAY_OF_WEEK
+                || block.label() == null || block.label().isBlank()
+                || startMinute < 0 || startMinute >= WeeklyPlanTime.DAY_MINUTES
+                || endMinute < 1 || endMinute > WeeklyPlanTime.DAY_MINUTES
+                || endMinute <= startMinute;
+        if (invalid) {
+            throw new CustomException(ErrorCode.ROUTINE_INVALID_RULE);
+        }
+        return new ParsedBlock(
+                block.dayOfWeek(), startMinute, endMinute, block.label().trim(), block.color());
+    }
+
+    private List<DayPlanBlock> buildBlocks(Long memberId, List<ParsedBlock> parsed) {
+        List<ParsedBlock> sorted = parsed.stream()
+                .sorted(Comparator.comparingInt(ParsedBlock::dayOfWeek)
+                        .thenComparingInt(ParsedBlock::startMinute))
                 .toList();
 
         Map<Integer, Integer> nextOrderByDay = new HashMap<>();
         List<DayPlanBlock> blocks = new ArrayList<>();
-        for (DayPlanBlockRequest request : sorted) {
-            int order = nextOrderByDay.getOrDefault(request.dayOfWeek(), 0);
-            nextOrderByDay.put(request.dayOfWeek(), order + 1);
+        for (ParsedBlock block : sorted) {
+            int order = nextOrderByDay.getOrDefault(block.dayOfWeek(), 0);
+            nextOrderByDay.put(block.dayOfWeek(), order + 1);
             blocks.add(new DayPlanBlock(
-                    memberId, request.dayOfWeek(), request.startTime(), request.endTime(),
-                    request.label().trim(), request.color(), order));
+                    memberId, block.dayOfWeek(), block.startMinute(), block.endMinute(),
+                    block.label(), block.color(), order));
         }
         return blocks;
     }

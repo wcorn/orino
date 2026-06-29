@@ -1,22 +1,25 @@
 package ds.project.orino.planner.dayplan.dto;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
 import ds.project.orino.domain.planner.dayplan.entity.DayPlanBlock;
+import ds.project.orino.planner.dayplan.WeeklyPlanTime;
 
-import java.time.LocalTime;
-
+/** 주간 블록 응답. 시간은 "HH:mm"(종료 "24:00"=자정). */
 public record DayPlanBlockResponse(
         Long id,
         int dayOfWeek,
-        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") LocalTime startTime,
-        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") LocalTime endTime,
+        String startTime,
+        String endTime,
         String label,
         String color
 ) {
 
     public static DayPlanBlockResponse of(DayPlanBlock block) {
         return new DayPlanBlockResponse(
-                block.getId(), block.getDayOfWeek(), block.getStartTime(), block.getEndTime(),
-                block.getLabel(), block.getColor());
+                block.getId(),
+                block.getDayOfWeek(),
+                WeeklyPlanTime.toHhmm(block.getStartMinute()),
+                WeeklyPlanTime.toHhmm(block.getEndMinute()),
+                block.getLabel(),
+                block.getColor());
     }
 }

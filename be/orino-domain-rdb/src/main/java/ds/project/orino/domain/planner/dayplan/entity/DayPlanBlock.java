@@ -14,11 +14,13 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
-import java.time.LocalTime;
 
 /**
  * 주간 계획표의 시간 블록(한 칸). 멤버당 모든 블록의 집합이 곧 "단일 주간 템플릿"이다.
  * wrapper 엔티티 없이 {@code member_id}를 직접 보유하고 요일·구간만 가진다(반복·차임·미러 없음).
+ *
+ * <p>시간은 자정 기준 분(0~1440)으로 저장한다. {@code endMinute=1440}은 자정(24:00) 종료를 뜻한다
+ * (LocalTime/TIME으로는 표현 불가해 분 정수로 둔다).
  */
 @Entity
 @EntityListeners(AuditingEntityListener.class)
@@ -37,12 +39,13 @@ public class DayPlanBlock {
     @Column(name = "day_of_week", nullable = false)
     private int dayOfWeek;
 
-    @Column(name = "start_time", nullable = false)
-    private LocalTime startTime;
+    /** 시작(자정 기준 분, 0~1439). */
+    @Column(name = "start_minute", nullable = false)
+    private int startMinute;
 
-    /** 종료(벽시계). 항상 {@code > startTime}(구간 블록, 자정 넘김 불가). */
-    @Column(name = "end_time", nullable = false)
-    private LocalTime endTime;
+    /** 종료(자정 기준 분, 1~1440). 항상 {@code > startMinute}. 1440=자정(24:00). */
+    @Column(name = "end_minute", nullable = false)
+    private int endMinute;
 
     @Column(nullable = false, length = 100)
     private String label;
@@ -64,12 +67,12 @@ public class DayPlanBlock {
     protected DayPlanBlock() {
     }
 
-    public DayPlanBlock(Long memberId, int dayOfWeek, LocalTime startTime, LocalTime endTime,
+    public DayPlanBlock(Long memberId, int dayOfWeek, int startMinute, int endMinute,
                         String label, String color, int sortOrder) {
         this.memberId = memberId;
         this.dayOfWeek = dayOfWeek;
-        this.startTime = startTime;
-        this.endTime = endTime;
+        this.startMinute = startMinute;
+        this.endMinute = endMinute;
         this.label = label;
         this.color = color;
         this.sortOrder = sortOrder;
@@ -87,12 +90,12 @@ public class DayPlanBlock {
         return dayOfWeek;
     }
 
-    public LocalTime getStartTime() {
-        return startTime;
+    public int getStartMinute() {
+        return startMinute;
     }
 
-    public LocalTime getEndTime() {
-        return endTime;
+    public int getEndMinute() {
+        return endMinute;
     }
 
     public String getLabel() {
