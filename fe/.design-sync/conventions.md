@@ -19,7 +19,7 @@ React + Tailwind CSS v4 component library (shadcn/ui 스타일). 컴포넌트는
 - 테두리/링: `border border-border`, `ring-ring`
 - 반경: `rounded-md`, `rounded-lg`(`--radius` 기반)
 - 브랜드 색: 토큰 `--brand`(보라 `oklch(0.55 0.25 297.5)`) — 유틸리티가 필요하면 `text-[var(--brand)]` / `bg-[var(--brand)]`로 사용
-- 간격·타이포는 표준 Tailwind 스케일: `gap-3`, `p-4`, `text-sm`, `font-semibold`
+- 간격은 표준 Tailwind 스케일(`gap-3`, `p-4`). 타이포는 시맨틱 스케일 토큰을 쓴다: `text-title`(페이지 제목 24) · `text-heading`(섹션/카드 제목 18) · `text-body`(15) · `text-label`(14) · `text-caption`(보조 12), `text-display`(32)는 히어로용. 색과 함께 쓸 때도 `cn("text-muted-foreground text-caption")`처럼 안전(폰트크기 그룹 등록됨)
 
 ## 컴포넌트 사용
 

@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 interface SectionHeaderProps {
   children: ReactNode;
-  /** md=섹션 제목(text-base 진하게), sm=하위 묶음 제목(text-xs 흐리게). */
+  /** md=섹션 제목(text-heading 진하게), sm=하위 묶음 제목(text-caption 흐리게). */
   size?: "sm" | "md";
   /** 제목 계층(h2/h3). */
   level?: 2 | 3;
@@ -23,8 +23,8 @@ export function SectionHeader({
     <Tag
       className={cn(
         size === "sm"
-          ? "text-muted-foreground text-xs font-medium"
-          : "text-base font-semibold",
+          ? "text-muted-foreground text-caption font-medium"
+          : "text-heading font-semibold",
         className,
       )}
     >

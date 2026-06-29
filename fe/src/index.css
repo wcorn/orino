@@ -15,6 +15,19 @@
     system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo",
     "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji",
     "Segoe UI Symbol", sans-serif;
+  /* 타이포 스케일 토큰 — 컴포넌트가 text-xl 등 하드코딩 대신 참조(text-title 등 유틸 생성). */
+  --text-display: 2rem;
+  --text-display--line-height: 1.15;
+  --text-title: 1.5rem;
+  --text-title--line-height: 1.2;
+  --text-heading: 1.125rem;
+  --text-heading--line-height: 1.3;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.6;
+  --text-label: 0.875rem;
+  --text-label--line-height: 1.4;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.5;
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-ring: var(--ring);
