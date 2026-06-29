@@ -1,8 +1,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { DialogFooter } from "@/components/ui/dialog-footer";
+import { DialogFormFooter } from "@/components/ui/dialog-form-footer";
 import { FieldError } from "@/components/ui/field-error";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
@@ -83,25 +82,12 @@ export function EditMaterialDialog({ material, open, onOpenChange }: Props) {
           <FieldError>저장에 실패했어요. 잠시 후 다시 시도해주세요.</FieldError>
         )}
 
-        <DialogFooter className="mt-1">
-          <Dialog.Close
-            render={
-              <Button
-                variant="ghost"
-                type="button"
-                disabled={mutation.isPending}
-              >
-                취소
-              </Button>
-            }
-          />
-          <Button
-            type="submit"
-            disabled={!titleValid || !dirty || mutation.isPending}
-          >
-            {mutation.isPending ? "저장 중..." : "저장"}
-          </Button>
-        </DialogFooter>
+        <DialogFormFooter
+          submitLabel="저장"
+          pendingLabel="저장 중..."
+          pending={mutation.isPending}
+          submitDisabled={!titleValid || !dirty || mutation.isPending}
+        />
       </form>
     </Modal>
   );

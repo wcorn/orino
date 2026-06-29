@@ -1,8 +1,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { DialogFooter } from "@/components/ui/dialog-footer";
+import { DialogFormFooter } from "@/components/ui/dialog-form-footer";
 import { FieldError } from "@/components/ui/field-error";
 import { FormField } from "@/components/ui/form-field";
 import { Modal } from "@/components/ui/modal";
@@ -90,33 +89,13 @@ export function FlashcardFormDialog({
 
         {errorMessage && <FieldError>{errorMessage}</FieldError>}
 
-        <DialogFooter className="mt-1 justify-between">
-          {mode === "edit" && onDelete ? (
-            <Button
-              type="button"
-              variant="ghost"
-              className="text-destructive"
-              disabled={pending}
-              onClick={onDelete}
-            >
-              삭제
-            </Button>
-          ) : (
-            <span />
-          )}
-          <div className="flex gap-2">
-            <Dialog.Close
-              render={
-                <Button variant="ghost" type="button" disabled={pending}>
-                  취소
-                </Button>
-              }
-            />
-            <Button type="submit" disabled={!valid || !dirty || pending}>
-              {pending ? "저장 중..." : "저장"}
-            </Button>
-          </div>
-        </DialogFooter>
+        <DialogFormFooter
+          submitLabel="저장"
+          pendingLabel="저장 중..."
+          pending={pending}
+          submitDisabled={!valid || !dirty || pending}
+          onDelete={mode === "edit" ? onDelete : undefined}
+        />
       </form>
     </Modal>
   );
