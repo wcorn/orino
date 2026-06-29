@@ -1,6 +1,7 @@
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { LoadingText } from "@/components/ui/loading-text";
 import { cn } from "@/lib/utils";
@@ -76,19 +77,17 @@ export function WeeklyPlan() {
   const days = narrow ? [mobileDay] : ALL_DAYS;
 
   return (
-    <div className="flex flex-col gap-3 p-4">
-      <header className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">주간 계획표</h1>
-          <p className="text-muted-foreground text-xs">
-            {save.isPending ? "저장 중…" : "변경 시 자동 저장됩니다"}
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
-          <Plus className="size-4" />
-          추가
-        </Button>
-      </header>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="주간 계획표"
+        description={save.isPending ? "저장 중…" : "변경 시 자동 저장됩니다"}
+        actions={
+          <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
+            <Plus className="size-4" />
+            추가
+          </Button>
+        }
+      />
 
       {narrow && (
         <div className="flex gap-1" role="tablist" aria-label="요일 선택">
