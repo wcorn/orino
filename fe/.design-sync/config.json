@@ -5,7 +5,9 @@
   "globalName": "OrinoUI",
   "srcDir": "src/components",
   "tsconfig": "tsconfig.app.json",
-  "cssEntry": "dist/assets/index-CUGrMVGd.css",
-  "extraFonts": ["dist/assets/PretendardVariable-CJuje-Rk.woff2"],
+  "cssEntry": "dist/assets/index-DvBX7uA8.css",
+  "extraFonts": [
+    "dist/assets/PretendardVariable-CJuje-Rk.woff2"
+  ],
   "readmeHeader": ".design-sync/conventions.md"
 }
