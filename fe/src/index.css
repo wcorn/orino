@@ -34,6 +34,12 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -64,18 +70,27 @@
   --card-foreground: oklch(0.12 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.12 0 0);
-  --primary: oklch(0.16 0 0);
+  /* 브랜드(보라)를 primary로 — 기본 버튼·주요 액션·포커스의 정체성. */
+  --primary: oklch(0.55 0.22 297.5);
   --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.965 0 0);
+  /* secondary=중립 버튼, muted=가장 옅은 배경, accent=브랜드 톤 상호작용 — 셋 차등화. */
+  --secondary: oklch(0.95 0 0);
   --secondary-foreground: oklch(0.16 0 0);
-  --muted: oklch(0.965 0 0);
-  --muted-foreground: oklch(0.48 0 0);
-  --accent: oklch(0.96 0 0);
-  --accent-foreground: oklch(0.16 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.45 0 0);
+  --accent: oklch(0.95 0.03 297.5);
+  --accent-foreground: oklch(0.3 0.12 297.5);
   --destructive: oklch(0.577 0.245 27.325);
+  --success: oklch(0.6 0.15 150);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.75 0.15 75);
+  --warning-foreground: oklch(0.22 0.03 75);
+  --info: oklch(0.58 0.15 250);
+  --info-foreground: oklch(0.99 0 0);
   --border: oklch(0.925 0 0);
   --input: oklch(0.925 0 0);
-  --ring: oklch(0.7 0 0);
+  /* 포커스 링도 브랜드 — 대비 + 정체성. */
+  --ring: oklch(0.55 0.22 297.5);
   --brand: oklch(0.55 0.25 297.5);
   --brand-foreground: oklch(1 0 0);
   --chart-1: oklch(0.55 0.25 297.5);
@@ -86,12 +101,12 @@
   --radius: 0.5rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.12 0 0);
-  --sidebar-primary: oklch(0.16 0 0);
+  --sidebar-primary: oklch(0.55 0.22 297.5);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.96 0 0);
-  --sidebar-accent-foreground: oklch(0.16 0 0);
+  --sidebar-accent: oklch(0.95 0.03 297.5);
+  --sidebar-accent-foreground: oklch(0.3 0.12 297.5);
   --sidebar-border: oklch(0.925 0 0);
-  --sidebar-ring: oklch(0.7 0 0);
+  --sidebar-ring: oklch(0.55 0.22 297.5);
 }
 
 .dark {
@@ -101,18 +116,24 @@
   --card-foreground: oklch(0.94 0 0);
   --popover: oklch(0.145 0 0);
   --popover-foreground: oklch(0.94 0 0);
-  --primary: oklch(0.94 0 0);
-  --primary-foreground: oklch(0.115 0 0);
-  --secondary: oklch(0.2 0 0);
+  --primary: oklch(0.58 0.22 297.5);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.22 0 0);
   --secondary-foreground: oklch(0.94 0 0);
-  --muted: oklch(0.2 0 0);
-  --muted-foreground: oklch(0.58 0 0);
-  --accent: oklch(0.2 0 0);
-  --accent-foreground: oklch(0.94 0 0);
+  --muted: oklch(0.19 0 0);
+  --muted-foreground: oklch(0.62 0 0);
+  --accent: oklch(0.26 0.05 297.5);
+  --accent-foreground: oklch(0.92 0.03 297.5);
   --destructive: oklch(0.704 0.191 22.216);
+  --success: oklch(0.68 0.15 150);
+  --success-foreground: oklch(0.13 0 0);
+  --warning: oklch(0.8 0.15 75);
+  --warning-foreground: oklch(0.2 0.03 75);
+  --info: oklch(0.66 0.15 250);
+  --info-foreground: oklch(0.13 0 0);
   --border: oklch(0.22 0 0);
   --input: oklch(0.22 0 0);
-  --ring: oklch(0.4 0 0);
+  --ring: oklch(0.58 0.22 297.5);
   --brand: oklch(0.68 0.22 297.5);
   --brand-foreground: oklch(1 0 0);
   --chart-1: oklch(0.68 0.22 297.5);
@@ -122,12 +143,12 @@
   --chart-5: oklch(0.28 0.02 297.5);
   --sidebar: oklch(0.145 0 0);
   --sidebar-foreground: oklch(0.94 0 0);
-  --sidebar-primary: oklch(0.94 0 0);
-  --sidebar-primary-foreground: oklch(0.115 0 0);
-  --sidebar-accent: oklch(0.2 0 0);
-  --sidebar-accent-foreground: oklch(0.94 0 0);
+  --sidebar-primary: oklch(0.58 0.22 297.5);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.26 0.05 297.5);
+  --sidebar-accent-foreground: oklch(0.92 0.03 297.5);
   --sidebar-border: oklch(0.22 0 0);
-  --sidebar-ring: oklch(0.4 0 0);
+  --sidebar-ring: oklch(0.58 0.22 297.5);
 }
 
 @layer base {
