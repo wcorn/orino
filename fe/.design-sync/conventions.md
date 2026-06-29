@@ -28,7 +28,9 @@ React + Tailwind CSS v4 component library (shadcn/ui 스타일). 컴포넌트는
 - **카드**: `<Card>` 안에 `<CardHeader><CardTitle/><CardDescription/><CardAction/></CardHeader>` · `<CardContent>` · `<CardFooter>`로 조합
 - **오버레이**: `<Modal open onOpenChange>`, `<ConfirmDialog title description confirmLabel onConfirm/>`, `<Menu trigger={<Button/>}><MenuItem/></Menu>`. 다이얼로그 푸터는 `<DialogFooter>` / `<DialogFormFooter submitLabel pending onDelete>`
 - **헤더**: 페이지 제목은 `<PageHeader title description actions/>`, 섹션 제목은 `<SectionHeader size="sm|md" level={2|3}>`
-- **상태**: 빈 상태 `<EmptyState>`, 로딩 `<LoadingText>`
+- **상태/피드백**: 빈 상태 `<EmptyState>`, 로딩 `<LoadingText>`, 인라인 알림 `<Alert variant="info|success|warning|destructive"><AlertTitle/><AlertDescription/></Alert>`(아이콘은 svg 자식), 라벨 칩 `<Badge variant="default|secondary|success|warning|info|destructive|outline">`
+- **데이터/내비**: `<Table>`+`<TableHeader/TableBody/TableRow/TableHead/TableCell>`(상태 칸엔 Badge 조합), `<Tabs defaultValue><TabsList><TabsTrigger value/></TabsList><TabsContent value/></Tabs>`, `<Tooltip><TooltipTrigger/><TooltipContent/></Tooltip>`
+- **상태색 규칙**: 성공/주의/정보/실패는 `success|warning|info|destructive` 시맨틱 토큰만 쓴다(임의 green/amber/red 금지). 일요일·공휴일 빨강 같은 캘린더 도메인 색은 예외
 
 ## 출처(읽어야 할 곳)
 
