@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/ui/field-error";
 import { LoadingText } from "@/components/ui/loading-text";
 import { cn } from "@/lib/utils";
 
@@ -114,9 +115,9 @@ export function WeeklyPlan() {
       {isLoading ? (
         <LoadingText className="p-6" />
       ) : isError ? (
-        <p className="text-destructive p-6 text-sm">
+        <FieldError className="p-6">
           주간 계획표를 불러오지 못했습니다.
-        </p>
+        </FieldError>
       ) : (
         <WeeklyPlanGrid blocks={blocks} days={days} onSelect={setEditing} />
       )}

@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SectionHeader } from "@/components/ui/section-header";
 import { parseIsoDate } from "@/features/review/calendar";
 import { cn } from "@/lib/utils";
 
@@ -44,14 +46,14 @@ export function PlannerDayDetailPanel({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-medium">
+        <SectionHeader>
           {formatHeading(isoDate)}
           {holidayName && (
             <span className="ml-2 text-sm font-normal text-red-500">
               {holidayName}
             </span>
           )}
-        </h2>
+        </SectionHeader>
         {reviews.length > 0 && (
           <Link to="/planner/reviews/today">
             <Button size="sm">오늘 복습 하러가기</Button>
@@ -60,14 +62,16 @@ export function PlannerDayDetailPanel({
       </div>
 
       {isEmpty ? (
-        <p className="text-muted-foreground text-sm">이 날 일정이 없어요.</p>
+        <EmptyState className="min-h-[20svh]">
+          <p className="text-muted-foreground text-sm">이 날 일정이 없어요.</p>
+        </EmptyState>
       ) : (
         <div className="flex flex-col gap-4">
           {events.length > 0 && (
             <section className="flex flex-col gap-2">
-              <h3 className="text-muted-foreground text-xs font-medium">
+              <SectionHeader size="sm" level={3}>
                 일정 ({events.length})
-              </h3>
+              </SectionHeader>
               <DayTimeline
                 isoDate={isoDate}
                 events={events}
@@ -80,9 +84,9 @@ export function PlannerDayDetailPanel({
 
           {tasks.length > 0 && (
             <section className="flex flex-col gap-2">
-              <h3 className="text-muted-foreground text-xs font-medium">
+              <SectionHeader size="sm" level={3}>
                 할 일 ({tasks.length})
-              </h3>
+              </SectionHeader>
               <ul className="flex flex-col gap-1.5">
                 {tasks.map((task) => (
                   <li
@@ -118,9 +122,9 @@ export function PlannerDayDetailPanel({
 
           {reviews.length > 0 && (
             <section className="flex flex-col gap-2">
-              <h3 className="text-muted-foreground text-xs font-medium">
+              <SectionHeader size="sm" level={3}>
                 복습 (읽기 전용)
-              </h3>
+              </SectionHeader>
               <ul className="flex flex-col gap-1.5">
                 {reviews.map((review) => (
                   <li
