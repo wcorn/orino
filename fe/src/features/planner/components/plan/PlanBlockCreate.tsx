@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 
-import { DEFAULT_COLOR, PLAN_COLORS } from "./planColors";
+import { ColorSwatchSelector } from "./ColorSwatchSelector";
+import { DEFAULT_COLOR } from "./planColors";
 import {
   createBlocks,
   DAY_LABELS,
@@ -150,28 +151,11 @@ export function PlanBlockCreate({
         </label>
 
         <FormField label="색" labelId="create-color">
-          <div
-            className="flex gap-2"
-            role="group"
-            aria-labelledby="create-color"
-          >
-            {PLAN_COLORS.map((c) => (
-              <button
-                key={c.key}
-                type="button"
-                aria-label={c.label}
-                aria-pressed={color === c.key}
-                onClick={() => setColor(c.key)}
-                className={cn(
-                  "size-6 rounded-full ring-offset-2 transition",
-                  c.swatch,
-                  color === c.key
-                    ? "ring-ring ring-2"
-                    : "opacity-70 hover:opacity-100",
-                )}
-              />
-            ))}
-          </div>
+          <ColorSwatchSelector
+            value={color}
+            onChange={setColor}
+            labelledBy="create-color"
+          />
         </FormField>
       </div>
 
