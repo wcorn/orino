@@ -1,7 +1,6 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
-import { DialogFormFooter } from "@/components/ui/dialog-form-footer";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -75,7 +74,7 @@ export function TaskFormDialog({
             />
           </FormField>
 
-          <DialogFormFooter
+          <Modal.FormFooter
             submitLabel="저장"
             pendingLabel="저장 중..."
             pending={pending}

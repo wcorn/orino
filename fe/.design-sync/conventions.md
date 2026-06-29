@@ -26,7 +26,7 @@ React + Tailwind CSS v4 component library (shadcn/ui 스타일). 컴포넌트는
 - **버튼**: `<Button variant="default|secondary|outline|ghost|destructive|link" size="sm|default|lg">`
 - **폼**: 컨트롤을 `<FormField label htmlFor error>`로 감싼다. 컨트롤은 `<Input>` · `<Textarea>` · `<Select value onValueChange options={[{value,label}]}>` · `<Checkbox>` · `<Switch checked onCheckedChange>`. 오류 문구는 `<FieldError>`
 - **카드**: `<Card>` 안에 `<CardHeader><CardTitle/><CardDescription/><CardAction/></CardHeader>` · `<CardContent>` · `<CardFooter>`로 조합
-- **오버레이**: `<Modal open onOpenChange>`, `<ConfirmDialog title description confirmLabel onConfirm/>`, `<Menu trigger={<Button/>}><MenuItem/></Menu>`. 다이얼로그 푸터는 `<DialogFooter>` / `<DialogFormFooter submitLabel pending onDelete>`
+- **오버레이**: `<Modal open onOpenChange>` 안에 본문 + 푸터. 푸터는 Modal 서브컴포넌트로 — `<Modal.Footer>`(자유 구성), `<Modal.FormFooter submitLabel pending onDelete/>`(폼 제출). 확인은 프리셋 `<ConfirmDialog title description confirmLabel destructive onConfirm/>`. 메뉴는 `<Menu trigger={<Button/>}><MenuItem/></Menu>`. (DialogPopup/DialogFooter/DialogFormFooter는 내부 구현 — 직접 쓰지 않는다)
 - **헤더**: 페이지 제목은 `<PageHeader title description actions/>`, 섹션 제목은 `<SectionHeader size="sm|md" level={2|3}>`
 - **상태/피드백**: 빈 상태 `<EmptyState>`, 로딩 `<LoadingText>`, 인라인 알림 `<Alert variant="info|success|warning|destructive"><AlertTitle/><AlertDescription/></Alert>`(아이콘은 svg 자식), 라벨 칩 `<Badge variant="default|secondary|success|warning|info|destructive|outline">`
 - **데이터/내비**: `<Table>`+`<TableHeader/TableBody/TableRow/TableHead/TableCell>`(상태 칸엔 Badge 조합), `<Tabs defaultValue><TabsList><TabsTrigger value/></TabsList><TabsContent value/></Tabs>`, `<Tooltip><TooltipTrigger/><TooltipContent/></Tooltip>`

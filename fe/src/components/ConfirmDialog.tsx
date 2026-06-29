@@ -2,7 +2,6 @@ import { Dialog } from "@base-ui/react/dialog";
 import { type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
-import { DialogFooter } from "@/components/ui/dialog-footer";
 import { Modal } from "@/components/ui/modal";
 
 interface ConfirmDialogProps {
@@ -36,7 +35,7 @@ export function ConfirmDialog({
           {description}
         </Dialog.Description>
       )}
-      <DialogFooter>
+      <Modal.Footer>
         <Dialog.Close
           render={
             <Button variant="ghost" type="button" disabled={pending}>
@@ -52,7 +51,7 @@ export function ConfirmDialog({
         >
           {pending ? "처리 중..." : confirmLabel}
         </Button>
-      </DialogFooter>
+      </Modal.Footer>
     </Modal>
   );
 }

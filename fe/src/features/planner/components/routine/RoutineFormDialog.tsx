@@ -3,7 +3,6 @@ import { useEffect, useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DialogFormFooter } from "@/components/ui/dialog-form-footer";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -424,7 +423,7 @@ export function RoutineFormDialog({
             {recurrencePreview(recurrence, form.startDate)}
           </p>
 
-          <DialogFormFooter
+          <Modal.FormFooter
             submitLabel="저장"
             pendingLabel="저장 중..."
             pending={pending}
