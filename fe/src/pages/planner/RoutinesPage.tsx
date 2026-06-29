@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingText } from "@/components/ui/loading-text";
+import { SectionHeader } from "@/components/ui/section-header";
 import { GoogleConnectButton } from "@/features/google/components/GoogleConnectButton";
 import { useGoogleStatus } from "@/features/google/hooks/useGoogleStatus";
 import type {
@@ -41,7 +42,7 @@ function RoutineSection({ title, series, onEdit, onDelete }: SectionProps) {
   if (series.length === 0) return null;
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-muted-foreground text-xs font-semibold">{title}</h2>
+      <SectionHeader size="sm">{title}</SectionHeader>
       <ul className="flex flex-col gap-2">
         {series.map((s) => (
           <RoutineListItem

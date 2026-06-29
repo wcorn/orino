@@ -1,6 +1,7 @@
 import { Repeat } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
+import { SectionHeader } from "@/components/ui/section-header";
 import { startOfDay, toIsoDate } from "@/features/review/calendar";
 import { cn } from "@/lib/utils";
 
@@ -40,7 +41,7 @@ export function TodayRoutines() {
     <Card>
       <CardContent className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">오늘의 루틴</h2>
+          <SectionHeader>오늘의 루틴</SectionHeader>
           {habits.length > 0 && (
             <span
               className="text-muted-foreground text-sm tabular-nums"
