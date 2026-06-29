@@ -134,11 +134,20 @@ export function PlanBlockCreate({
             <Input
               id="create-end"
               type="time"
-              value={endTime}
+              value={endTime === "24:00" ? "" : endTime}
+              disabled={endTime === "24:00"}
               onChange={(e) => setEndTime(e.target.value)}
             />
           </FormField>
         </div>
+
+        <label className="flex items-center gap-1.5 text-xs">
+          <Checkbox
+            checked={endTime === "24:00"}
+            onChange={(e) => setEndTime(e.target.checked ? "24:00" : "23:00")}
+          />
+          종료를 자정(24:00)으로
+        </label>
 
         <FormField label="색" labelId="create-color">
           <div

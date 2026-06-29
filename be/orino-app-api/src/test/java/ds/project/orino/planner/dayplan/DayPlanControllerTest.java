@@ -125,6 +125,38 @@ class DayPlanControllerTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("PUT - 종료 24:00(자정)을 허용하고 분 단위로 저장한다")
+    void put_allowsMidnightEnd() throws Exception {
+        String body = """
+                { "blocks": [
+                  { "dayOfWeek": 1, "startTime": "22:00", "endTime": "24:00", "label": "마감", "color": null }
+                ] }""";
+
+        mockMvc.perform(putBlocks(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.blocks", hasSize(1)))
+                .andExpect(jsonPath("$.data.blocks[0].startTime").value("22:00"))
+                .andExpect(jsonPath("$.data.blocks[0].endTime").value("24:00"));
+
+        assertThat(blockRepository.findAllByMemberId(memberId))
+                .singleElement()
+                .satisfies(b -> {
+                    assertThat(b.getStartMinute()).isEqualTo(1320);
+                    assertThat(b.getEndMinute()).isEqualTo(1440);
+                });
+    }
+
+    @Test
+    @DisplayName("PUT - 종료가 24:00을 넘으면(25:00) 400 PLN-ERR-002")
+    void put_endBeyondMidnight_400() throws Exception {
+        String invalid = """
+                { "blocks": [ { "dayOfWeek": 1, "startTime": "22:00", "endTime": "25:00", "label": "초과" } ] }""";
+        mockMvc.perform(putBlocks(invalid))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PLN-ERR-002"));
+    }
+
+    @Test
     @DisplayName("PUT - 시간 역전(end<=start)이면 400 PLN-ERR-002")
     void put_timeReversed_400() throws Exception {
         String invalid = """

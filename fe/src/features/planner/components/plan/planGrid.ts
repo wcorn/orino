@@ -48,9 +48,9 @@ export function timeToMinutes(time: string): number {
   return h * 60 + m;
 }
 
-/** 분 → "HH:mm"(0..1439로 클램프). */
+/** 분 → "HH:mm"(0..1440로 클램프, 1440="24:00"). */
 export function minutesToTime(minutes: number): string {
-  const clamped = Math.max(0, Math.min(MAX_MINUTE, Math.round(minutes)));
+  const clamped = Math.max(0, Math.min(DAY_MINUTES, Math.round(minutes)));
   const h = Math.floor(clamped / 60);
   const m = clamped % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;

@@ -2,6 +2,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -97,11 +98,25 @@ export function PlanBlockEditor({
             <Input
               id="block-end"
               type="time"
-              value={draft.endTime}
+              value={draft.endTime === "24:00" ? "" : draft.endTime}
+              disabled={draft.endTime === "24:00"}
               onChange={(e) => setDraft({ ...draft, endTime: e.target.value })}
             />
           </FormField>
         </div>
+
+        <label className="flex items-center gap-1.5 text-xs">
+          <Checkbox
+            checked={draft.endTime === "24:00"}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                endTime: e.target.checked ? "24:00" : "23:00",
+              })
+            }
+          />
+          종료를 자정(24:00)으로
+        </label>
 
         <FormField label="색" labelId="block-color">
           <div

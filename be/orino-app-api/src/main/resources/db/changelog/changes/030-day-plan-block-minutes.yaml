@@ -1,0 +1,42 @@
+databaseChangeLog:
+  - changeSet:
+      id: 030-day-plan-block-minutes
+      author: wcorn
+      comment: |
+        주간 계획표 블록 시간을 분(0~1440) 정수로 전환(#667). LocalTime(TIME, 최대 23:59)으로는
+        자정(24:00) 종료를 표현 못 해 start_time/end_time(TIME)을 start_minute/end_minute(INT)로
+        바꾼다. 기존 데이터는 TIME_TO_SEC로 분 변환해 보존한다.
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            tableName: day_plan_block
+            columnName: start_time
+      changes:
+        - addColumn:
+            tableName: day_plan_block
+            columns:
+              - column:
+                  name: start_minute
+                  type: INT
+              - column:
+                  name: end_minute
+                  type: INT
+        - sql:
+            sql: >
+              UPDATE day_plan_block
+              SET start_minute = TIME_TO_SEC(start_time) DIV 60,
+                  end_minute = TIME_TO_SEC(end_time) DIV 60
+        - addNotNullConstraint:
+            tableName: day_plan_block
+            columnName: start_minute
+            columnDataType: INT
+        - addNotNullConstraint:
+            tableName: day_plan_block
+            columnName: end_minute
+            columnDataType: INT
+        - dropColumn:
+            tableName: day_plan_block
+            columnName: start_time
+        - dropColumn:
+            tableName: day_plan_block
+            columnName: end_time

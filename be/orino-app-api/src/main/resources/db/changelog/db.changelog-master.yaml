@@ -57,3 +57,5 @@ databaseChangeLog:
       file: db/changelog/changes/028-create-day-plan.yaml
   - include:
       file: db/changelog/changes/029-reshape-day-plan.yaml
+  - include:
+      file: db/changelog/changes/030-day-plan-block-minutes.yaml

@@ -25,9 +25,11 @@ function block(start: string, end: string): EditableBlock {
 describe("planGrid", () => {
   it("timeToMinutes / minutesToTime 왕복", () => {
     expect(timeToMinutes("08:30")).toBe(510);
+    expect(timeToMinutes("24:00")).toBe(1440);
     expect(minutesToTime(510)).toBe("08:30");
     expect(minutesToTime(0)).toBe("00:00");
-    expect(minutesToTime(1500)).toBe("23:59"); // 클램프
+    expect(minutesToTime(1440)).toBe("24:00"); // 자정
+    expect(minutesToTime(1500)).toBe("24:00"); // 1440으로 클램프
   });
 
   it("isReversed는 종료<=시작이면 true", () => {
