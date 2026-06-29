@@ -17,14 +17,16 @@ export function useWeeklyPlan() {
   });
 }
 
-/** 주간 템플릿 전량 교체 저장. 성공 시 캐시를 갱신하고 토스트를 띄운다. */
+/**
+ * 주간 템플릿 전량 교체 저장(자동 저장). 성공 시 캐시를 서버 응답으로 갱신한다.
+ * 변경마다 호출되므로 성공 토스트는 띄우지 않고(소음 방지), 실패만 토스트로 알린다.
+ */
 export function useSaveWeeklyPlan() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (blocks: WeeklyPlanBlockInput[]) => saveWeeklyPlan(blocks),
     onSuccess: (blocks) => {
       queryClient.setQueryData(plannerKeys.weeklyPlan(), blocks);
-      toast("주간 계획표를 저장했습니다.", "success");
     },
     onError: () => {
       toast("저장에 실패했습니다. 다시 시도해 주세요.", "error");

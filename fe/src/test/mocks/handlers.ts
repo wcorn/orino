@@ -55,6 +55,16 @@ export const handlers = [
     return HttpResponse.json({ code: "OK", data: { blocks: [] } });
   }),
 
+  // 기본값: 자동 저장(전량 교체) — 요청 블록에 id를 붙여 그대로 반환.
+  http.put(`${API_BASE}/planner/plan`, async ({ request }) => {
+    const body = (await request.json()) as { blocks: unknown[] };
+    const blocks = (body.blocks ?? []).map((b, i) => ({
+      id: i + 1,
+      ...(b as object),
+    }));
+    return HttpResponse.json({ code: "OK", data: { blocks } });
+  }),
+
   // 기본값: 공휴일 없음. 공휴일 표시 검증 테스트는 server.use로 덮어쓴다.
   http.get(`${API_BASE}/planner/holidays`, () => {
     return HttpResponse.json({ code: "OK", data: [] });
