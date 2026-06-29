@@ -7,9 +7,8 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Select, type SelectOption } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 
-import { PLAN_COLORS } from "./planColors";
+import { ColorSwatchSelector } from "./ColorSwatchSelector";
 import { DAY_LABELS, type EditableBlock, isReversed } from "./planGrid";
 
 const DAY_OPTIONS: SelectOption<string>[] = DAY_LABELS.map((label, i) => ({
@@ -119,28 +118,11 @@ export function PlanBlockEditor({
         </label>
 
         <FormField label="색" labelId="block-color">
-          <div
-            className="flex gap-2"
-            role="group"
-            aria-labelledby="block-color"
-          >
-            {PLAN_COLORS.map((c) => (
-              <button
-                key={c.key}
-                type="button"
-                aria-label={c.label}
-                aria-pressed={draft.color === c.key}
-                onClick={() => setDraft({ ...draft, color: c.key })}
-                className={cn(
-                  "size-6 rounded-full ring-offset-2 transition",
-                  c.swatch,
-                  draft.color === c.key
-                    ? "ring-ring ring-2"
-                    : "opacity-70 hover:opacity-100",
-                )}
-              />
-            ))}
-          </div>
+          <ColorSwatchSelector
+            value={draft.color}
+            onChange={(key) => setDraft({ ...draft, color: key })}
+            labelledBy="block-color"
+          />
         </FormField>
       </div>
 

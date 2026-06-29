@@ -8,7 +8,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
-import { GoogleConnectButton } from "@/features/google/components/GoogleConnectButton";
+import { GoogleRequiredState } from "@/features/google/components/GoogleRequiredState";
 
 import type { EventWriteRequest } from "../../api/events";
 import type { PlannerEvent } from "../../api/feed";
@@ -134,21 +134,7 @@ export function EventFormDialog({
       </Dialog.Title>
 
       {!googleConnected ? (
-        <div className="mt-4 flex flex-col gap-4">
-          <p className="text-muted-foreground text-sm">
-            Google 연결이 필요합니다.
-          </p>
-          <DialogFooter className="mt-0">
-            <Dialog.Close
-              render={
-                <Button variant="ghost" type="button">
-                  닫기
-                </Button>
-              }
-            />
-            <GoogleConnectButton />
-          </DialogFooter>
-        </div>
+        <GoogleRequiredState />
       ) : (
         <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">
           <FormField label="제목" htmlFor={titleId}>
