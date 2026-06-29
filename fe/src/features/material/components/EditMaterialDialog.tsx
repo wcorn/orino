@@ -1,4 +1,3 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
 import { FieldError } from "@/components/ui/field-error";
@@ -54,9 +53,7 @@ export function EditMaterialDialog({ material, open, onOpenChange }: Props) {
   };
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange} className="max-w-sm">
-      <Dialog.Title className="text-base font-semibold">자료 편집</Dialog.Title>
-
+    <Modal open={open} onOpenChange={onOpenChange} title="자료 편집" size="sm">
       <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
         <FormField label="제목" htmlFor={titleId}>
           <Input
@@ -81,7 +78,7 @@ export function EditMaterialDialog({ material, open, onOpenChange }: Props) {
           <FieldError>저장에 실패했어요. 잠시 후 다시 시도해주세요.</FieldError>
         )}
 
-        <Modal.FormFooter
+        <Modal.Footer
           submitLabel="저장"
           pendingLabel="저장 중..."
           pending={mutation.isPending}

@@ -1,4 +1,3 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
 import { FieldError } from "@/components/ui/field-error";
@@ -62,11 +61,11 @@ export function FlashcardFormDialog({
   };
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange} className="max-w-md">
-      <Dialog.Title className="text-base font-semibold">
-        {mode === "create" ? "카드 추가" : "카드 편집"}
-      </Dialog.Title>
-
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={mode === "create" ? "카드 추가" : "카드 편집"}
+    >
       <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
         <CharField
           id={frontId}
@@ -88,7 +87,7 @@ export function FlashcardFormDialog({
 
         {errorMessage && <FieldError>{errorMessage}</FieldError>}
 
-        <Modal.FormFooter
+        <Modal.Footer
           submitLabel="저장"
           pendingLabel="저장 중..."
           pending={pending}

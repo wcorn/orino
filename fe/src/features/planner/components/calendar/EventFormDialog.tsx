@@ -1,4 +1,3 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useId, useState } from "react";
 
 import { Checkbox } from "@/components/ui/checkbox";
@@ -126,11 +125,11 @@ export function EventFormDialog({
   };
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange} className="max-w-md">
-      <Dialog.Title className="text-base font-semibold">
-        {mode === "create" ? "일정 추가" : "일정 편집"}
-      </Dialog.Title>
-
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={mode === "create" ? "일정 추가" : "일정 편집"}
+    >
       {!googleConnected ? (
         <GoogleRequiredState />
       ) : (
@@ -205,7 +204,7 @@ export function EventFormDialog({
             />
           </FormField>
 
-          <Modal.FormFooter
+          <Modal.Footer
             submitLabel="저장"
             pendingLabel="저장 중..."
             pending={pending}

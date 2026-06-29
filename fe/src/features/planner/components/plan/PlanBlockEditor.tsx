@@ -1,7 +1,5 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -50,10 +48,9 @@ export function PlanBlockEditor({
     <Modal
       open={block !== null}
       onOpenChange={(open) => !open && onClose()}
-      className="max-w-sm"
+      title="블록 편집"
+      size="sm"
     >
-      <Dialog.Title className="text-base font-semibold">블록 편집</Dialog.Title>
-
       <div className="mt-4 flex flex-col gap-3">
         <FormField label="요일" labelId="block-day">
           <Select
@@ -95,28 +92,12 @@ export function PlanBlockEditor({
         </FormField>
       </div>
 
-      <div className="mt-5 flex items-center justify-between">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-destructive"
-          onClick={() => onDelete(draft.key)}
-        >
-          삭제
-        </Button>
-        <div className="flex gap-2">
-          <Dialog.Close render={<Button variant="outline" size="sm" />}>
-            취소
-          </Dialog.Close>
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={reversed || labelEmpty}
-          >
-            적용
-          </Button>
-        </div>
-      </div>
+      <Modal.Footer
+        submitLabel="적용"
+        onSubmit={handleSave}
+        submitDisabled={reversed || labelEmpty}
+        onDelete={() => onDelete(draft.key)}
+      />
     </Modal>
   );
 }
