@@ -1,3 +1,5 @@
+import { Check } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 
 import { blockColorClass } from "./planColors";
@@ -18,8 +20,14 @@ interface WeeklyPlanGridProps {
   blocks: EditableBlock[];
   /** 표시할 요일 인덱스(데스크탑 0~6, 모바일 단일). */
   days: number[];
-  /** 블록 클릭 → 편집. */
+  /** 블록 클릭 → 편집(선택 모드가 아닐 때). */
   onSelect: (block: EditableBlock) => void;
+  /** 선택 모드: 블록 클릭이 편집 대신 체크 토글로 동작한다. */
+  selecting?: boolean;
+  /** 선택 모드에서 체크된 블록 key 집합. */
+  selectedKeys?: ReadonlySet<string>;
+  /** 선택 모드에서 블록 클릭 시 선택 토글. */
+  onToggleSelect?: (block: EditableBlock) => void;
 }
 
 /** 일~토 × 시간축 그리드. 표시 + 블록 클릭 편집(생성은 상단 [+ 추가] 버튼). */
@@ -27,6 +35,9 @@ export function WeeklyPlanGrid({
   blocks,
   days,
   onSelect,
+  selecting = false,
+  selectedKeys,
+  onToggleSelect,
 }: WeeklyPlanGridProps) {
   return (
     <div className="overflow-x-auto">
@@ -76,30 +87,46 @@ export function WeeklyPlanGrid({
             ))}
 
             {/* 블록 */}
-            {layoutDay(blocks.filter((b) => b.dayOfWeek === day)).map((b) => (
-              <button
-                key={b.key}
-                type="button"
-                aria-label={`${b.label || "(라벨 없음)"} ${b.startTime}~${b.endTime}`}
-                onClick={() => onSelect(b)}
-                className={cn(
-                  // border-background로 인접(같은 색) 블록 사이에 seam을 만든다
-                  "border-background absolute overflow-hidden rounded border px-1 py-0.5 text-left text-[11px] leading-tight text-white shadow-sm",
-                  blockColorClass(b.color),
-                )}
-                style={{
-                  top: topRatio(b.startTime) * COLUMN_HEIGHT,
-                  height: heightRatio(b.startTime, b.endTime) * COLUMN_HEIGHT,
-                  left: `${b.left * 100}%`,
-                  width: `${b.width * 100}%`,
-                }}
-              >
-                <span className="block font-semibold">
-                  {b.startTime}–{b.endTime}
-                </span>
-                <span className="block truncate">{b.label}</span>
-              </button>
-            ))}
+            {layoutDay(blocks.filter((b) => b.dayOfWeek === day)).map((b) => {
+              const selected = selecting && !!selectedKeys?.has(b.key);
+              return (
+                <button
+                  key={b.key}
+                  type="button"
+                  aria-label={`${b.label || "(라벨 없음)"} ${b.startTime}~${b.endTime}`}
+                  aria-pressed={selecting ? selected : undefined}
+                  onClick={() =>
+                    selecting ? onToggleSelect?.(b) : onSelect(b)
+                  }
+                  className={cn(
+                    // border-background로 인접(같은 색) 블록 사이에 seam을 만든다
+                    "border-background absolute overflow-hidden rounded border px-1 py-0.5 text-left text-[11px] leading-tight text-white shadow-sm",
+                    blockColorClass(b.color),
+                    // 선택 모드: 체크된 블록은 링으로 강조, 나머지는 흐리게
+                    selecting &&
+                      (selected
+                        ? "ring-primary ring-offset-background ring-2 ring-offset-1"
+                        : "opacity-60"),
+                  )}
+                  style={{
+                    top: topRatio(b.startTime) * COLUMN_HEIGHT,
+                    height: heightRatio(b.startTime, b.endTime) * COLUMN_HEIGHT,
+                    left: `${b.left * 100}%`,
+                    width: `${b.width * 100}%`,
+                  }}
+                >
+                  {selected && (
+                    <span className="bg-primary text-primary-foreground absolute top-0.5 right-0.5 flex size-4 items-center justify-center rounded-full">
+                      <Check className="size-3" strokeWidth={3} />
+                    </span>
+                  )}
+                  <span className="block font-semibold">
+                    {b.startTime}–{b.endTime}
+                  </span>
+                  <span className="block truncate">{b.label}</span>
+                </button>
+              );
+            })}
           </div>
         ))}
       </div>

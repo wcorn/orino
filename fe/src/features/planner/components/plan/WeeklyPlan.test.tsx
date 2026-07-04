@@ -236,4 +236,116 @@ describe("WeeklyPlan", () => {
       ).not.toBeInTheDocument(),
     );
   });
+
+  it("선택 모드에서 여러 블록을 골라 한 번에 삭제한다", async () => {
+    mockPlan([
+      {
+        id: 1,
+        dayOfWeek: 1,
+        startTime: "08:00",
+        endTime: "09:00",
+        label: "기상",
+        color: "violet",
+      },
+      {
+        id: 2,
+        dayOfWeek: 2,
+        startTime: "10:00",
+        endTime: "11:00",
+        label: "공부",
+        color: "sky",
+      },
+      {
+        id: 3,
+        dayOfWeek: 3,
+        startTime: "12:00",
+        endTime: "13:00",
+        label: "점심",
+        color: "amber",
+      },
+    ]);
+    let putBody: { blocks: { label: string }[] } | null = null;
+    server.use(
+      http.put(`${API_BASE}/planner/plan`, async ({ request }) => {
+        putBody = (await request.json()) as { blocks: { label: string }[] };
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            blocks: putBody.blocks.map((b, i) => ({ id: i + 10, ...b })),
+          },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithRouter(<WeeklyPlan />);
+
+    // 선택 모드 진입
+    await user.click(await screen.findByRole("button", { name: "선택" }));
+
+    // 기상·점심 두 블록 체크(공부는 남긴다)
+    await user.click(screen.getByRole("button", { name: "기상 08:00~09:00" }));
+    await user.click(screen.getByRole("button", { name: "점심 12:00~13:00" }));
+
+    // 체크 상태·개수 반영
+    expect(
+      screen.getByRole("button", { name: "기상 08:00~09:00" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("2개 선택")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "삭제" }));
+
+    // 선택한 두 블록만 제거되고 1회 전량 교체 저장
+    await waitFor(() => expect(putBody).not.toBeNull());
+    expect(putBody!.blocks).toHaveLength(1);
+    expect(putBody!.blocks[0].label).toBe("공부");
+
+    // 남은 블록은 유지, 선택 모드는 해제되어 [선택] 버튼 복귀
+    expect(
+      screen.getByRole("button", { name: "공부 10:00~11:00" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "기상 08:00~09:00" }),
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "선택" }),
+    ).toBeInTheDocument();
+  });
+
+  it("선택 모드를 취소하면 삭제 없이 편집 모드로 복귀한다", async () => {
+    mockPlan([
+      {
+        id: 1,
+        dayOfWeek: 2,
+        startTime: "10:00",
+        endTime: "11:00",
+        label: "공부",
+        color: "sky",
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithRouter(<WeeklyPlan />);
+
+    await user.click(await screen.findByRole("button", { name: "선택" }));
+    await user.click(screen.getByRole("button", { name: "공부 10:00~11:00" }));
+    await user.click(screen.getByRole("button", { name: "취소" }));
+
+    // 블록 유지 + 클릭 시 다시 편집 모달이 열린다(선택 모드 해제 확인)
+    expect(
+      screen.getByRole("button", { name: "공부 10:00~11:00" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "공부 10:00~11:00" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("블록이 없으면 [선택] 버튼을 노출하지 않는다", async () => {
+    mockPlan([]);
+    renderWithRouter(<WeeklyPlan />);
+    expect(
+      await screen.findByRole("button", { name: "추가" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "선택" }),
+    ).not.toBeInTheDocument();
+  });
 });

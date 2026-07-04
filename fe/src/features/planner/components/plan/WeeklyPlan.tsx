@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { ListChecks, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { PageHeader } from "@/components/PageHeader";
@@ -48,6 +48,9 @@ export function WeeklyPlan() {
   const [editing, setEditing] = useState<EditableBlock | null>(null);
   const [creating, setCreating] = useState(false);
   const [mobileDay, setMobileDay] = useState(new Date().getDay());
+  // 다중 선택 삭제용. selecting=선택 모드, selectedKeys=체크된 블록 key.
+  const [selecting, setSelecting] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (data) setBlocks(toEditable(data));
@@ -75,6 +78,28 @@ export function WeeklyPlan() {
     setEditing(null);
   };
 
+  const exitSelecting = () => {
+    setSelecting(false);
+    setSelectedKeys(new Set());
+  };
+
+  // 선택 모드에서 블록 클릭 → 체크 토글.
+  const toggleSelect = (block: EditableBlock) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(block.key)) next.delete(block.key);
+      else next.add(block.key);
+      return next;
+    });
+  };
+
+  // 체크된 블록을 한 번에 제거하고 1회만 전량 교체 저장한다.
+  const handleDeleteSelected = () => {
+    if (selectedKeys.size === 0) return;
+    persist(blocks.filter((b) => !selectedKeys.has(b.key)));
+    exitSelecting();
+  };
+
   const days = narrow ? [mobileDay] : ALL_DAYS;
 
   return (
@@ -83,10 +108,46 @@ export function WeeklyPlan() {
         title="주간 계획표"
         description={save.isPending ? "저장 중…" : undefined}
         actions={
-          <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
-            <Plus className="size-4" />
-            추가
-          </Button>
+          selecting ? (
+            <>
+              <span className="text-muted-foreground text-sm">
+                {selectedKeys.size}개 선택
+              </span>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleDeleteSelected}
+                disabled={selectedKeys.size === 0}
+              >
+                <Trash2 className="size-4" />
+                삭제
+              </Button>
+              <Button variant="outline" size="sm" onClick={exitSelecting}>
+                취소
+              </Button>
+            </>
+          ) : (
+            <>
+              {blocks.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelecting(true)}
+                >
+                  <ListChecks className="size-4" />
+                  선택
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCreating(true)}
+              >
+                <Plus className="size-4" />
+                추가
+              </Button>
+            </>
+          )
         }
       />
 
@@ -119,7 +180,14 @@ export function WeeklyPlan() {
           주간 계획표를 불러오지 못했습니다.
         </FieldError>
       ) : (
-        <WeeklyPlanGrid blocks={blocks} days={days} onSelect={setEditing} />
+        <WeeklyPlanGrid
+          blocks={blocks}
+          days={days}
+          onSelect={setEditing}
+          selecting={selecting}
+          selectedKeys={selectedKeys}
+          onToggleSelect={toggleSelect}
+        />
       )}
 
       <PlanBlockCreate
