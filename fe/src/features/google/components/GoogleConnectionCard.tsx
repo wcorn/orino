@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoadingText } from "@/components/ui/loading-text";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
 import { useDisconnectGoogle } from "../hooks/useDisconnectGoogle";
 import { useGoogleStatus } from "../hooks/useGoogleStatus";
@@ -55,11 +56,16 @@ export function GoogleConnectionCard() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {mirror.isPending && (
-                  <span className="text-muted-foreground text-xs">
-                    {status.reviewMirrorEnabled ? "끄는 중…" : "켜는 중…"}
-                  </span>
-                )}
+                {/* 토글 중 표기는 항상 렌더하고 opacity로만 숨겨, 나타날 때 Switch가 밀리지 않게 공간을 예약한다. */}
+                <span
+                  aria-hidden={!mirror.isPending}
+                  className={cn(
+                    "text-muted-foreground text-xs transition-opacity",
+                    !mirror.isPending && "opacity-0",
+                  )}
+                >
+                  {status.reviewMirrorEnabled ? "끄는 중…" : "켜는 중…"}
+                </span>
                 <Switch
                   checked={status.reviewMirrorEnabled}
                   disabled={mirror.isPending}

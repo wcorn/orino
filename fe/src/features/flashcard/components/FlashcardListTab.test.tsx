@@ -162,6 +162,34 @@ describe("FlashcardListTab", () => {
     expect(await screen.findByText(/카드가 추가되었어요/)).toBeInTheDocument();
   });
 
+  it("카드 생성 실패 시 인라인 에러 대신 토스트로 알린다", async () => {
+    mockListEmpty();
+    server.use(
+      http.post(`${API_BASE}/planner/materials/1/flashcards`, () =>
+        HttpResponse.json(
+          { code: "ERR", message: "server error" },
+          { status: 500 },
+        ),
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("아직 카드가 없습니다.")).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /첫 카드 추가/ }));
+    await user.type(await screen.findByLabelText("앞면 (질문)"), "Q");
+    await user.type(screen.getByLabelText("뒷면 (답)"), "A");
+    await user.click(screen.getByRole("button", { name: "저장" }));
+
+    // 다이얼로그 내부에 밀림을 유발하는 인라인 에러 없이 토스트로만 알린다
+    expect(
+      await screen.findByText(/카드 추가에 실패했어요/),
+    ).toBeInTheDocument();
+  });
+
   it("[편집] 후 [삭제] 클릭 시 확인 → DELETE 호출", async () => {
     mockListWith([
       {

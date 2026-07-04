@@ -1,10 +1,10 @@
 import { useEffect, useId, useState } from "react";
 
-import { FieldError } from "@/components/ui/field-error";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Select, type SelectOption } from "@/components/ui/select";
+import { toast } from "@/shared/lib/toast";
 
 import type { MaterialType } from "../api/materials";
 import { useCreateMaterial } from "../hooks/useCreateMaterial";
@@ -52,6 +52,11 @@ export function AddMaterialDialog({ open, onOpenChange, onCreated }: Props) {
           onOpenChange(false);
           onCreated?.(data.material.id);
         },
+        onError: () =>
+          toast(
+            "자료를 추가하지 못했어요. 잠시 후 다시 시도해주세요.",
+            "error",
+          ),
       },
     );
   };
@@ -83,12 +88,6 @@ export function AddMaterialDialog({ open, onOpenChange, onCreated }: Props) {
             ariaLabelledby={typeLabelId}
           />
         </FormField>
-
-        {mutation.isError && (
-          <FieldError>
-            자료를 추가하지 못했어요. 잠시 후 다시 시도해주세요.
-          </FieldError>
-        )}
 
         <Modal.Footer
           submitLabel="추가"

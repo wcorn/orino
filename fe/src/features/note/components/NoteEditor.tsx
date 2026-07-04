@@ -180,11 +180,14 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
           placeholder="제목 없음"
           className="border-none px-0 text-lg font-semibold shadow-none focus-visible:ring-0"
         />
-        <SaveStatusIndicator
-          status={status}
-          savedAt={savedAt}
-          onRetry={retry}
-        />
+        {/* 상태가 나타났다 사라질 때 제목 Input 폭이 밀리지 않게 슬롯 폭을 예약한다. */}
+        <div className="flex min-w-[7rem] shrink-0 justify-end">
+          <SaveStatusIndicator
+            status={status}
+            savedAt={savedAt}
+            onRetry={retry}
+          />
+        </div>
       </div>
 
       <div className="border-border bg-card overflow-hidden rounded-md border">

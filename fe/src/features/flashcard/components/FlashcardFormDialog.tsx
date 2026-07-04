@@ -1,6 +1,5 @@
 import { useEffect, useId, useState } from "react";
 
-import { FieldError } from "@/components/ui/field-error";
 import { FormField } from "@/components/ui/form-field";
 import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,7 +14,6 @@ interface Props {
   initialFront?: string;
   initialBack?: string;
   pending?: boolean;
-  errorMessage?: string;
   onSubmit: (values: { front: string; back: string }) => void;
   onDelete?: () => void;
 }
@@ -27,7 +25,6 @@ export function FlashcardFormDialog({
   initialFront = "",
   initialBack = "",
   pending = false,
-  errorMessage,
   onSubmit,
   onDelete,
 }: Props) {
@@ -84,8 +81,6 @@ export function FlashcardFormDialog({
           onChange={setBack}
           max={MAX_LEN}
         />
-
-        {errorMessage && <FieldError>{errorMessage}</FieldError>}
 
         <Modal.Footer
           submitLabel="저장"
