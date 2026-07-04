@@ -39,18 +39,18 @@ export function BrandMark({
     >
       <mask id={id}>
         <rect width="100" height="100" fill="#fff" />
-        <circle cx="74.35" cy="25.65" r="15.51" fill="#000" />
+        <circle cx="72.27" cy="27.73" r="12.9" fill="#000" />
       </mask>
       <circle
-        cx="49.06"
-        cy="50.94"
-        r="29.14"
+        cx="49.14"
+        cy="50.86"
+        r="26.66"
         fill="none"
         stroke={RING[tone]}
-        strokeWidth="13.16"
+        strokeWidth="9.46"
         mask={`url(#${id})`}
       />
-      <circle cx="74.35" cy="25.65" r="12.22" fill={DOT[tone]} />
+      <circle cx="72.27" cy="27.73" r="10.32" fill={DOT[tone]} />
     </svg>
   );
 }
