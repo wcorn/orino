@@ -1,10 +1,10 @@
 import { useEffect, useId, useState } from "react";
 
-import { FieldError } from "@/components/ui/field-error";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Select, type SelectOption } from "@/components/ui/select";
+import { toast } from "@/shared/lib/toast";
 
 import type { Material, MaterialStatus } from "../api/materials";
 import { useUpdateMaterial } from "../hooks/useUpdateMaterial";
@@ -48,7 +48,11 @@ export function EditMaterialDialog({ material, open, onOpenChange }: Props) {
         title: trimmed !== material.title ? trimmed : undefined,
         status: status !== material.status ? status : undefined,
       },
-      { onSuccess: () => onOpenChange(false) },
+      {
+        onSuccess: () => onOpenChange(false),
+        onError: () =>
+          toast("저장에 실패했어요. 잠시 후 다시 시도해주세요.", "error"),
+      },
     );
   };
 
@@ -73,10 +77,6 @@ export function EditMaterialDialog({ material, open, onOpenChange }: Props) {
             ariaLabelledby={statusLabelId}
           />
         </FormField>
-
-        {mutation.isError && (
-          <FieldError>저장에 실패했어요. 잠시 후 다시 시도해주세요.</FieldError>
-        )}
 
         <Modal.Footer
           submitLabel="저장"

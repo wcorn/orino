@@ -36,6 +36,8 @@ export function FlashcardListTab({ materialId }: Props) {
         setCreateOpen(false);
         toast("카드가 추가되었어요. 첫 복습은 내일.", "success");
       },
+      onError: () =>
+        toast("카드 추가에 실패했어요. 잠시 후 다시 시도해주세요.", "error"),
     });
   };
 
@@ -43,6 +45,8 @@ export function FlashcardListTab({ materialId }: Props) {
     if (!editing) return;
     updateMutation.mutate(values, {
       onSuccess: () => setEditing(null),
+      onError: () =>
+        toast("저장에 실패했어요. 잠시 후 다시 시도해주세요.", "error"),
     });
   };
 
@@ -100,11 +104,6 @@ export function FlashcardListTab({ materialId }: Props) {
           if (!o) createMutation.reset();
         }}
         pending={createMutation.isPending}
-        errorMessage={
-          createMutation.isError
-            ? "카드 추가에 실패했어요. 잠시 후 다시 시도해주세요."
-            : undefined
-        }
         onSubmit={handleCreate}
       />
 
@@ -120,11 +119,6 @@ export function FlashcardListTab({ materialId }: Props) {
         initialFront={editing?.front}
         initialBack={editing?.back}
         pending={updateMutation.isPending}
-        errorMessage={
-          updateMutation.isError
-            ? "저장에 실패했어요. 잠시 후 다시 시도해주세요."
-            : undefined
-        }
         onSubmit={handleUpdate}
         onDelete={() => setDeleteConfirmOpen(true)}
       />
