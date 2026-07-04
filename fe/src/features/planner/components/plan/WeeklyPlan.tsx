@@ -106,7 +106,6 @@ export function WeeklyPlan() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="주간 계획표"
-        description={save.isPending ? "저장 중…" : undefined}
         actions={
           selecting ? (
             <>
