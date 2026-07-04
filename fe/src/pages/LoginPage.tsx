@@ -1,8 +1,9 @@
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -37,7 +38,7 @@ export function LoginPage() {
     <div className="flex min-h-svh items-center justify-center px-4">
       <Card className="w-full max-w-[360px]">
         <CardHeader className="text-center">
-          <CardTitle className="text-xl font-bold">orino</CardTitle>
+          <Logo size={32} />
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">

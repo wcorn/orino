@@ -2,6 +2,7 @@ import { LogOut, Menu, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
+import { Logo } from "@/components/brand/Logo";
 import { Toaster } from "@/components/Toaster";
 import { Button } from "@/components/ui/button";
 import { logout } from "@/features/auth/api/auth";
@@ -50,7 +51,7 @@ export function AppLayout() {
           >
             <Menu className="size-4" />
           </Button>
-          <span className="text-base font-semibold">orino</span>
+          <Logo size={22} />
         </div>
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon-sm" onClick={toggleTheme}>

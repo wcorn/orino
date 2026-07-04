@@ -40,6 +40,7 @@ React + Tailwind CSS v4 component library (shadcn/ui 스타일). 컴포넌트는
 - **상태/피드백**: 빈 상태 `<EmptyState>`, 로딩 `<LoadingText>`, 인라인 알림 `<Alert variant="info|success|warning|destructive"><AlertTitle/><AlertDescription/></Alert>`(아이콘은 svg 자식), 라벨 칩 `<Badge variant="default|secondary|success|warning|info|destructive|outline">`
 - **데이터/내비**: `<Table>`+`<TableHeader/TableBody/TableRow/TableHead/TableCell>`(상태 칸엔 Badge 조합), `<Tabs defaultValue><TabsList><TabsTrigger value/></TabsList><TabsContent value/></Tabs>`, `<Tooltip><TooltipTrigger/><TooltipContent/></Tooltip>`
 - **상태색 규칙**: 성공/주의/정보/실패는 `success|warning|info|destructive` 시맨틱 토큰만 쓴다(임의 green/amber/red 금지). 일요일·공휴일 빨강 같은 캘린더 도메인 색은 예외
+- **브랜드(로고)**: `<Logo tone="primary|mono|inverse" size showWordmark/>`(심볼+워드마크), 심볼만은 `<BrandMark size tone/>`. 색은 토큰만(`--foreground` 링·`--brand` 점, inverse만 흰색). 좌표는 브랜드 확정본 — 임의 변경 금지. **클리어스페이스=링 두께(x) 사방**, **디지털 최소 16px**(탭), UI 아이콘 24px+. 어두운 배경엔 `tone="inverse"`
 
 ## 출처(읽어야 할 곳)
 
