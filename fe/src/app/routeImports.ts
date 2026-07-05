@@ -32,6 +32,8 @@ export const importWeeklyPlan = () =>
   import("../pages/planner/WeeklyPlanPage").then((m) => ({
     default: m.WeeklyPlanPage,
   }));
+export const importMemo = () =>
+  import("../pages/MemoPage").then((m) => ({ default: m.MemoPage }));
 
 /**
  * 로그인 후 idle 시간에 페이지 청크를 미리 받아둔다.
@@ -49,6 +51,7 @@ export function prefetchRoutes() {
     void importTodayReviews().catch(ignore);
     void importPlannerCalendar().catch(ignore);
     void importHome().catch(ignore);
+    void importMemo().catch(ignore);
   };
   if (typeof requestIdleCallback === "function") {
     requestIdleCallback(run);

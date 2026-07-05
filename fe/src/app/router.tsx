@@ -13,6 +13,7 @@ import {
   importHome,
   importMaterialDetail,
   importMaterialList,
+  importMemo,
   importPlannerCalendar,
   importPlannerSettings,
   importRoutines,
@@ -30,6 +31,7 @@ const PlannerCalendarPage = lazy(importPlannerCalendar);
 const PlannerSettingsPage = lazy(importPlannerSettings);
 const RoutinesPage = lazy(importRoutines);
 const WeeklyPlanPage = lazy(importWeeklyPlan);
+const MemoPage = lazy(importMemo);
 
 function RouteFallback() {
   return <LoadingText className="p-6" />;
@@ -105,6 +107,14 @@ export function AppRouter() {
             element={
               <Suspense fallback={<RouteFallback />}>
                 <PlannerSettingsPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/memo"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <MemoPage />
               </Suspense>
             }
           />
