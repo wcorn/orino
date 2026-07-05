@@ -12,7 +12,9 @@ export function useMonthlyGoalMutations(year: number, month: number) {
   const queryClient = useQueryClient();
 
   const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: monthlyGoalKeys.ym(year, month) });
+    queryClient.invalidateQueries({
+      queryKey: monthlyGoalKeys.ym(year, month),
+    });
 
   const save = useMutation<MonthlyGoal, Error, string>({
     mutationFn: (content) => saveMonthlyGoal(year, month, content),
