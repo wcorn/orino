@@ -16,6 +16,10 @@ const DOT: Record<LogoTone, string> = {
   inverse: "#ffffff",
 };
 
+// 링 중심선(반경 26.66)을 한 바퀴 도는 궤도 — 키네틱 점/틈의 animateMotion 경로.
+const ORBIT_PATH =
+  "M 49.14 24.2 A 26.66 26.66 0 1 1 49.14 77.52 A 26.66 26.66 0 1 1 49.14 24.2";
+
 function useReducedMotion() {
   const [reduced, setReduced] = React.useState(false);
   React.useEffect(() => {
@@ -49,20 +53,13 @@ export function BrandMark({
 }) {
   const id = React.useId();
   const reduce = useReducedMotion();
-  const spin: React.CSSProperties | undefined =
-    animated && !reduce
-      ? {
-          // transform-box를 view-box로 고정해야 origin이 뷰박스 좌표(링 중심)로 잡힌다.
-          // 없으면 회전 그룹 자신의 bbox(상단의 점) 기준이라 점이 위쪽에서 도는 것처럼 보인다.
-          transformBox: "view-box",
-          transformOrigin: "49.14px 50.86px",
-          animation: "orino-orbit 3.4s linear infinite",
-        }
-      : undefined;
+  const motion = animated && !reduce;
 
-  // 정적: 우상단 고정 틈+점 / 키네틱: 상단(12시)에서 시작해 회전 그룹으로 돈다.
-  const dotCx = animated ? "49.14" : "72.27";
-  const dotCy = animated ? "24.2" : "27.73";
+  // 키네틱은 SMIL animateMotion으로 점·틈을 링 중심 둘레로 공전시킨다(CSS transform과 달리
+  // 마스크 안에서도, 브라우저 무관하게 중심 회전). motion이면 원점(0,0)에서 궤도 path를 따라
+  // 이동하고, 정지면 각자의 쉼 위치에 고정한다(정적=우상단, animated+reduced=상단).
+  const cx = motion ? "0" : animated ? "49.14" : "72.27";
+  const cy = motion ? "0" : animated ? "24.2" : "27.73";
   return (
     <svg
       width={size}
@@ -75,9 +72,15 @@ export function BrandMark({
     >
       <mask id={id}>
         <rect width="100" height="100" fill="#fff" />
-        <g style={spin}>
-          <circle cx={dotCx} cy={dotCy} r="12.9" fill="#000" />
-        </g>
+        <circle cx={cx} cy={cy} r="12.9" fill="#000">
+          {motion && (
+            <animateMotion
+              dur="3.4s"
+              repeatCount="indefinite"
+              path={ORBIT_PATH}
+            />
+          )}
+        </circle>
       </mask>
       <circle
         cx="49.14"
@@ -88,9 +91,15 @@ export function BrandMark({
         strokeWidth="9.46"
         mask={`url(#${id})`}
       />
-      <g style={spin}>
-        <circle cx={dotCx} cy={dotCy} r="10.32" fill={DOT[tone]} />
-      </g>
+      <circle cx={cx} cy={cy} r="10.32" fill={DOT[tone]}>
+        {motion && (
+          <animateMotion
+            dur="3.4s"
+            repeatCount="indefinite"
+            path={ORBIT_PATH}
+          />
+        )}
+      </circle>
     </svg>
   );
 }
