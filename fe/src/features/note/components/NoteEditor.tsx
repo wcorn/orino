@@ -15,9 +15,11 @@ import { Input } from "@/components/ui/input";
 
 import type { NoteContent, NoteDetail } from "../api/notes";
 import { ChildPage, collectChildPageIds } from "../editor/childPage";
+import { ChildPageContext } from "../editor/childPageContext";
 import { extractImageFiles, uploadAndInsertImage } from "../editor/imageUpload";
 import { useAutoSaveNote } from "../hooks/useAutoSaveNote";
 import { useCreateNote, useDeleteNote } from "../hooks/useNoteMutations";
+import { useNoteTree } from "../hooks/useNoteTree";
 import { noteKeys } from "../queryKeys";
 import { EditorToolbar } from "./EditorToolbar";
 import { SaveStatusIndicator } from "./SaveStatusIndicator";
@@ -46,6 +48,7 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
   });
   const createNote = useCreateNote(materialId);
   const deleteNote = useDeleteNote(materialId);
+  const { data: noteTree } = useNoteTree(materialId);
 
   const [title, setTitle] = useState(note.title);
   const [pendingDelete, setPendingDelete] = useState<number | null>(null);
@@ -67,7 +70,7 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
         Placeholder.configure({
           placeholder: "내용을 입력하거나 페이지를 추가하세요...",
         }),
-        ChildPage.configure({ onOpen: onOpenNote, materialId }),
+        ChildPage,
       ],
       content: note.content as JSONContent,
       editorProps: {
@@ -215,7 +218,11 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
             </button>
           </DragHandle>
         )}
-        <EditorContent editor={editor} className="relative" />
+        <ChildPageContext.Provider
+          value={{ onOpen: onOpenNote, tree: noteTree }}
+        >
+          <EditorContent editor={editor} className="relative" />
+        </ChildPageContext.Provider>
       </div>
 
       <ConfirmDialog

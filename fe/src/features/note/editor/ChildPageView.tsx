@@ -1,13 +1,11 @@
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { FileText } from "lucide-react";
 
-import type { NoteTreeNode } from "../api/notes";
-import { useNoteTree } from "../hooks/useNoteTree";
-import type { ChildPageOptions } from "./childPage";
+import { type LiveTreeNode, useChildPageContext } from "./childPageContext";
 
-/** 트리에서 noteId에 해당하는 노드의 현재 제목을 찾는다. */
+/** 트리에서 id에 해당하는 노드의 현재 제목을 찾는다. */
 function findTitle(
-  nodes: NoteTreeNode[] | undefined,
+  nodes: LiveTreeNode[] | undefined,
   id: number,
 ): string | undefined {
   if (!nodes) return undefined;
@@ -21,21 +19,20 @@ function findTitle(
 
 /**
  * 본문 안의 하위 페이지 줄. 한 줄을 차지하되 박스 없이 아이콘 + 제목만 보인다.
- * 클릭 시 ChildPage 노드 옵션의 onOpen(noteId) 호출 → 자식 노트로 라우팅.
+ * 클릭 시 컨텍스트의 onOpen(id) 호출 → 자식 노트/메모로 라우팅.
  * 제목은 트리(라이브)에서 조회하고, 없으면 attrs.title(삽입 시점 캐시)로 폴백한다.
  */
-export function ChildPageView({ node, extension }: NodeViewProps) {
+export function ChildPageView({ node }: NodeViewProps) {
   const noteId = node.attrs.noteId as number | null;
   const cachedTitle = (node.attrs.title as string) || "제목 없음";
-  const options = extension.options as ChildPageOptions;
+  const { onOpen, tree } = useChildPageContext();
 
-  const { data: tree } = useNoteTree(options.materialId);
   const liveTitle = noteId != null ? findTitle(tree, noteId) : undefined;
   const title = liveTitle ?? cachedTitle;
 
   const handleOpen = () => {
     if (noteId == null) return;
-    options.onOpen(noteId);
+    onOpen(noteId);
   };
 
   return (

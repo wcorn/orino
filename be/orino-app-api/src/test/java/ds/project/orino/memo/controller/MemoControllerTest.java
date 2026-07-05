@@ -291,6 +291,53 @@ class MemoControllerTest extends ApiTestSupport {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    @DisplayName("PATCH memo - sortOrder 변경이 트리 정렬에 반영된다")
+    void reorder_by_sortOrder() throws Exception {
+        Memo a = root("A", 0);
+        Memo b = root("B", 1);
+
+        // A를 뒤로 보냄(sortOrder 5) → 트리는 sortOrder 오름차순이라 [B, A]
+        mockMvc.perform(patch("/api/memos/{id}", a.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sortOrder\": 5}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sortOrder").value(5));
+
+        mockMvc.perform(get("/api/memos")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.memos[0].id").value(b.getId()))
+                .andExpect(jsonPath("$.data.memos[1].id").value(a.getId()));
+    }
+
+    @Test
+    @DisplayName("PATCH memo - parentId·sortOrder 동시 이동이 트리에 반영된다")
+    void move_with_parent_and_sortOrder() throws Exception {
+        Memo parent = root("부모", 0);
+        Memo c1 = child(parent.getId(), "C1", 0);
+        Memo x = root("X", 1);
+
+        // X를 부모의 자식으로 옮기고 정렬을 뒤(5)로 → 자식 순서 [C1(0), X(5)]
+        mockMvc.perform(patch("/api/memos/{id}", x.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"parentId": %d, "sortOrder": 5}
+                                """.formatted(parent.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.parentId").value(parent.getId()))
+                .andExpect(jsonPath("$.data.sortOrder").value(5));
+
+        mockMvc.perform(get("/api/memos")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.memos", hasSize(1)))
+                .andExpect(jsonPath("$.data.memos[0].children", hasSize(2)))
+                .andExpect(jsonPath("$.data.memos[0].children[0].id").value(c1.getId()))
+                .andExpect(jsonPath("$.data.memos[0].children[1].id").value(x.getId()));
+    }
+
     private Integer memoCount(Long id) {
         return jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM memo WHERE id = ?", Integer.class, id);

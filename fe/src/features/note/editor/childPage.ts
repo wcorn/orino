@@ -10,12 +10,6 @@ export interface ChildPageAttrs {
   title: string;
 }
 
-export interface ChildPageOptions {
-  onOpen: (noteId: number) => void;
-  /** 라이브 제목 조회용. attrs.title은 삽입 시점 캐시라 stale할 수 있어 트리에서 보강한다. */
-  materialId: number;
-}
-
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     childPage: {
@@ -26,21 +20,15 @@ declare module "@tiptap/core" {
 
 /**
  * Notion 스타일 인라인 하위 페이지. atom block 노드.
- * attrs.noteId = 실제 note 레코드 id, attrs.title = 표시용 캐시.
+ * attrs.noteId = 참조하는 레코드 id(노트 또는 메모), attrs.title = 표시용 캐시.
+ * onOpen·라이브 제목은 ChildPageContext로 주입한다(노트/메모 공용).
  */
-export const ChildPage = Node.create<ChildPageOptions>({
+export const ChildPage = Node.create({
   name: "childPage",
   group: "block",
   atom: true,
   selectable: true,
   draggable: true,
-
-  addOptions() {
-    return {
-      onOpen: () => {},
-      materialId: 0,
-    };
-  },
 
   addAttributes() {
     return {
