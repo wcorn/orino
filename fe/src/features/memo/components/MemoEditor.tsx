@@ -10,11 +10,17 @@ import StarterKit from "@tiptap/starter-kit";
 import { GripVertical } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Input } from "@/components/ui/input";
-// 노트의 에디터 UI 프리미티브를 재사용한다(도구모음·저장상태·이미지 업로드).
-// childPage(인라인 하위 페이지)는 메모 v1에서 제외한다(트리 사이드바로만 하위 생성).
+// 노트의 에디터 엔진을 재사용한다(도구모음·저장상태·이미지 업로드·childPage).
+// childPage는 onOpen/트리를 ChildPageContext로 주입해 메모용으로 동작한다.
 import { EditorToolbar } from "@/features/note/components/EditorToolbar";
 import { SaveStatusIndicator } from "@/features/note/components/SaveStatusIndicator";
+import {
+  ChildPage,
+  collectChildPageIds,
+} from "@/features/note/editor/childPage";
+import { ChildPageContext } from "@/features/note/editor/childPageContext";
 import {
   extractImageFiles,
   uploadAndInsertImage,
@@ -22,13 +28,17 @@ import {
 
 import type { MemoContent, MemoDetail } from "../api/memos";
 import { useAutoSaveMemo } from "../hooks/useAutoSaveMemo";
+import { useCreateMemo, useDeleteMemo } from "../hooks/useMemoMutations";
+import { useMemoTree } from "../hooks/useMemoTree";
 import { memoKeys } from "../queryKeys";
 
 interface Props {
   memo: MemoDetail;
+  /** childPage 블록 클릭 시 자식 메모로 이동 */
+  onOpenMemo: (memoId: number) => void;
 }
 
-export function MemoEditor({ memo }: Props) {
+export function MemoEditor({ memo, onOpenMemo }: Props) {
   const queryClient = useQueryClient();
   const { status, savedAt, schedule, flush, retry } = useAutoSaveMemo(memo.id, {
     onSaved: (patch) => {
@@ -43,10 +53,16 @@ export function MemoEditor({ memo }: Props) {
       }
     },
   });
+  const createMemo = useCreateMemo();
+  const deleteMemo = useDeleteMemo();
+  const { data: memoTree } = useMemoTree();
 
   const [title, setTitle] = useState(memo.title);
-  // editorProps 핸들러(handlePaste/handleDrop)는 생성 시점 클로저라 editor를
-  // 직접 못 잡으므로 ref로 우회한다.
+  const [pendingDelete, setPendingDelete] = useState<number | null>(null);
+  // 본문에 현재 박혀 있는 childPage id 집합 (삭제 diff 기준).
+  // MemoWorkspace가 key={memo.id}로 리마운트하므로 마운트 시점 content로 1회 초기화.
+  const childIdsRef = useRef<Set<number>>(collectChildPageIds(memo.content));
+  // editorProps 핸들러는 생성 시점 클로저라 editor를 못 잡으므로 ref로 우회한다.
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
 
   const editor = useEditor(
@@ -58,8 +74,9 @@ export function MemoEditor({ memo }: Props) {
         TableKit.configure({ table: { resizable: true } }),
         Image.configure({ inline: false }),
         Placeholder.configure({
-          placeholder: "내용을 입력하세요...",
+          placeholder: "내용을 입력하거나 페이지를 추가하세요...",
         }),
+        ChildPage,
       ],
       content: memo.content as JSONContent,
       editorProps: {
@@ -94,7 +111,9 @@ export function MemoEditor({ memo }: Props) {
         },
       },
       onUpdate: ({ editor }) => {
-        schedule({ content: editor.getJSON() as MemoContent });
+        const json = editor.getJSON() as MemoContent;
+        schedule({ content: json });
+        detectRemovedChildPage(json);
       },
     },
     [memo.id],
@@ -111,9 +130,48 @@ export function MemoEditor({ memo }: Props) {
     };
   }, [flush]);
 
+  const detectRemovedChildPage = (json: MemoContent) => {
+    const current = collectChildPageIds(json);
+    const prev = childIdsRef.current;
+    const removed = [...prev].filter((id) => !current.has(id));
+    childIdsRef.current = current;
+    if (removed.length > 0) {
+      setPendingDelete(removed[0]);
+    }
+  };
+
   const handleTitleChange = (next: string) => {
     setTitle(next);
     schedule({ title: next });
+  };
+
+  const handleInsertPage = () => {
+    if (createMemo.isPending) return;
+    createMemo.mutate(
+      { parentId: memo.id, title: "제목 없음" },
+      {
+        onSuccess: (created) => {
+          editor
+            ?.chain()
+            .focus()
+            .insertChildPage({ noteId: created.id, title: created.title })
+            .run();
+          if (editor) {
+            childIdsRef.current = collectChildPageIds(
+              editor.getJSON() as MemoContent,
+            );
+          }
+        },
+      },
+    );
+  };
+
+  const confirmDelete = () => {
+    if (pendingDelete == null) return;
+    deleteMemo.mutate(pendingDelete, {
+      onSuccess: () => setPendingDelete(null),
+      onError: () => setPendingDelete(null),
+    });
   };
 
   return (
@@ -139,7 +197,11 @@ export function MemoEditor({ memo }: Props) {
       </div>
 
       <div className="border-border bg-card overflow-hidden rounded-md border">
-        <EditorToolbar editor={editor} />
+        <EditorToolbar
+          editor={editor}
+          onInsertPage={handleInsertPage}
+          insertPagePending={createMemo.isPending}
+        />
         {editor && (
           <DragHandle
             editor={editor}
@@ -155,8 +217,25 @@ export function MemoEditor({ memo }: Props) {
             </button>
           </DragHandle>
         )}
-        <EditorContent editor={editor} className="relative" />
+        <ChildPageContext.Provider
+          value={{ onOpen: onOpenMemo, tree: memoTree }}
+        >
+          <EditorContent editor={editor} className="relative" />
+        </ChildPageContext.Provider>
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+        title="하위 페이지를 삭제할까요?"
+        description="본문에서 제거한 하위 페이지와 그 안의 모든 내용이 삭제됩니다. 되돌릴 수 없어요."
+        confirmLabel="삭제"
+        destructive
+        onConfirm={confirmDelete}
+        pending={deleteMemo.isPending}
+      />
     </div>
   );
 }

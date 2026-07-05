@@ -11,8 +11,13 @@ import { LoadingText } from "@/components/ui/loading-text";
 
 import type { MemoTreeNode } from "../api/memos";
 import { useMemoDetail } from "../hooks/useMemoDetail";
-import { useCreateMemo, useDeleteMemo } from "../hooks/useMemoMutations";
+import {
+  useCreateMemo,
+  useDeleteMemo,
+  useMoveMemo,
+} from "../hooks/useMemoMutations";
 import { useMemoTree } from "../hooks/useMemoTree";
+import { computeMove, type DropPosition } from "../treeMove";
 import { MemoEditor } from "./MemoEditor";
 import { MemoTreeSidebar } from "./MemoTreeSidebar";
 
@@ -37,6 +42,7 @@ export function MemoWorkspace() {
   const detailQuery = useMemoDetail(activeMemoId);
   const createMemo = useCreateMemo();
   const deleteMemo = useDeleteMemo();
+  const moveMemo = useMoveMemo();
   const [pendingDelete, setPendingDelete] = useState<MemoTreeNode | null>(null);
 
   const setActiveMemo = (memoId: number | null) => {
@@ -78,6 +84,17 @@ export function MemoWorkspace() {
       { parentId, title: "제목 없음" },
       { onSuccess: (created) => setActiveMemo(created.id) },
     );
+  };
+
+  const handleMove = (
+    dragId: number,
+    targetId: number,
+    position: DropPosition,
+  ) => {
+    if (moveMemo.isPending) return;
+    const plan = computeMove(tree, dragId, targetId, position);
+    if (!plan) return;
+    moveMemo.mutate({ plan, dragId });
   };
 
   const handleConfirmDelete = () => {
@@ -124,6 +141,7 @@ export function MemoWorkspace() {
               onAddRoot={handleAddRoot}
               onAddChild={handleAddChild}
               onRequestDelete={setPendingDelete}
+              onMove={handleMove}
               addPending={createMemo.isPending}
             />
           </div>
@@ -152,7 +170,11 @@ export function MemoWorkspace() {
             ) : detailQuery.isError || !detailQuery.data ? (
               <FieldError>메모를 불러오지 못했어요.</FieldError>
             ) : (
-              <MemoEditor key={detailQuery.data.id} memo={detailQuery.data} />
+              <MemoEditor
+                key={detailQuery.data.id}
+                memo={detailQuery.data}
+                onOpenMemo={setActiveMemo}
+              />
             )}
           </div>
         </div>

@@ -208,4 +208,86 @@ describe("MemoWorkspace", () => {
 
     await waitFor(() => expect(deleted).toBe(true));
   });
+
+  it("[페이지] 버튼으로 하위 메모를 만들고 본문에 childPage 블록이 박힌다", async () => {
+    mockTree([
+      { id: 1, title: "부모", parentId: null, sortOrder: 0, children: [] },
+    ]);
+    mockMemoDetail(1, { type: "doc", content: [] }, "부모");
+    let postedParentId: number | null | undefined;
+    server.use(
+      http.post(`${API_BASE}/memos`, async ({ request }) => {
+        const body = (await request.json()) as { parentId: number | null };
+        postedParentId = body.parentId;
+        return HttpResponse.json(
+          {
+            code: "OK",
+            data: {
+              id: 99,
+              parentId: body.parentId,
+              title: "제목 없음",
+              sortOrder: 0,
+              content: { type: "doc", content: [] },
+              updatedAt: "2026-07-05T10:00:00",
+            },
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("메모 제목")).toHaveValue("부모");
+    });
+
+    await user.click(screen.getByRole("button", { name: "하위 페이지 추가" }));
+
+    await waitFor(() => expect(postedParentId).toBe(1));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /하위 페이지 .* 열기/ }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("본문 childPage 블록 클릭 시 자식 메모로 전환된다", async () => {
+    mockTree([
+      {
+        id: 1,
+        title: "부모",
+        parentId: null,
+        sortOrder: 0,
+        children: [
+          { id: 2, title: "자식", parentId: 1, sortOrder: 0, children: [] },
+        ],
+      },
+    ]);
+    mockMemoDetail(
+      1,
+      {
+        type: "doc",
+        content: [{ type: "childPage", attrs: { noteId: 2, title: "자식" } }],
+      },
+      "부모",
+    );
+    mockMemoDetail(2, { type: "doc", content: [] }, "자식");
+
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("메모 제목")).toHaveValue("부모");
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: /하위 페이지 자식 열기/ }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("메모 제목")).toHaveValue("자식");
+    });
+  });
 });
