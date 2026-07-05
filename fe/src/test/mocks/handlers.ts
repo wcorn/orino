@@ -69,4 +69,9 @@ export const handlers = [
   http.get(`${API_BASE}/planner/holidays`, () => {
     return HttpResponse.json({ code: "OK", data: [] });
   }),
+
+  // 기본값: 월간 목표 없음. 목표를 검증하는 테스트는 server.use로 덮어쓴다.
+  http.get(`${API_BASE}/planner/monthly-goals/:year/:month`, () => {
+    return HttpResponse.json({ code: "OK", data: null });
+  }),
 ];

@@ -14,3 +14,8 @@ export const holidayKeys = {
   all: ["holiday"] as const,
   range: (from: string, to: string) => ["holiday", from, to] as const,
 };
+
+export const monthlyGoalKeys = {
+  all: ["monthlyGoal"] as const,
+  ym: (year: number, month: number) => ["monthlyGoal", year, month] as const,
+};
