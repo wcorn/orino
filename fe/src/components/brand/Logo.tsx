@@ -52,6 +52,9 @@ export function BrandMark({
   const spin: React.CSSProperties | undefined =
     animated && !reduce
       ? {
+          // transform-box를 view-box로 고정해야 origin이 뷰박스 좌표(링 중심)로 잡힌다.
+          // 없으면 회전 그룹 자신의 bbox(상단의 점) 기준이라 점이 위쪽에서 도는 것처럼 보인다.
+          transformBox: "view-box",
           transformOrigin: "49.14px 50.86px",
           animation: "orino-orbit 3.4s linear infinite",
         }
