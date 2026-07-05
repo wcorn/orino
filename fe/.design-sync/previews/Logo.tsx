@@ -4,6 +4,7 @@ export function Variants() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <Logo />
+      <Logo animated />
       <Logo tone="mono" />
       <div
         style={{

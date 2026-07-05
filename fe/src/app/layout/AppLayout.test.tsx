@@ -72,7 +72,10 @@ describe("AppLayout", () => {
     mockTodayReviews(0);
     renderLayout();
     await waitFor(() => {
-      expect(screen.getByText("orino")).toBeInTheDocument();
+      // Logo는 심볼+워드마크(둘 다 aria-label="orino"); 워드마크 텍스트는 분할됨
+      expect(
+        screen.getAllByRole("img", { name: "orino" }).length,
+      ).toBeGreaterThan(0);
     });
     expect(
       screen.getByRole("button", { name: /로그아웃/ }),
