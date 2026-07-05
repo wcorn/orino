@@ -226,3 +226,10 @@
 .tiptap.resize-cursor {
   cursor: col-resize;
 }
+
+/* 브랜드 키네틱 궤도(장치 2) — BrandMark animated에서 점/틈 그룹을 회전. */
+@keyframes orino-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}

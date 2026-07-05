@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { BrandMark } from "@/components/brand/Logo";
 import { LoadingText } from "@/components/ui/loading-text";
 
 import { PrivateRoute } from "../features/auth/components/PrivateRoute";
@@ -34,7 +35,12 @@ const WeeklyPlanPage = lazy(importWeeklyPlan);
 const MemoPage = lazy(importMemo);
 
 function RouteFallback() {
-  return <LoadingText className="p-6" />;
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 p-10">
+      <BrandMark size={40} animated />
+      <LoadingText />
+    </div>
+  );
 }
 
 export function AppRouter() {
