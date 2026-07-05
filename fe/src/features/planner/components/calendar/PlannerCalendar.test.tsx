@@ -270,6 +270,25 @@ describe("PlannerCalendar", () => {
     expect(await screen.findByText("회의")).toBeInTheDocument();
   });
 
+  it("월 뷰에서만 월간 목표 인라인을 노출한다", async () => {
+    mockFeed({});
+
+    renderWithRouter(<PlannerCalendar />);
+
+    // 월 뷰(기본)에서 목표 플레이스홀더 노출
+    expect(
+      await screen.findByRole("button", { name: "이번 달 목표 추가" }),
+    ).toBeInTheDocument();
+
+    // 주 뷰로 전환하면 사라진다
+    await userEvent.click(screen.getByRole("button", { name: "주" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "이번 달 목표 추가" }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
   it("주 뷰 빈 시간대 클릭 시 그 시각으로 생성 다이얼로그가 열린다", async () => {
     mockGoogleConnected(true);
     mockFeed({ googleConnected: true });

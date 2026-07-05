@@ -31,6 +31,7 @@ import {
 import { weekDays } from "../../weekLayout";
 import { TodayRoutines } from "../routine/TodayRoutines";
 import { EventFormDialog } from "./EventFormDialog";
+import { MonthlyGoalInline } from "./MonthlyGoalInline";
 import { PlannerCalendarCell } from "./PlannerCalendarCell";
 import { PlannerCalendarLegend } from "./PlannerCalendarLegend";
 import { PlannerConnectionBanner } from "./PlannerConnectionBanner";
@@ -151,6 +152,13 @@ export function PlannerCalendar() {
           >
             <ChevronRight className="size-4" />
           </Button>
+          {/* 월 뷰에서만 년월 옆에 그 달 목표를 인라인 표시·편집 */}
+          {view === "month" && (
+            <MonthlyGoalInline
+              year={cursor.getFullYear()}
+              month={cursor.getMonth() + 1}
+            />
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1">
