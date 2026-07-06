@@ -1,0 +1,79 @@
+databaseChangeLog:
+  # 노트(note)와 메모(memo)를 단일 "노트" 도메인으로 병합 (#740).
+  # note.material_id를 nullable로 풀어 학습자료 종속 노트(material_id 있음)와
+  # 독립 노트(material_id NULL)를 한 테이블로 통합한다. Epic #718의 분리 결정(D-1)을 되돌린다.
+  - changeSet:
+      id: 033-note-material-nullable
+      author: wcorn
+      comment: |
+        note.material_id를 nullable로 변경(독립 노트 = material_id NULL).
+        독립 노트 트리 조회용 인덱스(member_id prefix) 추가.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: note
+                indexName: idx_note_member_parent_sort
+      changes:
+        - dropNotNullConstraint:
+            tableName: note
+            columnName: material_id
+            columnDataType: BIGINT
+        # 독립 노트(멤버별 트리 + 형제 정렬) 조회 인덱스
+        - createIndex:
+            tableName: note
+            indexName: idx_note_member_parent_sort
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: parent_id
+              - column:
+                  name: sort_order
+
+  - changeSet:
+      id: 033-migrate-memo-to-note
+      author: wcorn
+      comment: |
+        기존 memo 데이터를 note로 이관한다(material_id=NULL, 독립 노트).
+        임시 컬럼 src_memo_id로 memo.id→note.id 매핑을 만들어 트리(parent_id)를 무손실 보존한다.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: memo
+      changes:
+        - sql:
+            sql: ALTER TABLE note ADD COLUMN src_memo_id BIGINT NULL
+        # 1) 모든 memo를 독립 노트로 복사 (parent_id는 우선 NULL, src로 원본 id 추적)
+        - sql:
+            sql: >-
+              INSERT INTO note
+                (member_id, material_id, parent_id, title, sort_order, content, created_at, updated_at, src_memo_id)
+              SELECT member_id, NULL, NULL, title, sort_order, content, created_at, updated_at, id
+              FROM memo
+        # 2) src 매핑으로 parent_id를 새 note.id 기준으로 재연결
+        - sql:
+            sql: >-
+              UPDATE note child
+              JOIN memo m ON child.src_memo_id = m.id
+              JOIN note parent ON parent.src_memo_id = m.parent_id
+              SET child.parent_id = parent.id
+              WHERE m.parent_id IS NOT NULL
+        # 3) 임시 컬럼 제거
+        - sql:
+            sql: ALTER TABLE note DROP COLUMN src_memo_id
+      rollback:
+        - sql:
+            sql: DELETE FROM note WHERE material_id IS NULL
+
+  - changeSet:
+      id: 033-drop-memo
+      author: wcorn
+      comment: memo 테이블 제거(자체 FK fk_memo_member·fk_memo_parent 포함 삭제).
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: memo
+      changes:
+        - dropTable:
+            tableName: memo

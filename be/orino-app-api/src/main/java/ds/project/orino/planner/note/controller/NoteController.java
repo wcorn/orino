@@ -18,10 +18,14 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 통합 노트 API. materialId 쿼리로 자료 종속 노트(값 있음)와 독립 노트(생략)를 구분한다.
+ */
 @RestController
-@RequestMapping("/api/planner")
+@RequestMapping("/api/notes")
 public class NoteController {
 
     private final NoteService noteService;
@@ -30,30 +34,30 @@ public class NoteController {
         this.noteService = noteService;
     }
 
-    @GetMapping("/materials/{materialId}/notes")
+    @GetMapping
     public ApiResponse<NoteTreeResponse> tree(
             @AuthenticationPrincipal Long memberId,
-            @PathVariable Long materialId) {
+            @RequestParam(required = false) Long materialId) {
         return ApiResponse.success(noteService.findTree(memberId, materialId));
     }
 
-    @PostMapping("/materials/{materialId}/notes")
+    @PostMapping
     public ResponseEntity<ApiResponse<NoteDetailResponse>> create(
             @AuthenticationPrincipal Long memberId,
-            @PathVariable Long materialId,
+            @RequestParam(required = false) Long materialId,
             @Valid @RequestBody NoteCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(noteService.create(memberId, materialId, request)));
     }
 
-    @GetMapping("/notes/{noteId}")
+    @GetMapping("/{noteId}")
     public ApiResponse<NoteDetailResponse> detail(
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long noteId) {
         return ApiResponse.success(noteService.findOne(memberId, noteId));
     }
 
-    @PatchMapping("/notes/{noteId}")
+    @PatchMapping("/{noteId}")
     public ApiResponse<NoteUpdateResponse> update(
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long noteId,
@@ -61,7 +65,7 @@ public class NoteController {
         return ApiResponse.success(noteService.update(memberId, noteId, request));
     }
 
-    @DeleteMapping("/notes/{noteId}")
+    @DeleteMapping("/{noteId}")
     public ResponseEntity<Void> delete(
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long noteId) {

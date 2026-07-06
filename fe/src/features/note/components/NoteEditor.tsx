@@ -25,7 +25,8 @@ import { EditorToolbar } from "./EditorToolbar";
 import { SaveStatusIndicator } from "./SaveStatusIndicator";
 
 interface Props {
-  materialId: number;
+  /** 자료 종속 노트면 자료 id, 독립 노트면 생략. */
+  materialId?: number;
   note: NoteDetail;
   /** childPage 블록 클릭 시 자식 노트로 이동 */
   onOpenNote: (noteId: number) => void;

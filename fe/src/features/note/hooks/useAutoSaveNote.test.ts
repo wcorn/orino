@@ -20,7 +20,7 @@ describe("useAutoSaveNote", () => {
   it("schedule 후 2초 debounce되어 PATCH를 호출하고 saved로 전환된다", async () => {
     const calls: unknown[] = [];
     server.use(
-      http.patch(`${API_BASE}/planner/notes/:id`, async ({ request }) => {
+      http.patch(`${API_BASE}/notes/:id`, async ({ request }) => {
         calls.push(await request.json());
         return HttpResponse.json({
           code: "OK",
@@ -57,7 +57,7 @@ describe("useAutoSaveNote", () => {
     let count = 0;
     let lastBody: { title?: string; content?: unknown } | null = null;
     server.use(
-      http.patch(`${API_BASE}/planner/notes/:id`, async ({ request }) => {
+      http.patch(`${API_BASE}/notes/:id`, async ({ request }) => {
         count++;
         lastBody = (await request.json()) as typeof lastBody;
         return HttpResponse.json({
@@ -98,7 +98,7 @@ describe("useAutoSaveNote", () => {
   it("실패하면 error → retry로 재전송하여 saved", async () => {
     let failed = false;
     server.use(
-      http.patch(`${API_BASE}/planner/notes/:id`, async () => {
+      http.patch(`${API_BASE}/notes/:id`, async () => {
         if (!failed) {
           failed = true;
           return HttpResponse.json({ code: "ERR" }, { status: 500 });
