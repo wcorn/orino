@@ -6,6 +6,7 @@ import { MATERIAL_TYPE_ICONS } from "@/features/material/utils";
 import { cn } from "@/lib/utils";
 
 import type { Rating, TodayReview } from "../api/reviews";
+import { OrderingReviewCard } from "./OrderingReviewCard";
 
 interface Props {
   review: TodayReview;
@@ -55,6 +56,7 @@ const RATING_BUTTONS: RatingButton[] = [
 
 export function ReviewCard({ review, pending, onRate }: Props) {
   const [revealed, setRevealed] = useState(false);
+  const isOrdering = review.flashcard.type === "ORDERING";
 
   useEffect(() => {
     setRevealed(false);
@@ -65,6 +67,8 @@ export function ReviewCard({ review, pending, onRate }: Props) {
       if (isTypingTarget(event.target)) return;
       if (!revealed) {
         if (event.code === "Space" || event.key === "Enter") {
+          // 순서 카드 드래그 핸들의 Space/Enter(항목 집기)에는 양보한다
+          if (isInDragArea(event.target)) return;
           event.preventDefault();
           setRevealed(true);
         }
@@ -97,29 +101,42 @@ export function ReviewCard({ review, pending, onRate }: Props) {
           )}
         </div>
 
-        <div className="bg-muted/30 rounded-lg px-4 py-10 text-center">
-          <p
-            className={cn(
-              "text-foreground text-2xl font-medium whitespace-pre-wrap",
-            )}
-          >
-            {review.flashcard.front}
-          </p>
-        </div>
+        {isOrdering ? (
+          <>
+            <div className="bg-muted/30 rounded-lg px-4 py-5 text-center">
+              <p className="text-foreground text-lg font-medium whitespace-pre-wrap">
+                {review.flashcard.front}
+              </p>
+            </div>
+            <OrderingReviewCard
+              key={review.flashcard.id}
+              items={review.flashcard.items ?? []}
+              revealed={revealed}
+            />
+          </>
+        ) : (
+          <div className="bg-muted/30 rounded-lg px-4 py-10 text-center">
+            <p className="text-foreground text-2xl font-medium whitespace-pre-wrap">
+              {review.flashcard.front}
+            </p>
+          </div>
+        )}
 
         {!revealed ? (
           <div className="flex justify-center">
             <Button size="lg" onClick={() => setRevealed(true)}>
-              답 보기 (Space)
+              {isOrdering ? "정답 확인 (Space)" : "답 보기 (Space)"}
             </Button>
           </div>
         ) : (
           <>
-            <div className="bg-card border-border rounded-lg border px-4 py-6 text-center">
-              <p className="text-foreground text-lg whitespace-pre-wrap">
-                {review.flashcard.back}
-              </p>
-            </div>
+            {!isOrdering && (
+              <div className="bg-card border-border rounded-lg border px-4 py-6 text-center">
+                <p className="text-foreground text-lg whitespace-pre-wrap">
+                  {review.flashcard.back}
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {RATING_BUTTONS.map((btn) => {
@@ -158,4 +175,12 @@ function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
   return tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable;
+}
+
+/** 순서 카드 드래그 리스트 내부 요소인지(핸들 Space/Enter를 reveal에 뺏기지 않도록). */
+function isInDragArea(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    target.closest("[data-ordering-drag]") !== null
+  );
 }
