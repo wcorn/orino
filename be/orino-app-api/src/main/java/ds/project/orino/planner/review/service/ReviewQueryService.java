@@ -20,6 +20,7 @@ import ds.project.orino.planner.review.dto.TodayReviewItem;
 import ds.project.orino.planner.review.dto.TodayReviewMaterial;
 import ds.project.orino.planner.review.dto.TodayReviewsResponse;
 import ds.project.orino.planner.review.sm2.Sm2Calculator;
+import ds.project.orino.planner.flashcard.service.FlashcardItemsCodec;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,15 +44,18 @@ public class ReviewQueryService {
     private final ReviewScheduleRepository reviewScheduleRepository;
     private final FlashcardRepository flashcardRepository;
     private final StudyMaterialRepository studyMaterialRepository;
+    private final FlashcardItemsCodec itemsCodec;
     private final Clock clock;
 
     public ReviewQueryService(ReviewScheduleRepository reviewScheduleRepository,
                               FlashcardRepository flashcardRepository,
                               StudyMaterialRepository studyMaterialRepository,
+                              FlashcardItemsCodec itemsCodec,
                               Clock clock) {
         this.reviewScheduleRepository = reviewScheduleRepository;
         this.flashcardRepository = flashcardRepository;
         this.studyMaterialRepository = studyMaterialRepository;
+        this.itemsCodec = itemsCodec;
         this.clock = clock;
     }
 
@@ -142,7 +146,8 @@ public class ReviewQueryService {
                                    ZoneId zone) {
         Flashcard card = cardById.get(r.getFlashcardId());
         StudyMaterial material = materialById.get(card.getMaterialId());
-        TodayReviewFlashcard flashcardDto = TodayReviewFlashcard.of(card, TodayReviewMaterial.of(material));
+        TodayReviewFlashcard flashcardDto = TodayReviewFlashcard.of(
+                card, itemsCodec.parse(card.getItems()), TodayReviewMaterial.of(material));
         PreviewView preview = preview(r);
         int delayDays = (int) ChronoUnit.DAYS.between(r.getScheduledAt().atZone(zone).toLocalDate(), today);
         return new TodayReviewItem(

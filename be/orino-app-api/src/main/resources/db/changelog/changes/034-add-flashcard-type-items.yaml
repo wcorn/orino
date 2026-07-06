@@ -1,0 +1,57 @@
+databaseChangeLog:
+  # 순서 카드(Ordering Card) 도입 (#743, Epic #742, Study Planner v2.3).
+  # flashcard에 카드 종류(type)와 순서 항목(items JSON)을 추가하고, 순서 카드는
+  # back이 없으므로 back의 NOT NULL 제약을 완화한다. 기존 카드는 전부 BASIC/items=NULL로 무손실 유지.
+  - changeSet:
+      id: 034-add-flashcard-type
+      author: wcorn
+      comment: flashcard에 카드 종류(type) 추가. 기존 카드는 기본값 BASIC.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: flashcard
+                columnName: type
+      changes:
+        - addColumn:
+            tableName: flashcard
+            columns:
+              - column:
+                  name: type
+                  type: VARCHAR(10)
+                  defaultValue: BASIC
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 034-add-flashcard-items
+      author: wcorn
+      comment: 순서 카드 항목 배열(items JSON) 컬럼 추가. BASIC 카드는 NULL.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: flashcard
+                columnName: items
+      changes:
+        - addColumn:
+            tableName: flashcard
+            columns:
+              - column:
+                  name: items
+                  type: JSON
+
+  - changeSet:
+      id: 034-relax-flashcard-back-nullable
+      author: wcorn
+      comment: 순서 카드는 back이 없으므로 back의 NOT NULL 제약을 완화한다.
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            tableName: flashcard
+            columnName: back
+      changes:
+        - dropNotNullConstraint:
+            tableName: flashcard
+            columnName: back
+            columnDataType: VARCHAR(1000)

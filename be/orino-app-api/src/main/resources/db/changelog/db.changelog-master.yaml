@@ -65,3 +65,5 @@ databaseChangeLog:
       file: db/changelog/changes/032-create-monthly-goal.yaml
   - include:
       file: db/changelog/changes/033-merge-memo-into-note.yaml
+  - include:
+      file: db/changelog/changes/034-add-flashcard-type-items.yaml
