@@ -399,4 +399,120 @@ describe("FlashcardListTab", () => {
     // 기본 카드의 "뒤:" 프리픽스는 나타나지 않는다
     expect(screen.queryByText(/^뒤:/)).not.toBeInTheDocument();
   });
+
+  it("양방향 체크 후 생성하면 bidirectional 요청 + 2장 토스트", async () => {
+    mockListEmpty();
+    let posted: Record<string, unknown> | null = null;
+    server.use(
+      http.post(
+        `${API_BASE}/planner/materials/1/flashcards`,
+        async ({ request }) => {
+          posted = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json(
+            {
+              code: "OK",
+              data: {
+                flashcard: {
+                  id: 40,
+                  materialId: 1,
+                  type: "BASIC",
+                  front: "정의",
+                  back: "설명",
+                  items: null,
+                  siblingGroupId: 40,
+                  nextReview: null,
+                  createdAt: "2026-05-18T00:00:00",
+                },
+                firstReview: {
+                  id: 400,
+                  flashcardId: 40,
+                  sequence: 1,
+                  scheduledAt: "2026-05-19T04:00:00",
+                  intervalDays: 1,
+                  easeFactor: 2.5,
+                  status: "PENDING",
+                },
+                sibling: {
+                  flashcard: {
+                    id: 41,
+                    materialId: 1,
+                    type: "BASIC",
+                    front: "설명",
+                    back: "정의",
+                    items: null,
+                    siblingGroupId: 40,
+                    nextReview: null,
+                    createdAt: "2026-05-18T00:00:00",
+                  },
+                  firstReview: {
+                    id: 401,
+                    flashcardId: 41,
+                    sequence: 1,
+                    scheduledAt: "2026-05-20T04:00:00",
+                    intervalDays: 1,
+                    easeFactor: 2.5,
+                    status: "PENDING",
+                  },
+                },
+              },
+            },
+            { status: 201 },
+          );
+        },
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("아직 카드가 없습니다.")).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /첫 카드 추가/ }));
+
+    const checkbox = await screen.findByRole("checkbox", { name: /양방향/ });
+    // 앞·뒤 채우기 전에는 비활성
+    expect(checkbox).toBeDisabled();
+
+    await user.type(await screen.findByLabelText("앞면 (질문)"), "정의");
+    await user.type(screen.getByLabelText("뒷면 (답)"), "설명");
+    expect(checkbox).toBeEnabled();
+
+    await user.click(checkbox);
+    await user.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => {
+      expect(posted).toEqual({
+        type: "BASIC",
+        front: "정의",
+        back: "설명",
+        bidirectional: true,
+      });
+    });
+    expect(
+      await screen.findByText(/양방향 카드 2장이 추가되었어요/),
+    ).toBeInTheDocument();
+  });
+
+  it("양방향 체크박스는 기본(BASIC) 추가 모드에서만 노출된다", async () => {
+    mockListEmpty();
+    const user = userEvent.setup();
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("아직 카드가 없습니다.")).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /첫 카드 추가/ }));
+
+    // BASIC 추가 모드: 노출
+    expect(
+      await screen.findByRole("checkbox", { name: /양방향/ }),
+    ).toBeInTheDocument();
+
+    // 순서 모드로 전환하면 사라진다
+    await user.click(screen.getByRole("radio", { name: "순서" }));
+    expect(
+      screen.queryByRole("checkbox", { name: /양방향/ }),
+    ).not.toBeInTheDocument();
+  });
 });

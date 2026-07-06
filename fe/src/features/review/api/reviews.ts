@@ -20,6 +20,8 @@ export interface TodayReviewFlashcard {
   back: string | null;
   /** ORDERING 카드만 정답 순서 배열. */
   items: OrderingItem[] | null;
+  /** 양방향 짝 카드가 공유하는 그룹 키. 단방향 카드는 null. */
+  siblingGroupId: number | null;
   material: TodayReviewMaterial;
 }
 
@@ -80,6 +82,8 @@ export interface NextReview {
 export interface CompleteReviewResponse {
   completed: CompletedReview;
   nextReview: NextReview;
+  /** sibling burying으로 오늘 큐에서 밀려난 짝 복습 id들(없으면 빈 배열). */
+  buriedReviewIds: number[];
 }
 
 export async function completeReview(

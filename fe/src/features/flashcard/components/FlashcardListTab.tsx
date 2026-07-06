@@ -7,7 +7,11 @@ import { FieldError } from "@/components/ui/field-error";
 import { LoadingText } from "@/components/ui/loading-text";
 import { toast } from "@/shared/lib/toast";
 
-import type { Flashcard, FlashcardMutationPayload } from "../api/flashcards";
+import type {
+  Flashcard,
+  FlashcardCreateRequest,
+  FlashcardMutationPayload,
+} from "../api/flashcards";
 import { useCreateFlashcard } from "../hooks/useCreateFlashcard";
 import { useDeleteFlashcard } from "../hooks/useDeleteFlashcard";
 import { useFlashcards } from "../hooks/useFlashcards";
@@ -30,11 +34,23 @@ export function FlashcardListTab({ materialId }: Props) {
   const updateMutation = useUpdateFlashcard(materialId, editing?.id ?? 0);
   const deleteMutation = useDeleteFlashcard(materialId);
 
-  const handleCreate = (values: FlashcardMutationPayload) => {
-    createMutation.mutate(values, {
+  const handleCreate = (
+    values: FlashcardMutationPayload,
+    { bidirectional }: { bidirectional: boolean },
+  ) => {
+    const request: FlashcardCreateRequest =
+      bidirectional && values.type === "BASIC"
+        ? { ...values, bidirectional: true }
+        : values;
+    createMutation.mutate(request, {
       onSuccess: () => {
         setCreateOpen(false);
-        toast("카드가 추가되었어요. 첫 복습은 내일.", "success");
+        toast(
+          bidirectional
+            ? "양방향 카드 2장이 추가되었어요."
+            : "카드가 추가되었어요. 첫 복습은 내일.",
+          "success",
+        );
       },
       onError: () =>
         toast("카드 추가에 실패했어요. 잠시 후 다시 시도해주세요.", "error"),
