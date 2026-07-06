@@ -30,6 +30,8 @@ export interface Flashcard {
   back: string | null;
   /** ORDERING 카드만 정답 순서 배열, BASIC은 없음(null/생략). */
   items: OrderingItem[] | null;
+  /** 양방향 짝 카드가 공유하는 그룹 키. 단방향 카드는 null. */
+  siblingGroupId: number | null;
   nextReview: NextReview | null;
   createdAt: string;
 }
@@ -46,13 +48,21 @@ export type FlashcardMutationPayload =
   | { type: "BASIC"; front: string; back: string }
   | { type: "ORDERING"; front: string; items: OrderingItem[] };
 
-export type FlashcardCreateRequest = FlashcardMutationPayload;
+/** 생성 요청. BASIC은 `bidirectional`로 역방향 짝 카드도 함께 만들 수 있다(ORDERING 불가). */
+export type FlashcardCreateRequest =
+  | { type: "BASIC"; front: string; back: string; bidirectional?: boolean }
+  | { type: "ORDERING"; front: string; items: OrderingItem[] };
 
 export type FlashcardUpdateRequest = FlashcardMutationPayload;
 
 export interface FlashcardCreateResponse {
   flashcard: Flashcard;
   firstReview: FirstReview;
+  /** 양방향 생성일 때만 짝(역방향) 카드가 담긴다. */
+  sibling?: {
+    flashcard: Flashcard;
+    firstReview: FirstReview;
+  };
 }
 
 interface ApiEnvelope<T> {

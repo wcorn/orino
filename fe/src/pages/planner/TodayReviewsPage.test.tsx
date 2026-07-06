@@ -56,6 +56,7 @@ function mockToday(reviewIds: number[], opts?: { delayDays?: number }) {
               front: `질문 ${id}`,
               back: `답 ${id}`,
               items: null,
+              siblingGroupId: null,
               material: { id: 1, title: "테스트 자료", type: "BOOK" },
             },
             preview: { again: 1, hard: 6, good: 6, easy: 15 },
@@ -90,6 +91,7 @@ function mockTodayOrdering(
                 front,
                 back: null,
                 items,
+                siblingGroupId: null,
                 material: { id: 1, title: "테스트 자료", type: "BOOK" },
               },
               preview: { again: 1, hard: 6, good: 6, easy: 15 },
@@ -101,7 +103,10 @@ function mockTodayOrdering(
   );
 }
 
-function mockComplete(captureRatings: Array<{ id: number; rating: string }>) {
+function mockComplete(
+  captureRatings: Array<{ id: number; rating: string }>,
+  buriedReviewIds: number[] = [],
+) {
   server.use(
     http.post(
       `${API_BASE}/planner/reviews/:id/complete`,
@@ -127,6 +132,7 @@ function mockComplete(captureRatings: Array<{ id: number; rating: string }>) {
               easeFactor: 2.5,
               status: "PENDING",
             },
+            buriedReviewIds,
           },
         });
       },
@@ -310,5 +316,31 @@ describe("TodayReviewsPage", () => {
     await waitFor(() => {
       expect(ratings).toEqual([{ id: 1, rating: "GOOD" }]);
     });
+  });
+
+  it("짝 카드가 밀리면 큐에서 제거되고 카운터 분모가 감소한다", async () => {
+    // 큐 [1,2,3] 중 1을 완료하면 짝(review 2)이 밀린다
+    mockToday([1, 2, 3]);
+    mockComplete([], [2]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("질문 1")).toBeInTheDocument();
+    });
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+
+    await user.keyboard(" ");
+    await user.click(await screen.findByRole("button", { name: /Good/ }));
+
+    // 짝(질문 2)은 건너뛰고 질문 3으로, 분모는 3 → 2
+    await waitFor(() => {
+      expect(screen.getByText("질문 3")).toBeInTheDocument();
+    });
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+    expect(screen.queryByText("질문 2")).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/짝 카드는 다른 날 복습해요/),
+    ).toBeInTheDocument();
   });
 });

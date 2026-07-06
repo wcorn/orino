@@ -48,6 +48,14 @@ export function TodayReviewsPage() {
       {
         onSuccess: (res) => {
           toast(formatNextReviewMessage(res.nextReview.scheduledAt), "success");
+          // sibling burying — 밀려난 짝 복습을 오늘 세션 큐에서 제거(분모도 함께 감소)
+          const buried = res.buriedReviewIds ?? [];
+          if (buried.length > 0) {
+            setQueue((q) =>
+              q === null ? q : q.filter((r) => !buried.includes(r.id)),
+            );
+            toast("짝 카드는 다른 날 복습해요.", "info");
+          }
           setCurrentIndex((i) => i + 1);
         },
       },

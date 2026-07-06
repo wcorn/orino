@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
 
+import { Checkbox } from "@/components/ui/checkbox";
 import { FormField } from "@/components/ui/form-field";
 import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,7 +30,10 @@ interface Props {
   initialBack?: string | null;
   initialItems?: OrderingItem[] | null;
   pending?: boolean;
-  onSubmit: (payload: FlashcardMutationPayload) => void;
+  onSubmit: (
+    payload: FlashcardMutationPayload,
+    options: { bidirectional: boolean },
+  ) => void;
   onDelete?: () => void;
 }
 
@@ -53,6 +57,7 @@ export function FlashcardFormDialog({
   const [items, setItems] = useState<OrderingItem[]>(() =>
     ensureMinItems(initialItems ?? []),
   );
+  const [bidirectional, setBidirectional] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -60,6 +65,7 @@ export function FlashcardFormDialog({
       setFront(initialFront);
       setBack(initialBack ?? "");
       setItems(ensureMinItems(initialItems ?? []));
+      setBidirectional(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -82,17 +88,23 @@ export function FlashcardFormDialog({
       ? back !== (initialBack ?? "")
       : !itemsEqual(items, initialItemsFilled));
 
+  // 양방향은 BASIC + 추가 모드 + 앞·뒤 채움일 때만
+  const showBidirectional = mode === "create" && type === "BASIC";
+  const bidirectionalEnabled = showBidirectional && valid;
+
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!valid || !dirty || pending) return;
     if (type === "ORDERING") {
-      onSubmit({
-        type: "ORDERING",
-        front: frontTrim,
-        items: normalizeItems(items),
-      });
+      onSubmit(
+        { type: "ORDERING", front: frontTrim, items: normalizeItems(items) },
+        { bidirectional: false },
+      );
     } else {
-      onSubmit({ type: "BASIC", front: frontTrim, back: backTrim });
+      onSubmit(
+        { type: "BASIC", front: frontTrim, back: backTrim },
+        { bidirectional: bidirectionalEnabled && bidirectional },
+      );
     }
   };
 
@@ -130,6 +142,29 @@ export function FlashcardFormDialog({
             onChange={setBack}
             max={MAX_LEN}
           />
+        )}
+
+        {showBidirectional && (
+          <label
+            className={cn(
+              "flex items-start gap-2 text-sm",
+              !bidirectionalEnabled && "opacity-50",
+            )}
+          >
+            <Checkbox
+              checked={bidirectional}
+              disabled={!bidirectionalEnabled}
+              onChange={(e) => setBidirectional(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium">양방향</span>
+              <span className="text-muted-foreground">
+                {" "}
+                — 역방향 카드도 함께 만들기 (앞↔뒤)
+              </span>
+            </span>
+          </label>
         )}
 
         <Modal.Footer
