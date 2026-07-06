@@ -178,4 +178,25 @@ class TodayReviewsControllerTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.data.reviews", hasSize(1)))
                 .andExpect(jsonPath("$.data.reviews[0].id").value(pending.getId()));
     }
+
+    @Test
+    @DisplayName("GET today - 순서 카드는 type/items를 포함하고 back은 생략된다")
+    void embeds_ordering_card_with_items() throws Exception {
+        LocalDate today = testToday(clock);
+        Flashcard ordering = flashcardRepository.save(Flashcard.ordering(
+                member.getId(), material.getId(), "순서대로 배열",
+                "[{\"id\":\"a\",\"text\":\"1단계\"},{\"id\":\"b\",\"text\":\"2단계\"},{\"id\":\"c\",\"text\":\"3단계\"}]"));
+        reviewScheduleRepository.save(new ReviewSchedule(
+                member.getId(), ordering.getId(), 1, atTestZone(today.atStartOfDay()), 1,
+                new BigDecimal("2.50")));
+
+        mockMvc.perform(get("/api/planner/reviews/today")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reviews[0].flashcard.type").value("ORDERING"))
+                .andExpect(jsonPath("$.data.reviews[0].flashcard.front").value("순서대로 배열"))
+                .andExpect(jsonPath("$.data.reviews[0].flashcard.back").doesNotExist())
+                .andExpect(jsonPath("$.data.reviews[0].flashcard.items", hasSize(3)))
+                .andExpect(jsonPath("$.data.reviews[0].flashcard.items[0].text").value("1단계"));
+    }
 }

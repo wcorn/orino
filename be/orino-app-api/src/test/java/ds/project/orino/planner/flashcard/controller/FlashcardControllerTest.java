@@ -298,4 +298,211 @@ class FlashcardControllerTest extends ApiTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isNotFound());
     }
+
+    // ===== 순서 카드(ORDERING) =====
+
+    private static final String ORDERING_ITEMS_3 = """
+            [{"id":"a","text":"1단계"},{"id":"b","text":"2단계"},{"id":"c","text":"3단계"}]
+            """;
+
+    @Test
+    @DisplayName("POST ORDERING - 순서 카드 생성 + 첫 복습이 종류 무관하게 자동 생성")
+    void create_ordering_with_first_review() throws Exception {
+        LocalDate today = testToday(clock);
+
+        mockMvc.perform(post("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"ORDERING","front":"순서대로 배열",
+                                 "items":[{"id":"a","text":"1단계"},{"id":"b","text":"2단계"},
+                                          {"id":"c","text":"3단계"}]}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.flashcard.type").value("ORDERING"))
+                .andExpect(jsonPath("$.data.flashcard.front").value("순서대로 배열"))
+                .andExpect(jsonPath("$.data.flashcard.back").doesNotExist())
+                .andExpect(jsonPath("$.data.flashcard.items", hasSize(3)))
+                .andExpect(jsonPath("$.data.flashcard.items[0].id").value("a"))
+                .andExpect(jsonPath("$.data.flashcard.items[0].text").value("1단계"))
+                .andExpect(jsonPath("$.data.flashcard.items[2].id").value("c"))
+                // 첫 복습은 flashcard_id만 참조 → 종류 무관하게 동일하게 생성
+                .andExpect(jsonPath("$.data.firstReview.sequence").value(1))
+                .andExpect(jsonPath("$.data.firstReview.intervalDays").value(1))
+                .andExpect(jsonPath("$.data.firstReview.scheduledAt",
+                        startsWith(today.plusDays(1) + "T04:00")));
+    }
+
+    @Test
+    @DisplayName("POST ORDERING - items 3개 미만이면 400")
+    void create_ordering_too_few_items() throws Exception {
+        mockMvc.perform(post("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"ORDERING","front":"F",
+                                 "items":[{"id":"a","text":"1"},{"id":"b","text":"2"}]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SP-ERR-002"));
+    }
+
+    @Test
+    @DisplayName("POST ORDERING - items 7개 초과면 400")
+    void create_ordering_too_many_items() throws Exception {
+        StringBuilder items = new StringBuilder("[");
+        for (int i = 0; i < 8; i++) {
+            if (i > 0) {
+                items.append(",");
+            }
+            items.append("{\"id\":\"i").append(i).append("\",\"text\":\"t").append(i).append("\"}");
+        }
+        items.append("]");
+
+        mockMvc.perform(post("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"ORDERING\",\"front\":\"F\",\"items\":" + items + "}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SP-ERR-002"));
+    }
+
+    @Test
+    @DisplayName("POST ORDERING - id가 카드 내에서 중복이면 400")
+    void create_ordering_duplicate_id() throws Exception {
+        mockMvc.perform(post("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"ORDERING","front":"F",
+                                 "items":[{"id":"a","text":"1"},{"id":"a","text":"2"},{"id":"c","text":"3"}]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SP-ERR-002"));
+    }
+
+    @Test
+    @DisplayName("POST ORDERING - 항목 text가 빈 문자열이면 400")
+    void create_ordering_blank_item_text() throws Exception {
+        mockMvc.perform(post("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"ORDERING","front":"F",
+                                 "items":[{"id":"a","text":""},{"id":"b","text":"2"},{"id":"c","text":"3"}]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SP-ERR-002"));
+    }
+
+    @Test
+    @DisplayName("POST BASIC - back이 없으면 400 (BASIC은 back 필수)")
+    void create_basic_without_back() throws Exception {
+        mockMvc.perform(post("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"BASIC","front":"Q"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SP-ERR-002"));
+    }
+
+    @Test
+    @DisplayName("POST - type 생략 시 BASIC으로 저장된다")
+    void create_defaults_to_basic() throws Exception {
+        mockMvc.perform(post("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"front":"Q","back":"A"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.flashcard.type").value("BASIC"))
+                .andExpect(jsonPath("$.data.flashcard.items").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("GET - 순서 카드 목록은 type/items를 포함하고 back은 생략된다")
+    void list_includes_type_and_items() throws Exception {
+        flashcardRepository.save(
+                Flashcard.ordering(member.getId(), material.getId(), "순서", ORDERING_ITEMS_3.strip()));
+
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.flashcards[0].type").value("ORDERING"))
+                .andExpect(jsonPath("$.data.flashcards[0].items", hasSize(3)))
+                .andExpect(jsonPath("$.data.flashcards[0].items[1].text").value("2단계"))
+                .andExpect(jsonPath("$.data.flashcards[0].back").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("PATCH ORDERING - 항목 재정렬이 저장 순서에 반영된다")
+    void update_ordering_reorder_items() throws Exception {
+        Flashcard card = flashcardRepository.save(
+                Flashcard.ordering(member.getId(), material.getId(), "순서", ORDERING_ITEMS_3.strip()));
+
+        mockMvc.perform(patch("/api/planner/flashcards/{id}", card.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{"id":"c","text":"3단계"},{"id":"b","text":"2단계"},
+                                          {"id":"a","text":"1단계"}]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.type").value("ORDERING"))
+                .andExpect(jsonPath("$.data.items[0].id").value("c"))
+                .andExpect(jsonPath("$.data.items[2].id").value("a"));
+    }
+
+    @Test
+    @DisplayName("PATCH - BASIC → ORDERING 전환 (items 지정, back은 비워짐)")
+    void update_convert_basic_to_ordering() throws Exception {
+        Flashcard card = flashcardRepository.save(
+                new Flashcard(member.getId(), material.getId(), "Q", "A"));
+
+        mockMvc.perform(patch("/api/planner/flashcards/{id}", card.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"ORDERING\",\"items\":" + ORDERING_ITEMS_3.strip() + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.type").value("ORDERING"))
+                .andExpect(jsonPath("$.data.items", hasSize(3)))
+                .andExpect(jsonPath("$.data.back").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("PATCH - ORDERING → BASIC 전환 (back 지정, items는 비워짐)")
+    void update_convert_ordering_to_basic() throws Exception {
+        Flashcard card = flashcardRepository.save(
+                Flashcard.ordering(member.getId(), material.getId(), "순서", ORDERING_ITEMS_3.strip()));
+
+        mockMvc.perform(patch("/api/planner/flashcards/{id}", card.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"BASIC","back":"정답"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.type").value("BASIC"))
+                .andExpect(jsonPath("$.data.back").value("정답"))
+                .andExpect(jsonPath("$.data.items").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("PATCH - BASIC → ORDERING 전환인데 items 미지정이면 400")
+    void update_convert_to_ordering_without_items_fails() throws Exception {
+        Flashcard card = flashcardRepository.save(
+                new Flashcard(member.getId(), material.getId(), "Q", "A"));
+
+        mockMvc.perform(patch("/api/planner/flashcards/{id}", card.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"ORDERING"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SP-ERR-002"));
+    }
 }
