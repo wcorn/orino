@@ -27,6 +27,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -254,5 +256,93 @@ class ReviewControllerTest extends ApiTestSupport {
             Number nextId = com.jayway.jsonpath.JsonPath.read(body, "$.data.nextReview.id");
             currentId = nextId.longValue();
         }
+    }
+
+    @Test
+    @DisplayName("POST complete - 단방향 카드는 buriedReviewIds가 빈 배열")
+    void complete_solo_card_returns_empty_buried() throws Exception {
+        LocalDate today = testToday(clock);
+        ReviewSchedule current = reviewScheduleRepository.save(new ReviewSchedule(
+                member.getId(), card.getId(), 1, atTestZone(today.atTime(4, 0)), 1,
+                new BigDecimal("2.50")));
+
+        mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"rating":"GOOD"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.buriedReviewIds", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("POST complete - 짝 카드 완료 시 오늘 due인 형제 review를 내일로 밀어내고 buriedReviewIds로 반환")
+    void complete_buries_due_sibling() throws Exception {
+        StudyMaterial material = studyMaterialRepository.save(
+                new StudyMaterial(member.getId(), "자료2", MaterialType.BOOK));
+        Flashcard a = flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "정의", "설명"));
+        a.assignSiblingGroup(a.getId());
+        flashcardRepository.save(a);
+        Flashcard b = new Flashcard(member.getId(), material.getId(), "설명", "정의");
+        b.assignSiblingGroup(a.getId());
+        b = flashcardRepository.save(b);
+
+        LocalDate today = testToday(clock);
+        ReviewSchedule reviewA = reviewScheduleRepository.save(new ReviewSchedule(
+                member.getId(), a.getId(), 1, atTestZone(today.atTime(4, 0)), 1, new BigDecimal("2.50")));
+        ReviewSchedule reviewB = reviewScheduleRepository.save(new ReviewSchedule(
+                member.getId(), b.getId(), 1, atTestZone(today.atTime(4, 0)), 1, new BigDecimal("2.50")));
+
+        mockMvc.perform(post("/api/planner/reviews/{id}/complete", reviewA.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"rating":"GOOD"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.buriedReviewIds", hasSize(1)))
+                .andExpect(jsonPath("$.data.buriedReviewIds",
+                        contains(reviewB.getId().intValue())));
+
+        // 형제 review는 내일 04:00으로 이동 (SM-2 간격/ease/status는 불변)
+        ReviewSchedule buried = reviewScheduleRepository.findById(reviewB.getId()).orElseThrow();
+        assertThat(buried.getScheduledAt()).isEqualTo(atTestZone(today.plusDays(1).atTime(4, 0)));
+        assertThat(buried.getIntervalDays()).isEqualTo(1);
+        assertThat(buried.getEaseFactor()).isEqualByComparingTo("2.50");
+        assertThat(buried.getStatus()).isEqualTo(ReviewStatus.PENDING);
+        assertThat(buried.getSequence()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("POST complete - 형제 review가 미래(내일)면 밀어내지 않는다")
+    void complete_does_not_bury_future_sibling() throws Exception {
+        StudyMaterial material = studyMaterialRepository.save(
+                new StudyMaterial(member.getId(), "자료3", MaterialType.BOOK));
+        Flashcard a = flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "정의", "설명"));
+        a.assignSiblingGroup(a.getId());
+        flashcardRepository.save(a);
+        Flashcard b = new Flashcard(member.getId(), material.getId(), "설명", "정의");
+        b.assignSiblingGroup(a.getId());
+        b = flashcardRepository.save(b);
+
+        LocalDate today = testToday(clock);
+        ReviewSchedule reviewA = reviewScheduleRepository.save(new ReviewSchedule(
+                member.getId(), a.getId(), 1, atTestZone(today.atTime(4, 0)), 1, new BigDecimal("2.50")));
+        ReviewSchedule futureB = reviewScheduleRepository.save(new ReviewSchedule(
+                member.getId(), b.getId(), 1, atTestZone(today.plusDays(1).atTime(4, 0)), 1,
+                new BigDecimal("2.50")));
+
+        mockMvc.perform(post("/api/planner/reviews/{id}/complete", reviewA.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"rating":"GOOD"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.buriedReviewIds", hasSize(0)));
+
+        ReviewSchedule unchanged = reviewScheduleRepository.findById(futureB.getId()).orElseThrow();
+        assertThat(unchanged.getScheduledAt()).isEqualTo(atTestZone(today.plusDays(1).atTime(4, 0)));
     }
 }

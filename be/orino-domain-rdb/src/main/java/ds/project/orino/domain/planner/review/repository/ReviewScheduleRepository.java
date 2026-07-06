@@ -14,6 +14,10 @@ public interface ReviewScheduleRepository extends JpaRepository<ReviewSchedule, 
     List<ReviewSchedule> findAllByFlashcardIdInAndStatusOrderByScheduledAtAscIdAsc(
             Collection<Long> flashcardIds, ReviewStatus status);
 
+    /** Sibling burying용 — 짝 카드들의 현재 due(scheduled_at ≤ now) PENDING 복습. */
+    List<ReviewSchedule> findAllByFlashcardIdInAndStatusAndScheduledAtLessThanEqual(
+            Collection<Long> flashcardIds, ReviewStatus status, Instant scheduledAt);
+
     Optional<ReviewSchedule> findByIdAndMemberId(Long id, Long memberId);
 
     List<ReviewSchedule> findAllByMemberIdAndStatusAndScheduledAtLessThanEqualOrderByScheduledAtAscIdAsc(

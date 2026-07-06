@@ -1,0 +1,27 @@
+databaseChangeLog:
+  # 양방향 짝 카드 (#748, Epic #747, Study Planner v2.4).
+  # flashcard에 짝 공유 키(sibling_group_id)를 추가한다. 양방향으로 생성된 (앞→뒤)·(뒤→앞)
+  # 두 카드가 같은 그룹 값을 공유한다. FK 없음(그룹 키), 기존 카드는 전부 NULL로 무손실 유지.
+  - changeSet:
+      id: 035-add-flashcard-sibling-group
+      author: wcorn
+      comment: flashcard에 짝 그룹 키(sibling_group_id) + 인덱스 추가.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: flashcard
+                columnName: sibling_group_id
+      changes:
+        - addColumn:
+            tableName: flashcard
+            columns:
+              - column:
+                  name: sibling_group_id
+                  type: BIGINT
+        - createIndex:
+            tableName: flashcard
+            indexName: idx_flashcard_sibling_group
+            columns:
+              - column:
+                  name: sibling_group_id

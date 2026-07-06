@@ -16,13 +16,14 @@ public record FlashcardResponse(
         String front,
         String back,
         List<OrderingItem> items,
+        Long siblingGroupId,
         ReviewScheduleView nextReview,
         Instant createdAt
 ) {
     public static FlashcardResponse of(Flashcard f, List<OrderingItem> items, ReviewScheduleView nextReview) {
         return new FlashcardResponse(
                 f.getId(), f.getMaterialId(), f.getType(), f.getFront(), f.getBack(),
-                items, nextReview, f.getCreatedAt());
+                items, f.getSiblingGroupId(), nextReview, f.getCreatedAt());
     }
 
     public static FlashcardResponse withoutReview(Flashcard f, List<OrderingItem> items) {
