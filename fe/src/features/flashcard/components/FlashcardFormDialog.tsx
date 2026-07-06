@@ -5,16 +5,31 @@ import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
+import type {
+  FlashcardMutationPayload,
+  FlashcardType,
+  OrderingItem,
+} from "../api/flashcards";
+import {
+  ensureMinItems,
+  isOrderingValid,
+  itemsEqual,
+  normalizeItems,
+} from "../orderingItems";
+import { OrderingItemsEditor } from "./OrderingItemsEditor";
+
 const MAX_LEN = 1000;
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mode: "create" | "edit";
+  initialType?: FlashcardType;
   initialFront?: string;
-  initialBack?: string;
+  initialBack?: string | null;
+  initialItems?: OrderingItem[] | null;
   pending?: boolean;
-  onSubmit: (values: { front: string; back: string }) => void;
+  onSubmit: (payload: FlashcardMutationPayload) => void;
   onDelete?: () => void;
 }
 
@@ -22,39 +37,63 @@ export function FlashcardFormDialog({
   open,
   onOpenChange,
   mode,
+  initialType = "BASIC",
   initialFront = "",
   initialBack = "",
+  initialItems = null,
   pending = false,
   onSubmit,
   onDelete,
 }: Props) {
   const frontId = useId();
   const backId = useId();
+  const [type, setType] = useState<FlashcardType>(initialType);
   const [front, setFront] = useState(initialFront);
-  const [back, setBack] = useState(initialBack);
+  const [back, setBack] = useState(initialBack ?? "");
+  const [items, setItems] = useState<OrderingItem[]>(() =>
+    ensureMinItems(initialItems ?? []),
+  );
 
   useEffect(() => {
     if (open) {
+      setType(initialType);
       setFront(initialFront);
-      setBack(initialBack);
+      setBack(initialBack ?? "");
+      setItems(ensureMinItems(initialItems ?? []));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const frontTrim = front.trim();
   const backTrim = back.trim();
+  const frontValid = frontTrim.length >= 1 && frontTrim.length <= MAX_LEN;
+
   const valid =
-    frontTrim.length >= 1 &&
-    frontTrim.length <= MAX_LEN &&
-    backTrim.length >= 1 &&
-    backTrim.length <= MAX_LEN;
+    type === "ORDERING"
+      ? frontValid && isOrderingValid(items, MAX_LEN)
+      : frontValid && backTrim.length >= 1 && backTrim.length <= MAX_LEN;
+
+  const initialItemsFilled = ensureMinItems(initialItems ?? []);
   const dirty =
-    mode === "create" || front !== initialFront || back !== initialBack;
+    mode === "create" ||
+    type !== initialType ||
+    front !== initialFront ||
+    (type === "BASIC"
+      ? back !== (initialBack ?? "")
+      : !itemsEqual(items, initialItemsFilled));
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!valid || !dirty || pending) return;
-    onSubmit({ front: frontTrim, back: backTrim });
+    if (type === "ORDERING") {
+      onSubmit({
+        type: "ORDERING",
+        front: frontTrim,
+        items: normalizeItems(items),
+      });
+    } else {
+      onSubmit({ type: "BASIC", front: frontTrim, back: backTrim });
+    }
   };
 
   return (
@@ -64,23 +103,34 @@ export function FlashcardFormDialog({
       title={mode === "create" ? "카드 추가" : "카드 편집"}
     >
       <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
+        <TypeToggle value={type} onChange={setType} />
+
         <CharField
           id={frontId}
-          label="앞면 (질문)"
-          rows={3}
+          label={type === "ORDERING" ? "지시문" : "앞면 (질문)"}
+          rows={type === "ORDERING" ? 2 : 3}
           value={front}
           onChange={setFront}
           max={MAX_LEN}
           autoFocus
         />
-        <CharField
-          id={backId}
-          label="뒷면 (답)"
-          rows={4}
-          value={back}
-          onChange={setBack}
-          max={MAX_LEN}
-        />
+
+        {type === "ORDERING" ? (
+          <OrderingItemsEditor
+            items={items}
+            onChange={setItems}
+            maxLen={MAX_LEN}
+          />
+        ) : (
+          <CharField
+            id={backId}
+            label="뒷면 (답)"
+            rows={4}
+            value={back}
+            onChange={setBack}
+            max={MAX_LEN}
+          />
+        )}
 
         <Modal.Footer
           submitLabel="저장"
@@ -91,6 +141,43 @@ export function FlashcardFormDialog({
         />
       </form>
     </Modal>
+  );
+}
+
+interface TypeToggleProps {
+  value: FlashcardType;
+  onChange: (next: FlashcardType) => void;
+}
+
+function TypeToggle({ value, onChange }: TypeToggleProps) {
+  const options: Array<{ key: FlashcardType; label: string }> = [
+    { key: "BASIC", label: "기본" },
+    { key: "ORDERING", label: "순서" },
+  ];
+  return (
+    <div
+      role="radiogroup"
+      aria-label="카드 종류"
+      className="bg-muted flex gap-1 rounded-lg p-1"
+    >
+      {options.map((opt) => (
+        <button
+          key={opt.key}
+          type="button"
+          role="radio"
+          aria-checked={value === opt.key}
+          onClick={() => onChange(opt.key)}
+          className={cn(
+            "flex-1 rounded-md py-1.5 text-sm font-medium transition-colors",
+            value === opt.key
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
   );
 }
 

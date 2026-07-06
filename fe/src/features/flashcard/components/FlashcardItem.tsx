@@ -30,9 +30,19 @@ export function FlashcardItem({ index, flashcard, onEdit }: Props) {
           <p className="text-sm font-medium whitespace-pre-line">
             {flashcard.front}
           </p>
-          <p className="text-muted-foreground text-xs whitespace-pre-line">
-            뒤: {flashcard.back}
-          </p>
+          {flashcard.type === "ORDERING" ? (
+            <ol className="text-muted-foreground flex list-decimal flex-col gap-0.5 pl-4 text-xs">
+              {flashcard.items?.map((item) => (
+                <li key={item.id} className="whitespace-pre-line">
+                  {item.text}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-muted-foreground text-xs whitespace-pre-line">
+              뒤: {flashcard.back}
+            </p>
+          )}
         </div>
         <Button
           variant="ghost"
