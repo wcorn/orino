@@ -56,7 +56,7 @@ describe("useCreateFlashcard", () => {
     const { wrapper, spy } = makeWrapper();
     const { result } = renderHook(() => useCreateFlashcard(1), { wrapper });
 
-    result.current.mutate({ front: "test", back: "test" });
+    result.current.mutate({ type: "BASIC", front: "test", back: "test" });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 

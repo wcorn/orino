@@ -7,7 +7,7 @@ import { FieldError } from "@/components/ui/field-error";
 import { LoadingText } from "@/components/ui/loading-text";
 import { toast } from "@/shared/lib/toast";
 
-import type { Flashcard } from "../api/flashcards";
+import type { Flashcard, FlashcardMutationPayload } from "../api/flashcards";
 import { useCreateFlashcard } from "../hooks/useCreateFlashcard";
 import { useDeleteFlashcard } from "../hooks/useDeleteFlashcard";
 import { useFlashcards } from "../hooks/useFlashcards";
@@ -30,7 +30,7 @@ export function FlashcardListTab({ materialId }: Props) {
   const updateMutation = useUpdateFlashcard(materialId, editing?.id ?? 0);
   const deleteMutation = useDeleteFlashcard(materialId);
 
-  const handleCreate = (values: { front: string; back: string }) => {
+  const handleCreate = (values: FlashcardMutationPayload) => {
     createMutation.mutate(values, {
       onSuccess: () => {
         setCreateOpen(false);
@@ -41,7 +41,7 @@ export function FlashcardListTab({ materialId }: Props) {
     });
   };
 
-  const handleUpdate = (values: { front: string; back: string }) => {
+  const handleUpdate = (values: FlashcardMutationPayload) => {
     if (!editing) return;
     updateMutation.mutate(values, {
       onSuccess: () => setEditing(null),
@@ -116,8 +116,10 @@ export function FlashcardListTab({ materialId }: Props) {
             updateMutation.reset();
           }
         }}
+        initialType={editing?.type}
         initialFront={editing?.front}
         initialBack={editing?.back}
+        initialItems={editing?.items}
         pending={updateMutation.isPending}
         onSubmit={handleUpdate}
         onDelete={() => setDeleteConfirmOpen(true)}
