@@ -14,7 +14,6 @@ public class DbCleaner {
             "review_schedule",
             "flashcard",
             "note",
-            "memo",
             "monthly_goal",
             "study_material",
             "google_account",

@@ -1,4 +1,4 @@
-import type { MemoTreeNode } from "./api/memos";
+import type { NoteTreeNode } from "./api/notes";
 
 export type DropPosition = "inside" | "before" | "after";
 
@@ -8,7 +8,7 @@ export interface MovePlan {
   orderedIds: number[];
 }
 
-function findNode(nodes: MemoTreeNode[], id: number): MemoTreeNode | null {
+function findNode(nodes: NoteTreeNode[], id: number): NoteTreeNode | null {
   for (const n of nodes) {
     if (n.id === id) return n;
     const found = findNode(n.children, id);
@@ -19,7 +19,7 @@ function findNode(nodes: MemoTreeNode[], id: number): MemoTreeNode | null {
 
 /** id의 부모 id를 찾는다. 루트면 null, 트리에 없으면 undefined. */
 function findParentId(
-  nodes: MemoTreeNode[],
+  nodes: NoteTreeNode[],
   id: number,
   parent: number | null = null,
 ): number | null | undefined {
@@ -33,22 +33,22 @@ function findParentId(
 
 /** parentId의 자식 목록(루트는 parentId=null). */
 function childrenOf(
-  tree: MemoTreeNode[],
+  tree: NoteTreeNode[],
   parentId: number | null,
-): MemoTreeNode[] {
+): NoteTreeNode[] {
   if (parentId == null) return tree;
   return findNode(tree, parentId)?.children ?? [];
 }
 
 /** candidateId가 rootId 자신이거나 그 서브트리(자손)에 속하면 true. */
 function isSelfOrDescendant(
-  tree: MemoTreeNode[],
+  tree: NoteTreeNode[],
   rootId: number,
   candidateId: number,
 ): boolean {
   const root = findNode(tree, rootId);
   if (!root) return false;
-  const walk = (node: MemoTreeNode): boolean =>
+  const walk = (node: NoteTreeNode): boolean =>
     node.id === candidateId || node.children.some(walk);
   return walk(root);
 }
@@ -58,7 +58,7 @@ function isSelfOrDescendant(
  * position: inside=대상의 마지막 자식으로, before/after=대상의 형제로.
  */
 export function computeMove(
-  tree: MemoTreeNode[],
+  tree: NoteTreeNode[],
   dragId: number,
   targetId: number,
   position: DropPosition,

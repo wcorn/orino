@@ -14,7 +14,7 @@ import {
   importHome,
   importMaterialDetail,
   importMaterialList,
-  importMemo,
+  importNotes,
   importPlannerCalendar,
   importPlannerSettings,
   importRoutines,
@@ -32,7 +32,7 @@ const PlannerCalendarPage = lazy(importPlannerCalendar);
 const PlannerSettingsPage = lazy(importPlannerSettings);
 const RoutinesPage = lazy(importRoutines);
 const WeeklyPlanPage = lazy(importWeeklyPlan);
-const MemoPage = lazy(importMemo);
+const NotesPage = lazy(importNotes);
 
 function RouteFallback() {
   return (
@@ -117,10 +117,10 @@ export function AppRouter() {
             }
           />
           <Route
-            path="/memo"
+            path="/notes"
             element={
               <Suspense fallback={<RouteFallback />}>
-                <MemoPage />
+                <NotesPage />
               </Suspense>
             }
           />

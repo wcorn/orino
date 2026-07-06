@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import type { MemoTreeNode } from "./api/memos";
+import type { NoteTreeNode } from "./api/notes";
 import { computeMove } from "./treeMove";
 
 function node(
   id: number,
-  children: MemoTreeNode[] = [],
+  children: NoteTreeNode[] = [],
   parentId: number | null = null,
-): MemoTreeNode {
+): NoteTreeNode {
   return { id, title: `n${id}`, parentId, sortOrder: 0, children };
 }
 
 // 트리: 1, 2(자식 21,22), 3
-const tree: MemoTreeNode[] = [
+const tree: NoteTreeNode[] = [
   node(1),
   node(2, [node(21, [], 2), node(22, [], 2)]),
   node(3),

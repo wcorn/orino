@@ -28,7 +28,8 @@ public class Note {
     @Column(name = "member_id", nullable = false)
     private Long memberId;
 
-    @Column(name = "material_id", nullable = false)
+    /** 학습자료 종속 노트는 자료 id, 독립 노트는 null. */
+    @Column(name = "material_id")
     private Long materialId;
 
     @Column(name = "parent_id")

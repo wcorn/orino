@@ -20,7 +20,8 @@ export interface NoteTreeResponse {
 
 export interface NoteDetail {
   id: number;
-  materialId: number;
+  /** 학습자료 종속 노트는 자료 id, 독립 노트는 null. */
+  materialId: number | null;
   parentId: number | null;
   title: string;
   sortOrder: number;
@@ -30,7 +31,7 @@ export interface NoteDetail {
 
 export interface NoteUpdateResponse {
   id: number;
-  materialId: number;
+  materialId: number | null;
   parentId: number | null;
   title: string;
   sortOrder: number;
@@ -42,18 +43,21 @@ interface ApiEnvelope<T> {
   data: T;
 }
 
+/**
+ * 노트 트리를 조회한다. materialId가 있으면 자료 종속 노트, 없으면 독립 노트.
+ */
 export async function fetchNoteTree(
-  materialId: number,
+  materialId?: number,
 ): Promise<NoteTreeNode[]> {
-  const { data } = await client.get<ApiEnvelope<NoteTreeResponse>>(
-    `/planner/materials/${materialId}/notes`,
-  );
+  const { data } = await client.get<ApiEnvelope<NoteTreeResponse>>("/notes", {
+    params: materialId != null ? { materialId } : undefined,
+  });
   return data.data.notes;
 }
 
 export async function fetchNote(noteId: number): Promise<NoteDetail> {
   const { data } = await client.get<ApiEnvelope<NoteDetail>>(
-    `/planner/notes/${noteId}`,
+    `/notes/${noteId}`,
   );
   return data.data;
 }
@@ -64,12 +68,13 @@ export interface NoteCreateRequest {
 }
 
 export async function createNote(
-  materialId: number,
+  materialId: number | undefined,
   request: NoteCreateRequest,
 ): Promise<NoteDetail> {
   const { data } = await client.post<ApiEnvelope<NoteDetail>>(
-    `/planner/materials/${materialId}/notes`,
+    "/notes",
     request,
+    { params: materialId != null ? { materialId } : undefined },
   );
   return data.data;
 }
@@ -86,12 +91,12 @@ export async function updateNote(
   request: NoteUpdateRequest,
 ): Promise<NoteUpdateResponse> {
   const { data } = await client.patch<ApiEnvelope<NoteUpdateResponse>>(
-    `/planner/notes/${noteId}`,
+    `/notes/${noteId}`,
     request,
   );
   return data.data;
 }
 
 export async function deleteNote(noteId: number): Promise<void> {
-  await client.delete(`/planner/notes/${noteId}`);
+  await client.delete(`/notes/${noteId}`);
 }

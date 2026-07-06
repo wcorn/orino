@@ -34,7 +34,7 @@ interface TreeNode {
 
 function mockTree(notes: TreeNode[]) {
   server.use(
-    http.get(`${API_BASE}/planner/materials/1/notes`, () =>
+    http.get(`${API_BASE}/notes`, () =>
       HttpResponse.json({ code: "OK", data: { notes } }),
     ),
   );
@@ -46,7 +46,7 @@ function mockNoteDetail(
   title = "노트",
 ) {
   server.use(
-    http.get(`${API_BASE}/planner/notes/${id}`, () =>
+    http.get(`${API_BASE}/notes/${id}`, () =>
       HttpResponse.json({
         code: "OK",
         data: {
@@ -83,7 +83,7 @@ describe("NoteTab", () => {
   it("[첫 노트 만들기] → POST 후 새 노트가 선택되어 에디터가 열린다", async () => {
     mockTree([]);
     server.use(
-      http.post(`${API_BASE}/planner/materials/1/notes`, () =>
+      http.post(`${API_BASE}/notes`, () =>
         HttpResponse.json(
           {
             code: "OK",
@@ -146,28 +146,25 @@ describe("NoteTab", () => {
     mockNoteDetail(1, { type: "doc", content: [] }, "부모");
     let postedParentId: number | null = null;
     server.use(
-      http.post(
-        `${API_BASE}/planner/materials/1/notes`,
-        async ({ request }) => {
-          const body = (await request.json()) as { parentId: number | null };
-          postedParentId = body.parentId;
-          return HttpResponse.json(
-            {
-              code: "OK",
-              data: {
-                id: 99,
-                materialId: 1,
-                parentId: body.parentId,
-                title: "제목 없음",
-                sortOrder: 0,
-                content: { type: "doc", content: [] },
-                updatedAt: "2026-05-31T10:00:00",
-              },
+      http.post(`${API_BASE}/notes`, async ({ request }) => {
+        const body = (await request.json()) as { parentId: number | null };
+        postedParentId = body.parentId;
+        return HttpResponse.json(
+          {
+            code: "OK",
+            data: {
+              id: 99,
+              materialId: 1,
+              parentId: body.parentId,
+              title: "제목 없음",
+              sortOrder: 0,
+              content: { type: "doc", content: [] },
+              updatedAt: "2026-05-31T10:00:00",
             },
-            { status: 201 },
-          );
-        },
-      ),
+          },
+          { status: 201 },
+        );
+      }),
     );
 
     const user = userEvent.setup();
@@ -280,7 +277,7 @@ describe("NoteTab", () => {
     mockNoteDetail(1, { type: "doc", content: [] }, "삭제할 루트");
     let deletedId: number | null = null;
     server.use(
-      http.delete(`${API_BASE}/planner/notes/1`, () => {
+      http.delete(`${API_BASE}/notes/1`, () => {
         deletedId = 1;
         return new HttpResponse(null, { status: 204 });
       }),

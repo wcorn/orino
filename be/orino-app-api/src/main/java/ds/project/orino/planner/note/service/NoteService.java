@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 @Service
@@ -41,9 +42,11 @@ public class NoteService {
         this.studyMaterialRepository = studyMaterialRepository;
     }
 
+    /**
+     * 노트 트리를 조회한다. materialId가 있으면 자료 종속 노트, null이면 독립 노트.
+     */
     public NoteTreeResponse findTree(Long memberId, Long materialId) {
-        requireOwnedMaterial(memberId, materialId);
-        List<Note> notes = noteRepository.findAllByMaterialIdOrderBySortOrderAscIdAsc(materialId);
+        List<Note> notes = scopeNotes(memberId, materialId);
         return new NoteTreeResponse(buildTree(notes));
     }
 
@@ -53,17 +56,19 @@ public class NoteService {
 
     @Transactional
     public NoteDetailResponse create(Long memberId, Long materialId, NoteCreateRequest request) {
-        requireOwnedMaterial(memberId, materialId);
+        if (materialId != null) {
+            requireOwnedMaterial(memberId, materialId);
+        }
 
         Long parentId = request.parentId();
         if (parentId != null) {
             Note parent = getOwnedNote(memberId, parentId);
-            if (!parent.getMaterialId().equals(materialId)) {
+            if (!Objects.equals(parent.getMaterialId(), materialId)) {
                 throw new CustomException(ErrorCode.INVALID_REQUEST);
             }
         }
 
-        int sortOrder = noteRepository.findMaxSortOrder(materialId, parentId) + 1;
+        int sortOrder = maxSortOrder(memberId, materialId, parentId) + 1;
         Note saved = noteRepository.save(
                 new Note(memberId, materialId, parentId, request.title(), sortOrder));
         return NoteDetailResponse.of(saved);
@@ -109,10 +114,12 @@ public class NoteService {
             throw new CustomException(ErrorCode.INVALID_REQUEST);
         }
         Note newParent = getOwnedNote(memberId, newParentId);
-        if (!newParent.getMaterialId().equals(note.getMaterialId())) {
+        // 같은 스코프(둘 다 같은 자료 / 둘 다 독립)끼리만 이동 가능
+        if (!Objects.equals(newParent.getMaterialId(), note.getMaterialId())) {
             throw new CustomException(ErrorCode.INVALID_REQUEST);
         }
-        if (isDescendant(note.getMaterialId(), note.getId(), newParentId)) {
+        if (isDescendant(scopeNotes(note.getMemberId(), note.getMaterialId()),
+                note.getId(), newParentId)) {
             throw new CustomException(ErrorCode.INVALID_REQUEST);
         }
         note.updateParent(newParentId);
@@ -121,8 +128,7 @@ public class NoteService {
     /**
      * candidateId가 rootId의 서브트리(자손) 안에 있으면 true.
      */
-    private boolean isDescendant(Long materialId, Long rootId, Long candidateId) {
-        List<Note> all = noteRepository.findAllByMaterialIdOrderBySortOrderAscIdAsc(materialId);
+    private boolean isDescendant(List<Note> all, Long rootId, Long candidateId) {
         Map<Long, List<Long>> childrenByParent = new HashMap<>();
         for (Note n : all) {
             childrenByParent
@@ -165,6 +171,23 @@ public class NoteService {
                     toNodes(childrenByParent.get(n.getId()), childrenByParent)));
         }
         return nodes;
+    }
+
+    /**
+     * 스코프에 해당하는 전체 노트 목록. 자료 종속이면 소유 검증 후 자료 단위, 독립이면 멤버 단위.
+     */
+    private List<Note> scopeNotes(Long memberId, Long materialId) {
+        if (materialId != null) {
+            requireOwnedMaterial(memberId, materialId);
+            return noteRepository.findAllByMaterialIdOrderBySortOrderAscIdAsc(materialId);
+        }
+        return noteRepository.findAllByMemberIdAndMaterialIdIsNullOrderBySortOrderAscIdAsc(memberId);
+    }
+
+    private int maxSortOrder(Long memberId, Long materialId, Long parentId) {
+        return materialId != null
+                ? noteRepository.findMaxSortOrder(materialId, parentId)
+                : noteRepository.findMaxSortOrderStandalone(memberId, parentId);
     }
 
     private void requireOwnedMaterial(Long memberId, Long materialId) {

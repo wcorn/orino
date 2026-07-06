@@ -10,8 +10,13 @@ import { LoadingText } from "@/components/ui/loading-text";
 
 import type { NoteTreeNode } from "../api/notes";
 import { useNoteDetail } from "../hooks/useNoteDetail";
-import { useCreateNote, useDeleteNote } from "../hooks/useNoteMutations";
+import {
+  useCreateNote,
+  useDeleteNote,
+  useMoveNote,
+} from "../hooks/useNoteMutations";
 import { useNoteTree } from "../hooks/useNoteTree";
+import { computeMove, type DropPosition } from "../treeMove";
 import { NoteEditor } from "./NoteEditor";
 import { NoteTreeSidebar } from "./NoteTreeSidebar";
 
@@ -43,6 +48,7 @@ export function NoteTab({ materialId }: Props) {
   const detailQuery = useNoteDetail(activeNoteId);
   const createNote = useCreateNote(materialId);
   const deleteNote = useDeleteNote(materialId);
+  const moveNote = useMoveNote(materialId);
   const [pendingDelete, setPendingDelete] = useState<NoteTreeNode | null>(null);
 
   const setActiveNote = (noteId: number | null) => {
@@ -77,6 +83,25 @@ export function NoteTab({ materialId }: Props) {
       { parentId: null, title: "제목 없음" },
       { onSuccess: (created) => setActiveNote(created.id) },
     );
+  };
+
+  const handleAddChild = (parentId: number) => {
+    if (createNote.isPending) return;
+    createNote.mutate(
+      { parentId, title: "제목 없음" },
+      { onSuccess: (created) => setActiveNote(created.id) },
+    );
+  };
+
+  const handleMove = (
+    dragId: number,
+    targetId: number,
+    position: DropPosition,
+  ) => {
+    if (moveNote.isPending) return;
+    const plan = computeMove(tree, dragId, targetId, position);
+    if (!plan) return;
+    moveNote.mutate({ plan, dragId });
   };
 
   const handleConfirmDelete = () => {
@@ -125,8 +150,10 @@ export function NoteTab({ materialId }: Props) {
           activeNoteId={activeNoteId}
           onSelect={setActiveNote}
           onAddRoot={handleAddRoot}
+          onAddChild={handleAddChild}
           onRequestDelete={setPendingDelete}
-          addRootPending={createNote.isPending}
+          onMove={handleMove}
+          addPending={createNote.isPending}
         />
       </div>
 

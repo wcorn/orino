@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { server } from "@/test/mocks/server";
 
-import { useMoveMemo } from "./useMemoMutations";
+import { useMoveNote } from "./useNoteMutations";
 
 const API_BASE = "https://api.orino.dev/api";
 
@@ -22,16 +22,17 @@ function wrapper({ children }: { children: ReactNode }) {
   );
 }
 
-describe("useMoveMemo", () => {
+describe("useMoveNote", () => {
   it("orderedIds를 sortOrder 0..n으로 순차 PATCH하고 드래그 노드는 parentId까지 담는다", async () => {
     const calls: { id: number; body: unknown }[] = [];
     server.use(
-      http.patch(`${API_BASE}/memos/:id`, async ({ request, params }) => {
+      http.patch(`${API_BASE}/notes/:id`, async ({ request, params }) => {
         calls.push({ id: Number(params.id), body: await request.json() });
         return HttpResponse.json({
           code: "OK",
           data: {
             id: Number(params.id),
+            materialId: null,
             parentId: null,
             title: "t",
             sortOrder: 0,
@@ -41,8 +42,8 @@ describe("useMoveMemo", () => {
       }),
     );
 
-    const { result } = renderHook(() => useMoveMemo(), { wrapper });
-    // 메모 1을 부모 2의 마지막 자식으로 이동 (기존 자식 21,22 뒤)
+    const { result } = renderHook(() => useMoveNote(), { wrapper });
+    // 노트 1을 부모 2의 마지막 자식으로 이동 (기존 자식 21,22 뒤)
     result.current.mutate({
       plan: { parentId: 2, orderedIds: [21, 22, 1] },
       dragId: 1,

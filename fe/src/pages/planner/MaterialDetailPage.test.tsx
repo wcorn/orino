@@ -50,7 +50,7 @@ function mockMaterial(
         },
       });
     }),
-    http.get(`${API_BASE}/planner/materials/1/notes`, () => {
+    http.get(`${API_BASE}/notes`, () => {
       return HttpResponse.json({
         code: "OK",
         data: { notes: [] },
@@ -116,7 +116,7 @@ describe("MaterialDetailPage", () => {
     mockMaterial({ flashcardCount: 1 });
     server.use(
       // 노트가 존재 → 노트 탭에서 첫 노트가 자동선택됨
-      http.get(`${API_BASE}/planner/materials/1/notes`, () =>
+      http.get(`${API_BASE}/notes`, () =>
         HttpResponse.json({
           code: "OK",
           data: {
@@ -132,7 +132,7 @@ describe("MaterialDetailPage", () => {
           },
         }),
       ),
-      http.get(`${API_BASE}/planner/notes/7`, () =>
+      http.get(`${API_BASE}/notes/7`, () =>
         HttpResponse.json({
           code: "OK",
           data: {
