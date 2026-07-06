@@ -1,3 +1,7 @@
+import type {
+  FlashcardType,
+  OrderingItem,
+} from "@/features/flashcard/api/flashcards";
 import { client } from "@/shared/api";
 
 export type Rating = "AGAIN" | "HARD" | "GOOD" | "EASY";
@@ -10,8 +14,12 @@ export interface TodayReviewMaterial {
 
 export interface TodayReviewFlashcard {
   id: number;
+  type: FlashcardType;
   front: string;
-  back: string;
+  /** ORDERING 카드는 없음(null/생략). */
+  back: string | null;
+  /** ORDERING 카드만 정답 순서 배열. */
+  items: OrderingItem[] | null;
   material: TodayReviewMaterial;
 }
 

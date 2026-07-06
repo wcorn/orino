@@ -52,12 +52,49 @@ function mockToday(reviewIds: number[], opts?: { delayDays?: number }) {
             easeFactor: 2.5,
             flashcard: {
               id: id * 10,
+              type: "BASIC",
               front: `질문 ${id}`,
               back: `답 ${id}`,
+              items: null,
               material: { id: 1, title: "테스트 자료", type: "BOOK" },
             },
             preview: { again: 1, hard: 6, good: 6, easy: 15 },
           })),
+        },
+      });
+    }),
+  );
+}
+
+function mockTodayOrdering(
+  items: Array<{ id: string; text: string }>,
+  front = "순서대로 배열",
+) {
+  server.use(
+    http.get(`${API_BASE}/planner/reviews/today`, () => {
+      return HttpResponse.json({
+        code: "OK",
+        data: {
+          today: "2026-05-18",
+          reviews: [
+            {
+              id: 1,
+              scheduledAt: "2026-05-18T04:00:00",
+              delayDays: 0,
+              sequence: 2,
+              intervalDays: 6,
+              easeFactor: 2.5,
+              flashcard: {
+                id: 10,
+                type: "ORDERING",
+                front,
+                back: null,
+                items,
+                material: { id: 1, title: "테스트 자료", type: "BOOK" },
+              },
+              preview: { again: 1, hard: 6, good: 6, easy: 15 },
+            },
+          ],
         },
       });
     }),
@@ -210,6 +247,68 @@ describe("TodayReviewsPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText("3일 밀린 복습")).toBeInTheDocument();
+    });
+  });
+
+  it("순서 카드는 셔플된 항목과 [정답 확인] 버튼을 보여준다", async () => {
+    const items = [
+      { id: "a", text: "1단계" },
+      { id: "b", text: "2단계" },
+      { id: "c", text: "3단계" },
+    ];
+    mockTodayOrdering(items);
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("순서대로 배열")).toBeInTheDocument();
+    });
+    // 순서 카드는 [답 보기]가 아니라 [정답 확인]
+    expect(
+      screen.getByRole("button", { name: /정답 확인/ }),
+    ).toBeInTheDocument();
+    // 모든 항목이 드래그 핸들과 함께 보인다
+    for (const it of items) {
+      expect(screen.getByText(it.text)).toBeInTheDocument();
+    }
+    expect(screen.getAllByRole("button", { name: /순서 이동/ })).toHaveLength(
+      3,
+    );
+    // 아직 정답 순서 섹션은 없다
+    expect(screen.queryByText("정답 순서")).not.toBeInTheDocument();
+  });
+
+  it("[정답 확인] 후 내 배열/정답 순서와 위치별 정오 색이 보이고 평가가 전송된다", async () => {
+    const items = [
+      { id: "a", text: "SYN" },
+      { id: "b", text: "SYN-ACK" },
+      { id: "c", text: "ACK" },
+    ];
+    mockTodayOrdering(items);
+    const ratings: Array<{ id: number; rating: string }> = [];
+    mockComplete(ratings);
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("순서대로 배열")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /정답 확인/ }));
+
+    // 공개 후 정답 순서 섹션 + 위치별 정오 표시(초록/빨강)
+    expect(await screen.findByText("정답 순서")).toBeInTheDocument();
+    expect(screen.getByText("내 배열")).toBeInTheDocument();
+    const marks = screen.getAllByLabelText(/정답 위치|오답 위치/);
+    expect(marks).toHaveLength(3);
+    // 드래그 핸들은 사라진다(잠금)
+    expect(
+      screen.queryByRole("button", { name: /순서 이동/ }),
+    ).not.toBeInTheDocument();
+
+    // 기존 4지선다 평가 그대로 연결
+    await user.click(screen.getByRole("button", { name: /Good/ }));
+    await waitFor(() => {
+      expect(ratings).toEqual([{ id: 1, rating: "GOOD" }]);
     });
   });
 });
