@@ -14,4 +14,7 @@ public interface FlashcardRepository extends JpaRepository<Flashcard, Long> {
     Optional<Flashcard> findByIdAndMemberId(Long id, Long memberId);
 
     List<Flashcard> findAllByIdIn(Collection<Long> ids);
+
+    /** 같은 양방향 짝 그룹에 속한 카드들. */
+    List<Flashcard> findAllBySiblingGroupId(Long siblingGroupId);
 }

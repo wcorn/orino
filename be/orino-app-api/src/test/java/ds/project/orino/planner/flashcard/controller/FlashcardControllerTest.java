@@ -490,6 +490,72 @@ class FlashcardControllerTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.data.items").doesNotExist());
     }
 
+    // ===== 양방향 짝 카드(Bidirectional) =====
+
+    @Test
+    @DisplayName("POST bidirectional - 앞↔뒤 2장 생성 + 같은 siblingGroupId + 첫 복습 엇갈림(A+1, B+2)")
+    void create_bidirectional_pair() throws Exception {
+        LocalDate today = testToday(clock);
+
+        String body = mockMvc.perform(post("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"front":"쿠버네티스","back":"컨테이너 오케스트레이션","bidirectional":true}
+                                """))
+                .andExpect(status().isCreated())
+                // A: front→back, siblingGroupId = A.id, 첫 복습 today+1
+                .andExpect(jsonPath("$.data.flashcard.front").value("쿠버네티스"))
+                .andExpect(jsonPath("$.data.flashcard.back").value("컨테이너 오케스트레이션"))
+                .andExpect(jsonPath("$.data.flashcard.siblingGroupId").exists())
+                .andExpect(jsonPath("$.data.firstReview.scheduledAt",
+                        startsWith(today.plusDays(1) + "T04:00")))
+                .andExpect(jsonPath("$.data.firstReview.intervalDays").value(1))
+                // sibling B: front/back 뒤집힘, 같은 그룹, 첫 복습 today+2
+                .andExpect(jsonPath("$.data.sibling.flashcard.front").value("컨테이너 오케스트레이션"))
+                .andExpect(jsonPath("$.data.sibling.flashcard.back").value("쿠버네티스"))
+                .andExpect(jsonPath("$.data.sibling.firstReview.scheduledAt",
+                        startsWith(today.plusDays(2) + "T04:00")))
+                .andExpect(jsonPath("$.data.sibling.firstReview.intervalDays").value(1))
+                .andReturn().getResponse().getContentAsString();
+
+        Number groupA = com.jayway.jsonpath.JsonPath.read(body, "$.data.flashcard.siblingGroupId");
+        Number groupB = com.jayway.jsonpath.JsonPath.read(body, "$.data.sibling.flashcard.siblingGroupId");
+        org.assertj.core.api.Assertions.assertThat(groupA.longValue())
+                .isEqualTo(groupB.longValue());
+
+        // 실제로 2장 + 2 review 저장
+        org.assertj.core.api.Assertions.assertThat(flashcardRepository.findAll()).hasSize(2);
+        org.assertj.core.api.Assertions.assertThat(reviewScheduleRepository.findAll()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("POST bidirectional - ORDERING + bidirectional이면 400")
+    void create_bidirectional_ordering_returns_400() throws Exception {
+        mockMvc.perform(post("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"ORDERING","front":"F","bidirectional":true,
+                                 "items":[{"id":"a","text":"1"},{"id":"b","text":"2"},{"id":"c","text":"3"}]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SP-ERR-002"));
+    }
+
+    @Test
+    @DisplayName("POST bidirectional - back 없으면 400")
+    void create_bidirectional_without_back_returns_400() throws Exception {
+        mockMvc.perform(post("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"front":"Q","bidirectional":true}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SP-ERR-002"));
+    }
+
     @Test
     @DisplayName("PATCH - BASIC → ORDERING 전환인데 items 미지정이면 400")
     void update_convert_to_ordering_without_items_fails() throws Exception {

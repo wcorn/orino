@@ -67,3 +67,5 @@ databaseChangeLog:
       file: db/changelog/changes/033-merge-memo-into-note.yaml
   - include:
       file: db/changelog/changes/034-add-flashcard-type-items.yaml
+  - include:
+      file: db/changelog/changes/035-add-flashcard-sibling-group.yaml

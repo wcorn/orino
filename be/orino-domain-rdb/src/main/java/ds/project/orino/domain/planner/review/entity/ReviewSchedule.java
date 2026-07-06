@@ -94,7 +94,16 @@ public class ReviewSchedule {
      * 첫 복습 일정을 생성한다. due 시각은 사용자 시간대 기준 익일 04:00(롤오버)을 UTC로 환산한 값이다.
      */
     public static ReviewSchedule firstReview(Long memberId, Long flashcardId, LocalDate today, ZoneId zone) {
-        Instant scheduledAt = today.plusDays(1).atTime(ROLLOVER_HOUR, 0).atZone(zone).toInstant();
+        return firstReview(memberId, flashcardId, today, zone, 1);
+    }
+
+    /**
+     * 첫 복습 일정을 {@code afterDays}일 뒤 04:00으로 생성한다. 양방향 짝 카드의 첫 복습 엇갈림
+     * (A=today+1, B=today+2)에 사용한다. {@code interval_days}는 1로 동일하다.
+     */
+    public static ReviewSchedule firstReview(Long memberId, Long flashcardId, LocalDate today,
+                                             ZoneId zone, int afterDays) {
+        Instant scheduledAt = today.plusDays(afterDays).atTime(ROLLOVER_HOUR, 0).atZone(zone).toInstant();
         return new ReviewSchedule(memberId, flashcardId, 1, scheduledAt, 1, INITIAL_EASE_FACTOR);
     }
 
@@ -120,6 +129,15 @@ public class ReviewSchedule {
         this.elapsedDays = (int) ChronoUnit.DAYS.between(
                 this.scheduledAt.atZone(zone).toLocalDate(), now.atZone(zone).toLocalDate());
         this.completedAt = now;
+    }
+
+    /**
+     * Sibling burying — due 시각을 익일 04:00(사용자 시간대)으로 미룬다.
+     * SM-2 간격/ease/sequence/status는 건드리지 않고 due 날짜만 이동한다.
+     */
+    public void bury(Instant now, ZoneId zone) {
+        LocalDate tomorrow = now.atZone(zone).toLocalDate().plusDays(1);
+        this.scheduledAt = tomorrow.atTime(ROLLOVER_HOUR, 0).atZone(zone).toInstant();
     }
 
     public Long getId() {

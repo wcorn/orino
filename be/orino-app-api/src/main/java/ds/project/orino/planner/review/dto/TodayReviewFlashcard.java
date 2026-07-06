@@ -14,9 +14,11 @@ public record TodayReviewFlashcard(
         String front,
         String back,
         List<OrderingItem> items,
+        Long siblingGroupId,
         TodayReviewMaterial material
 ) {
     public static TodayReviewFlashcard of(Flashcard f, List<OrderingItem> items, TodayReviewMaterial material) {
-        return new TodayReviewFlashcard(f.getId(), f.getType(), f.getFront(), f.getBack(), items, material);
+        return new TodayReviewFlashcard(
+                f.getId(), f.getType(), f.getFront(), f.getBack(), items, f.getSiblingGroupId(), material);
     }
 }

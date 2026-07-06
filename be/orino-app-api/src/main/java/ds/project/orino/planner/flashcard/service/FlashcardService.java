@@ -77,10 +77,14 @@ public class FlashcardService {
     @Transactional
     public FlashcardCreateResponse create(Long memberId, Long materialId, FlashcardCreateRequest request) {
         requireOwnedMaterial(memberId, materialId);
-
-        Flashcard saved = flashcardRepository.save(buildCard(memberId, materialId, request));
         ZoneId zone = UserTimeZone.get();
         LocalDate today = clock.instant().atZone(zone).toLocalDate();
+
+        if (request.isBidirectional()) {
+            return createBidirectional(memberId, materialId, request, today, zone);
+        }
+
+        Flashcard saved = flashcardRepository.save(buildCard(memberId, materialId, request));
         ReviewSchedule firstReview = reviewScheduleRepository.save(
                 ReviewSchedule.firstReview(memberId, saved.getId(), today, zone));
 
@@ -88,9 +92,52 @@ public class FlashcardService {
         reviewMirrorService.reconcileAfterCommit(memberId,
                 List.of(firstReview.getScheduledAt().atZone(zone).toLocalDate()), zone);
 
-        return new FlashcardCreateResponse(
+        return FlashcardCreateResponse.of(
                 FlashcardResponse.withoutReview(saved, itemsCodec.parse(saved.getItems())),
                 ReviewScheduleView.firstReview(firstReview));
+    }
+
+    /**
+     * 양방향 짝 카드 생성: A(front→back)·B(back→front)를 같은 siblingGroupId로 만들고
+     * 첫 복습을 엇갈리게(A today+1, B today+2) 예약한다. 응답에 짝(B)을 sibling으로 함께 담는다.
+     */
+    private FlashcardCreateResponse createBidirectional(Long memberId, Long materialId,
+                                                        FlashcardCreateRequest request,
+                                                        LocalDate today, ZoneId zone) {
+        validateBidirectional(request);
+
+        // A: 그룹 키 = 자기 id (짝이 공유)
+        Flashcard a = flashcardRepository.save(
+                new Flashcard(memberId, materialId, request.front(), request.back()));
+        a.assignSiblingGroup(a.getId());
+        // B: front/back 뒤집고 같은 그룹
+        Flashcard b = new Flashcard(memberId, materialId, request.back(), request.front());
+        b.assignSiblingGroup(a.getId());
+        b = flashcardRepository.save(b);
+
+        ReviewSchedule reviewA = reviewScheduleRepository.save(
+                ReviewSchedule.firstReview(memberId, a.getId(), today, zone));
+        ReviewSchedule reviewB = reviewScheduleRepository.save(
+                ReviewSchedule.firstReview(memberId, b.getId(), today, zone, 2));
+
+        reviewMirrorService.reconcileAfterCommit(memberId, List.of(
+                reviewA.getScheduledAt().atZone(zone).toLocalDate(),
+                reviewB.getScheduledAt().atZone(zone).toLocalDate()), zone);
+
+        FlashcardCreateResponse sibling = FlashcardCreateResponse.of(
+                FlashcardResponse.withoutReview(b, null), ReviewScheduleView.firstReview(reviewB));
+        return new FlashcardCreateResponse(
+                FlashcardResponse.withoutReview(a, null),
+                ReviewScheduleView.firstReview(reviewA),
+                sibling);
+    }
+
+    /** 양방향은 BASIC + back 존재(1~1000자)일 때만. ORDERING/back 없음이면 SP-ERR-002. */
+    private static void validateBidirectional(FlashcardCreateRequest request) {
+        if (request.typeOrDefault() != FlashcardType.BASIC) {
+            throw new CustomException(ErrorCode.INVALID_REQUEST);
+        }
+        validateBasicBack(request.back());
     }
 
     @Transactional

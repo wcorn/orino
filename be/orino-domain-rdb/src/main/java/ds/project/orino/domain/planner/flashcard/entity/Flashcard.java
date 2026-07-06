@@ -45,6 +45,10 @@ public class Flashcard {
     @Column(columnDefinition = "JSON")
     private String items;
 
+    /** 양방향 짝 카드가 공유하는 그룹 키(짝 카드끼리 동일 값). 단방향 카드는 null. FK 아님. */
+    @Column(name = "sibling_group_id")
+    private Long siblingGroupId;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
@@ -78,6 +82,11 @@ public class Flashcard {
 
     public void updateFront(String front) {
         this.front = front;
+    }
+
+    /** 양방향 짝 그룹 키를 지정한다(짝 두 카드가 같은 값을 공유). */
+    public void assignSiblingGroup(Long siblingGroupId) {
+        this.siblingGroupId = siblingGroupId;
     }
 
     /** BASIC 카드로 전환/갱신한다. items는 비운다. */
@@ -120,6 +129,10 @@ public class Flashcard {
 
     public String getItems() {
         return items;
+    }
+
+    public Long getSiblingGroupId() {
+        return siblingGroupId;
     }
 
     public Instant getCreatedAt() {

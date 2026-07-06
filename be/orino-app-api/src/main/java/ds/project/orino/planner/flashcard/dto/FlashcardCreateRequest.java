@@ -21,9 +21,16 @@ public record FlashcardCreateRequest(
 
         String back,
 
-        List<OrderingItem> items
+        List<OrderingItem> items,
+
+        /** 켜면 역방향 카드도 함께 생성한다. BASIC + back 존재일 때만 허용(위반 시 SP-ERR-002). */
+        Boolean bidirectional
 ) {
     public FlashcardType typeOrDefault() {
         return type == null ? FlashcardType.BASIC : type;
+    }
+
+    public boolean isBidirectional() {
+        return Boolean.TRUE.equals(bidirectional);
     }
 }
