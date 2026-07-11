@@ -13,15 +13,17 @@ import {
   ListOrdered,
   Quote,
   Rows3,
+  Sheet,
   Table,
   Trash2,
 } from "lucide-react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { uploadAndInsertImage } from "../editor/imageUpload";
+import { ImportDialog } from "../import/ImportDialog";
 
 interface Props {
   editor: Editor | null;
@@ -47,6 +49,7 @@ export function EditorToolbar({
     selector: ({ editor }) => editor?.isActive("table") ?? false,
   });
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   if (!editor) return null;
 
@@ -163,6 +166,21 @@ export function EditorToolbar({
           files.forEach((file) => void uploadAndInsertImage(editor, file));
           e.target.value = "";
         }}
+      />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="가져오기"
+        onClick={() => setImportOpen(true)}
+      >
+        <Sheet className="size-4" />
+      </Button>
+      <ImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        currentDoc={importOpen ? editor.getJSON() : null}
+        onInsert={(node) => editor.chain().focus().insertContent(node).run()}
       />
       {onInsertPage && (
         <>
