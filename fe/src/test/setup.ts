@@ -13,6 +13,33 @@ if (!URL.revokeObjectURL) {
   URL.revokeObjectURL = () => {};
 }
 
+// ProseMirror(coordsAtPos 등)가 텍스트 노드/Range의 getClientRects·getBoundingClientRect를
+// 호출하는데 jsdom엔 없어 표 삽입 후 좌표 계산이 unhandled error를 낸다. 빈 값으로 폴리필.
+const emptyRects = () =>
+  Object.assign([] as unknown[], {
+    item: () => null,
+  }) as unknown as DOMRectList;
+const zeroRect = () =>
+  ({
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    toJSON: () => ({}),
+  }) as DOMRect;
+for (const proto of [globalThis.Text?.prototype, globalThis.Range?.prototype]) {
+  if (proto && typeof proto.getClientRects !== "function") {
+    proto.getClientRects = emptyRects;
+  }
+  if (proto && typeof proto.getBoundingClientRect !== "function") {
+    proto.getBoundingClientRect = zeroRect;
+  }
+}
+
 // jsdom에는 IntersectionObserver가 없다. 무한 스크롤 sentinel용 목.
 // 생성된 인스턴스를 전역에 모아 테스트에서 교차(intersection)를 명시적으로 트리거한다.
 // (src/test/io.ts의 triggerIntersection 헬퍼)

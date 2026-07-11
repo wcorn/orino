@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
+import * as XLSX from "xlsx";
 
 import { Providers } from "@/app/providers";
 import { useAuthStore } from "@/features/auth/store/authStore";
@@ -440,6 +441,111 @@ describe("NoteTab", () => {
     await waitFor(() => {
       expect(container.querySelector("table")).toBeNull();
     });
+  });
+
+  it("[가져오기]로 엑셀을 업로드하면 값이 표로 본문에 삽입된다", async () => {
+    mockTree([
+      { id: 1, title: "노트", parentId: null, sortOrder: 0, children: [] },
+    ]);
+    mockNoteDetail(1, { type: "doc", content: [] }, "노트");
+
+    const user = userEvent.setup();
+    const { container } = renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("노트 제목")).toHaveValue("노트");
+    });
+    expect(container.querySelector("table")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "가져오기" }));
+
+    // 엑셀 생성 후 업로드
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([
+        ["항목", "값"],
+        ["A", "1"],
+      ]),
+      "Sheet1",
+    );
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    const file = new File([buf], "data.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    await user.upload(screen.getByLabelText("엑셀 파일"), file);
+
+    await screen.findByText("총 1행 × 2열");
+    await user.click(screen.getByRole("button", { name: "표로 가져오기" }));
+
+    // 본문에 표가 삽입되고(헤더행 th 2 + 본문 td 2) 값이 보인다
+    await waitFor(() => {
+      expect(container.querySelector("table")).not.toBeNull();
+    });
+    expect(container.querySelectorAll("table th")).toHaveLength(2);
+    expect(screen.getByText("항목")).toBeInTheDocument();
+    expect(screen.getByText("A")).toBeInTheDocument();
+  });
+
+  it("표를 담은 노트 content를 열면 표가 그대로 렌더된다(라운드트립)", async () => {
+    mockTree([
+      { id: 1, title: "표노트", parentId: null, sortOrder: 0, children: [] },
+    ]);
+    mockNoteDetail(
+      1,
+      {
+        type: "doc",
+        content: [
+          {
+            type: "table",
+            content: [
+              {
+                type: "tableRow",
+                content: [
+                  {
+                    type: "tableHeader",
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [{ type: "text", text: "H1" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: "tableRow",
+                content: [
+                  {
+                    type: "tableCell",
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [{ type: "text", text: "V1" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      "표노트",
+    );
+
+    const { container } = renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("노트 제목")).toHaveValue("표노트");
+    });
+    // 저장된 표 노드가 헤더/셀로 보존되어 렌더된다
+    await waitFor(() => {
+      expect(container.querySelector("table")).not.toBeNull();
+    });
+    expect(container.querySelectorAll("table th")).toHaveLength(1);
+    expect(screen.getByText("H1")).toBeInTheDocument();
+    expect(screen.getByText("V1")).toBeInTheDocument();
   });
 
   it("자손이 있는 노트 삭제 시 확인 문구에 하위 개수를 표시한다", async () => {
