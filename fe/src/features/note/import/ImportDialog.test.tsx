@@ -36,7 +36,7 @@ function renderDialog(
 }
 
 async function upload(file: File) {
-  const input = screen.getByLabelText("엑셀 파일");
+  const input = screen.getByLabelText("가져올 파일");
   await userEvent.upload(input, file);
 }
 
@@ -101,17 +101,37 @@ describe("ImportDialog", () => {
     expect(await screen.findByText("시트")).toBeInTheDocument();
   });
 
-  it(".xlsx가 아니면 에러를 보여준다", async () => {
+  it("확장자가 안 맞으면 에러를 보여준다", async () => {
     renderDialog();
-    const csv = new File(["a,b"], "data.csv", { type: "text/csv" });
-    // accept=".xlsx" 필터를 우회해 비-xlsx가 핸들러에 도달하는 상황(드롭 등) 재현
-    await userEvent.upload(screen.getByLabelText("엑셀 파일"), csv, {
+    // Excel 소스에 확장자가 안 맞는 파일 → accept 필터를 우회해 핸들러 도달(드롭 등) 재현
+    const txt = new File(["a,b"], "data.txt", { type: "text/plain" });
+    await userEvent.upload(screen.getByLabelText("가져올 파일"), txt, {
       applyAccept: false,
     });
 
     expect(
-      await screen.findByText("엑셀(.xlsx) 파일만 가져올 수 있어요."),
+      await screen.findByText(".xlsx 파일만 가져올 수 있어요."),
     ).toBeInTheDocument();
+  });
+
+  it("CSV 소스로 전환해 .csv를 표로 가져온다", async () => {
+    const onInsert = renderDialog();
+    await userEvent.click(screen.getByRole("button", { name: "CSV (.csv)" }));
+
+    const csv = new File(["항목,값\nA,1\nB,2"], "data.csv", {
+      type: "text/csv",
+    });
+    await userEvent.upload(screen.getByLabelText("가져올 파일"), csv);
+
+    expect(await screen.findByText("총 2행 × 2열")).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "표로 가져오기" }),
+    );
+
+    expect(onInsert).toHaveBeenCalledTimes(1);
+    const node = onInsert.mock.calls[0][0] as JSONContent;
+    expect(node.type).toBe("table");
+    expect(node.content).toHaveLength(3); // 헤더 + 2행
   });
 
   it("빈 시트는 '데이터가 없어요' 경고 + 가져오기 비활성", async () => {
