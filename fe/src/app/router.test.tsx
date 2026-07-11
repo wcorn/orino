@@ -154,15 +154,42 @@ describe("AppRouter", () => {
     });
   });
 
-  it("/planner/reviews/today 경로에서 빈 상태를 렌더링한다", async () => {
-    mockEmptyTodayReviews();
+  it("/planner/reviews 경로에서 복습 허브를 렌더링한다", async () => {
+    server.use(
+      http.get(`${API_BASE}/planner/reviews/upcoming`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: { today: "2026-05-18", items: [], hasNext: false },
+        }),
+      ),
+    );
+    useAuthStore.setState({ accessToken: "valid-token" });
+
+    renderApp(["/planner/reviews"]);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "복습", level: 1 }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("/planner/reviews/today 는 복습 허브로 리다이렉트된다", async () => {
+    server.use(
+      http.get(`${API_BASE}/planner/reviews/upcoming`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: { today: "2026-05-18", items: [], hasNext: false },
+        }),
+      ),
+    );
     useAuthStore.setState({ accessToken: "valid-token" });
 
     renderApp(["/planner/reviews/today"]);
 
     await waitFor(() => {
       expect(
-        screen.getByText("오늘은 복습할 카드가 없어요! 🌱"),
+        screen.getByRole("heading", { name: "복습", level: 1 }),
       ).toBeInTheDocument();
     });
   });

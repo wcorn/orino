@@ -17,8 +17,9 @@ import {
   importNotes,
   importPlannerCalendar,
   importPlannerSettings,
+  importReviewHub,
+  importReviewSession,
   importRoutines,
-  importTodayReviews,
   importWeeklyPlan,
 } from "./routeImports";
 
@@ -27,7 +28,8 @@ import {
 const HomePage = lazy(importHome);
 const MaterialListPage = lazy(importMaterialList);
 const MaterialDetailPage = lazy(importMaterialDetail);
-const TodayReviewsPage = lazy(importTodayReviews);
+const ReviewHubPage = lazy(importReviewHub);
+const ReviewSessionPage = lazy(importReviewSession);
 const PlannerCalendarPage = lazy(importPlannerCalendar);
 const PlannerSettingsPage = lazy(importPlannerSettings);
 const RoutinesPage = lazy(importRoutines);
@@ -77,12 +79,25 @@ export function AppRouter() {
             }
           />
           <Route
-            path="/planner/reviews/today"
+            path="/planner/reviews"
             element={
               <Suspense fallback={<RouteFallback />}>
-                <TodayReviewsPage />
+                <ReviewHubPage />
               </Suspense>
             }
+          />
+          <Route
+            path="/planner/reviews/session"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <ReviewSessionPage />
+              </Suspense>
+            }
+          />
+          {/* 구 "오늘 복습" 경로 → 허브로 리다이렉트 */}
+          <Route
+            path="/planner/reviews/today"
+            element={<Navigate to="/planner/reviews" replace />}
           />
           <Route
             path="/planner/calendar"
