@@ -1,0 +1,25 @@
+databaseChangeLog:
+  # 복습 허브 완료 목록 (#755, Epic #754, Study Planner v2.5).
+  # completed_at DESC 커서 페이지네이션을 위한 인덱스. 멤버의 COMPLETED 복습만 최신순으로
+  # keyset 스캔한다. member_id(leftmost) → status → completed_at 순서. 스키마 변경 없음(인덱스만).
+  - changeSet:
+      id: 036-add-review-schedule-completed-index
+      author: wcorn
+      comment: 완료 목록 커서 페이징용 (member_id, status, completed_at) 인덱스 추가.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                tableName: review_schedule
+                indexName: idx_review_schedule_member_status_completed_at
+      changes:
+        - createIndex:
+            tableName: review_schedule
+            indexName: idx_review_schedule_member_status_completed_at
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: status
+              - column:
+                  name: completed_at

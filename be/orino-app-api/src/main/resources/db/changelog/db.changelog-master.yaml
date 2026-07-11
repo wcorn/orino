@@ -69,3 +69,5 @@ databaseChangeLog:
       file: db/changelog/changes/034-add-flashcard-type-items.yaml
   - include:
       file: db/changelog/changes/035-add-flashcard-sibling-group.yaml
+  - include:
+      file: db/changelog/changes/036-add-review-schedule-completed-index.yaml

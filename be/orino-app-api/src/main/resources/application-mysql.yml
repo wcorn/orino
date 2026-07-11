@@ -55,6 +55,13 @@ spring:
     url: jdbc:tc:mysql:8.4.4:///toy
     username: test
     password: test
+    # 통합 테스트는 단일 TestContainer MySQL을 여러 Spring 컨텍스트가 공유한다.
+    # 컨텍스트마다 Hikari 풀이 붙고 캐시된 컨텍스트가 커넥션을 물고 있어, 컨텍스트 수가
+    # 늘면 MySQL max_connections(기본 151)를 넘겨 SQLNonTransientConnectionException이 난다.
+    # 풀을 작게 잡고 유휴 시 0까지 반납하게 해 커넥션 누적을 막는다.
+    hikari:
+      maximum-pool-size: 4
+      minimum-idle: 0
   jpa:
     hibernate:
       ddl-auto: validate

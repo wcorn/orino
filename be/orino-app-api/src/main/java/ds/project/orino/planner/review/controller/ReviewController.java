@@ -3,11 +3,14 @@ package ds.project.orino.planner.review.controller;
 import ds.project.orino.common.response.ApiResponse;
 import ds.project.orino.core.time.UserTimeZone;
 import ds.project.orino.planner.review.dto.CalendarReviewsResponse;
+import ds.project.orino.planner.review.dto.CompletedReviewsResponse;
 import ds.project.orino.planner.review.dto.ReviewCompletionRequest;
 import ds.project.orino.planner.review.dto.ReviewCompletionResponse;
 import ds.project.orino.planner.review.dto.ReviewMirrorStatusResponse;
 import ds.project.orino.planner.review.dto.ReviewMirrorToggleRequest;
+import ds.project.orino.planner.review.dto.ReviewSummaryResponse;
 import ds.project.orino.planner.review.dto.TodayReviewsResponse;
+import ds.project.orino.planner.review.dto.UpcomingReviewsResponse;
 import ds.project.orino.planner.review.service.ReviewCompletionService;
 import ds.project.orino.planner.review.service.ReviewMirrorService;
 import ds.project.orino.planner.review.service.ReviewQueryService;
@@ -45,6 +48,38 @@ public class ReviewController {
     @GetMapping("/today")
     public ApiResponse<TodayReviewsResponse> today(@AuthenticationPrincipal Long memberId) {
         return ApiResponse.success(reviewQueryService.findToday(memberId));
+    }
+
+    /** 복습 허브 현황 집계 — counts(now/overdue/upcoming/doneToday) + estimatedMinutes + 자료별. */
+    @GetMapping("/summary")
+    public ApiResponse<ReviewSummaryResponse> summary(@AuthenticationPrincipal Long memberId) {
+        return ApiResponse.success(reviewQueryService.summary(memberId));
+    }
+
+    /** 앞으로의 복습 — 전 PENDING, scheduled_at ASC, 커서 keyset 페이징 + scope/자료/기간/종류 필터. */
+    @GetMapping("/upcoming")
+    public ApiResponse<UpcomingReviewsResponse> upcoming(
+            @AuthenticationPrincipal Long memberId,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(required = false) Long materialId,
+            @RequestParam(defaultValue = "all") String when,
+            @RequestParam(defaultValue = "all") String type,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) Integer size) {
+        return ApiResponse.success(
+                reviewQueryService.findUpcoming(memberId, scope, materialId, when, type, cursor, size));
+    }
+
+    /** 완료된 복습 — COMPLETED, completed_at DESC, 커서 keyset 페이징 + 자료/평가 필터. */
+    @GetMapping("/completed")
+    public ApiResponse<CompletedReviewsResponse> completed(
+            @AuthenticationPrincipal Long memberId,
+            @RequestParam(required = false) Long materialId,
+            @RequestParam(required = false) String grade,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) Integer size) {
+        return ApiResponse.success(
+                reviewQueryService.findCompleted(memberId, materialId, grade, cursor, size));
     }
 
     @GetMapping("/calendar")
