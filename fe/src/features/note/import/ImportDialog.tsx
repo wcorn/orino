@@ -10,12 +10,12 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 import { DEFAULT_IMPORT_SOURCE, IMPORT_SOURCES } from "./importers";
+import type { SheetData } from "./sheetParser";
 import {
   buildTableNode,
   type NormalizedTable,
   wouldExceedNoteLimit,
 } from "./tableContent";
-import { parseXlsxSheets, type SheetData } from "./xlsxParser";
 
 const PREVIEW_ROWS = 5;
 
@@ -34,7 +34,7 @@ export function ImportDialog({
   currentDoc,
   onInsert,
 }: Props) {
-  const [source] = useState(DEFAULT_IMPORT_SOURCE);
+  const [source, setSource] = useState(DEFAULT_IMPORT_SOURCE);
   const [fileName, setFileName] = useState<string | null>(null);
   const [sheets, setSheets] = useState<SheetData[] | null>(null);
   const [selectedSheet, setSelectedSheet] = useState<string>("");
@@ -42,6 +42,9 @@ export function ImportDialog({
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const activeSource =
+    IMPORT_SOURCES.find((s) => s.id === source) ?? IMPORT_SOURCES[0];
 
   const reset = () => {
     setFileName(null);
@@ -57,16 +60,23 @@ export function ImportDialog({
     onOpenChange(false);
   };
 
+  const selectSource = (id: string) => {
+    setSource(id);
+    reset();
+  };
+
   const handleFile = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith(".xlsx")) {
-      setError("엑셀(.xlsx) 파일만 가져올 수 있어요.");
+    const accept = activeSource.accept;
+    if (accept && !file.name.toLowerCase().endsWith(accept)) {
+      setError(`${accept} 파일만 가져올 수 있어요.`);
       return;
     }
+    if (!activeSource.parse) return;
     setError(null);
     setParsing(true);
     setFileName(file.name);
     try {
-      const parsed = await parseXlsxSheets(file);
+      const parsed = await activeSource.parse(file);
       const firstWithData = parsed.find((s) => s.rows.length > 0) ?? parsed[0];
       setSheets(parsed);
       setSelectedSheet(firstWithData?.name ?? "");
@@ -113,7 +123,7 @@ export function ImportDialog({
       open={open}
       onOpenChange={(next) => (next ? onOpenChange(true) : close())}
       title="데이터 가져오기"
-      description="엑셀 파일을 표로 삽입합니다. 값만 가져오고 서식·수식은 무시해요."
+      description="엑셀·CSV 파일을 표로 삽입합니다. 값만 가져오고 서식·수식은 무시해요."
       size="lg"
     >
       {/* 소스 선택 (v1: Excel만, 나머지 곧) */}
@@ -124,6 +134,7 @@ export function ImportDialog({
             type="button"
             disabled={!s.available}
             aria-pressed={s.available && source === s.id}
+            onClick={() => selectSource(s.id)}
             className={cn(
               "rounded-md border px-3 py-1.5 text-sm transition-colors",
               s.available && source === s.id
@@ -150,7 +161,7 @@ export function ImportDialog({
       >
         <UploadCloud className="text-muted-foreground size-6" />
         <p className="text-muted-foreground text-sm">
-          {fileName ?? ".xlsx 파일을 끌어 놓거나 선택하세요"}
+          {fileName ?? `${activeSource.accept} 파일을 끌어 놓거나 선택하세요`}
         </p>
         <Button
           type="button"
@@ -163,8 +174,8 @@ export function ImportDialog({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".xlsx"
-          aria-label="엑셀 파일"
+          accept={activeSource.accept}
+          aria-label="가져올 파일"
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];
