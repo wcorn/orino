@@ -473,7 +473,7 @@ describe("NoteTab", () => {
     const file = new File([buf], "data.xlsx", {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
-    await user.upload(screen.getByLabelText("엑셀 파일"), file);
+    await user.upload(screen.getByLabelText("가져올 파일"), file);
 
     await screen.findByText("총 1행 × 2열");
     await user.click(screen.getByRole("button", { name: "표로 가져오기" }));

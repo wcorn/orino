@@ -12,7 +12,20 @@ export interface SheetData {
  */
 export async function parseXlsxSheets(file: File): Promise<SheetData[]> {
   const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: "array" });
+  return sheetsFromWorkbook(XLSX.read(buffer, { type: "array" }));
+}
+
+/**
+ * .csv 파일을 파싱한다. CSV는 시트 개념이 없어 단일 시트로 반환한다.
+ * UTF-8 텍스트로 읽으며 따옴표·구분자는 SheetJS가 처리한다.
+ */
+export async function parseCsvSheets(file: File): Promise<SheetData[]> {
+  const text = await file.text();
+  return sheetsFromWorkbook(XLSX.read(text, { type: "string" }));
+}
+
+/** 워크북(xlsx·csv 공통)을 시트별 2D 문자열 배열로 정규화한다. */
+function sheetsFromWorkbook(workbook: XLSX.WorkBook): SheetData[] {
   return workbook.SheetNames.map((name) => {
     const sheet = workbook.Sheets[name];
     // header:1 → 행 우선 AoA, raw:false → 표시 텍스트(숫자/날짜 서식 반영), defval:"" → 빈 셀은 빈 문자열
