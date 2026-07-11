@@ -31,7 +31,14 @@ const zeroRect = () =>
     left: 0,
     toJSON: () => ({}),
   }) as DOMRect;
-for (const proto of [globalThis.Text?.prototype, globalThis.Range?.prototype]) {
+type RectHost = {
+  getClientRects?: () => DOMRectList;
+  getBoundingClientRect?: () => DOMRect;
+};
+for (const proto of [
+  globalThis.Text?.prototype,
+  globalThis.Range?.prototype,
+] as (RectHost | undefined)[]) {
   if (proto && typeof proto.getClientRects !== "function") {
     proto.getClientRects = emptyRects;
   }
