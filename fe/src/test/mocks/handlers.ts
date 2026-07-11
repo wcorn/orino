@@ -50,6 +50,19 @@ export const handlers = [
     });
   }),
 
+  // 기본값: 빈 복습 요약. 사이드바 뱃지(counts.now)가 항상 해소되도록. 값 검증은 server.use로 덮어쓴다.
+  http.get(`${API_BASE}/planner/reviews/summary`, () => {
+    return HttpResponse.json({
+      code: "OK",
+      data: {
+        today: "2026-05-18",
+        counts: { now: 0, overdue: 0, upcoming: 0, doneToday: 0 },
+        estimatedMinutes: 0,
+        materials: [],
+      },
+    });
+  }),
+
   // 기본값: 빈 주간 계획표. 블록을 검증하는 테스트는 server.use로 덮어쓴다.
   http.get(`${API_BASE}/planner/plan`, () => {
     return HttpResponse.json({ code: "OK", data: { blocks: [] } });

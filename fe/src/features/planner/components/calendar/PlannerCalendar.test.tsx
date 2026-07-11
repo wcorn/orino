@@ -99,7 +99,7 @@ describe("PlannerCalendar", () => {
     expect(screen.getByText("이펙티브 자바")).toBeInTheDocument();
     expect(screen.getByText("Q1")).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "오늘 복습 하러가기" }),
+      screen.getByRole("link", { name: "복습 하러가기" }),
     ).toBeInTheDocument();
   });
 

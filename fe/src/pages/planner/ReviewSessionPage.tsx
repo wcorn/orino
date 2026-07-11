@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { FieldError } from "@/components/ui/field-error";
 import { LoadingText } from "@/components/ui/loading-text";
@@ -10,7 +11,17 @@ import { useCompleteReview } from "@/features/review/hooks/useCompleteReview";
 import { useTodayReviews } from "@/features/review/hooks/useTodayReviews";
 import { toast } from "@/shared/lib/toast";
 
-export function TodayReviewsPage() {
+/**
+ * 복습 세션(카드 넘기기). 허브의 시작 액션에서 진입하며 스코프/자료를 URL 쿼리
+ * (`?scope=all|overdue&materialId=`)로 받는다. 세션 BE는 무변경 — `GET /reviews/today`(지금 due)를
+ * 받아 스코프/자료를 **클라이언트에서 필터**해 큐를 구성한다.
+ */
+export function ReviewSessionPage() {
+  const [searchParams] = useSearchParams();
+  const scope = searchParams.get("scope") ?? "all";
+  const materialIdParam = searchParams.get("materialId");
+  const materialId = materialIdParam ? Number(materialIdParam) : null;
+
   const { data, isLoading, isError } = useTodayReviews();
   const completeMutation = useCompleteReview();
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -18,9 +29,16 @@ export function TodayReviewsPage() {
 
   useEffect(() => {
     if (data && queue === null) {
-      setQueue(data.reviews);
+      const filtered = data.reviews.filter((r) => {
+        if (scope === "overdue" && r.delayDays <= 0) return false;
+        if (materialId !== null && r.flashcard.material.id !== materialId) {
+          return false;
+        }
+        return true;
+      });
+      setQueue(filtered);
     }
-  }, [data, queue]);
+  }, [data, queue, scope, materialId]);
 
   if (isLoading || (data && queue === null)) {
     return <LoadingText />;
@@ -48,7 +66,7 @@ export function TodayReviewsPage() {
       {
         onSuccess: (res) => {
           toast(formatNextReviewMessage(res.nextReview.scheduledAt), "success");
-          // sibling burying — 밀려난 짝 복습을 오늘 세션 큐에서 제거(분모도 함께 감소)
+          // sibling burying — 밀려난 짝 복습을 세션 큐에서 제거(분모도 함께 감소)
           const buried = res.buriedReviewIds ?? [];
           if (buried.length > 0) {
             setQueue((q) =>

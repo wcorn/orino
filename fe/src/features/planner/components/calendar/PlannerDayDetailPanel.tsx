@@ -56,8 +56,8 @@ export function PlannerDayDetailPanel({
           )}
         </SectionHeader>
         {reviews.length > 0 && (
-          <Link to="/planner/reviews/today">
-            <Button size="sm">오늘 복습 하러가기</Button>
+          <Link to="/planner/reviews">
+            <Button size="sm">복습 하러가기</Button>
           </Link>
         )}
       </div>

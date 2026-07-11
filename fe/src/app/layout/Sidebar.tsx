@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
-import { useTodayReviews } from "@/features/review/hooks/useTodayReviews";
+import { useReviewSummary } from "@/features/review/hooks/useReviewSummary";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -23,7 +23,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/home", label: "홈", icon: Home },
   { to: "/planner/materials", label: "학습 자료", icon: BookOpen },
   { to: "/notes", label: "노트", icon: FileText },
-  { to: "/planner/reviews/today", label: "오늘 복습", icon: CheckSquare },
+  { to: "/planner/reviews", label: "복습", icon: CheckSquare },
   { to: "/planner/calendar", label: "캘린더", icon: Calendar },
   { to: "/planner/plan", label: "주간 계획표", icon: CalendarRange },
   { to: "/planner/routines", label: "루틴", icon: Repeat },
@@ -36,8 +36,8 @@ interface SidebarProps {
 }
 
 export function Sidebar({ open, onClose }: SidebarProps) {
-  const { data } = useTodayReviews();
-  const reviewCount = data?.reviews.length ?? 0;
+  const { data } = useReviewSummary();
+  const reviewCount = data?.counts.now ?? 0;
 
   return (
     <>
@@ -61,7 +61,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <ul className="flex flex-col gap-0.5 p-2">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-            const isReviewItem = item.to === "/planner/reviews/today";
+            const isReviewItem = item.to === "/planner/reviews";
             return (
               <li key={item.to}>
                 <NavLink

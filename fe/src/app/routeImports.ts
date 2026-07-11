@@ -12,9 +12,13 @@ export const importMaterialDetail = () =>
   import("../pages/planner/MaterialDetailPage").then((m) => ({
     default: m.MaterialDetailPage,
   }));
-export const importTodayReviews = () =>
-  import("../pages/planner/TodayReviewsPage").then((m) => ({
-    default: m.TodayReviewsPage,
+export const importReviewHub = () =>
+  import("../pages/planner/ReviewHubPage").then((m) => ({
+    default: m.ReviewHubPage,
+  }));
+export const importReviewSession = () =>
+  import("../pages/planner/ReviewSessionPage").then((m) => ({
+    default: m.ReviewSessionPage,
   }));
 export const importPlannerCalendar = () =>
   import("../pages/planner/PlannerCalendarPage").then((m) => ({
@@ -48,7 +52,7 @@ export function prefetchRoutes() {
     const ignore = () => {};
     void importMaterialDetail().catch(ignore);
     void importMaterialList().catch(ignore);
-    void importTodayReviews().catch(ignore);
+    void importReviewHub().catch(ignore);
     void importPlannerCalendar().catch(ignore);
     void importHome().catch(ignore);
     void importNotes().catch(ignore);
