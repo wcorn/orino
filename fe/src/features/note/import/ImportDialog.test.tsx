@@ -1,10 +1,16 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { JSONContent } from "@tiptap/react";
+import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import * as XLSX from "xlsx";
 
+import { useAuthStore } from "@/features/auth/store/authStore";
+import { server } from "@/test/mocks/server";
+
 import { ImportDialog } from "./ImportDialog";
+
+const API_BASE = "https://api.orino.dev/api";
 
 function makeXlsx(
   sheets: Record<string, unknown[][]>,
@@ -156,5 +162,50 @@ describe("ImportDialog", () => {
     expect(
       screen.getByRole("button", { name: "표로 가져오기" }),
     ).toBeDisabled();
+  });
+
+  it("대용량 표는 dataset을 만들어 datasetTable 노드를 삽입한다", async () => {
+    useAuthStore.setState({ accessToken: "mock-token" });
+    let createdCols = 0;
+    let bulkRows = 0;
+    server.use(
+      http.post(`${API_BASE}/datasets`, async ({ request }) => {
+        const body = (await request.json()) as { columns: unknown[] };
+        createdCols = body.columns.length;
+        return HttpResponse.json({
+          code: "OK",
+          data: { id: 99, columns: body.columns, rowCount: 0 },
+        });
+      }),
+      http.post(`${API_BASE}/datasets/99/rows/bulk`, async ({ request }) => {
+        const body = (await request.json()) as { rows: unknown[] };
+        bulkRows = body.rows.length;
+        return HttpResponse.json({
+          code: "OK",
+          data: { id: 99, columns: [], rowCount: body.rows.length },
+        });
+      }),
+    );
+
+    // 35열(열 상한 30 초과) → dataset 경로
+    const header = Array.from({ length: 35 }, (_, i) => `H${i}`);
+    const row = Array.from({ length: 35 }, (_, i) => `v${i}`);
+    const onInsert = renderDialog();
+    await upload(makeXlsx({ Big: [header, row] }));
+
+    expect(
+      await screen.findByText(/데이터 그리드 블록으로 저장/),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "표로 가져오기" }),
+    );
+
+    await waitFor(() => expect(onInsert).toHaveBeenCalledTimes(1));
+    const node = onInsert.mock.calls[0][0] as JSONContent;
+    expect(node.type).toBe("datasetTable");
+    expect(node.attrs?.datasetId).toBe(99);
+    expect(createdCols).toBe(35);
+    expect(bulkRows).toBe(1);
   });
 });
