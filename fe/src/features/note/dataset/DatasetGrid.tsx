@@ -134,28 +134,29 @@ export function DatasetGrid({ datasetId }: Props) {
       className="border-border bg-card my-2 flex flex-col overflow-hidden rounded-md border"
       data-testid="dataset-grid"
     >
-      {/* 헤더 (TanStack Table) */}
-      <div
-        className="bg-muted text-muted-foreground grid border-b text-sm font-semibold"
-        style={{ gridTemplateColumns }}
-      >
-        {table.getFlatHeaders().map((header) => (
-          <div
-            key={header.id}
-            className="border-border truncate border-r px-2 py-1.5"
-          >
-            {flexRender(header.column.columnDef.header, header.getContext())}
-          </div>
-        ))}
-        <div aria-hidden />
-      </div>
-
-      {/* 본문 (가상화) */}
+      {/* 헤더+본문을 한 스크롤 컨테이너에 두어 스크롤바 폭과 무관하게 열이 정렬되게 한다. */}
       <div
         ref={scrollRef}
         className="overflow-auto"
         style={{ maxHeight: MAX_BODY_HEIGHT }}
       >
+        {/* 헤더 (TanStack Table) — sticky로 상단 고정 */}
+        <div
+          className="bg-muted text-muted-foreground sticky top-0 z-10 grid border-b text-sm font-semibold"
+          style={{ gridTemplateColumns }}
+        >
+          {table.getFlatHeaders().map((header) => (
+            <div
+              key={header.id}
+              className="border-border truncate border-r px-2 py-1.5"
+            >
+              {flexRender(header.column.columnDef.header, header.getContext())}
+            </div>
+          ))}
+          <div aria-hidden />
+        </div>
+
+        {/* 본문 (가상화) */}
         <div
           style={{ height: virtualizer.getTotalSize(), position: "relative" }}
         >
