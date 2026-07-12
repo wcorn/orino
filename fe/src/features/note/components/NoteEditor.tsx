@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import type { NoteContent, NoteDetail } from "../api/notes";
 import { ChildPage, collectChildPageIds } from "../editor/childPage";
 import { ChildPageContext } from "../editor/childPageContext";
+import { DatasetTable } from "../editor/datasetTable";
 import { extractImageFiles, uploadAndInsertImage } from "../editor/imageUpload";
 import { useAutoSaveNote } from "../hooks/useAutoSaveNote";
 import { useCreateNote, useDeleteNote } from "../hooks/useNoteMutations";
@@ -72,6 +73,7 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
           placeholder: "내용을 입력하거나 페이지를 추가하세요...",
         }),
         ChildPage,
+        DatasetTable,
       ],
       content: note.content as JSONContent,
       editorProps: {
