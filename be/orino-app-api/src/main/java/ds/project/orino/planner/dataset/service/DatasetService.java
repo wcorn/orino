@@ -135,6 +135,13 @@ public class DatasetService {
         dataset.setRowCount(dataset.getRowCount() - 1);
     }
 
+    /** 데이터셋 삭제. dataset_row는 FK ON DELETE CASCADE로 함께 지워진다. */
+    @Transactional
+    public void delete(Long memberId, Long datasetId) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        datasetRepository.delete(dataset);
+    }
+
     private Dataset getOwned(Long memberId, Long datasetId) {
         return datasetRepository.findByIdAndMemberId(datasetId, memberId)
                 .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));

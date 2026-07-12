@@ -2,6 +2,7 @@ package ds.project.orino.planner.dataset.controller;
 
 import com.jayway.jsonpath.JsonPath;
 import ds.project.orino.domain.member.repository.MemberRepository;
+import ds.project.orino.domain.planner.dataset.repository.DatasetRowRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
@@ -25,6 +26,8 @@ class DatasetControllerTest extends ApiTestSupport {
 
     @Autowired
     private MemberRepository memberRepository;
+    @Autowired
+    private DatasetRowRepository datasetRowRepository;
     @Autowired
     private DbCleaner dbCleaner;
 
@@ -221,5 +224,26 @@ class DatasetControllerTest extends ApiTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"rows\":[[\"x\"]]}"))
                 .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/datasets/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, otherAuth))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("DELETE dataset - 삭제 시 행도 cascade로 함께 삭제된다")
+    void delete_dataset_cascades_rows() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"A\",\"1\"],[\"B\",\"2\"]]");
+
+        mockMvc.perform(delete("/api/datasets/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/datasets/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isNotFound());
+        org.assertj.core.api.Assertions
+                .assertThat(datasetRowRepository.countByDatasetId(id))
+                .isZero();
     }
 }

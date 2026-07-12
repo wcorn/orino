@@ -99,3 +99,8 @@ export async function deleteDatasetRow(
 ): Promise<void> {
   await client.delete(`/datasets/${datasetId}/rows/${rowIndex}`);
 }
+
+/** 데이터셋 삭제(노트에서 datasetTable 블록 제거 시). 행은 서버에서 cascade 삭제. */
+export async function deleteDataset(datasetId: number): Promise<void> {
+  await client.delete(`/datasets/${datasetId}`);
+}

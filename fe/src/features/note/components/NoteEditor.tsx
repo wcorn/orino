@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DragHandle } from "@tiptap/extension-drag-handle-react";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -14,9 +14,10 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Input } from "@/components/ui/input";
 
 import type { NoteContent, NoteDetail } from "../api/notes";
+import { deleteDataset } from "../dataset/api/datasets";
 import { ChildPage, collectChildPageIds } from "../editor/childPage";
 import { ChildPageContext } from "../editor/childPageContext";
-import { DatasetTable } from "../editor/datasetTable";
+import { collectDatasetIds, DatasetTable } from "../editor/datasetTable";
 import { extractImageFiles, uploadAndInsertImage } from "../editor/imageUpload";
 import { useAutoSaveNote } from "../hooks/useAutoSaveNote";
 import { useCreateNote, useDeleteNote } from "../hooks/useNoteMutations";
@@ -54,9 +55,14 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
 
   const [title, setTitle] = useState(note.title);
   const [pendingDelete, setPendingDelete] = useState<number | null>(null);
+  const [pendingDatasetDelete, setPendingDatasetDelete] = useState<
+    number | null
+  >(null);
   // 본문에 현재 박혀 있는 childPage noteId 집합 (삭제 diff 기준).
   // NoteTab이 key={note.id}로 리마운트하므로 마운트 시점 content 기준으로 1회 초기화한다.
   const childIdsRef = useRef<Set<number>>(collectChildPageIds(note.content));
+  // 본문의 datasetTable datasetId 집합 (블록 삭제 시 dataset 정리 diff 기준).
+  const datasetIdsRef = useRef<Set<number>>(collectDatasetIds(note.content));
   // editorProps 핸들러(handlePaste/handleDrop)는 생성 시점 클로저라 editor를
   // 직접 못 잡으므로 ref로 우회한다.
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
@@ -111,6 +117,7 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
         const json = editor.getJSON() as NoteContent;
         schedule({ content: json });
         detectRemovedChildPage(json);
+        detectRemovedDataset(json);
       },
     },
     [note.id],
@@ -135,6 +142,16 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
     childIdsRef.current = current;
     if (removed.length > 0) {
       setPendingDelete(removed[0]);
+    }
+  };
+
+  const detectRemovedDataset = (json: NoteContent) => {
+    const current = collectDatasetIds(json);
+    const prev = datasetIdsRef.current;
+    const removed = [...prev].filter((id) => !current.has(id));
+    datasetIdsRef.current = current;
+    if (removed.length > 0) {
+      setPendingDatasetDelete(removed[0]);
     }
   };
 
@@ -170,6 +187,15 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
     deleteNote.mutate(pendingDelete, {
       onSuccess: () => setPendingDelete(null),
       onError: () => setPendingDelete(null),
+    });
+  };
+
+  const deleteDatasetMut = useMutation({ mutationFn: deleteDataset });
+  const confirmDatasetDelete = () => {
+    if (pendingDatasetDelete == null) return;
+    deleteDatasetMut.mutate(pendingDatasetDelete, {
+      onSuccess: () => setPendingDatasetDelete(null),
+      onError: () => setPendingDatasetDelete(null),
     });
   };
 
@@ -239,6 +265,19 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
         destructive
         onConfirm={confirmDelete}
         pending={deleteNote.isPending}
+      />
+
+      <ConfirmDialog
+        open={pendingDatasetDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDatasetDelete(null);
+        }}
+        title="표(데이터셋)를 삭제할까요?"
+        description="본문에서 제거한 데이터 그리드 표와 그 안의 모든 행이 삭제됩니다. 되돌릴 수 없어요."
+        confirmLabel="삭제"
+        destructive
+        onConfirm={confirmDatasetDelete}
+        pending={deleteDatasetMut.isPending}
       />
     </div>
   );
