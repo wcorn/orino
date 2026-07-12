@@ -1,0 +1,106 @@
+databaseChangeLog:
+  # 데이터 그리드 블록 (#769, Epic #768).
+  # 대용량 편집 표를 노트 content와 분리해 저장한다. 노트엔 datasetTable{datasetId} 참조 노드만,
+  # 표 데이터는 dataset(메타) + dataset_row(행별 cells JSON)에 둔다.
+  - changeSet:
+      id: 037-create-dataset
+      author: wcorn
+      comment: dataset 메타 테이블(columns JSON + row_count).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: dataset
+      changes:
+        - createTable:
+            tableName: dataset
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_dataset_member
+                    references: member(id)
+              - column:
+                  name: columns_json
+                  type: JSON
+                  constraints:
+                    nullable: false
+              - column:
+                  name: row_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: dataset
+            indexName: idx_dataset_member
+            columns:
+              - column:
+                  name: member_id
+
+  - changeSet:
+      id: 037-create-dataset-row
+      author: wcorn
+      comment: dataset_row 행 테이블(row_index 정렬 + cells JSON). dataset 삭제 시 cascade.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: dataset_row
+      changes:
+        - createTable:
+            tableName: dataset_row
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: dataset_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_dataset_row_dataset
+                    references: dataset(id)
+                    deleteCascade: true
+              - column:
+                  name: row_index
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: cells
+                  type: JSON
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: dataset_row
+            indexName: uq_dataset_row_dataset_index
+            unique: true
+            columns:
+              - column:
+                  name: dataset_id
+              - column:
+                  name: row_index
