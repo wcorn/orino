@@ -94,6 +94,38 @@ afterEach(() => {
   ioInstances.length = 0;
 });
 
+// jsdom엔 ResizeObserver가 없다. TanStack Virtual이 뷰포트 크기를 얻도록,
+// observe 시 콜백을 한 번 호출해 관찰 요소의 크기를 전달한다(크기는 getBoundingClientRect 목).
+if (!globalThis.ResizeObserver) {
+  globalThis.ResizeObserver = class {
+    private readonly callback: ResizeObserverCallback;
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
+    observe(el: Element) {
+      const rect = el.getBoundingClientRect();
+      this.callback(
+        [
+          {
+            target: el,
+            contentRect: rect,
+            borderBoxSize: [{ inlineSize: rect.width, blockSize: rect.height }],
+            contentBoxSize: [
+              { inlineSize: rect.width, blockSize: rect.height },
+            ],
+            devicePixelContentBoxSize: [
+              { inlineSize: rect.width, blockSize: rect.height },
+            ],
+          } as unknown as ResizeObserverEntry,
+        ],
+        this as unknown as ResizeObserver,
+      );
+    }
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
 beforeAll(() => server.listen());
 afterEach(() => {
   server.resetHandlers();

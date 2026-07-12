@@ -584,4 +584,41 @@ describe("NoteTab", () => {
       await screen.findByText(/하위 노트 2개도 함께 삭제됩니다/),
     ).toBeInTheDocument();
   });
+
+  it("datasetTable 노드가 있는 노트를 열면 데이터 그리드가 렌더된다", async () => {
+    mockTree([
+      { id: 1, title: "표노트", parentId: null, sortOrder: 0, children: [] },
+    ]);
+    mockNoteDetail(
+      1,
+      {
+        type: "doc",
+        content: [{ type: "datasetTable", attrs: { datasetId: 7 } }],
+      },
+      "표노트",
+    );
+    server.use(
+      http.get(`${API_BASE}/datasets/7`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: { id: 7, columns: [{ key: "c0", label: "과목" }], rowCount: 0 },
+        }),
+      ),
+      http.get(`${API_BASE}/datasets/7/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: { rows: [], offset: 0, limit: 100 },
+        }),
+      ),
+    );
+
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("노트 제목")).toHaveValue("표노트");
+    });
+    // 노드 → NodeView → DatasetGrid(헤더) 렌더
+    expect(await screen.findByTestId("dataset-grid")).toBeInTheDocument();
+    expect(screen.getByText("과목")).toBeInTheDocument();
+  });
 });
