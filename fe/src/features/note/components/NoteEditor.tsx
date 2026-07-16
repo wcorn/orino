@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DragHandle } from "@tiptap/extension-drag-handle-react";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
-import { TableKit } from "@tiptap/extension-table";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
 import { EditorContent, type JSONContent, useEditor } from "@tiptap/react";
@@ -73,7 +72,6 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
         StarterKit,
         TaskList,
         TaskItem.configure({ nested: true }),
-        TableKit.configure({ table: { resizable: true } }),
         Image.configure({ inline: false }),
         Placeholder.configure({
           placeholder: "내용을 입력하거나 페이지를 추가하세요...",
@@ -201,8 +199,8 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
 
   return (
     // min-w-0: 부모(md:flex-row) flex 자식의 기본 min-width:auto 때문에
-    // 넓은 표가 들어오면 에디터가 부모를 넘어 페이지 전체가 늘어난다.
-    // min-w-0으로 콘텐츠가 부모 너비를 못 넘게 하고, 표는 tableWrapper에서만 스크롤.
+    // 넓은 데이터 그리드 블록이 들어오면 에디터가 부모를 넘어 페이지가 늘어난다.
+    // min-w-0으로 콘텐츠가 부모 너비를 못 넘게 한다(그리드는 자체 영역에서 스크롤).
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex items-center gap-3">
         <Input

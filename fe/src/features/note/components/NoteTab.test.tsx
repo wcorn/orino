@@ -470,67 +470,6 @@ describe("NoteTab", () => {
     expect(screen.getByText("항목")).toBeInTheDocument();
   });
 
-  it("표를 담은 노트 content를 열면 표가 그대로 렌더된다(라운드트립)", async () => {
-    mockTree([
-      { id: 1, title: "표노트", parentId: null, sortOrder: 0, children: [] },
-    ]);
-    mockNoteDetail(
-      1,
-      {
-        type: "doc",
-        content: [
-          {
-            type: "table",
-            content: [
-              {
-                type: "tableRow",
-                content: [
-                  {
-                    type: "tableHeader",
-                    content: [
-                      {
-                        type: "paragraph",
-                        content: [{ type: "text", text: "H1" }],
-                      },
-                    ],
-                  },
-                ],
-              },
-              {
-                type: "tableRow",
-                content: [
-                  {
-                    type: "tableCell",
-                    content: [
-                      {
-                        type: "paragraph",
-                        content: [{ type: "text", text: "V1" }],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      "표노트",
-    );
-
-    const { container } = renderTab();
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("노트 제목")).toHaveValue("표노트");
-    });
-    // 저장된 표 노드가 헤더/셀로 보존되어 렌더된다
-    await waitFor(() => {
-      expect(container.querySelector("table")).not.toBeNull();
-    });
-    expect(container.querySelectorAll("table th")).toHaveLength(1);
-    expect(screen.getByText("H1")).toBeInTheDocument();
-    expect(screen.getByText("V1")).toBeInTheDocument();
-  });
-
   it("자손이 있는 노트 삭제 시 확인 문구에 하위 개수를 표시한다", async () => {
     mockTree([
       {
