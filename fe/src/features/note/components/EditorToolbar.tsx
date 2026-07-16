@@ -3,7 +3,6 @@ import {
   Bold,
   Code,
   Code2,
-  Columns3,
   FilePlus,
   Heading1,
   Heading2,
@@ -12,10 +11,8 @@ import {
   List,
   ListOrdered,
   Quote,
-  Rows3,
   Sheet,
   Table,
-  Trash2,
 } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -45,10 +42,10 @@ export function EditorToolbar({
   onInsertPage,
   insertPagePending,
 }: Props) {
-  // selection 변화(표 진입/이탈, 마크 토글 등)에 toolbar가 리렌더되도록 구독한다.
-  const isInTable = useEditorState({
+  // selection 변화(마크 토글, 커서 이동 등)에 toolbar 활성 표시가 갱신되도록 구독한다.
+  useEditorState({
     editor,
-    selector: ({ editor }) => editor?.isActive("table") ?? false,
+    selector: ({ editor }) => editor?.state.selection.from ?? 0,
   });
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -210,69 +207,6 @@ export function EditorToolbar({
             <FilePlus className="size-4" /> 페이지
           </Button>
         </>
-      )}
-
-      {isInTable && (
-        <div
-          role="group"
-          aria-label="표 편집"
-          className="flex w-full flex-wrap items-center gap-0.5 pt-1"
-        >
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label="열 추가"
-            onClick={() => editor.chain().focus().addColumnAfter().run()}
-          >
-            <Columns3 className="size-4" /> 열+
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label="열 삭제"
-            onClick={() => editor.chain().focus().deleteColumn().run()}
-          >
-            <Columns3 className="size-4" /> 열−
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label="행 추가"
-            onClick={() => editor.chain().focus().addRowAfter().run()}
-          >
-            <Rows3 className="size-4" /> 행+
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label="행 삭제"
-            onClick={() => editor.chain().focus().deleteRow().run()}
-          >
-            <Rows3 className="size-4" /> 행−
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label="헤더 행 전환"
-            onClick={() => editor.chain().focus().toggleHeaderRow().run()}
-          >
-            <Table className="size-4" /> 헤더
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label="표 삭제"
-            onClick={() => editor.chain().focus().deleteTable().run()}
-          >
-            <Trash2 className="size-4" /> 표 삭제
-          </Button>
-        </div>
       )}
     </div>
   );
