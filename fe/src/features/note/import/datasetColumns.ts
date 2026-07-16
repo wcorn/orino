@@ -7,7 +7,7 @@ export const DEFAULT_COLS = 3;
 export const DEFAULT_ROWS = 3;
 
 /** 정규화 표의 실제 열 개수(헤더/본문 중 최대 폭). */
-export function columnCount(table: NormalizedTable): number {
+function columnCount(table: NormalizedTable): number {
   return Math.max(
     table.headers?.length ?? 0,
     ...table.rows.map((r) => r.length),
@@ -24,8 +24,8 @@ export function defaultColumns(cols: number): DatasetColumn[] {
 }
 
 /**
- * 정규화 표 → dataset 컬럼 메타. 표 삽입·Import·마이그레이션이 모두 이 규칙을
- * 공유한다(SSOT). key는 안정 식별자 `cN`, label은 헤더 값(없거나 빈 값이면 `열 N`).
+ * 정규화 표 → dataset 컬럼 메타. 표 삽입·Import가 이 규칙을 공유한다.
+ * key는 안정 식별자 `cN`, label은 헤더 값(없거나 빈 값이면 `열 N`).
  */
 export function buildDatasetColumns(table: NormalizedTable): DatasetColumn[] {
   if (!table.headers) return defaultColumns(columnCount(table));
