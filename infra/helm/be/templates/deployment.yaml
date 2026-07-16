@@ -66,6 +66,8 @@ spec:
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: {{ .Values.env.SPRING_PROFILES_ACTIVE | quote }}
+            - name: JAVA_TOOL_OPTIONS
+              value: {{ .Values.env.JAVA_TOOL_OPTIONS | quote }}
             - name: MYSQL_HOST
               value: {{ .Values.env.MYSQL_HOST | quote }}
             - name: DB_NAME

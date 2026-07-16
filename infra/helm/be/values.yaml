@@ -6,6 +6,10 @@ replicas: 1
 
 env:
   SPRING_PROFILES_ACTIVE: prod
+  # JVM heap 상한을 컨테이너 limit(1Gi) 대비 50%(=512Mi)로 명시.
+  # java -jar 엔트리포인트는 JAVA_OPTS를 참조하지 않으므로 JVM이 자동 인식하는
+  # JAVA_TOOL_OPTIONS로 주입한다. heap 512 + 비힙 여유 → RSS가 1Gi 아래로 유지된다.
+  JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=50.0"
   MYSQL_HOST: mysql.orino.svc.cluster.local
   MYSQL_USERNAME: orino_app
   REDIS_HOST: redis.orino.svc.cluster.local
@@ -28,8 +32,10 @@ hpa:
   enabled: true
   minReplicas: 1
   maxReplicas: 3
+  # JVM은 부하와 무관하게 heap을 상시 점유해 memory 이용률이 항상 높다.
+  # memory 기준 타겟을 두면 max에서 못 내려와 KubeHpaMaxedOut이 상시 발화하므로
+  # CPU 기준으로만 스케일한다(#780).
   targetCPUUtilization: 70
-  targetMemoryUtilization: 80
   behavior:
     scaleUp:
       stabilizationWindowSeconds: 60
