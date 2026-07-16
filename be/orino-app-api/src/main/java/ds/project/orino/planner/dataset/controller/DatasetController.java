@@ -52,6 +52,15 @@ public class DatasetController {
         return ApiResponse.success(datasetService.getMeta(memberId, id));
     }
 
+    /** 데이터셋 삭제(노트에서 datasetTable 블록 제거 시). 행은 cascade로 함께 삭제. */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id) {
+        datasetService.delete(memberId, id);
+        return ResponseEntity.noContent().build();
+    }
+
     /** Import 청크 — 행을 끝에 벌크 추가. */
     @PostMapping("/{id}/rows/bulk")
     public ApiResponse<DatasetResponse> bulkAppend(
