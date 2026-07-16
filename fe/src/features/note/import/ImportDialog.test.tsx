@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { JSONContent } from "@tiptap/react";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as XLSX from "xlsx";
 
 import { useAuthStore } from "@/features/auth/store/authStore";
@@ -11,6 +11,36 @@ import { server } from "@/test/mocks/server";
 import { ImportDialog } from "./ImportDialog";
 
 const API_BASE = "https://api.orino.dev/api";
+
+/** 모든 가져오기가 dataset을 만들므로, 생성·벌크 요청을 캡처하는 목을 매 테스트 등록한다. */
+let createdColumns: { key: string; label: string }[] | null;
+let bulkRows: string[][] | null;
+
+beforeEach(() => {
+  useAuthStore.setState({ accessToken: "mock-token" });
+  createdColumns = null;
+  bulkRows = null;
+  server.use(
+    http.post(`${API_BASE}/datasets`, async ({ request }) => {
+      const body = (await request.json()) as {
+        columns: { key: string; label: string }[];
+      };
+      createdColumns = body.columns;
+      return HttpResponse.json({
+        code: "OK",
+        data: { id: 99, columns: body.columns, rowCount: 0 },
+      });
+    }),
+    http.post(`${API_BASE}/datasets/99/rows/bulk`, async ({ request }) => {
+      const body = (await request.json()) as { rows: string[][] };
+      bulkRows = body.rows;
+      return HttpResponse.json({
+        code: "OK",
+        data: { id: 99, columns: [], rowCount: body.rows.length },
+      });
+    }),
+  );
+});
 
 function makeXlsx(
   sheets: Record<string, unknown[][]>,
@@ -26,18 +56,8 @@ function makeXlsx(
   });
 }
 
-function renderDialog(
-  onInsert = vi.fn(),
-  currentDoc: unknown = { type: "doc" },
-) {
-  render(
-    <ImportDialog
-      open
-      onOpenChange={() => {}}
-      currentDoc={currentDoc}
-      onInsert={onInsert}
-    />,
-  );
+function renderDialog(onInsert = vi.fn()) {
+  render(<ImportDialog open onOpenChange={() => {}} onInsert={onInsert} />);
   return onInsert;
 }
 
@@ -47,7 +67,7 @@ async function upload(file: File) {
 }
 
 describe("ImportDialog", () => {
-  it("xlsx 업로드 → 미리보기 후 [표로 가져오기]로 표 노드를 삽입한다", async () => {
+  it("xlsx 업로드 → dataset을 만들어 datasetTable 노드를 삽입한다", async () => {
     const onInsert = renderDialog();
     await upload(
       makeXlsx({
@@ -58,24 +78,28 @@ describe("ImportDialog", () => {
       }),
     );
 
-    // 미리보기(머리글 + 총계)
+    // 미리보기(머리글 + 총계 + 안내)
     expect(await screen.findByText("총 1행 × 2열")).toBeInTheDocument();
     expect(screen.getByText("점수")).toBeInTheDocument();
+    expect(screen.getByText(/데이터 그리드 블록으로 저장/)).toBeInTheDocument();
 
     await userEvent.click(
       screen.getByRole("button", { name: "표로 가져오기" }),
     );
 
-    expect(onInsert).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onInsert).toHaveBeenCalledTimes(1));
     const node = onInsert.mock.calls[0][0] as JSONContent;
-    expect(node.type).toBe("table");
-    // 헤더 행(tableHeader) + 본문 1행
-    expect(node.content).toHaveLength(2);
-    const header = node.content![0] as JSONContent;
-    expect((header.content![0] as JSONContent).type).toBe("tableHeader");
+    expect(node.type).toBe("datasetTable");
+    expect(node.attrs?.datasetId).toBe(99);
+    // 첫 행이 머리글(기본값) → 컬럼 라벨 + 본문 1행
+    expect(createdColumns).toEqual([
+      { key: "c0", label: "이름" },
+      { key: "c1", label: "점수" },
+    ]);
+    expect(bulkRows).toEqual([["김철수", "90"]]);
   });
 
-  it("'첫 행을 머리글로'를 끄면 헤더 없이 전부 본문 행", async () => {
+  it("'첫 행을 머리글로'를 끄면 열 N 라벨 + 전부 본문 행", async () => {
     const onInsert = renderDialog();
     await upload(
       makeXlsx({
@@ -92,11 +116,16 @@ describe("ImportDialog", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "표로 가져오기" }),
     );
-    const node = onInsert.mock.calls[0][0] as JSONContent;
-    // 헤더 없음 → 2행 모두 tableCell
-    expect(node.content).toHaveLength(2);
-    const first = node.content![0] as JSONContent;
-    expect((first.content![0] as JSONContent).type).toBe("tableCell");
+
+    await waitFor(() => expect(onInsert).toHaveBeenCalledTimes(1));
+    expect(createdColumns).toEqual([
+      { key: "c0", label: "열 1" },
+      { key: "c1", label: "열 2" },
+    ]);
+    expect(bulkRows).toEqual([
+      ["a", "b"],
+      ["c", "d"],
+    ]);
   });
 
   it("여러 시트면 시트를 선택할 수 있다", async () => {
@@ -120,7 +149,7 @@ describe("ImportDialog", () => {
     ).toBeInTheDocument();
   });
 
-  it("CSV 소스로 전환해 .csv를 표로 가져온다", async () => {
+  it("CSV 소스로 전환해 .csv를 dataset으로 가져온다", async () => {
     const onInsert = renderDialog();
     await userEvent.click(screen.getByRole("button", { name: "CSV (.csv)" }));
 
@@ -134,10 +163,13 @@ describe("ImportDialog", () => {
       screen.getByRole("button", { name: "표로 가져오기" }),
     );
 
-    expect(onInsert).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onInsert).toHaveBeenCalledTimes(1));
     const node = onInsert.mock.calls[0][0] as JSONContent;
-    expect(node.type).toBe("table");
-    expect(node.content).toHaveLength(3); // 헤더 + 2행
+    expect(node.type).toBe("datasetTable");
+    expect(bulkRows).toEqual([
+      ["A", "1"],
+      ["B", "2"],
+    ]);
   });
 
   it("빈 시트는 '데이터가 없어요' 경고 + 가져오기 비활성", async () => {
@@ -150,62 +182,5 @@ describe("ImportDialog", () => {
     expect(
       screen.getByRole("button", { name: "표로 가져오기" }),
     ).toBeDisabled();
-  });
-
-  it("노트가 이미 크면 초과 경고 + 가져오기 비활성", async () => {
-    renderDialog(vi.fn(), { type: "doc", big: "x".repeat(1_000_001) });
-    await upload(makeXlsx({ S: [["a"]] }));
-
-    expect(
-      await screen.findByText("노트가 너무 커서 이 표를 넣을 수 없어요."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "표로 가져오기" }),
-    ).toBeDisabled();
-  });
-
-  it("대용량 표는 dataset을 만들어 datasetTable 노드를 삽입한다", async () => {
-    useAuthStore.setState({ accessToken: "mock-token" });
-    let createdCols = 0;
-    let bulkRows = 0;
-    server.use(
-      http.post(`${API_BASE}/datasets`, async ({ request }) => {
-        const body = (await request.json()) as { columns: unknown[] };
-        createdCols = body.columns.length;
-        return HttpResponse.json({
-          code: "OK",
-          data: { id: 99, columns: body.columns, rowCount: 0 },
-        });
-      }),
-      http.post(`${API_BASE}/datasets/99/rows/bulk`, async ({ request }) => {
-        const body = (await request.json()) as { rows: unknown[] };
-        bulkRows = body.rows.length;
-        return HttpResponse.json({
-          code: "OK",
-          data: { id: 99, columns: [], rowCount: body.rows.length },
-        });
-      }),
-    );
-
-    // 35열(열 상한 30 초과) → dataset 경로
-    const header = Array.from({ length: 35 }, (_, i) => `H${i}`);
-    const row = Array.from({ length: 35 }, (_, i) => `v${i}`);
-    const onInsert = renderDialog();
-    await upload(makeXlsx({ Big: [header, row] }));
-
-    expect(
-      await screen.findByText(/데이터 그리드 블록으로 저장/),
-    ).toBeInTheDocument();
-
-    await userEvent.click(
-      screen.getByRole("button", { name: "표로 가져오기" }),
-    );
-
-    await waitFor(() => expect(onInsert).toHaveBeenCalledTimes(1));
-    const node = onInsert.mock.calls[0][0] as JSONContent;
-    expect(node.type).toBe("datasetTable");
-    expect(node.attrs?.datasetId).toBe(99);
-    expect(createdCols).toBe(35);
-    expect(bulkRows).toBe(1);
   });
 });

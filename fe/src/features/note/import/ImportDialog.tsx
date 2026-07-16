@@ -9,34 +9,21 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
-import { createDatasetFromTable, shouldUseDataset } from "./datasetImport";
+import { createDatasetFromTable } from "./datasetImport";
 import { DEFAULT_IMPORT_SOURCE, IMPORT_SOURCES } from "./importers";
 import type { SheetData } from "./sheetParser";
-import {
-  buildTableNode,
-  MAX_COLS,
-  MAX_ROWS,
-  type NormalizedTable,
-  wouldExceedNoteLimit,
-} from "./tableContent";
+import type { NormalizedTable } from "./tableContent";
 
 const PREVIEW_ROWS = 5;
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** 현재 에디터 문서(삽입 시 1MB 초과 가드용). */
-  currentDoc: unknown;
-  /** 표 노드를 커서 위치에 삽입한다. */
+  /** datasetTable 노드를 커서 위치에 삽입한다. */
   onInsert: (node: JSONContent) => void;
 }
 
-export function ImportDialog({
-  open,
-  onOpenChange,
-  currentDoc,
-  onInsert,
-}: Props) {
+export function ImportDialog({ open, onOpenChange, onInsert }: Props) {
   const [source, setSource] = useState(DEFAULT_IMPORT_SOURCE);
   const [fileName, setFileName] = useState<string | null>(null);
   const [sheets, setSheets] = useState<SheetData[] | null>(null);
@@ -104,24 +91,6 @@ export function ImportDialog({
     return { headers: null, rows: current.rows };
   }, [current, firstRowAsHeader]);
 
-  // 대형 표는 데이터셋 그리드 블록으로, 소형은 native Tiptap 표로 분기.
-  const useDataset = useMemo(
-    () =>
-      normalized ? shouldUseDataset(normalized, MAX_COLS, MAX_ROWS) : false,
-    [normalized],
-  );
-
-  const build = useMemo(
-    () => (normalized && !useDataset ? buildTableNode(normalized) : null),
-    [normalized, useDataset],
-  );
-
-  // native 경로만 노트 1MB 제한을 받는다(데이터셋은 참조 노드만이라 무관).
-  const exceedsLimit = useMemo(
-    () => (build ? wouldExceedNoteLimit(currentDoc, build.node) : false),
-    [build, currentDoc],
-  );
-
   const totalRows = normalized?.rows.length ?? 0;
   const totalCols = normalized
     ? Math.max(
@@ -132,25 +101,19 @@ export function ImportDialog({
     : 0;
 
   const isEmptySheet = current !== null && current.rows.length === 0;
-  const canImport = normalized !== null && !exceedsLimit && !submitting;
+  const canImport = normalized !== null && !submitting;
 
   const handleImport = async () => {
     if (!normalized || submitting) return;
-    if (useDataset) {
-      setSubmitting(true);
-      try {
-        const datasetId = await createDatasetFromTable(normalized);
-        onInsert({ type: "datasetTable", attrs: { datasetId } });
-        close();
-      } catch {
-        setError("표를 저장하지 못했어요. 잠시 후 다시 시도해 주세요.");
-        setSubmitting(false);
-      }
-      return;
+    setSubmitting(true);
+    try {
+      const datasetId = await createDatasetFromTable(normalized);
+      onInsert({ type: "datasetTable", attrs: { datasetId } });
+      close();
+    } catch {
+      setError("표를 저장하지 못했어요. 잠시 후 다시 시도해 주세요.");
+      setSubmitting(false);
     }
-    if (!build || exceedsLimit) return;
-    onInsert(build.node);
-    close();
   };
 
   return (
@@ -271,21 +234,11 @@ export function ImportDialog({
               <p className="text-muted-foreground text-sm">
                 총 {totalRows}행 × {totalCols}열
               </p>
-              {useDataset && (
-                <Alert variant="info">
-                  <AlertDescription>
-                    대용량 표라 데이터 그리드 블록으로 저장돼요(스크롤·편집
-                    가능).
-                  </AlertDescription>
-                </Alert>
-              )}
-              {exceedsLimit && (
-                <Alert variant="destructive">
-                  <AlertDescription>
-                    노트가 너무 커서 이 표를 넣을 수 없어요.
-                  </AlertDescription>
-                </Alert>
-              )}
+              <Alert variant="info">
+                <AlertDescription>
+                  표는 데이터 그리드 블록으로 저장돼요(스크롤·편집 가능).
+                </AlertDescription>
+              </Alert>
             </>
           )}
         </div>

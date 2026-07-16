@@ -21,8 +21,10 @@ import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { toast } from "@/shared/lib/toast";
 
 import { uploadAndInsertImage } from "../editor/imageUpload";
+import { createEmptyDataset } from "../import/datasetImport";
 import { ImportDialog } from "../import/ImportDialog";
 
 interface Props {
@@ -50,8 +52,23 @@ export function EditorToolbar({
   });
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [insertingTable, setInsertingTable] = useState(false);
 
   if (!editor) return null;
+
+  // 표 삽입 = 빈 dataset(3×3) 생성 후 datasetTable 블록 삽입. 대용량 표와 동일 저장 방식.
+  const handleInsertTable = async () => {
+    if (insertingTable) return;
+    setInsertingTable(true);
+    try {
+      const datasetId = await createEmptyDataset();
+      editor.chain().focus().insertDatasetTable({ datasetId }).run();
+    } catch {
+      toast("표를 만들지 못했어요. 잠시 후 다시 시도해 주세요.", "error");
+    } finally {
+      setInsertingTable(false);
+    }
+  };
 
   const buttons: ToolbarButton[] = [
     {
@@ -108,18 +125,6 @@ export function EditorToolbar({
       isActive: () => editor.isActive("codeBlock"),
       onClick: () => editor.chain().focus().toggleCodeBlock().run(),
     },
-    {
-      label: "표 삽입",
-      icon: Table,
-      isActive: () => editor.isActive("table"),
-      // 제목 행은 강제하지 않는다. 필요하면 표 편집의 [헤더] 버튼으로 켠다.
-      onClick: () =>
-        editor
-          .chain()
-          .focus()
-          .insertTable({ rows: 3, cols: 3, withHeaderRow: false })
-          .run(),
-    },
   ];
 
   return (
@@ -145,6 +150,16 @@ export function EditorToolbar({
           </Button>
         );
       })}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="표 삽입"
+        disabled={insertingTable}
+        onClick={() => void handleInsertTable()}
+      >
+        <Table className="size-4" />
+      </Button>
       <Button
         type="button"
         variant="ghost"
@@ -179,7 +194,6 @@ export function EditorToolbar({
       <ImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
-        currentDoc={importOpen ? editor.getJSON() : null}
         onInsert={(node) => editor.chain().focus().insertContent(node).run()}
       />
       {onInsertPage && (

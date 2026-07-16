@@ -6,11 +6,12 @@ import {
 
 import type { NormalizedTable } from "./tableContent";
 
-/** 이 셀 수를 넘으면 native 표 대신 데이터셋 그리드 블록으로 삽입한다. */
-export const DATASET_CELL_THRESHOLD = 2000;
-
 /** 벌크 업로드 청크 크기(BE 최대 2000행). */
 const BULK_CHUNK = 1000;
+
+/** 툴바 "표 삽입" 기본 크기(열·행). */
+export const DEFAULT_COLS = 3;
+export const DEFAULT_ROWS = 3;
 
 function columnCount(table: NormalizedTable): number {
   return Math.max(
@@ -20,19 +21,12 @@ function columnCount(table: NormalizedTable): number {
   );
 }
 
-/**
- * 표가 native Tiptap 표 상한(열/행)이나 셀 임계치를 넘어 데이터셋 그리드 블록으로
- * 가야 하는지. 소형은 가벼운 native 표, 대형은 별도 dataset + 가상화 그리드.
- */
-export function shouldUseDataset(
-  table: NormalizedTable,
-  maxCols: number,
-  maxRows: number,
-): boolean {
-  const cols = columnCount(table);
-  const rows = table.rows.length;
-  const cells = cols * (rows + (table.headers ? 1 : 0));
-  return cols > maxCols || rows > maxRows || cells > DATASET_CELL_THRESHOLD;
+/** 열 개수만큼 `열 N` 라벨의 기본 컬럼을 만든다. */
+function defaultColumns(cols: number): DatasetColumn[] {
+  return Array.from({ length: cols }, (_, i) => ({
+    key: `c${i}`,
+    label: `열 ${i + 1}`,
+  }));
 }
 
 /** 정규화 표 → dataset 생성 + 행 벌크 업로드(청크). datasetId 반환. */
@@ -45,14 +39,29 @@ export async function createDatasetFromTable(
         key: `c${i}`,
         label: label || `열 ${i + 1}`,
       }))
-    : Array.from({ length: cols }, (_, i) => ({
-        key: `c${i}`,
-        label: `열 ${i + 1}`,
-      }));
+    : defaultColumns(cols);
 
   const dataset = await createDataset(columns);
   for (let i = 0; i < table.rows.length; i += BULK_CHUNK) {
     await bulkAppendRows(dataset.id, table.rows.slice(i, i + BULK_CHUNK));
+  }
+  return dataset.id;
+}
+
+/**
+ * 빈 dataset(열 라벨 `열 N`, 빈 셀 rows행)을 생성한다. 툴바 "표 삽입"용.
+ * datasetId 반환.
+ */
+export async function createEmptyDataset(
+  cols = DEFAULT_COLS,
+  rows = DEFAULT_ROWS,
+): Promise<number> {
+  const dataset = await createDataset(defaultColumns(cols));
+  if (rows > 0) {
+    const emptyRows = Array.from({ length: rows }, () =>
+      Array.from({ length: cols }, () => ""),
+    );
+    await bulkAppendRows(dataset.id, emptyRows);
   }
   return dataset.id;
 }
