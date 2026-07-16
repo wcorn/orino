@@ -64,6 +64,43 @@ function mockNoteDetail(
   );
 }
 
+interface DatasetColumn {
+  key: string;
+  label: string;
+}
+
+/** 표 삽입/가져오기가 만드는 dataset의 생성·조회 엔드포인트를 목킹한다. */
+function mockDataset(id: number, columns: DatasetColumn[], rows: string[][]) {
+  server.use(
+    http.post(`${API_BASE}/datasets`, () =>
+      HttpResponse.json({ code: "OK", data: { id, columns, rowCount: 0 } }),
+    ),
+    http.post(`${API_BASE}/datasets/${id}/rows/bulk`, async ({ request }) => {
+      const body = (await request.json()) as { rows: string[][] };
+      return HttpResponse.json({
+        code: "OK",
+        data: { id, columns, rowCount: body.rows.length },
+      });
+    }),
+    http.get(`${API_BASE}/datasets/${id}`, () =>
+      HttpResponse.json({
+        code: "OK",
+        data: { id, columns, rowCount: rows.length },
+      }),
+    ),
+    http.get(`${API_BASE}/datasets/${id}/rows`, () =>
+      HttpResponse.json({
+        code: "OK",
+        data: {
+          rows: rows.map((cells, rowIndex) => ({ rowIndex, cells })),
+          offset: 0,
+          limit: 100,
+        },
+      }),
+    ),
+  );
+}
+
 describe("NoteTab", () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: "mock-token" });
@@ -298,35 +335,37 @@ describe("NoteTab", () => {
     await waitFor(() => expect(deletedId).toBe(1));
   });
 
-  it("툴바 [표 삽입] 클릭 시 표가 본문에 삽입되고 표 편집 컨트롤이 나타난다", async () => {
+  it("툴바 [표 삽입] 클릭 시 빈 dataset을 만들어 데이터 그리드가 삽입된다", async () => {
     mockTree([
       { id: 1, title: "노트", parentId: null, sortOrder: 0, children: [] },
     ]);
     mockNoteDetail(1, { type: "doc", content: [] }, "노트");
+    mockDataset(
+      7,
+      [
+        { key: "c0", label: "열 1" },
+        { key: "c1", label: "열 2" },
+        { key: "c2", label: "열 3" },
+      ],
+      [
+        ["", "", ""],
+        ["", "", ""],
+        ["", "", ""],
+      ],
+    );
 
     const user = userEvent.setup();
-    const { container } = renderTab();
+    renderTab();
 
     await waitFor(() => {
       expect(screen.getByLabelText("노트 제목")).toHaveValue("노트");
     });
 
-    // 표 삽입 전에는 표가 없다
-    expect(container.querySelector("table")).toBeNull();
-
     await user.click(screen.getByRole("button", { name: "표 삽입" }));
 
-    // 표가 렌더되고 (헤더행 없이 3x3 = td 9개), 제목 행은 기본값이 아니다
-    await waitFor(() => {
-      expect(container.querySelector("table")).not.toBeNull();
-    });
-    expect(container.querySelectorAll("table td")).toHaveLength(9);
-    expect(container.querySelectorAll("table th")).toHaveLength(0);
-
-    // 커서가 표 안에 있으므로 표 편집 컨트롤이 노출된다
-    expect(screen.getByRole("button", { name: "열 추가" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "행 추가" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "표 삭제" })).toBeInTheDocument();
+    // dataset 생성 → datasetTable 노드 → NodeView → DatasetGrid 렌더
+    expect(await screen.findByTestId("dataset-grid")).toBeInTheDocument();
+    expect(screen.getByText("열 1")).toBeInTheDocument();
   });
 
   it("툴바 [이미지 추가]로 파일 선택 시 presign→PUT 후 본문에 이미지가 삽입된다", async () => {
@@ -384,78 +423,26 @@ describe("NoteTab", () => {
     });
   });
 
-  it("표 삽입 후 [헤더] 버튼으로 제목 행을 선택적으로 켤 수 있다", async () => {
+  it("[가져오기]로 엑셀을 업로드하면 dataset을 만들어 데이터 그리드가 삽입된다", async () => {
     mockTree([
       { id: 1, title: "노트", parentId: null, sortOrder: 0, children: [] },
     ]);
     mockNoteDetail(1, { type: "doc", content: [] }, "노트");
+    mockDataset(
+      7,
+      [
+        { key: "c0", label: "항목" },
+        { key: "c1", label: "값" },
+      ],
+      [["A", "1"]],
+    );
 
     const user = userEvent.setup();
-    const { container } = renderTab();
+    renderTab();
 
     await waitFor(() => {
       expect(screen.getByLabelText("노트 제목")).toHaveValue("노트");
     });
-
-    await user.click(screen.getByRole("button", { name: "표 삽입" }));
-    await waitFor(() => {
-      expect(container.querySelector("table")).not.toBeNull();
-    });
-    // 기본은 헤더 없음
-    expect(container.querySelectorAll("table th")).toHaveLength(0);
-
-    // 헤더 전환 → 첫 행이 헤더(th)가 된다
-    await user.click(screen.getByRole("button", { name: "헤더 행 전환" }));
-    await waitFor(() => {
-      expect(container.querySelectorAll("table th")).toHaveLength(3);
-    });
-  });
-
-  it("표 삽입 후 [행 추가]로 행이 늘고 [표 삭제]로 표가 제거된다", async () => {
-    mockTree([
-      { id: 1, title: "노트", parentId: null, sortOrder: 0, children: [] },
-    ]);
-    mockNoteDetail(1, { type: "doc", content: [] }, "노트");
-
-    const user = userEvent.setup();
-    const { container } = renderTab();
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("노트 제목")).toHaveValue("노트");
-    });
-
-    await user.click(screen.getByRole("button", { name: "표 삽입" }));
-    await waitFor(() => {
-      expect(container.querySelector("table")).not.toBeNull();
-    });
-    const rowsBefore = container.querySelectorAll("table tr").length;
-
-    await user.click(screen.getByRole("button", { name: "행 추가" }));
-    await waitFor(() => {
-      expect(container.querySelectorAll("table tr").length).toBe(
-        rowsBefore + 1,
-      );
-    });
-
-    await user.click(screen.getByRole("button", { name: "표 삭제" }));
-    await waitFor(() => {
-      expect(container.querySelector("table")).toBeNull();
-    });
-  });
-
-  it("[가져오기]로 엑셀을 업로드하면 값이 표로 본문에 삽입된다", async () => {
-    mockTree([
-      { id: 1, title: "노트", parentId: null, sortOrder: 0, children: [] },
-    ]);
-    mockNoteDetail(1, { type: "doc", content: [] }, "노트");
-
-    const user = userEvent.setup();
-    const { container } = renderTab();
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("노트 제목")).toHaveValue("노트");
-    });
-    expect(container.querySelector("table")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "가져오기" }));
 
@@ -478,13 +465,9 @@ describe("NoteTab", () => {
     await screen.findByText("총 1행 × 2열");
     await user.click(screen.getByRole("button", { name: "표로 가져오기" }));
 
-    // 본문에 표가 삽입되고(헤더행 th 2 + 본문 td 2) 값이 보인다
-    await waitFor(() => {
-      expect(container.querySelector("table")).not.toBeNull();
-    });
-    expect(container.querySelectorAll("table th")).toHaveLength(2);
+    // 본문에 datasetTable → DatasetGrid가 렌더되고 헤더 라벨이 보인다
+    expect(await screen.findByTestId("dataset-grid")).toBeInTheDocument();
     expect(screen.getByText("항목")).toBeInTheDocument();
-    expect(screen.getByText("A")).toBeInTheDocument();
   });
 
   it("표를 담은 노트 content를 열면 표가 그대로 렌더된다(라운드트립)", async () => {
