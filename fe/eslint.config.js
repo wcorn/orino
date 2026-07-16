@@ -33,12 +33,5 @@ export default tseslint.config(
       "simple-import-sort/exports": "error",
     },
   },
-  // 일회성 Node 스크립트(빌드 대상 아님) — node 전역 허용.
-  {
-    files: ["scripts/**/*.ts"],
-    languageOptions: {
-      globals: globals.node,
-    },
-  },
   prettier,
 );
