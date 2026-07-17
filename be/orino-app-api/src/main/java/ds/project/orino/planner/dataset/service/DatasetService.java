@@ -63,10 +63,13 @@ public class DatasetService {
 
     private final DatasetRepository datasetRepository;
     private final DatasetRowRepository rowRepository;
+    private final DatasetFormulaService formulaService;
 
-    public DatasetService(DatasetRepository datasetRepository, DatasetRowRepository rowRepository) {
+    public DatasetService(DatasetRepository datasetRepository, DatasetRowRepository rowRepository,
+                          DatasetFormulaService formulaService) {
         this.datasetRepository = datasetRepository;
         this.rowRepository = rowRepository;
+        this.formulaService = formulaService;
     }
 
     /**
@@ -299,14 +302,37 @@ public class DatasetService {
         return new RowsResponse(rows, off, lim);
     }
 
+    /**
+     * 셀/행 편집. {@code =}로 시작하는 값은 수식으로 보고 파싱·평가해 <b>계산된 값</b>을 셀에 담는다
+     * (수식 원본은 {@code dataset_formula}에 따로). 엑셀과 같은 진입이라 별도 API가 없다.
+     */
     @Transactional
     public RowView updateRow(Long memberId, Long datasetId, int rowIndex, UpdateRowRequest request) {
         Dataset dataset = getOwned(memberId, datasetId);
         List<DatasetColumn> columns = parseColumns(dataset.getColumns());
         DatasetRow row = rowRepository.findByDatasetIdAndRowIndex(datasetId, rowIndex)
                 .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
-        row.updateCells(toCellMap(request.cells(), columns));
-        // 저장된 값을 그대로 되돌려준다(열 수에 맞춰 잘리거나 채워진 결과).
+
+        // 리터럴을 먼저 채운다 — 같은 행 참조가 이번 요청에서 바뀐 값을 봐야 한다.
+        // (cells=["5","={c0}*2"] 면 c1은 옛 c0이 아니라 5를 써야 한다)
+        Map<String, String> cells = DatasetCells.toMap(request.cells(), columns);
+        Map<String, String> formulas = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : cells.entrySet()) {
+            if (DatasetFormulaService.isFormula(entry.getValue())) {
+                formulas.put(entry.getKey(), entry.getValue());
+            } else {
+                formulaService.removeIfAny(row.getId(), entry.getKey());
+            }
+        }
+        // 수식은 열 순서로 계산한다. 앞쪽 수식이 뒤쪽 수식 셀을 참조하면 옛 값을 보는데,
+        // 그 재계산은 전파(#813)가 맡는다.
+        for (Map.Entry<String, String> entry : formulas.entrySet()) {
+            cells.put(entry.getKey(), formulaService.saveAndEvaluate(
+                    datasetId, row, entry.getKey(), entry.getValue(), columns, cells));
+        }
+
+        row.updateCells(DatasetCells.serialize(cells));
+        // 저장된 값을 그대로 되돌려준다(열 수에 맞춰 잘리거나 채워진 결과, 수식은 계산된 값).
         return new RowView(row.getId(), rowIndex, toCellList(row.getCells(), columns));
     }
 
