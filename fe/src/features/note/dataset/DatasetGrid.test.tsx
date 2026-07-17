@@ -30,9 +30,11 @@ function mockDataset(rows: string[][]) {
       const url = new URL(request.url);
       const offset = Number(url.searchParams.get("offset") ?? "0");
       const limit = Number(url.searchParams.get("limit") ?? "100");
-      const slice = rows
-        .slice(offset, offset + limit)
-        .map((cells, i) => ({ rowIndex: offset + i, cells }));
+      const slice = rows.slice(offset, offset + limit).map((cells, i) => ({
+        id: 100 + offset + i,
+        rowIndex: offset + i,
+        cells,
+      }));
       return HttpResponse.json({
         code: "OK",
         data: { rows: slice, offset, limit },
@@ -91,7 +93,7 @@ describe("DatasetGrid", () => {
           patched = { index: Number(params.i), cells: body.cells };
           return HttpResponse.json({
             code: "OK",
-            data: { rowIndex: Number(params.i), cells: body.cells },
+            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
           });
         },
       ),
@@ -150,7 +152,9 @@ describe("DatasetGrid", () => {
         HttpResponse.json({
           code: "OK",
           data: {
-            rows: [{ rowIndex: 0, cells: ["네트워크", "92", "재수강"] }],
+            rows: [
+              { id: 100, rowIndex: 0, cells: ["네트워크", "92", "재수강"] },
+            ],
             offset: 0,
             limit: 100,
           },
@@ -182,7 +186,7 @@ describe("DatasetGrid", () => {
         HttpResponse.json({
           code: "OK",
           data: {
-            rows: [{ rowIndex: 0, cells: ["네트워크", "재수강"] }],
+            rows: [{ id: 100, rowIndex: 0, cells: ["네트워크", "재수강"] }],
             offset: 0,
             limit: 100,
           },
@@ -220,7 +224,7 @@ describe("DatasetGrid", () => {
         HttpResponse.json({
           code: "OK",
           data: {
-            rows: [{ rowIndex: 0, cells: ["네트워크"] }],
+            rows: [{ id: 100, rowIndex: 0, cells: ["네트워크"] }],
             offset: 0,
             limit: 100,
           },
@@ -293,7 +297,7 @@ describe("DatasetGrid", () => {
         patched = body.cells;
         return HttpResponse.json({
           code: "OK",
-          data: { rowIndex: 0, cells: body.cells },
+          data: { id: 100, rowIndex: 0, cells: body.cells },
         });
       }),
     );

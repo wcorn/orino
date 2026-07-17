@@ -12,6 +12,11 @@ export interface DatasetMeta {
 }
 
 export interface DatasetRow {
+  /**
+   * 행의 안정적 식별자. rowIndex는 삽입·삭제 때마다 밀리지만 id는 바뀌지 않는다.
+   * 수식이 다른 행을 참조할 때 묶을 대상(아직 사용처 없음).
+   */
+  id: number;
   rowIndex: number;
   cells: string[];
 }

@@ -209,6 +209,97 @@ class DatasetControllerTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.data.rowCount").value(2));
     }
 
+    /** rowIndex 순으로 각 행의 id를 뽑는다. */
+    private java.util.List<Long> rowIds(long id) throws Exception {
+        String body = mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        java.util.List<Number> raw = JsonPath.read(body, "$.data.rows[*].id");
+        return raw.stream().map(Number::longValue).toList();
+    }
+
+    @Test
+    @DisplayName("GET rows - 행 id를 함께 반환한다")
+    void rows_expose_id() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"A\",\"1\"],[\"B\",\"2\"]]");
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows[0].id").isNumber())
+                .andExpect(jsonPath("$.data.rows[1].id").isNumber());
+
+        // PATCH 응답에도 같은 id가 실린다.
+        long firstId = rowIds(id).get(0);
+        mockMvc.perform(patch("/api/datasets/{id}/rows/{i}", id, 0)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":[\"A수정\",\"1\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(firstId));
+    }
+
+    @Test
+    @DisplayName("행을 앞에 끼워 rowIndex가 밀려도 기존 행의 id는 그대로다")
+    void row_id_survives_insert_shift() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"A\",\"1\"],[\"B\",\"2\"]]");
+        java.util.List<Long> before = rowIds(id);
+
+        // 맨 앞에 삽입 — 기존 두 행의 rowIndex는 0,1 → 1,2로 밀린다.
+        mockMvc.perform(post("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"atIndex\":0,\"cells\":[\"NEW\",\"9\"]}"))
+                .andExpect(status().isCreated());
+
+        java.util.List<Long> after = rowIds(id);
+        org.assertj.core.api.Assertions.assertThat(after).hasSize(3);
+        // rowIndex는 밀렸지만 id는 보존된다 — 수식 참조가 id에 묶여야 하는 이유.
+        org.assertj.core.api.Assertions.assertThat(after.subList(1, 3))
+                .as("삽입 후에도 기존 행 id가 순서대로 유지돼야 한다")
+                .isEqualTo(before);
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.rows[1].rowIndex").value(1))
+                .andExpect(jsonPath("$.data.rows[1].cells[0]").value("A"));
+    }
+
+    @Test
+    @DisplayName("행을 지워 rowIndex가 당겨져도 남은 행의 id는 그대로다")
+    void row_id_survives_delete_shift() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"A\",\"1\"],[\"B\",\"2\"],[\"C\",\"3\"]]");
+        java.util.List<Long> before = rowIds(id);
+
+        mockMvc.perform(delete("/api/datasets/{id}/rows/{i}", id, 0)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isNoContent());
+
+        // B, C의 rowIndex는 1,2 → 0,1로 당겨지지만 id는 그대로다.
+        org.assertj.core.api.Assertions.assertThat(rowIds(id))
+                .isEqualTo(before.subList(1, 3));
+    }
+
+    @Test
+    @DisplayName("셀을 수정해도 행 id는 바뀌지 않는다")
+    void row_id_survives_update() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"A\",\"1\"]]");
+        long before = rowIds(id).get(0);
+
+        mockMvc.perform(patch("/api/datasets/{id}/rows/{i}", id, 0)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":[\"수정됨\",\"9\"]}"))
+                .andExpect(status().isOk());
+
+        org.assertj.core.api.Assertions.assertThat(rowIds(id).get(0)).isEqualTo(before);
+    }
+
     @Test
     @DisplayName("DELETE column - 열이 빠지고 남은 열 값은 유지된다")
     void delete_column() throws Exception {
