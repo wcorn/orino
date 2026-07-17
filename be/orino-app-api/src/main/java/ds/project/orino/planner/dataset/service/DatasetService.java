@@ -12,6 +12,7 @@ import ds.project.orino.planner.dataset.dto.DatasetColumn;
 import ds.project.orino.planner.dataset.dto.DatasetResponse;
 import ds.project.orino.planner.dataset.dto.InsertRowRequest;
 import ds.project.orino.planner.dataset.dto.InsertRowResponse;
+import ds.project.orino.planner.dataset.dto.RenameColumnRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
@@ -57,6 +58,32 @@ public class DatasetService {
     public DatasetResponse getMeta(Long memberId, Long datasetId) {
         Dataset dataset = getOwned(memberId, datasetId);
         return DatasetResponse.of(dataset, parseColumns(dataset.getColumns()));
+    }
+
+    /**
+     * 열 이름(label) 변경. key는 cells 배열의 위치와 묶인 식별자라 바꾸지 않으며,
+     * columns_json만 갱신하므로 행 데이터는 건드리지 않는다.
+     */
+    @Transactional
+    public DatasetResponse renameColumn(Long memberId, Long datasetId, String key,
+                                        RenameColumnRequest request) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        int at = -1;
+        for (int i = 0; i < columns.size(); i++) {
+            if (columns.get(i).key().equals(key)) {
+                at = i;
+                break;
+            }
+        }
+        if (at < 0) {
+            throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+
+        List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
+        updated.set(at, new DatasetColumn(key, request.label()));
+        dataset.updateColumns(serialize(updated));
+        return DatasetResponse.of(dataset, updated);
     }
 
     /** 행 벌크 추가(끝에 append). Import 청크에 사용. */

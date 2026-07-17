@@ -128,6 +128,63 @@ describe("DatasetGrid", () => {
     await waitFor(() => expect(inserted).toBe(true));
   });
 
+  it("열 헤더를 더블클릭해 편집하면 PATCH로 저장하고 새 이름을 보여준다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let renamed: { key: string; label: string } | null = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/columns/:key`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { label: string };
+          renamed = { key: String(params.key), label: body.label };
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              id: 1,
+              columns: [
+                { key: "c0", label: "과목" },
+                { key: "c1", label: body.label },
+              ],
+              rowCount: 1,
+            },
+          });
+        },
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    fireEvent.doubleClick(await screen.findByText("점수"));
+    const input = await screen.findByLabelText("열 이름 c1");
+    fireEvent.change(input, { target: { value: "최종점수" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(renamed).toEqual({ key: "c1", label: "최종점수" });
+    });
+    expect(await screen.findByText("최종점수")).toBeInTheDocument();
+  });
+
+  it("열 이름을 비우면 PATCH를 보내지 않는다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let called = false;
+    server.use(
+      http.patch(`${API_BASE}/datasets/1/columns/:key`, () => {
+        called = true;
+        return new HttpResponse(null, { status: 400 });
+      }),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    fireEvent.doubleClick(await screen.findByText("점수"));
+    const input = await screen.findByLabelText("열 이름 c1");
+    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // 편집이 닫히고 원래 이름이 남는다
+    expect(await screen.findByText("점수")).toBeInTheDocument();
+    expect(called).toBe(false);
+  });
+
   it("행 삭제 버튼으로 DELETE를 호출한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let deleted: number | null = null;

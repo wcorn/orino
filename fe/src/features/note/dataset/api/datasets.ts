@@ -57,6 +57,19 @@ export async function fetchDatasetMeta(
   return data.data;
 }
 
+/** 열 이름 변경. key는 cells 위치와 묶인 식별자라 바뀌지 않고 label만 바뀐다. */
+export async function renameDatasetColumn(
+  datasetId: number,
+  key: string,
+  label: string,
+): Promise<DatasetMeta> {
+  const { data } = await client.patch<ApiEnvelope<DatasetMeta>>(
+    `/datasets/${datasetId}/columns/${key}`,
+    { label },
+  );
+  return data.data;
+}
+
 export async function fetchDatasetRows(
   datasetId: number,
   offset: number,

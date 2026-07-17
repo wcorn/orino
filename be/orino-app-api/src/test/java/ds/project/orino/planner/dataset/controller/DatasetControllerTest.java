@@ -210,6 +210,55 @@ class DatasetControllerTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("PATCH column - label이 변경되고 행 데이터는 그대로다")
+    void rename_column() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}", id, "c1")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"최종점수\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns", hasSize(2)))
+                .andExpect(jsonPath("$.data.columns[0].label").value("과목"))
+                .andExpect(jsonPath("$.data.columns[1].key").value("c1"))
+                .andExpect(jsonPath("$.data.columns[1].label").value("최종점수"));
+
+        mockMvc.perform(get("/api/datasets/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.columns[1].label").value("최종점수"));
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.rows", hasSize(1)))
+                .andExpect(jsonPath("$.data.rows[0].cells[0]").value("네트워크"))
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value("92"));
+    }
+
+    @Test
+    @DisplayName("PATCH column - 없는 key면 404")
+    void rename_missing_column_404() throws Exception {
+        long id = createDataset();
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}", id, "c9")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"x\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("PATCH column - label이 비면 400")
+    void rename_blank_label_400() throws Exception {
+        long id = createDataset();
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}", id, "c0")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"  \"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("타인 dataset 접근 시 404")
     void other_member_404() throws Exception {
         long id = createDataset();
@@ -218,6 +267,11 @@ class DatasetControllerTest extends ApiTestSupport {
 
         mockMvc.perform(get("/api/datasets/{id}", id)
                         .header(HttpHeaders.AUTHORIZATION, otherAuth))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}", id, "c0")
+                        .header(HttpHeaders.AUTHORIZATION, otherAuth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"해킹\"}"))
                 .andExpect(status().isNotFound());
         mockMvc.perform(post("/api/datasets/{id}/rows/bulk", id)
                         .header(HttpHeaders.AUTHORIZATION, otherAuth)
