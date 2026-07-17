@@ -37,6 +37,13 @@ public class Dataset {
     @Column(name = "row_count", nullable = false)
     private int rowCount;
 
+    /**
+     * 다음 열 key 발급 번호. key는 cells 맵의 주소라 재사용하면 지워진 열의 값이 되살아나므로,
+     * 열이 삭제돼도 되돌리지 않고 한 방향으로만 올린다.
+     */
+    @Column(name = "next_column_seq", nullable = false)
+    private int nextColumnSeq;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
@@ -48,14 +55,20 @@ public class Dataset {
     protected Dataset() {
     }
 
-    public Dataset(Long memberId, String columns) {
+    public Dataset(Long memberId, String columns, int nextColumnSeq) {
         this.memberId = memberId;
         this.columns = columns;
         this.rowCount = 0;
+        this.nextColumnSeq = nextColumnSeq;
     }
 
     public void updateColumns(String columns) {
         this.columns = columns;
+    }
+
+    /** 열 key 하나를 발급하고 카운터를 올린다. */
+    public int issueColumnSeq() {
+        return nextColumnSeq++;
     }
 
     public void setRowCount(int rowCount) {
@@ -76,6 +89,10 @@ public class Dataset {
 
     public int getRowCount() {
         return rowCount;
+    }
+
+    public int getNextColumnSeq() {
+        return nextColumnSeq;
     }
 
     public Instant getCreatedAt() {

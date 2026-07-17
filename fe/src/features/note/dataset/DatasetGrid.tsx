@@ -15,6 +15,7 @@ import { LoadingText } from "@/components/ui/loading-text";
 import { cn } from "@/lib/utils";
 
 import {
+  addDatasetColumn,
   type DatasetMeta,
   deleteDatasetRow,
   insertDatasetRow,
@@ -73,6 +74,14 @@ export function DatasetGrid({ datasetId }: Props) {
   const renameColMut = useMutation({
     mutationFn: (v: { key: string; label: string }) =>
       renameDatasetColumn(datasetId, v.key, v.label),
+    onSuccess: (next: DatasetMeta) =>
+      queryClient.setQueryData(datasetKeys.meta(datasetId), next),
+    onError: () => void invalidateMeta(),
+  });
+  const addColMut = useMutation({
+    mutationFn: (label: string) => addDatasetColumn(datasetId, label),
+    // 행은 다시 받지 않는다. 새 열의 key는 방금 발급돼 어느 행에도 값이 없으므로,
+    // 캐시된 짧은 cells를 그대로 두면 렌더가 새 열을 빈 칸으로 그린다(편집 시 패딩됨).
     onSuccess: (next: DatasetMeta) =>
       queryClient.setQueryData(datasetKeys.meta(datasetId), next),
     onError: () => void invalidateMeta(),
@@ -139,6 +148,8 @@ export function DatasetGrid({ datasetId }: Props) {
 
   const addRow = () =>
     insertMut.mutate(Array.from({ length: colCount }, () => ""));
+
+  const addColumn = () => addColMut.mutate(`열 ${colCount + 1}`);
 
   const startColEdit = (key: string, label: string) => {
     setEditingCol(key);
@@ -207,7 +218,17 @@ export function DatasetGrid({ datasetId }: Props) {
               )}
             </div>
           ))}
-          <div aria-hidden />
+          {/* 행 삭제 버튼 열(44px) 위 자리 — 열 추가 버튼을 둔다. */}
+          <button
+            type="button"
+            aria-label="열 추가"
+            title="열 추가"
+            onClick={addColumn}
+            disabled={addColMut.isPending}
+            className="text-muted-foreground hover:text-foreground flex items-center justify-center disabled:opacity-50"
+          >
+            <Plus className="size-3.5" />
+          </button>
         </div>
 
         {/* 본문 (가상화) */}

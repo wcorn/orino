@@ -75,3 +75,5 @@ databaseChangeLog:
       file: db/changelog/changes/037-create-dataset.yaml
   - include:
       file: db/changelog/changes/038-dataset-cells-to-map.yaml
+  - include:
+      file: db/changelog/changes/039-dataset-next-column-seq.yaml

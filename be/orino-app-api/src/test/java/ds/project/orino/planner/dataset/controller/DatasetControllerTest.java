@@ -210,6 +210,114 @@ class DatasetControllerTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("POST column - 열이 끝에 추가되고 기존 행 값은 그대로, 새 열은 빈 값")
+    void add_column() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+
+        mockMvc.perform(post("/api/datasets/{id}/columns", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"비고\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.columns", hasSize(3)))
+                .andExpect(jsonPath("$.data.columns[2].key").value("c2"))
+                .andExpect(jsonPath("$.data.columns[2].label").value("비고"))
+                .andExpect(jsonPath("$.data.rowCount").value(1));
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.rows[0].cells", hasSize(3)))
+                .andExpect(jsonPath("$.data.rows[0].cells[0]").value("네트워크"))
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value("92"))
+                .andExpect(jsonPath("$.data.rows[0].cells[2]").value(""));
+    }
+
+    @Test
+    @DisplayName("열 추가는 행을 건드리지 않는다(저장된 맵에 새 key가 안 생김)")
+    void add_column_does_not_touch_rows() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+        String before = datasetRowRepository.findByDatasetIdAndRowIndex(id, 0)
+                .orElseThrow().getCells();
+
+        mockMvc.perform(post("/api/datasets/{id}/columns", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"비고\"}"))
+                .andExpect(status().isCreated());
+
+        String after = datasetRowRepository.findByDatasetIdAndRowIndex(id, 0)
+                .orElseThrow().getCells();
+        org.assertj.core.api.Assertions.assertThat(after)
+                .as("열 추가는 O(1)이어야 하므로 행 JSON이 그대로여야 한다")
+                .isEqualTo(before)
+                .doesNotContain("c2");
+    }
+
+    @Test
+    @DisplayName("열 key는 재사용되지 않는다 - 연속 추가 시 번호가 계속 올라간다")
+    void add_column_never_reuses_key() throws Exception {
+        long id = createDataset();
+
+        for (String label : new String[]{"셋째", "넷째"}) {
+            mockMvc.perform(post("/api/datasets/{id}/columns", id)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"label\":\"" + label + "\"}"))
+                    .andExpect(status().isCreated());
+        }
+
+        mockMvc.perform(get("/api/datasets/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.columns", hasSize(4)))
+                .andExpect(jsonPath("$.data.columns[2].key").value("c2"))
+                .andExpect(jsonPath("$.data.columns[3].key").value("c3"));
+    }
+
+    @Test
+    @DisplayName("POST column - label이 비면 400, 타인 dataset이면 404")
+    void add_column_validation() throws Exception {
+        long id = createDataset();
+        mockMvc.perform(post("/api/datasets/{id}/columns", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"  \"}"))
+                .andExpect(status().isBadRequest());
+
+        String otherAuth = "Bearer " + AuthFixture.loginAndGetAccessToken(
+                mockMvc, "other", "password");
+        mockMvc.perform(post("/api/datasets/{id}/columns", id)
+                        .header(HttpHeaders.AUTHORIZATION, otherAuth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"침입\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("추가한 열에 값을 쓰면 새 key로 저장된다")
+    void write_to_added_column() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+        mockMvc.perform(post("/api/datasets/{id}/columns", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"비고\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(patch("/api/datasets/{id}/rows/{i}", id, 0)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":[\"네트워크\",\"92\",\"재수강\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.cells[2]").value("재수강"));
+
+        org.assertj.core.api.Assertions.assertThat(
+                        datasetRowRepository.findByDatasetIdAndRowIndex(id, 0).orElseThrow().getCells())
+                .contains("\"c2\"").contains("재수강");
+    }
+
+    @Test
     @DisplayName("cells는 열 key 기반 맵으로 저장된다(API 계약은 위치 배열 유지)")
     void cells_stored_as_key_map() throws Exception {
         long id = createDataset();

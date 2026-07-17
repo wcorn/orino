@@ -1,6 +1,7 @@
 package ds.project.orino.planner.dataset.controller;
 
 import ds.project.orino.common.response.ApiResponse;
+import ds.project.orino.planner.dataset.dto.AddColumnRequest;
 import ds.project.orino.planner.dataset.dto.BulkRowsRequest;
 import ds.project.orino.planner.dataset.dto.CreateDatasetRequest;
 import ds.project.orino.planner.dataset.dto.DatasetResponse;
@@ -60,6 +61,16 @@ public class DatasetController {
             @PathVariable Long id) {
         datasetService.delete(memberId, id);
         return ResponseEntity.noContent().build();
+    }
+
+    /** 열 추가(끝에). key는 서버가 발급하며 기존 행은 건드리지 않는다. */
+    @PostMapping("/{id}/columns")
+    public ResponseEntity<ApiResponse<DatasetResponse>> addColumn(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @Valid @RequestBody AddColumnRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(datasetService.addColumn(memberId, id, request)));
     }
 
     /** 열 이름 변경. key는 불변이며 label만 바꾼다. */

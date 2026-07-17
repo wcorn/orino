@@ -57,7 +57,19 @@ export async function fetchDatasetMeta(
   return data.data;
 }
 
-/** 열 이름 변경. key는 cells 위치와 묶인 식별자라 바뀌지 않고 label만 바뀐다. */
+/** 열 추가(끝에). key는 서버가 발급한다. 기존 행은 서버에서 건드리지 않는다. */
+export async function addDatasetColumn(
+  datasetId: number,
+  label: string,
+): Promise<DatasetMeta> {
+  const { data } = await client.post<ApiEnvelope<DatasetMeta>>(
+    `/datasets/${datasetId}/columns`,
+    { label },
+  );
+  return data.data;
+}
+
+/** 열 이름 변경. key는 cells 맵의 주소라 바뀌지 않고 label만 바뀐다. */
 export async function renameDatasetColumn(
   datasetId: number,
   key: string,
