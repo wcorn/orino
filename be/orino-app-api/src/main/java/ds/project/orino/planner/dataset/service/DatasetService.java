@@ -207,6 +207,8 @@ public class DatasetService {
                 .filter(c -> !c.key().equals(key))
                 .toList();
         dataset.updateColumns(serialize(updated));
+        // 그 열의 수식은 담길 셀이 없어졌으니 지우고, 그 열을 참조하던 수식은 #REF!가 된다.
+        formulaService.invalidateColumn(datasetId, key);
         return DatasetResponse.of(dataset, updated);
     }
 
@@ -380,9 +382,14 @@ public class DatasetService {
         Dataset dataset = getOwned(memberId, datasetId);
         DatasetRow row = rowRepository.findByDatasetIdAndRowIndex(datasetId, rowIndex)
                 .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
+        Long rowId = row.getId();
         rowRepository.delete(row);
         rowRepository.shiftDown(datasetId, rowIndex); // 삭제 flush 후 뒤 행 당김
         dataset.setRowCount(dataset.getRowCount() - 1);
+        // 지운 뒤라야 참조가 끊긴 게 드러난다. 그 행을 콕 집어 참조하던 수식은 #REF!,
+        // 열 집계는 값이 하나 줄었으니 다시 계산한다.
+        formulaService.invalidateAfterRowDelete(datasetId, rowId,
+                parseColumns(dataset.getColumns()));
     }
 
     /** 데이터셋 삭제. dataset_row는 FK ON DELETE CASCADE로 함께 지워진다. */

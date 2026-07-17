@@ -17,7 +17,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -230,19 +229,5 @@ class DatasetFormulaPropagationTest extends ApiTestSupport {
                 .andExpect(status().isOk());
 
         rows().andExpect(jsonPath("$.data.rows[0].formulas.c2").value("=({가격} * {수량})"));
-    }
-
-    @Test
-    @DisplayName("행을 지우면 그 행을 참조하던 수식이 #REF!가 아니라 옛 값으로 남는다(#814 범위)")
-    void deletedRowLeavesStaleValueForNow() throws Exception {
-        patchRow(0, "[\"10\",\"3\",\"\",\"={단가}2\"]")
-                .andExpect(jsonPath("$.data.cells[3]").value("20"));
-
-        mockMvc.perform(delete("/api/datasets/{id}/rows/{i}", datasetId, 1)
-                        .header(HttpHeaders.AUTHORIZATION, authHeader))
-                .andExpect(status().isNoContent());
-
-        // 삭제는 아직 전파를 일으키지 않는다 — #814가 #REF!로 바꾼다.
-        rows().andExpect(jsonPath("$.data.rows[0].cells[3]").value("20"));
     }
 }
