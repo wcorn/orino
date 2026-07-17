@@ -8,7 +8,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
- * 데이터셋의 한 행. {@code cells}는 값만 담은 문자열 배열 JSON({@code ["a","b",...]}).
+ * 데이터셋의 한 행. {@code cells}는 열 key를 주소로 쓰는 맵 JSON({@code {"c0":"a","c1":"b"}}).
+ * 위치가 아닌 key에 값을 묶어, 열 추가·삭제·순서변경이 행을 건드리지 않게 한다.
  * {@code rowIndex}(0-base)로 정렬·페이지네이션한다. dataset 삭제 시 cascade.
  */
 @Entity
