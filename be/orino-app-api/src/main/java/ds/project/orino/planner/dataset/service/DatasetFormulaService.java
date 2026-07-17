@@ -121,6 +121,11 @@ public class DatasetFormulaService {
      * @param seen 이미 다시 계산한 셀. 재귀 사이에 공유해 같은 셀을 두 번 계산하지 않는다.
      */
     void propagateFrom(Long datasetId, Long rowId, String colKey, Set<String> seen) {
+        propagateFrom(datasetId, rowId, colKey, seen, MAX_PROPAGATION);
+    }
+
+    /** 예산을 정해 전파한다. fill down처럼 <b>본래 행 수만큼</b> 번지는 작업은 상한이 달라야 한다. */
+    void propagateFrom(Long datasetId, Long rowId, String colKey, Set<String> seen, int budget) {
         for (Long formulaId : refRepository.findDependentFormulaIds(datasetId, rowId, colKey)) {
             DatasetFormula formula = formulaRepository.findById(formulaId).orElse(null);
             if (formula == null) {
@@ -130,13 +135,13 @@ public class DatasetFormulaService {
             if (!seen.add(cell)) {
                 continue;
             }
-            if (seen.size() > MAX_PROPAGATION) {
+            if (seen.size() > budget) {
                 throw new CustomException(ErrorCode.FORMULA_PROPAGATION_TOO_WIDE,
-                        "다시 계산할 수식이 " + MAX_PROPAGATION + "개를 넘습니다");
+                        "다시 계산할 수식이 " + budget + "개를 넘습니다");
             }
             recompute(datasetId, formula);
             // 이 수식의 셀도 값이 바뀌었으니 그걸 참조하던 것들로 계속 번진다.
-            propagateFrom(datasetId, formula.getRowId(), formula.getColKey(), seen);
+            propagateFrom(datasetId, formula.getRowId(), formula.getColKey(), seen, budget);
         }
     }
 
@@ -300,6 +305,95 @@ public class DatasetFormulaService {
         for (DatasetColumn column : columns) {
             propagateFrom(datasetId, rowId, column.key(), seen);
         }
+    }
+
+    /**
+     * 한 셀의 수식을 그 열의 모든 행에 채운다(fill down) — 계산 열을 만드는 방법.
+     *
+     * <p><b>복사가 그냥 되는 이유는 D9다.</b> 저장형의 같은 행 참조({@code {c0}})엔 행 id가 없어
+     * 각 행이 자기 행을 가리킨다. 절대 참조({@code {c0}@142})는 복사해도 그 행을 계속 가리킨다 —
+     * 엑셀의 {@code $A$1}과 같은 성질이라 저장형을 <b>글자 그대로</b> 옮기면 된다.
+     *
+     * <p><b>먼저 다 쓰고 나중에 전파한다.</b> 한 행씩 쓰면서 전파하면 열 집계가 반쯤 채워진
+     * 상태로 계산돼 틀린 값이 나오고, 행 수만큼 다시 계산된다.
+     *
+     * @return 채운 행 수
+     */
+    int fillDownColumn(Long datasetId, String colKey, DatasetRow source,
+                       List<DatasetColumn> columns) {
+        DatasetFormula origin = formulaRepository.findByRowIdAndColKey(source.getId(), colKey)
+                .orElseThrow(() -> new CustomException(ErrorCode.INVALID_REQUEST,
+                        "채울 수식이 없는 셀입니다"));
+        String raw = origin.getRaw();
+
+        List<DatasetRow> rows = rowRepository.findByDatasetIdOrderByRowIndexAsc(datasetId);
+        int filled = 0;
+        // 1단계 — 전부 쓴다. 아직 전파하지 않는다.
+        for (DatasetRow row : rows) {
+            if (row.getId().equals(source.getId())) {
+                continue;
+            }
+            writeFormula(datasetId, row, colKey, raw, columns);
+            filled++;
+        }
+        // 2단계 — 값이 다 확정된 뒤에 한 번 전파한다. seen을 공유하므로 열 집계는
+        // 첫 행에서 한 번만(최종 값으로) 다시 계산된다.
+        Set<String> seen = new HashSet<>();
+        int budget = rows.size() + MAX_PROPAGATION;
+        for (DatasetRow row : rows) {
+            propagateFrom(datasetId, row.getId(), colKey, seen, budget);
+        }
+        return filled;
+    }
+
+    /**
+     * 행이 추가됐을 때 <b>계산 열</b>의 수식을 물려준다(D10).
+     *
+     * <p>그 열의 모든 셀이 같은 수식일 때만 물려준다 — 섞여 있으면 사용자가 의도한 게 아니다.
+     * 엑셀 표(ListObject)의 calculated column과 같은 규칙. "바로 윗 행 복사"는 윗 행만
+     * 예외적으로 수식을 가졌을 때 의도와 어긋난다.
+     */
+    void inheritFormulasForNewRow(Long datasetId, DatasetRow row, int rowCountBefore,
+                                  List<DatasetColumn> columns, Map<String, String> cells) {
+        for (DatasetColumn column : columns) {
+            String key = column.key();
+            // 균일 = 이전 모든 행에 수식이 있고, 그 수식이 하나뿐이다.
+            if (rowCountBefore == 0
+                    || formulaRepository.countByDatasetIdAndColKey(datasetId, key) != rowCountBefore
+                    || formulaRepository.countDistinctRawByColumn(datasetId, key) != 1) {
+                continue;
+            }
+            String raw = formulaRepository.findByDatasetIdAndColKey(datasetId, key)
+                    .getFirst().getRaw();
+            cells.put(key, writeFormula(datasetId, row, key, raw, columns));
+        }
+    }
+
+    /** 저장형 수식을 그 셀에 쓰고 계산해 값을 남긴다. 전파는 호출부가 정한다. */
+    private String writeFormula(Long datasetId, DatasetRow row, String colKey, String raw,
+                                List<DatasetColumn> columns) {
+        DatasetFormula formula = formulaRepository.findByRowIdAndColKey(row.getId(), colKey)
+                .orElseGet(() -> formulaRepository.save(
+                        new DatasetFormula(datasetId, row.getId(), colKey, raw)));
+        formula.updateRaw(raw);
+        formulaRepository.save(formula);
+
+        refRepository.deleteByFormulaId(formula.getId());
+        FormulaNode node = FormulaParser.parseStored(raw, new DbContext(datasetId, columns));
+        for (FormulaNode.Ref ref : FormulaParser.collectRefs(node)) {
+            refRepository.save(toEntity(formula.getId(), datasetId, ref));
+        }
+
+        Map<String, String> cells = DatasetCells.parse(row.getCells());
+        FormulaValue value = FormulaEvaluator.evaluate(node, new DbValues(datasetId, row, cells));
+        if (value instanceof FormulaValue.Err e) {
+            formula.markError(e.code());
+        } else {
+            formula.clearError();
+        }
+        cells.put(colKey, value.asCell());
+        row.updateCells(DatasetCells.serialize(cells));
+        return value.asCell();
     }
 
     /** 셀이 더 이상 수식이 아니면(리터럴로 덮어씀) 수식과 참조를 지운다. */

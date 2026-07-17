@@ -92,6 +92,17 @@ public class DatasetController {
         return ApiResponse.success(datasetService.reorderColumns(memberId, id, request));
     }
 
+    /** 한 셀의 수식을 그 열 전체에 채운다(계산 열 만들기). */
+    @PostMapping("/{id}/columns/{key}/fill")
+    public ApiResponse<DatasetResponse> fillDownColumn(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable String key,
+            @RequestParam int fromRowIndex) {
+        return ApiResponse.success(
+                datasetService.fillDownColumn(memberId, id, key, fromRowIndex));
+    }
+
     /** 열 이름 변경. key는 불변이며 label만 바꾼다. */
     @PatchMapping("/{id}/columns/{key}")
     public ApiResponse<DatasetResponse> renameColumn(

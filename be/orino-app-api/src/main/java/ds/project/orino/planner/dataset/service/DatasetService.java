@@ -268,6 +268,24 @@ public class DatasetService {
         return DatasetResponse.of(dataset, updated);
     }
 
+    /**
+     * 한 셀의 수식을 그 열 전체에 채운다 — 계산 열 만들기.
+     * 셀 단위 수식(D5)이라 계산 열을 만들려면 같은 수식을 모든 행에 두어야 한다.
+     */
+    @Transactional
+    public DatasetResponse fillDownColumn(Long memberId, Long datasetId, String colKey,
+                                          int fromRowIndex) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        if (columns.stream().noneMatch(c -> c.key().equals(colKey))) {
+            throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+        DatasetRow source = rowRepository.findByDatasetIdAndRowIndex(datasetId, fromRowIndex)
+                .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
+        formulaService.fillDownColumn(datasetId, colKey, source, columns);
+        return DatasetResponse.of(dataset, columns);
+    }
+
     /** 행 벌크 추가(끝에 append). Import 청크에 사용. */
     @Transactional
     public DatasetResponse bulkAppend(Long memberId, Long datasetId, BulkRowsRequest request) {
@@ -372,8 +390,18 @@ public class DatasetService {
         if (at < rowCount) {
             rowRepository.shiftUp(datasetId, at); // 뒤 행을 밀어 자리 확보(flush)
         }
-        rowRepository.save(new DatasetRow(datasetId, at, toCellMap(request.cells(), columns)));
+        Map<String, String> cells = DatasetCells.toMap(request.cells(), columns);
+        DatasetRow row = rowRepository.save(new DatasetRow(datasetId, at,
+                DatasetCells.serialize(cells)));
         dataset.setRowCount(rowCount + 1);
+
+        // 계산 열이면 새 행도 수식을 물려받는다(D10) — 셀 단위 수식이라 안 물려주면 빈 칸이 된다.
+        formulaService.inheritFormulasForNewRow(datasetId, row, rowCount, columns, cells);
+        // 행이 하나 늘었으니 열 집계를 다시 계산한다.
+        Set<String> seen = new HashSet<>();
+        for (DatasetColumn column : columns) {
+            formulaService.propagateFrom(datasetId, row.getId(), column.key(), seen);
+        }
         return new InsertRowResponse(at);
     }
 
