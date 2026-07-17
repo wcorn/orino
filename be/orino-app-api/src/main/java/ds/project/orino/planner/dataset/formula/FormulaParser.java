@@ -1,0 +1,306 @@
+package ds.project.orino.planner.dataset.formula;
+
+import ds.project.orino.common.exception.CustomException;
+import ds.project.orino.common.exception.ErrorCode;
+import ds.project.orino.domain.planner.dataset.entity.FormulaRefKind;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
+/**
+ * 수식 파서. 재귀 하강.
+ *
+ * <pre>
+ * formula := '=' expr EOF
+ * expr    := term (('+' | '-') term)*
+ * term    := unary (('*' | '/') unary)*
+ * unary   := ('-' | '+') unary | primary
+ * primary := NUMBER | '(' expr ')' | agg | ref
+ * agg     := FUNC '(' colRef (':' colRef | (',' colRef)*) ')'
+ * ref     := '{' label '}' row?
+ * row     := DIGITS          (입력형: 화면 행 번호)
+ *          | '@' DIGITS      (저장형: 행 id)
+ * </pre>
+ *
+ * <p><b>열 이름은 반드시 중괄호로 감싼다.</b> 실제 데이터의 label이 {@code 열 1}처럼 숫자로 끝나고
+ * ({@code =열 15}가 "열 1의 5행"인지 "열 15"인지 모호) 공백·괄호를 품기 때문에
+ * ({@code Adjusted Frequency per Million (U)}), 구분자 없이는 파싱 자체가 성립하지 않는다.
+ * 중괄호 안은 통째로 이름으로 읽는다.
+ *
+ * <p><b>같은 표기가 문맥에 따라 다른 참조가 된다.</b> 집계 함수 안의 {@code {점수}}는 열 전체이고,
+ * 산술 속 {@code {점수}}는 같은 행이다. 그래서 집계 인자는 <b>열 참조만</b> 받는다 —
+ * {@code SUM({a} * 2)} 같은 걸 허용하면 "열을 2배해서 합"의 의미가 정의되지 않는다.
+ */
+public final class FormulaParser {
+
+    /** D8이 정한 함수 범위. IF는 비교·논리 연산자와 세트라 제외. */
+    private static final Set<String> AGGREGATES = Set.of("SUM", "AVG", "COUNT", "MIN", "MAX");
+
+    private final String src;
+    private final FormulaContext ctx;
+    private final boolean stored;
+    private int pos;
+
+    private FormulaParser(String src, FormulaContext ctx, boolean stored) {
+        this.src = src;
+        this.ctx = ctx;
+        this.stored = stored;
+    }
+
+    /** 사용자가 친 수식(label·행 번호) → 바인딩된 트리. */
+    public static FormulaNode parseInput(String text, FormulaContext ctx) {
+        return new FormulaParser(text, ctx, false).parseAll();
+    }
+
+    /** 저장된 수식(열 key·행 id) → 트리. */
+    public static FormulaNode parseStored(String text, FormulaContext ctx) {
+        return new FormulaParser(text, ctx, true).parseAll();
+    }
+
+    /** 트리가 참조하는 것들. 중복은 합친다. */
+    public static List<FormulaNode.Ref> collectRefs(FormulaNode node) {
+        List<FormulaNode.Ref> out = new ArrayList<>();
+        collect(node, out);
+        return List.copyOf(new LinkedHashSet<>(out));
+    }
+
+    private static void collect(FormulaNode node, List<FormulaNode.Ref> out) {
+        switch (node) {
+            case FormulaNode.Ref r -> out.add(r);
+            case FormulaNode.Agg a -> a.colKeys()
+                    .forEach(k -> out.add(new FormulaNode.Ref(FormulaRefKind.COLUMN_ALL, k, null)));
+            case FormulaNode.Binary b -> {
+                collect(b.left(), out);
+                collect(b.right(), out);
+            }
+            case FormulaNode.Unary u -> collect(u.operand(), out);
+            case FormulaNode.Num ignored -> {
+            }
+        }
+    }
+
+    private FormulaNode parseAll() {
+        skipSpace();
+        expect('=');
+        FormulaNode node = expr();
+        skipSpace();
+        if (pos < src.length()) {
+            throw syntaxError("수식 뒤에 남은 문자가 있습니다");
+        }
+        return node;
+    }
+
+    private FormulaNode expr() {
+        FormulaNode left = term();
+        while (true) {
+            skipSpace();
+            char c = peek();
+            if (c != '+' && c != '-') {
+                return left;
+            }
+            pos++;
+            left = new FormulaNode.Binary(c, left, term());
+        }
+    }
+
+    private FormulaNode term() {
+        FormulaNode left = unary();
+        while (true) {
+            skipSpace();
+            char c = peek();
+            if (c != '*' && c != '/') {
+                return left;
+            }
+            pos++;
+            left = new FormulaNode.Binary(c, left, unary());
+        }
+    }
+
+    private FormulaNode unary() {
+        skipSpace();
+        char c = peek();
+        if (c == '-' || c == '+') {
+            pos++;
+            return new FormulaNode.Unary(c, unary());
+        }
+        return primary();
+    }
+
+    private FormulaNode primary() {
+        skipSpace();
+        char c = peek();
+        if (c == '(') {
+            pos++;
+            FormulaNode inner = expr();
+            skipSpace();
+            expect(')');
+            return inner;
+        }
+        if (c == '{') {
+            return ref(false);
+        }
+        if (Character.isDigit(c) || c == '.') {
+            return number();
+        }
+        if (Character.isLetter(c)) {
+            return agg();
+        }
+        throw syntaxError("예상하지 못한 문자: '" + c + "'");
+    }
+
+    private FormulaNode number() {
+        int start = pos;
+        while (pos < src.length() && (Character.isDigit(src.charAt(pos)) || src.charAt(pos) == '.')) {
+            pos++;
+        }
+        try {
+            return new FormulaNode.Num(new BigDecimal(src.substring(start, pos)));
+        } catch (NumberFormatException e) {
+            throw syntaxError("숫자를 읽을 수 없습니다: " + src.substring(start, pos));
+        }
+    }
+
+    private FormulaNode agg() {
+        int start = pos;
+        while (pos < src.length() && Character.isLetter(src.charAt(pos))) {
+            pos++;
+        }
+        String name = src.substring(start, pos).toUpperCase(Locale.ROOT);
+        if (!AGGREGATES.contains(name)) {
+            throw syntaxError("지원하지 않는 함수: " + name);
+        }
+        skipSpace();
+        expect('(');
+
+        List<String> keys = new ArrayList<>();
+        FormulaNode.Ref first = (FormulaNode.Ref) ref(true);
+        skipSpace();
+        if (peek() == ':') {
+            // 범위 — 지금 그 사이에 있는 열들로 펼쳐 집합으로 굳힌다(D7).
+            pos++;
+            FormulaNode.Ref last = (FormulaNode.Ref) ref(true);
+            keys.addAll(expandRange(first.colKey(), last.colKey()));
+        } else {
+            keys.add(first.colKey());
+            while (peek() == ',') {
+                pos++;
+                keys.add(((FormulaNode.Ref) ref(true)).colKey());
+                skipSpace();
+            }
+        }
+        skipSpace();
+        expect(')');
+        return new FormulaNode.Agg(name, List.copyOf(new LinkedHashSet<>(keys)));
+    }
+
+    /** {@code {a}:{c}} → 현재 열 순서에서 a..c 구간. 역방향으로 줘도 받아준다. */
+    private List<String> expandRange(String fromKey, String toKey) {
+        List<String> all = ctx.columnKeys();
+        int from = all.indexOf(fromKey);
+        int to = all.indexOf(toKey);
+        if (from < 0 || to < 0) {
+            throw syntaxError("범위의 열을 찾을 수 없습니다");
+        }
+        return new ArrayList<>(all.subList(Math.min(from, to), Math.max(from, to) + 1));
+    }
+
+    /**
+     * {@code '{' 이름 '}' 행?} — 열 참조.
+     *
+     * @param columnOnly 집계 인자 자리면 true. 행을 붙일 수 없고 열 전체를 뜻한다.
+     */
+    private FormulaNode ref(boolean columnOnly) {
+        skipSpace();
+        expect('{');
+        int close = src.indexOf('}', pos);
+        if (close < 0) {
+            throw syntaxError("열 이름을 닫는 '}'가 없습니다");
+        }
+        String name = src.substring(pos, close);
+        pos = close + 1;
+        if (name.isBlank()) {
+            throw syntaxError("열 이름이 비었습니다");
+        }
+
+        String key = resolveKey(name);
+        Long rowId = rowSuffix();
+        if (rowId != null && columnOnly) {
+            throw syntaxError("집계 함수 안에서는 행을 지정할 수 없습니다: {" + name + "}");
+        }
+        if (columnOnly) {
+            return new FormulaNode.Ref(FormulaRefKind.COLUMN_ALL, key, null);
+        }
+        return rowId == null
+                ? new FormulaNode.Ref(FormulaRefKind.SAME_ROW, key, null)
+                : new FormulaNode.Ref(FormulaRefKind.ABSOLUTE, key, rowId);
+    }
+
+    private String resolveKey(String name) {
+        if (stored) {
+            if (!ctx.columnKeys().contains(name)) {
+                throw syntaxError("없는 열: " + name);
+            }
+            return name;
+        }
+        return ctx.keyByLabel(name)
+                .orElseThrow(() -> syntaxError("없는 열: " + name));
+    }
+
+    /** 행 지정을 읽는다. 없으면 null. 저장형은 {@code @id}, 입력형은 화면 행 번호. */
+    private Long rowSuffix() {
+        if (stored) {
+            if (peek() != '@') {
+                return null;
+            }
+            pos++;
+            return digits("행 id");
+        }
+        if (!Character.isDigit(peek())) {
+            return null;
+        }
+        long number = digits("행 번호");
+        // 화면 번호 → 행 id. 파싱 시점에 한 번만 해석하므로 이후 행이 밀려도 안 깨진다.
+        return ctx.rowIdByNumber((int) number)
+                .orElseThrow(() -> syntaxError("없는 행: " + number));
+    }
+
+    private long digits(String what) {
+        int start = pos;
+        while (pos < src.length() && Character.isDigit(src.charAt(pos))) {
+            pos++;
+        }
+        if (start == pos) {
+            throw syntaxError(what + "가 필요합니다");
+        }
+        try {
+            return Long.parseLong(src.substring(start, pos));
+        } catch (NumberFormatException e) {
+            throw syntaxError(what + "가 너무 큽니다");
+        }
+    }
+
+    private char peek() {
+        return pos < src.length() ? src.charAt(pos) : '\0';
+    }
+
+    private void expect(char c) {
+        if (peek() != c) {
+            throw syntaxError("'" + c + "'가 필요합니다");
+        }
+        pos++;
+    }
+
+    private void skipSpace() {
+        while (pos < src.length() && src.charAt(pos) == ' ') {
+            pos++;
+        }
+    }
+
+    private CustomException syntaxError(String detail) {
+        return new CustomException(ErrorCode.FORMULA_SYNTAX_ERROR, detail);
+    }
+}
