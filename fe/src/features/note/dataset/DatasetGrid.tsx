@@ -91,7 +91,7 @@ export function DatasetGrid({ datasetId }: Props) {
     onError: () => void invalidateMeta(),
   });
   const addColMut = useMutation({
-    mutationFn: (label: string) => addDatasetColumn(datasetId, label),
+    mutationFn: () => addDatasetColumn(datasetId),
     // 행은 다시 받지 않는다. 새 열의 key는 방금 발급돼 어느 행에도 값이 없으므로,
     // 캐시된 짧은 cells를 그대로 두면 렌더가 새 열을 빈 칸으로 그린다(편집 시 패딩됨).
     onSuccess: (next: DatasetMeta) =>
@@ -161,7 +161,8 @@ export function DatasetGrid({ datasetId }: Props) {
   const addRow = () =>
     insertMut.mutate(Array.from({ length: colCount }, () => ""));
 
-  const addColumn = () => addColMut.mutate(`열 ${colCount + 1}`);
+  // 이름은 서버가 붙인다 — 열 개수로 지으면 삭제 후 중복된다.
+  const addColumn = () => addColMut.mutate();
 
   const columnLabel = (key: string) =>
     meta.columns.find((c) => c.key === key)?.label ?? key;
