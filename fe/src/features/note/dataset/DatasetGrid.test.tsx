@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAuthStore } from "@/features/auth/store/authStore";
+import { useToastStore } from "@/shared/lib/toast";
 import { server } from "@/test/mocks/server";
 import { renderWithRouter } from "@/test/render";
 
@@ -443,6 +444,110 @@ describe("DatasetGrid", () => {
     // 입력한 수식이 아니라 계산 결과가 보인다.
     expect(await screen.findByText("30")).toBeInTheDocument();
     expect(screen.queryByText("={과목} * 3")).not.toBeInTheDocument();
+  });
+
+  /** c1이 수식 셀인 표 — 화면엔 30, 원본은 formulas에. */
+  function mockFormulaRow() {
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "단가" },
+              { key: "c1", label: "합계" },
+            ],
+            rowCount: 1,
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [
+              {
+                id: 100,
+                rowIndex: 0,
+                cells: ["10", "30"],
+                formulas: { c1: "=({단가} * 3)" },
+              },
+            ],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+  }
+
+  it("수식 셀을 고르면 계산값이 아니라 수식이 보인다 — 안 그러면 자기 수식을 다시 볼 수 없다", async () => {
+    mockFormulaRow();
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.click(await screen.findByText("30"));
+
+    const input = await screen.findByLabelText("셀 1행 2열");
+    expect(input).toHaveValue("=({단가} * 3)");
+  });
+
+  it("수식 없는 셀은 값 그대로 편집한다", async () => {
+    mockFormulaRow();
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.click(await screen.findByText("10"));
+
+    expect(await screen.findByLabelText("셀 1행 1열")).toHaveValue("10");
+  });
+
+  it("[수식 보기]를 켜면 계산값 대신 수식이 보인다", async () => {
+    mockFormulaRow();
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("30");
+
+    await user.click(screen.getByRole("button", { name: "수식 보기" }));
+
+    expect(await screen.findByText("=({단가} * 3)")).toBeInTheDocument();
+    expect(screen.queryByText("30")).not.toBeInTheDocument();
+    // 수식 없는 셀은 그대로 값.
+    expect(screen.getByText("10")).toBeInTheDocument();
+
+    // 다시 끄면 값으로 돌아온다.
+    await user.click(screen.getByRole("button", { name: "수식 보기" }));
+    expect(await screen.findByText("30")).toBeInTheDocument();
+  });
+
+  it("서버가 알려준 수식 오류를 그대로 보여준다", async () => {
+    mockDataset([["10", "3"]]);
+    server.use(
+      http.patch(`${API_BASE}/datasets/1/rows/:i`, () =>
+        HttpResponse.json(
+          {
+            code: "SP-ERR-005",
+            message: "수식을 이해할 수 없습니다. - 없는 열: 무엇",
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.click(await screen.findByText("3"));
+    const input = await screen.findByLabelText("셀 1행 2열");
+    fireEvent.change(input, { target: { value: "={무엇}" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // Toaster는 앱 레이아웃에 있어 이 렌더 트리엔 없다. 스토어에 실렸는지로 본다.
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(
+        "수식을 이해할 수 없습니다. - 없는 열: 무엇",
+      );
+    });
   });
 
   it("[열 추가]로 POST를 호출하고 새 열이 빈 칸으로 붙는다", async () => {

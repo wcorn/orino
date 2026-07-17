@@ -6,7 +6,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Plus, Trash2, X } from "lucide-react";
+import { FunctionSquare, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { LoadingText } from "@/components/ui/loading-text";
 import { cn } from "@/lib/utils";
+import { toast } from "@/shared/lib/toast";
 
 import {
   addDatasetColumn,
@@ -57,6 +58,8 @@ export function DatasetGrid({ datasetId }: Props) {
   const [colDraft, setColDraft] = useState("");
   const [pendingColDelete, setPendingColDelete] = useState<string | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
+  // D6 — 수식은 평소 숨기고 선택 시에만 보여준다. 이 토글은 상시 표시.
+  const [showFormulas, setShowFormulas] = useState(false);
 
   const colCount = meta?.columns.length ?? 0;
   const rowCount = meta?.rowCount ?? 0;
@@ -73,7 +76,12 @@ export function DatasetGrid({ datasetId }: Props) {
       setRowLocal(row.rowIndex, row.cells);
       setFormulasLocal(row.rowIndex, row.formulas ?? {});
     },
-    onError: () => reset(),
+    onError: (e) => {
+      // 수식 문법 오류·순환 참조는 서버가 무엇이 틀렸는지 알려준다. 그대로 보여준다.
+      const message = serverMessage(e);
+      if (message) toast(message, "error");
+      reset();
+    },
   });
   const insertMut = useMutation({
     mutationFn: (cells: string[]) => insertDatasetRow(datasetId, cells),
@@ -164,7 +172,9 @@ export function DatasetGrid({ datasetId }: Props) {
     const cells = getRow(row);
     if (!cells) return;
     setEditing({ row, col });
-    setDraft(cells[col] ?? "");
+    // 수식 셀을 고를 땐 계산된 값이 아니라 수식을 보여준다 — 값을 보여주면
+    // 자기가 쓴 수식을 다시 볼 방법이 없다.
+    setDraft(getFormulas(row)[meta.columns[col].key] ?? cells[col] ?? "");
   };
 
   const commitEdit = () => {
@@ -340,6 +350,7 @@ export function DatasetGrid({ datasetId }: Props) {
                 {Array.from({ length: colCount }, (_, c) => {
                   const isEditing =
                     editing?.row === vi.index && editing.col === c;
+                  const formula = getFormulas(vi.index)[meta.columns[c].key];
                   return (
                     <div
                       key={c}
@@ -364,9 +375,16 @@ export function DatasetGrid({ datasetId }: Props) {
                           className={cn(
                             "h-full cursor-text truncate px-2 py-1.5",
                             cells === undefined && "text-muted-foreground/40",
+                            isCellError(cells?.[c]) && "text-destructive",
+                            formula !== undefined &&
+                              showFormulas &&
+                              "text-muted-foreground font-mono text-xs",
                           )}
+                          title={formula}
                         >
-                          {cells === undefined ? "…" : (cells[c] ?? "")}
+                          {cells === undefined
+                            ? "…"
+                            : (showFormulas && formula) || (cells[c] ?? "")}
                         </div>
                       )}
                     </div>
@@ -387,7 +405,7 @@ export function DatasetGrid({ datasetId }: Props) {
       </div>
 
       {/* 행 추가 */}
-      <div className="border-border border-t p-1">
+      <div className="border-border flex items-center gap-1 border-t p-1">
         <Button
           type="button"
           variant="ghost"
@@ -396,6 +414,16 @@ export function DatasetGrid({ datasetId }: Props) {
           disabled={insertMut.isPending}
         >
           <Plus className="size-4" /> 행 추가
+        </Button>
+        <Button
+          type="button"
+          variant={showFormulas ? "secondary" : "ghost"}
+          size="sm"
+          aria-pressed={showFormulas}
+          onClick={() => setShowFormulas((v) => !v)}
+          title="수식 셀에 계산 결과 대신 수식을 보여준다"
+        >
+          <FunctionSquare className="size-4" /> 수식 보기
         </Button>
       </div>
 
@@ -423,3 +451,15 @@ export function DatasetGrid({ datasetId }: Props) {
 }
 
 const EMPTY: string[][] = [];
+
+/** 서버가 알려주는 실패 사유(수식 문법 오류·순환 참조 등). 없으면 조용히 넘어간다. */
+function serverMessage(e: unknown): string | null {
+  const data = (e as { response?: { data?: { message?: string } } })?.response
+    ?.data;
+  return typeof data?.message === "string" ? data.message : null;
+}
+
+/** 서버가 계산 대신 넣은 셀 에러(#REF! #VALUE! #DIV/0!). 쿼리의 isError와 헷갈리지 않게 이름을 구분한다. */
+function isCellError(value: string | undefined): boolean {
+  return value !== undefined && value.startsWith("#");
+}
