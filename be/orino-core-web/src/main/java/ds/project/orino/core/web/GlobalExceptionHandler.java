@@ -31,7 +31,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleCustomException(CustomException e) {
         log.error("handleCustomException: {}", e.getErrorCode().toString());
         return ResponseEntity.status(e.getErrorCode().getHttpStatus())
-                .body(ErrorResponse.of(e.getErrorCode()));
+                .body(ErrorResponse.of(e));
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
