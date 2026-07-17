@@ -3,7 +3,14 @@ import { client } from "@/shared/api";
 export interface DatasetColumn {
   key: string;
   label: string;
+  /** 표시 너비(px). 없으면 기본 폭(균등 분배). */
+  width?: number;
 }
+
+/** 열 너비 하한(px). 서버의 DatasetColumn.MIN_WIDTH와 같아야 한다. */
+export const MIN_COLUMN_WIDTH = 60;
+/** 열 너비 상한(px). 서버의 DatasetColumn.MAX_WIDTH와 같아야 한다. */
+export const MAX_COLUMN_WIDTH = 800;
 
 export interface DatasetMeta {
   id: number;
@@ -95,6 +102,30 @@ export async function reorderDatasetColumns(
   const { data } = await client.patch<ApiEnvelope<DatasetMeta>>(
     `/datasets/${datasetId}/columns/order`,
     { keys },
+  );
+  return data.data;
+}
+
+/** 열 너비 변경(px). 열 단위 표시 속성이라 행은 안 건드린다. */
+export async function resizeDatasetColumn(
+  datasetId: number,
+  key: string,
+  width: number,
+): Promise<DatasetMeta> {
+  const { data } = await client.patch<ApiEnvelope<DatasetMeta>>(
+    `/datasets/${datasetId}/columns/${key}/width`,
+    { width },
+  );
+  return data.data;
+}
+
+/** 열 너비 초기화 — 기본 폭으로 되돌린다. */
+export async function resetDatasetColumnWidth(
+  datasetId: number,
+  key: string,
+): Promise<DatasetMeta> {
+  const { data } = await client.delete<ApiEnvelope<DatasetMeta>>(
+    `/datasets/${datasetId}/columns/${key}/width`,
   );
   return data.data;
 }

@@ -22,8 +22,12 @@ import {
   deleteDatasetColumn,
   deleteDatasetRow,
   insertDatasetRow,
+  MAX_COLUMN_WIDTH,
+  MIN_COLUMN_WIDTH,
   renameDatasetColumn,
   reorderDatasetColumns,
+  resetDatasetColumnWidth,
+  resizeDatasetColumn,
   updateDatasetRow,
 } from "./api/datasets";
 import { useDatasetMeta } from "./hooks/useDatasetMeta";
@@ -58,6 +62,14 @@ export function DatasetGrid({ datasetId }: Props) {
   const [colDraft, setColDraft] = useState("");
   const [pendingColDelete, setPendingColDelete] = useState<string | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
+  // 리사이즈 중인 열과 진행 중 너비. 드래그하는 동안엔 여기 값으로 그리고,
+  // 저장은 놓을 때 한 번만 한다(mousemove마다 PATCH를 보내지 않는다).
+  const [resizing, setResizing] = useState<{
+    key: string;
+    startX: number;
+    startWidth: number;
+    width: number;
+  } | null>(null);
   // D6 — 수식은 평소 숨기고 선택 시에만 보여준다. 이 토글은 상시 표시.
   const [showFormulas, setShowFormulas] = useState(false);
 
@@ -122,6 +134,20 @@ export function DatasetGrid({ datasetId }: Props) {
     },
     onError: () => void invalidateMeta(),
   });
+  const resizeColMut = useMutation({
+    mutationFn: (v: { key: string; width: number }) =>
+      resizeDatasetColumn(datasetId, v.key, v.width),
+    // 너비는 열 단위 속성이라 행 캐시를 버릴 이유가 없다(reorder/delete와 달리 값이 안 밀린다).
+    onSuccess: (next: DatasetMeta) =>
+      queryClient.setQueryData(datasetKeys.meta(datasetId), next),
+    onError: () => void invalidateMeta(),
+  });
+  const resetColWidthMut = useMutation({
+    mutationFn: (key: string) => resetDatasetColumnWidth(datasetId, key),
+    onSuccess: (next: DatasetMeta) =>
+      queryClient.setQueryData(datasetKeys.meta(datasetId), next),
+    onError: () => void invalidateMeta(),
+  });
   const addColMut = useMutation({
     mutationFn: () => addDatasetColumn(datasetId),
     // 행은 다시 받지 않는다. 새 열의 key는 방금 발급돼 어느 행에도 값이 없으므로,
@@ -166,7 +192,56 @@ export function DatasetGrid({ datasetId }: Props) {
     return <FieldError>표를 불러오지 못했어요.</FieldError>;
   }
 
-  const gridTemplateColumns = `repeat(${colCount}, minmax(120px, 1fr)) 44px`;
+  // 너비를 지정한 열은 고정 px, 안 한 열은 기존대로 남는 폭을 나눠 갖는다.
+  // 드래그 중인 열은 아직 저장 전이므로 진행 중 너비로 그린다.
+  const gridTemplateColumns =
+    meta.columns
+      .map((col) => {
+        const width = resizing?.key === col.key ? resizing.width : col.width;
+        return width != null ? `${width}px` : "minmax(120px, 1fr)";
+      })
+      .join(" ") + " 44px";
+
+  const clampWidth = (width: number) =>
+    Math.round(Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, width)));
+
+  const startResize = (key: string, event: React.PointerEvent) => {
+    // 헤더 셀의 실제 렌더 폭에서 시작한다. 너비 미지정(1fr) 열도 이 값으로 잡히므로
+    // 첫 드래그가 기본 폭에서 자연스럽게 이어진다.
+    const headerCell = event.currentTarget.parentElement;
+    if (!headerCell) return;
+    const startWidth = headerCell.getBoundingClientRect().width;
+    event.preventDefault();
+    event.stopPropagation();
+    // 포인터를 잡아 두면 핸들 밖으로 벗어나도 move/up이 계속 온다.
+    // (jsdom엔 없어서 옵셔널 호출 — 없으면 캡처만 못 할 뿐 동작은 같다)
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setResizing({
+      key,
+      startX: event.clientX,
+      startWidth,
+      width: clampWidth(startWidth),
+    });
+  };
+
+  const moveResize = (event: React.PointerEvent) => {
+    if (!resizing) return;
+    setResizing({
+      ...resizing,
+      width: clampWidth(
+        resizing.startWidth + (event.clientX - resizing.startX),
+      ),
+    });
+  };
+
+  const endResize = () => {
+    if (!resizing) return;
+    const { key, width, startWidth } = resizing;
+    setResizing(null);
+    // 폭이 그대로면 저장하지 않는다 — 핸들을 그냥 누르기만 한 경우.
+    if (Math.round(startWidth) === width) return;
+    resizeColMut.mutate({ key, width });
+  };
 
   const startEdit = (row: number, col: number) => {
     const cells = getRow(row);
@@ -260,7 +335,9 @@ export function DatasetGrid({ datasetId }: Props) {
             <div
               key={header.id}
               // 이름 편집 중엔 텍스트 선택을 막지 않도록 드래그를 끈다.
-              draggable={editingCol !== header.id}
+              // 리사이즈 중에도 꺼야 한다 — 켜두면 핸들을 끄는 순간 HTML5 드래그가
+              // 시작돼 열 순서 변경으로 새어 나간다.
+              draggable={editingCol !== header.id && resizing === null}
               onDragStart={() => setDragKey(header.id)}
               onDragEnd={() => setDragKey(null)}
               onDragOver={(e) => e.preventDefault()}
@@ -315,6 +392,27 @@ export function DatasetGrid({ datasetId }: Props) {
                     </button>
                   )}
                 </>
+              )}
+              {/* 열 경계 리사이즈 핸들. 이름 편집 중엔 내보내지 않는다. */}
+              {editingCol !== header.id && (
+                <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label={`${columnLabel(header.id)} 열 너비 조절`}
+                  title="드래그해 너비 조절 · 더블클릭해 기본 폭으로"
+                  onPointerDown={(e) => startResize(header.id, e)}
+                  onPointerMove={moveResize}
+                  onPointerUp={endResize}
+                  onPointerCancel={endResize}
+                  onDoubleClick={() => resetColWidthMut.mutate(header.id)}
+                  // 부모가 draggable이라 핸들에서 시작한 드래그가 순서 변경으로 새는 것을 막는다.
+                  draggable={false}
+                  onDragStart={(e) => e.preventDefault()}
+                  className={cn(
+                    "hover:bg-primary/60 -mr-[3px] h-full w-[6px] shrink-0 cursor-col-resize touch-none",
+                    resizing?.key === header.id && "bg-primary/60",
+                  )}
+                />
               )}
             </div>
           ))}

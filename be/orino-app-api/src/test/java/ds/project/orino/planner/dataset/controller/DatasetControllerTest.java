@@ -959,4 +959,178 @@ class DatasetControllerTest extends ApiTestSupport {
                 .assertThat(datasetRowRepository.countByDatasetId(id))
                 .isZero();
     }
+
+    // ---------- 열 너비(resize) ----------
+
+    /** 열 너비를 바꾸고 응답 본문을 돌려준다. */
+    private String resize(long id, String key, String widthJson) throws Exception {
+        return mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/width", id, key)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"width\":" + widthJson + "}"))
+                .andReturn().getResponse().getContentAsString();
+    }
+
+    @Test
+    @DisplayName("PATCH columns/{key}/width - 너비를 저장하고 조회 시 유지된다")
+    void resize_column() throws Exception {
+        long id = createDataset();
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/width", id, "c1")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"width\":240}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns[1].width").value(240));
+
+        // 지정하지 않은 열은 width가 없다(기본 폭).
+        mockMvc.perform(get("/api/datasets/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns[1].width").value(240))
+                .andExpect(jsonPath("$.data.columns[0].width").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("PATCH columns/{key}/width - 범위 밖 너비는 거부한다")
+    void resize_column_out_of_range() throws Exception {
+        long id = createDataset();
+
+        for (String bad : new String[]{"59", "801", "0", "-10"}) {
+            mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/width", id, "c0")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"width\":" + bad + "}"))
+                    .andExpect(status().isBadRequest());
+        }
+        // 경계값은 통과해야 한다.
+        for (String ok : new String[]{"60", "800"}) {
+            mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/width", id, "c0")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"width\":" + ok + "}"))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    @DisplayName("PATCH columns/{key}/width - width 누락은 거부한다")
+    void resize_column_requires_width() throws Exception {
+        long id = createDataset();
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/width", id, "c0")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("PATCH columns/{key}/width - 없는 열은 404")
+    void resize_column_not_found() throws Exception {
+        long id = createDataset();
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/width", id, "c99")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"width\":200}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("DELETE columns/{key}/width - 너비를 지우면 기본 폭으로 돌아간다")
+    void reset_column_width() throws Exception {
+        long id = createDataset();
+        resize(id, "c0", "300");
+
+        mockMvc.perform(delete("/api/datasets/{id}/columns/{key}/width", id, "c0")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns[0].width").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("이름을 바꿔도 열 너비는 유지된다")
+    void rename_preserves_width() throws Exception {
+        long id = createDataset();
+        resize(id, "c0", "300");
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}", id, "c0")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"바뀐이름\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns[0].label").value("바뀐이름"))
+                .andExpect(jsonPath("$.data.columns[0].width").value(300));
+    }
+
+    @Test
+    @DisplayName("순서를 바꿔도 너비는 열을 따라간다")
+    void reorder_carries_width() throws Exception {
+        long id = createDataset();
+        resize(id, "c0", "300");
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/order", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"keys\":[\"c1\",\"c0\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns[0].key").value("c1"))
+                .andExpect(jsonPath("$.data.columns[0].width").doesNotExist())
+                .andExpect(jsonPath("$.data.columns[1].key").value("c0"))
+                .andExpect(jsonPath("$.data.columns[1].width").value(300));
+    }
+
+    @Test
+    @DisplayName("너비를 바꿔도 행 값은 그대로다 - 열 단위 표시 속성이라 행을 안 건드린다")
+    void resize_does_not_touch_rows() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+
+        resize(id, "c0", "300");
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows[0].cells[0]").value("네트워크"))
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value("92"));
+    }
+
+    @Test
+    @DisplayName("생성 - 범위 밖 width를 넣으면 거부한다 (resize 상·하한을 생성으로 우회 못 함)")
+    void create_rejects_out_of_range_width() throws Exception {
+        mockMvc.perform(post("/api/datasets")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"columns":[{"key":"c0","label":"과목","width":9999}]}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("생성 - width를 함께 주면 저장된다")
+    void create_with_width() throws Exception {
+        mockMvc.perform(post("/api/datasets")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"columns":[{"key":"c0","label":"과목","width":150}]}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.columns[0].width").value(150));
+    }
+
+    @Test
+    @DisplayName("남의 데이터셋 열 너비는 못 바꾼다")
+    void resize_column_of_other_member() throws Exception {
+        long id = createDataset();
+        String otherToken = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc, "other", "password");
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/width", id, "c0")
+                        .header(HttpHeaders.AUTHORIZATION, otherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"width\":200}"))
+                .andExpect(status().isNotFound());
+    }
 }

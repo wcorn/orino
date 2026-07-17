@@ -15,6 +15,7 @@ import ds.project.orino.planner.dataset.dto.InsertRowRequest;
 import ds.project.orino.planner.dataset.dto.InsertRowResponse;
 import ds.project.orino.planner.dataset.dto.RenameColumnRequest;
 import ds.project.orino.planner.dataset.dto.ReorderColumnsRequest;
+import ds.project.orino.planner.dataset.dto.ResizeColumnRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
@@ -104,7 +105,7 @@ public class DatasetService {
             for (int n = 2; !taken.add(label); n++) {
                 label = column.label() + " (" + n + ")";
             }
-            result.add(new DatasetColumn(column.key(), label));
+            result.add(column.withLabel(label));
         }
         return result;
     }
@@ -249,13 +250,7 @@ public class DatasetService {
                                         RenameColumnRequest request) {
         Dataset dataset = getOwned(memberId, datasetId);
         List<DatasetColumn> columns = parseColumns(dataset.getColumns());
-        int at = -1;
-        for (int i = 0; i < columns.size(); i++) {
-            if (columns.get(i).key().equals(key)) {
-                at = i;
-                break;
-            }
-        }
+        int at = indexOfColumn(columns, key);
         if (at < 0) {
             throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
         }
@@ -263,9 +258,52 @@ public class DatasetService {
         requireLabelFree(columns, request.label(), key);
 
         List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
-        updated.set(at, new DatasetColumn(key, request.label()));
+        // withLabel — 이름만 바꾸고 width는 보존한다. 새로 만들면 설정한 너비가 날아간다.
+        updated.set(at, columns.get(at).withLabel(request.label()));
         dataset.updateColumns(serialize(updated));
         return DatasetResponse.of(dataset, updated);
+    }
+
+    /**
+     * 열 너비 변경. columns_json의 해당 열만 고치고 행은 건드리지 않아 O(1)이다.
+     * 너비는 열 단위 표시 속성이라 셀 값·수식과 무관하다.
+     */
+    @Transactional
+    public DatasetResponse resizeColumn(Long memberId, Long datasetId, String key,
+                                        ResizeColumnRequest request) {
+        return updateWidth(memberId, datasetId, key, request.width());
+    }
+
+    /**
+     * 열 너비를 지워 기본 폭으로 되돌린다. 너비 미설정(null)이 곧 기본 폭이므로
+     * "되돌리기"는 별도 상태가 아니라 값의 부재로 표현된다.
+     */
+    @Transactional
+    public DatasetResponse resetColumnWidth(Long memberId, Long datasetId, String key) {
+        return updateWidth(memberId, datasetId, key, null);
+    }
+
+    private DatasetResponse updateWidth(Long memberId, Long datasetId, String key, Integer width) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        int at = indexOfColumn(columns, key);
+        if (at < 0) {
+            throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+
+        List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
+        updated.set(at, columns.get(at).withWidth(width));
+        dataset.updateColumns(serialize(updated));
+        return DatasetResponse.of(dataset, updated);
+    }
+
+    private int indexOfColumn(List<DatasetColumn> columns, String key) {
+        for (int i = 0; i < columns.size(); i++) {
+            if (columns.get(i).key().equals(key)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /**
