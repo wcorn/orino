@@ -121,6 +121,34 @@ public class DatasetService {
     }
 
     /**
+     * 열 삭제. columns_json에서만 빼고 행은 건드리지 않아 O(1)이다.
+     *
+     * <p>행에 남은 값은 투영이 columns 기준으로만 읽으므로 API로 드러나지 않고,
+     * 그 행을 다음에 수정할 때 {@link #toCellMap}이 맵을 새로 만들며 함께 사라진다.
+     * 즉 즉시 물리 삭제는 아니고 지연 정리다. 재발급되지 않는 key({@link Dataset#issueColumnSeq})
+     * 덕분에 남은 값이 새 열에 되살아날 일은 없다.
+     *
+     * <p>마지막 열은 지울 수 없다. 열이 0개면 행이 값을 담을 자리가 없어진다.
+     */
+    @Transactional
+    public DatasetResponse deleteColumn(Long memberId, Long datasetId, String key) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        if (columns.stream().noneMatch(c -> c.key().equals(key))) {
+            throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+        if (columns.size() <= 1) {
+            throw new CustomException(ErrorCode.INVALID_REQUEST);
+        }
+
+        List<DatasetColumn> updated = columns.stream()
+                .filter(c -> !c.key().equals(key))
+                .toList();
+        dataset.updateColumns(serialize(updated));
+        return DatasetResponse.of(dataset, updated);
+    }
+
+    /**
      * 열 이름(label) 변경. key는 cells 맵의 주소라 바꾸지 않으며(바꾸면 기존 값과 연결이 끊긴다),
      * columns_json만 갱신하므로 행 데이터는 건드리지 않는다.
      */

@@ -128,6 +128,113 @@ describe("DatasetGrid", () => {
     await waitFor(() => expect(inserted).toBe(true));
   });
 
+  it("열 삭제는 확인 후 DELETE를 호출하고, 남은 값이 밀리지 않게 행을 다시 받는다", async () => {
+    // 3열 중 가운데(c1)를 지운다. 캐시된 배열을 그대로 쓰면 "92"(삭제된 c1 값)가
+    // 두 번째 칸에 남는다 — 다시 받아 와야 "재수강"이 와야 한다.
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수" },
+              { key: "c2", label: "비고" },
+            ],
+            rowCount: 1,
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [{ rowIndex: 0, cells: ["네트워크", "92", "재수강"] }],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("92");
+
+    let deletedKey: string | null = null;
+    server.use(
+      http.delete(`${API_BASE}/datasets/1/columns/:key`, ({ params }) => {
+        deletedKey = String(params.key);
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c2", label: "비고" },
+            ],
+            rowCount: 1,
+          },
+        });
+      }),
+      // 삭제 후 서버는 남은 열 기준으로 투영해 준다.
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [{ rowIndex: 0, cells: ["네트워크", "재수강"] }],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+
+    await user.click(screen.getByRole("button", { name: "점수 열 삭제" }));
+    // 확인 전엔 요청이 나가지 않는다.
+    expect(deletedKey).toBeNull();
+    await user.click(screen.getByRole("button", { name: "삭제" }));
+
+    await waitFor(() => expect(deletedKey).toBe("c1"));
+    await waitFor(() => {
+      expect(screen.queryByText("점수")).not.toBeInTheDocument();
+    });
+    // 재조회가 안 되면 여기서 "92"가 남아 실패한다.
+    expect(await screen.findByText("재수강")).toBeInTheDocument();
+    expect(screen.queryByText("92")).not.toBeInTheDocument();
+  });
+
+  it("마지막 한 열만 남으면 삭제 버튼을 내보내지 않는다", async () => {
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [{ key: "c0", label: "과목" }],
+            rowCount: 1,
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [{ rowIndex: 0, cells: ["네트워크"] }],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    expect(await screen.findByText("과목")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "과목 열 삭제" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("[열 추가]로 POST를 호출하고 새 열이 빈 칸으로 붙는다", async () => {
     mockDataset([["네트워크", "92"]]);
     let addedLabel: string | null = null;

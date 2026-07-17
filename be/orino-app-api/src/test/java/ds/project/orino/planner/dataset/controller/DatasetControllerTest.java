@@ -210,6 +210,112 @@ class DatasetControllerTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("DELETE column - 열이 빠지고 남은 열 값은 유지된다")
+    void delete_column() throws Exception {
+        long id = createDataset();
+        mockMvc.perform(post("/api/datasets/{id}/columns", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"비고\"}"))
+                .andExpect(status().isCreated());
+        bulk(id, "[[\"네트워크\",\"92\",\"재수강\"]]");
+
+        // 가운데 열(c1) 삭제 — 뒤 열 값이 앞으로 당겨져야 한다.
+        mockMvc.perform(delete("/api/datasets/{id}/columns/{key}", id, "c1")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns", hasSize(2)))
+                .andExpect(jsonPath("$.data.columns[0].key").value("c0"))
+                .andExpect(jsonPath("$.data.columns[1].key").value("c2"));
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.rows[0].cells", hasSize(2)))
+                .andExpect(jsonPath("$.data.rows[0].cells[0]").value("네트워크"))
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value("재수강"));
+    }
+
+    @Test
+    @DisplayName("열 삭제는 행을 건드리지 않고, 남은 값은 다음 수정 때 정리된다")
+    void delete_column_purges_lazily() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+
+        mockMvc.perform(delete("/api/datasets/{id}/columns/{key}", id, "c1")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk());
+
+        // O(1) — 삭제 시점엔 행 JSON이 그대로다(지운 c1 값이 남아 있음).
+        org.assertj.core.api.Assertions.assertThat(
+                        datasetRowRepository.findByDatasetIdAndRowIndex(id, 0).orElseThrow().getCells())
+                .contains("\"c1\"").contains("92");
+
+        // 다만 API로는 드러나지 않는다.
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.rows[0].cells", hasSize(1)))
+                .andExpect(jsonPath("$.data.rows[0].cells[0]").value("네트워크"));
+
+        // 그 행을 수정하면 맵이 새로 만들어지며 남은 값이 사라진다.
+        mockMvc.perform(patch("/api/datasets/{id}/rows/{i}", id, 0)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":[\"운영체제\"]}"))
+                .andExpect(status().isOk());
+
+        org.assertj.core.api.Assertions.assertThat(
+                        datasetRowRepository.findByDatasetIdAndRowIndex(id, 0).orElseThrow().getCells())
+                .doesNotContain("\"c1\"").doesNotContain("92");
+    }
+
+    @Test
+    @DisplayName("열을 지운 뒤 추가해도 지운 key가 재사용되지 않아 옛 값이 되살아나지 않는다")
+    void delete_then_add_does_not_resurrect_values() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+
+        mockMvc.perform(delete("/api/datasets/{id}/columns/{key}", id, "c1")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/datasets/{id}/columns", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"새 열\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.columns[1].key").value("c2"));
+
+        // 행엔 c1="92"가 남아 있지만 새 열은 c2라 빈 값으로 보여야 한다.
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.rows[0].cells[0]").value("네트워크"))
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value(""));
+    }
+
+    @Test
+    @DisplayName("DELETE column - 마지막 열은 400, 없는 key는 404, 타인 dataset은 404")
+    void delete_column_validation() throws Exception {
+        long id = createDataset();
+
+        mockMvc.perform(delete("/api/datasets/{id}/columns/{key}", id, "c9")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isNotFound());
+
+        String otherAuth = "Bearer " + AuthFixture.loginAndGetAccessToken(
+                mockMvc, "other", "password");
+        mockMvc.perform(delete("/api/datasets/{id}/columns/{key}", id, "c0")
+                        .header(HttpHeaders.AUTHORIZATION, otherAuth))
+                .andExpect(status().isNotFound());
+
+        // 2열 중 하나를 지우면 남은 1열은 못 지운다.
+        mockMvc.perform(delete("/api/datasets/{id}/columns/{key}", id, "c1")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk());
+        mockMvc.perform(delete("/api/datasets/{id}/columns/{key}", id, "c0")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("POST column - 열이 끝에 추가되고 기존 행 값은 그대로, 새 열은 빈 값")
     void add_column() throws Exception {
         long id = createDataset();

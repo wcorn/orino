@@ -69,6 +69,17 @@ export async function addDatasetColumn(
   return data.data;
 }
 
+/** 열 삭제. 마지막 열은 지울 수 없다(400). */
+export async function deleteDatasetColumn(
+  datasetId: number,
+  key: string,
+): Promise<DatasetMeta> {
+  const { data } = await client.delete<ApiEnvelope<DatasetMeta>>(
+    `/datasets/${datasetId}/columns/${key}`,
+  );
+  return data.data;
+}
+
 /** 열 이름 변경. key는 cells 맵의 주소라 바뀌지 않고 label만 바뀐다. */
 export async function renameDatasetColumn(
   datasetId: number,
