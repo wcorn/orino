@@ -708,4 +708,195 @@ describe("DatasetGrid", () => {
 
     await waitFor(() => expect(deleted).toBe(0));
   });
+
+  // ---------- 열 너비(resize) ----------
+
+  it("헤더 경계를 드래그하면 너비를 PATCH하고 그 폭으로 그린다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let sent: unknown = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/columns/c0/width`,
+        async ({ request }) => {
+          sent = await request.json();
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              id: 1,
+              columns: [
+                { key: "c0", label: "과목", width: 700 },
+                { key: "c1", label: "점수" },
+              ],
+              rowCount: 1,
+            },
+          });
+        },
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("과목");
+
+    const handle = screen.getByLabelText("과목 열 너비 조절");
+    // getBoundingClientRect가 800으로 목킹돼 있으므로 시작 폭은 800이다.
+    fireEvent.pointerDown(handle, { clientX: 0, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: -100, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: -100, pointerId: 1 });
+
+    await waitFor(() => expect(sent).toEqual({ width: 700 }));
+  });
+
+  it("너비를 지정한 열은 고정 폭, 나머지는 기본 폭으로 그린다", async () => {
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목", width: 300 },
+              { key: "c1", label: "점수" },
+            ],
+            rowCount: 0,
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: { rows: [], offset: 0, limit: 100 },
+        }),
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("과목");
+
+    const header = screen
+      .getByText("과목")
+      .closest("div[style]") as HTMLElement;
+    expect(header.style.gridTemplateColumns).toBe(
+      "300px minmax(120px, 1fr) 44px",
+    );
+  });
+
+  it("하한보다 좁게 끌어도 하한에서 멈춘다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let sent: unknown = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/columns/c0/width`,
+        async ({ request }) => {
+          sent = await request.json();
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              id: 1,
+              columns: [
+                { key: "c0", label: "과목", width: 60 },
+                { key: "c1", label: "점수" },
+              ],
+              rowCount: 1,
+            },
+          });
+        },
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("과목");
+
+    const handle = screen.getByLabelText("과목 열 너비 조절");
+    fireEvent.pointerDown(handle, { clientX: 0, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: -5000, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: -5000, pointerId: 1 });
+
+    // 서버가 400을 내기 전에 클라이언트가 먼저 하한으로 붙인다.
+    await waitFor(() => expect(sent).toEqual({ width: 60 }));
+  });
+
+  it("폭이 그대로면 PATCH하지 않는다 - 핸들을 누르기만 한 경우", async () => {
+    mockDataset([["네트워크", "92"]]);
+    const patched = vi.fn();
+    server.use(
+      http.patch(`${API_BASE}/datasets/1/columns/c0/width`, () => {
+        patched();
+        return HttpResponse.json({ code: "OK", data: null });
+      }),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("과목");
+
+    const handle = screen.getByLabelText("과목 열 너비 조절");
+    fireEvent.pointerDown(handle, { clientX: 0, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: 0, pointerId: 1 });
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(patched).not.toHaveBeenCalled();
+  });
+
+  it("핸들을 더블클릭하면 너비를 지워 기본 폭으로 되돌린다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    const deleted = vi.fn();
+    server.use(
+      http.delete(`${API_BASE}/datasets/1/columns/c0/width`, () => {
+        deleted();
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수" },
+            ],
+            rowCount: 1,
+          },
+        });
+      }),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("과목");
+
+    fireEvent.doubleClick(screen.getByLabelText("과목 열 너비 조절"));
+
+    await waitFor(() => expect(deleted).toHaveBeenCalled());
+  });
+
+  it("너비 조절 드래그가 열 순서 변경으로 새지 않는다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    const reordered = vi.fn();
+    server.use(
+      http.patch(`${API_BASE}/datasets/1/columns/order`, () => {
+        reordered();
+        return HttpResponse.json({ code: "OK", data: null });
+      }),
+      http.patch(`${API_BASE}/datasets/1/columns/c0/width`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목", width: 700 },
+              { key: "c1", label: "점수" },
+            ],
+            rowCount: 1,
+          },
+        }),
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("과목");
+
+    const handle = screen.getByLabelText("과목 열 너비 조절");
+    // 리사이즈 시작 전엔 헤더를 끌어 순서를 바꿀 수 있다.
+    const header = screen.getByText("과목").closest("[draggable]");
+    expect(header).toHaveAttribute("draggable", "true");
+
+    fireEvent.pointerDown(handle, { clientX: 0, pointerId: 1 });
+    // 리사이즈 중엔 draggable이 꺼져 HTML5 드래그가 시작되지 않는다.
+    expect(header).toHaveAttribute("draggable", "false");
+
+    fireEvent.pointerMove(handle, { clientX: -100, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: -100, pointerId: 1 });
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(reordered).not.toHaveBeenCalled();
+  });
 });

@@ -9,6 +9,7 @@ import ds.project.orino.planner.dataset.dto.InsertRowRequest;
 import ds.project.orino.planner.dataset.dto.InsertRowResponse;
 import ds.project.orino.planner.dataset.dto.RenameColumnRequest;
 import ds.project.orino.planner.dataset.dto.ReorderColumnsRequest;
+import ds.project.orino.planner.dataset.dto.ResizeColumnRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
@@ -101,6 +102,25 @@ public class DatasetController {
             @RequestParam int fromRowIndex) {
         return ApiResponse.success(
                 datasetService.fillDownColumn(memberId, id, key, fromRowIndex));
+    }
+
+    /** 열 너비 변경(px). 열 단위 표시 속성이라 행은 건드리지 않는다. */
+    @PatchMapping("/{id}/columns/{key}/width")
+    public ApiResponse<DatasetResponse> resizeColumn(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable String key,
+            @Valid @RequestBody ResizeColumnRequest request) {
+        return ApiResponse.success(datasetService.resizeColumn(memberId, id, key, request));
+    }
+
+    /** 열 너비 초기화 — 기본 폭으로 되돌린다. */
+    @DeleteMapping("/{id}/columns/{key}/width")
+    public ApiResponse<DatasetResponse> resetColumnWidth(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable String key) {
+        return ApiResponse.success(datasetService.resetColumnWidth(memberId, id, key));
     }
 
     /** 열 이름 변경. key는 불변이며 label만 바꾼다. */
