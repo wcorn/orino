@@ -16,6 +16,9 @@ export function useDatasetRows(datasetId: number) {
   const [cache, setCache] = useState<Map<number, string[]>>(() => new Map());
   const loadedPages = useRef<Set<number>>(new Set());
   const inflight = useRef<Set<number>>(new Set());
+  // reset()이 스스로 재조회를 일으키기 위한 세대 번호. 호출자의 useEffect는 ensureRange를
+  // 의존성으로 갖는데, 이 값이 바뀌면 ensureRange 정체성이 바뀌어 effect가 다시 돈다.
+  const [generation, setGeneration] = useState(0);
 
   const ensureRange = useCallback(
     (start: number, end: number) => {
@@ -46,7 +49,10 @@ export function useDatasetRows(datasetId: number) {
           .finally(() => inflight.current.delete(page));
       }
     },
-    [datasetId, queryClient],
+    // generation은 본문에서 안 쓰지만, 바뀔 때마다 새 ensureRange를 만들어
+    // 호출자의 effect를 다시 돌리려는 의도적 의존성이다(= reset 후 재조회).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [datasetId, queryClient, generation],
   );
 
   /** 편집 낙관적 반영. */
@@ -54,12 +60,16 @@ export function useDatasetRows(datasetId: number) {
     setCache((prev) => new Map(prev).set(index, cells));
   }, []);
 
-  /** 행 추가/삭제로 인덱스가 밀리면 전체 재로드. */
+  /**
+   * 캐시를 비우고 다시 받아 온다. 행 인덱스가 밀리거나(행 추가·삭제) 열 구성이 바뀌어
+   * 캐시된 위치 배열이 더 이상 유효하지 않을 때(열 삭제) 쓴다.
+   */
   const reset = useCallback(() => {
     loadedPages.current.clear();
     inflight.current.clear();
     setCache(new Map());
     queryClient.removeQueries({ queryKey: ["datasets", datasetId, "rows"] });
+    setGeneration((g) => g + 1);
   }, [datasetId, queryClient]);
 
   const getRow = useCallback((index: number) => cache.get(index), [cache]);

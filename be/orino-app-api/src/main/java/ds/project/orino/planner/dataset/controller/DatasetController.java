@@ -73,6 +73,15 @@ public class DatasetController {
                 .body(ApiResponse.success(datasetService.addColumn(memberId, id, request)));
     }
 
+    /** 열 삭제. 마지막 열은 지울 수 없다(400). */
+    @DeleteMapping("/{id}/columns/{key}")
+    public ApiResponse<DatasetResponse> deleteColumn(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable String key) {
+        return ApiResponse.success(datasetService.deleteColumn(memberId, id, key));
+    }
+
     /** 열 이름 변경. key는 불변이며 label만 바꾼다. */
     @PatchMapping("/{id}/columns/{key}")
     public ApiResponse<DatasetResponse> renameColumn(

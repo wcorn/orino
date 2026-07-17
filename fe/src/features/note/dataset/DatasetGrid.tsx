@@ -6,9 +6,10 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { LoadingText } from "@/components/ui/loading-text";
@@ -17,6 +18,7 @@ import { cn } from "@/lib/utils";
 import {
   addDatasetColumn,
   type DatasetMeta,
+  deleteDatasetColumn,
   deleteDatasetRow,
   insertDatasetRow,
   renameDatasetColumn,
@@ -45,6 +47,7 @@ export function DatasetGrid({ datasetId }: Props) {
   const [draft, setDraft] = useState("");
   const [editingCol, setEditingCol] = useState<string | null>(null);
   const [colDraft, setColDraft] = useState("");
+  const [pendingColDelete, setPendingColDelete] = useState<string | null>(null);
 
   const colCount = meta?.columns.length ?? 0;
   const rowCount = meta?.rowCount ?? 0;
@@ -76,6 +79,15 @@ export function DatasetGrid({ datasetId }: Props) {
       renameDatasetColumn(datasetId, v.key, v.label),
     onSuccess: (next: DatasetMeta) =>
       queryClient.setQueryData(datasetKeys.meta(datasetId), next),
+    onError: () => void invalidateMeta(),
+  });
+  const deleteColMut = useMutation({
+    mutationFn: (key: string) => deleteDatasetColumn(datasetId, key),
+    onSuccess: (next: DatasetMeta) => {
+      queryClient.setQueryData(datasetKeys.meta(datasetId), next);
+      // 캐시된 cells는 삭제 전 열 순서 기준이라 그대로 쓰면 값이 밀린다. 다시 받아 온다.
+      reset();
+    },
     onError: () => void invalidateMeta(),
   });
   const addColMut = useMutation({
@@ -151,6 +163,9 @@ export function DatasetGrid({ datasetId }: Props) {
 
   const addColumn = () => addColMut.mutate(`열 ${colCount + 1}`);
 
+  const columnLabel = (key: string) =>
+    meta.columns.find((c) => c.key === key)?.label ?? key;
+
   const startColEdit = (key: string, label: string) => {
     setEditingCol(key);
     setColDraft(label);
@@ -184,7 +199,10 @@ export function DatasetGrid({ datasetId }: Props) {
           style={{ gridTemplateColumns }}
         >
           {table.getFlatHeaders().map((header) => (
-            <div key={header.id} className="border-border border-r">
+            <div
+              key={header.id}
+              className="border-border group flex items-center border-r"
+            >
               {editingCol === header.id ? (
                 <input
                   autoFocus
@@ -199,22 +217,35 @@ export function DatasetGrid({ datasetId }: Props) {
                   className="focus-visible:ring-ring h-full w-full bg-transparent px-2 py-1.5 font-semibold outline-none focus-visible:ring-1"
                 />
               ) : (
-                <div
-                  className="cursor-text truncate px-2 py-1.5"
-                  title="더블클릭해 열 이름 변경"
-                  onDoubleClick={() =>
-                    startColEdit(
-                      header.id,
-                      meta.columns.find((c) => c.key === header.id)?.label ??
-                        "",
-                    )
-                  }
-                >
-                  {flexRender(
-                    header.column.columnDef.header,
-                    header.getContext(),
+                <>
+                  <div
+                    className="min-w-0 flex-1 cursor-text truncate px-2 py-1.5"
+                    title="더블클릭해 열 이름 변경"
+                    onDoubleClick={() =>
+                      startColEdit(
+                        header.id,
+                        meta.columns.find((c) => c.key === header.id)?.label ??
+                          "",
+                      )
+                    }
+                  >
+                    {flexRender(
+                      header.column.columnDef.header,
+                      header.getContext(),
+                    )}
+                  </div>
+                  {/* 마지막 한 열은 서버가 거부하므로 버튼도 내보내지 않는다. */}
+                  {colCount > 1 && (
+                    <button
+                      type="button"
+                      aria-label={`${columnLabel(header.id)} 열 삭제`}
+                      onClick={() => setPendingColDelete(header.id)}
+                      className="text-muted-foreground hover:text-destructive mr-1 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                    >
+                      <X className="size-3.5" />
+                    </button>
                   )}
-                </div>
+                </>
               )}
             </div>
           ))}
@@ -308,6 +339,26 @@ export function DatasetGrid({ datasetId }: Props) {
           <Plus className="size-4" /> 행 추가
         </Button>
       </div>
+
+      <ConfirmDialog
+        open={pendingColDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingColDelete(null);
+        }}
+        title={
+          pendingColDelete
+            ? `'${columnLabel(pendingColDelete)}' 열을 삭제할까요?`
+            : "열을 삭제할까요?"
+        }
+        description="이 열의 모든 셀 값이 표에서 사라집니다. 되돌릴 수 없어요."
+        confirmLabel="삭제"
+        destructive
+        onConfirm={() => {
+          if (pendingColDelete) deleteColMut.mutate(pendingColDelete);
+          setPendingColDelete(null);
+        }}
+        pending={deleteColMut.isPending}
+      />
     </div>
   );
 }
