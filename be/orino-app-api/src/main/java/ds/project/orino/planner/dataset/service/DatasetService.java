@@ -6,6 +6,7 @@ import ds.project.orino.domain.planner.dataset.entity.Dataset;
 import ds.project.orino.domain.planner.dataset.entity.DatasetRow;
 import ds.project.orino.domain.planner.dataset.repository.DatasetRepository;
 import ds.project.orino.domain.planner.dataset.repository.DatasetRowRepository;
+import ds.project.orino.planner.dataset.dto.AddColumnRequest;
 import ds.project.orino.planner.dataset.dto.BulkRowsRequest;
 import ds.project.orino.planner.dataset.dto.CreateDatasetRequest;
 import ds.project.orino.planner.dataset.dto.DatasetColumn;
@@ -25,6 +26,8 @@ import tools.jackson.databind.json.JsonMapper;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 데이터셋 CRUD.
@@ -49,6 +52,11 @@ public class DatasetService {
     static final int MAX_BULK_ROWS = 2000;
     /** 데이터셋 전체 셀 상한(폭주 방지). */
     static final long MAX_CELLS = 1_000_000L;
+    /** 열 개수 상한. 행이 0이면 MAX_CELLS가 열 증가를 못 막으므로 별도로 둔다. */
+    static final int MAX_COLUMNS = 100;
+
+    /** 열 key 규칙: {@code c<발급번호>}. 번호는 dataset의 next_column_seq에서 받는다. */
+    private static final Pattern COLUMN_KEY = Pattern.compile("c(\\d+)");
 
     private final DatasetRepository datasetRepository;
     private final DatasetRowRepository rowRepository;
@@ -60,9 +68,51 @@ public class DatasetService {
 
     @Transactional
     public DatasetResponse create(Long memberId, CreateDatasetRequest request) {
-        Dataset dataset = datasetRepository.save(
-                new Dataset(memberId, serialize(request.columns())));
+        if (request.columns().size() > MAX_COLUMNS) {
+            throw new CustomException(ErrorCode.INVALID_REQUEST);
+        }
+        Dataset dataset = datasetRepository.save(new Dataset(
+                memberId, serialize(request.columns()), nextSeqFor(request.columns())));
         return DatasetResponse.of(dataset, request.columns());
+    }
+
+    /**
+     * 생성 시 카운터 시작값. 클라이언트가 보낸 key 중 {@code c<N>} 규칙에 맞는 최대 N보다 1 크게 잡아,
+     * 이후 발급될 key가 기존 열과 겹치지 않게 한다.
+     */
+    private int nextSeqFor(List<DatasetColumn> columns) {
+        int max = -1;
+        for (DatasetColumn column : columns) {
+            Matcher matcher = COLUMN_KEY.matcher(column.key());
+            if (matcher.matches()) {
+                max = Math.max(max, Integer.parseInt(matcher.group(1)));
+            }
+        }
+        return max + 1;
+    }
+
+    /**
+     * 열 추가. columns_json에 append만 하고 행은 건드리지 않는다 — 기존 행엔 새 key가 없고,
+     * 읽을 때 투영이 빈 값으로 채운다. 그래서 행 수와 무관하게 O(1)이다.
+     *
+     * <p>key는 dataset의 카운터에서 발급받는다. 지워진 열의 key를 다시 쓰면 행에 남은 옛 값이
+     * 새 열에 되살아나므로, 현재 열의 최대 번호가 아니라 발급 이력을 기준으로 삼는다.
+     */
+    @Transactional
+    public DatasetResponse addColumn(Long memberId, Long datasetId, AddColumnRequest request) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        if (columns.size() + 1 > MAX_COLUMNS) {
+            throw new CustomException(ErrorCode.INVALID_REQUEST);
+        }
+        if ((long) dataset.getRowCount() * (columns.size() + 1) > MAX_CELLS) {
+            throw new CustomException(ErrorCode.INVALID_REQUEST);
+        }
+
+        List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
+        updated.add(new DatasetColumn("c" + dataset.issueColumnSeq(), request.label()));
+        dataset.updateColumns(serialize(updated));
+        return DatasetResponse.of(dataset, updated);
     }
 
     public DatasetResponse getMeta(Long memberId, Long datasetId) {

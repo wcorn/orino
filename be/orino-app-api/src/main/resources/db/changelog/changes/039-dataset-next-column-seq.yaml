@@ -1,0 +1,41 @@
+databaseChangeLog:
+  # 열 key 발급용 단조 증가 카운터 (#793).
+  #
+  # cells가 key 기반 맵(038)이 되면서 열 key는 값의 주소가 됐다. 그래서 key를 재사용하면
+  # 안 된다 — c2를 지운 뒤 새 열에 c2를 다시 발급하면, 행에 남아 있던 옛 c2 값이
+  # 새 열의 값으로 되살아난다. 수식이 들어오면 참조가 조용히 다른 데이터에 재바인딩된다.
+  #
+  # "현재 열의 최대 인덱스 + 1"은 삭제 후 최대값이 내려가므로 이 문제를 막지 못한다.
+  # dataset마다 발급 이력을 기억하는 카운터를 두고 한 방향으로만 올린다.
+  - changeSet:
+      id: 039-dataset-next-column-seq
+      author: wcorn
+      comment: dataset.next_column_seq 추가 — 열 key 발급 카운터(재사용 방지).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: dataset
+                columnName: next_column_seq
+      changes:
+        - addColumn:
+            tableName: dataset
+            columns:
+              - column:
+                  name: next_column_seq
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        # 기존 dataset은 열이 c0..c(n-1) 규칙으로 만들어졌으므로 다음 발급 번호는 n이다.
+        - sql:
+            dbms: mysql
+            comment: 기존 dataset의 카운터를 현재 열 개수로 백필.
+            sql: |
+              UPDATE dataset
+              SET next_column_seq = JSON_LENGTH(columns_json)
+              WHERE next_column_seq = 0;
+      rollback:
+        - dropColumn:
+            tableName: dataset
+            columnName: next_column_seq

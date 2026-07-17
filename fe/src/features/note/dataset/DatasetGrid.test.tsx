@@ -128,6 +128,89 @@ describe("DatasetGrid", () => {
     await waitFor(() => expect(inserted).toBe(true));
   });
 
+  it("[열 추가]로 POST를 호출하고 새 열이 빈 칸으로 붙는다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let addedLabel: string | null = null;
+    server.use(
+      http.post(`${API_BASE}/datasets/1/columns`, async ({ request }) => {
+        const body = (await request.json()) as { label: string };
+        addedLabel = body.label;
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수" },
+              { key: "c2", label: body.label },
+            ],
+            rowCount: 1,
+          },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await screen.findByText("네트워크");
+    await user.click(screen.getByRole("button", { name: "열 추가" }));
+
+    await waitFor(() => expect(addedLabel).toBe("열 3"));
+    expect(await screen.findByText("열 3")).toBeInTheDocument();
+    // 행을 다시 받지 않으므로 기존 값이 깜빡임 없이 그대로 남는다.
+    expect(screen.getByText("네트워크")).toBeInTheDocument();
+    expect(screen.getByText("92")).toBeInTheDocument();
+  });
+
+  it("추가한 열의 셀을 편집하면 짧은 cells가 채워져 전송된다", async () => {
+    // 캐시된 행은 2칸인데 열은 3개 — 편집 시 빈 값으로 패딩돼야 한다.
+    mockDataset([["네트워크", "92"]]);
+    let patched: string[] | null = null;
+    server.use(
+      http.post(`${API_BASE}/datasets/1/columns`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수" },
+              { key: "c2", label: "열 3" },
+            ],
+            rowCount: 1,
+          },
+        }),
+      ),
+      http.patch(`${API_BASE}/datasets/1/rows/:i`, async ({ request }) => {
+        const body = (await request.json()) as { cells: string[] };
+        patched = body.cells;
+        return HttpResponse.json({
+          code: "OK",
+          data: { rowIndex: 0, cells: body.cells },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await screen.findByText("네트워크");
+    await user.click(screen.getByRole("button", { name: "열 추가" }));
+    await screen.findByText("열 3");
+
+    // 편집 전엔 input이 없어 라벨로 못 찾는다 — 행의 3번째 셀 div를 눌러 편집을 연다.
+    const thirdCell = document.querySelector(
+      '[data-testid="dataset-grid"] div[style*="translateY(0px)"] > div:nth-child(3)',
+    );
+    fireEvent.click(thirdCell!);
+    const input = await screen.findByLabelText("셀 1행 3열");
+    fireEvent.change(input, { target: { value: "재수강" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(patched).toEqual(["네트워크", "92", "재수강"]);
+    });
+  });
+
   it("열 헤더를 더블클릭해 편집하면 PATCH로 저장하고 새 이름을 보여준다", async () => {
     mockDataset([["네트워크", "92"]]);
     let renamed: { key: string; label: string } | null = null;
