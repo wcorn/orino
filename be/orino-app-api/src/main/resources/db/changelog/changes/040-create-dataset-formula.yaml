@@ -1,0 +1,152 @@
+databaseChangeLog:
+  # 수식 저장 스키마 (#809, Epic #799).
+  #
+  # 값은 dataset_row.cells에 그대로 두고 수식만 여기 담는다. 수식 있는 셀만 행이 생기므로
+  # sparse하고, cells의 포맷·투영·API 읽기 경로가 바뀌지 않는다.
+  - changeSet:
+      id: 040-create-dataset-formula
+      author: wcorn
+      comment: 수식 셀 테이블. 값은 dataset_row.cells에 남고 여기엔 원본 수식만.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: dataset_formula
+      changes:
+        - createTable:
+            tableName: dataset_formula
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: dataset_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_dataset_formula_dataset
+                    references: dataset(id)
+                    deleteCascade: true
+              # 행 정체성은 row_index가 아니라 id다. 행이 밀려도 수식이 따라다닌다.
+              - column:
+                  name: row_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_dataset_formula_row
+                    references: dataset_row(id)
+                    deleteCascade: true
+              - column:
+                  name: col_key
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              # 사용자가 친 수식의 바인딩 정규형(열 key·행 id로 해석된 형태).
+              - column:
+                  name: raw
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              # #REF!, #VALUE!, #DIV/0! 등. 정상이면 NULL.
+              - column:
+                  name: error
+                  type: VARCHAR(32)
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        # 한 셀에 수식은 하나. 조회 키이자 중복 방지.
+        - createIndex:
+            tableName: dataset_formula
+            indexName: uq_dataset_formula_cell
+            unique: true
+            columns:
+              - column:
+                  name: row_id
+              - column:
+                  name: col_key
+        # 페이지 조회 시 그 dataset의 수식을 한 번에 가져오기 위한 인덱스.
+        - createIndex:
+            tableName: dataset_formula
+            indexName: idx_dataset_formula_dataset
+            columns:
+              - column:
+                  name: dataset_id
+
+  # 의존성 그래프. "이 수식이 무엇을 참조하는가"를 담고, 역방향으로 조회해
+  # "이 셀이 바뀌면 무엇을 다시 계산해야 하는가"를 얻는다.
+  - changeSet:
+      id: 040-create-dataset-formula-ref
+      author: wcorn
+      comment: 수식 참조 그래프. to_kind로 참조 3종을 구분한다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: dataset_formula_ref
+      changes:
+        - createTable:
+            tableName: dataset_formula_ref
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: formula_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_dataset_formula_ref_formula
+                    references: dataset_formula(id)
+                    deleteCascade: true
+              # 역방향 조회를 dataset 안으로 좁히기 위해 비정규화.
+              - column:
+                  name: dataset_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # SAME_ROW  : 같은 행의 그 열 (=c0*c1). row_id 없음 — 행이 바뀌어도 자기 행을 가리킨다
+              # ABSOLUTE  : 특정 행의 그 열 (=B5). to_row_id에 값
+              # COLUMN_ALL: 열 전체 (=SUM(c2)). row_id 없음
+              - column:
+                  name: to_kind
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              # FK를 걸지 않는다. 참조하던 행이 지워지면 cascade로 이 행까지 사라져
+              # "지워진 행을 참조했다"는 사실을 잃고 #REF!를 못 만든다(#814).
+              # 끊긴 참조로 남겨두는 게 의도된 상태다.
+              - column:
+                  name: to_row_id
+                  type: BIGINT
+              - column:
+                  name: to_col_key
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+        # 무효화 역방향 조회: (dataset, 바뀐 열, 바뀐 행) → 의존 수식.
+        # to_row_id가 NULL인 SAME_ROW·COLUMN_ALL도 같은 인덱스로 걸린다.
+        - createIndex:
+            tableName: dataset_formula_ref
+            indexName: idx_dataset_formula_ref_target
+            columns:
+              - column:
+                  name: dataset_id
+              - column:
+                  name: to_col_key
+              - column:
+                  name: to_row_id

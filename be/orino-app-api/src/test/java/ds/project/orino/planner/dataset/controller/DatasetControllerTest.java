@@ -2,6 +2,8 @@ package ds.project.orino.planner.dataset.controller;
 
 import com.jayway.jsonpath.JsonPath;
 import ds.project.orino.domain.member.repository.MemberRepository;
+import ds.project.orino.domain.planner.dataset.entity.DatasetFormula;
+import ds.project.orino.domain.planner.dataset.repository.DatasetFormulaRepository;
 import ds.project.orino.domain.planner.dataset.repository.DatasetRowRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
@@ -28,6 +30,8 @@ class DatasetControllerTest extends ApiTestSupport {
     private MemberRepository memberRepository;
     @Autowired
     private DatasetRowRepository datasetRowRepository;
+    @Autowired
+    private DatasetFormulaRepository datasetFormulaRepository;
     @Autowired
     private DbCleaner dbCleaner;
 
@@ -217,6 +221,44 @@ class DatasetControllerTest extends ApiTestSupport {
                 .andReturn().getResponse().getContentAsString();
         java.util.List<Number> raw = JsonPath.read(body, "$.data.rows[*].id");
         return raw.stream().map(Number::longValue).toList();
+    }
+
+    @Test
+    @DisplayName("dataset 삭제 시 수식도 cascade로 함께 지워진다")
+    void delete_dataset_cascades_formulas() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+        long rowId = rowIds(id).get(0);
+        datasetFormulaRepository.save(new DatasetFormula(id, rowId, "c1", "=c0"));
+        org.assertj.core.api.Assertions.assertThat(
+                datasetFormulaRepository.countByDatasetId(id)).isEqualTo(1);
+
+        mockMvc.perform(delete("/api/datasets/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isNoContent());
+
+        org.assertj.core.api.Assertions.assertThat(
+                datasetFormulaRepository.countByDatasetId(id)).isZero();
+    }
+
+    @Test
+    @DisplayName("행 삭제 시 그 행의 수식도 cascade로 함께 지워진다")
+    void delete_row_cascades_formula() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"A\",\"1\"],[\"B\",\"2\"]]");
+        java.util.List<Long> ids = rowIds(id);
+        datasetFormulaRepository.save(new DatasetFormula(id, ids.get(0), "c1", "=c0"));
+        datasetFormulaRepository.save(new DatasetFormula(id, ids.get(1), "c1", "=c0"));
+
+        mockMvc.perform(delete("/api/datasets/{id}/rows/{i}", id, 0)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isNoContent());
+
+        // 지운 행의 수식만 사라지고 남은 행 것은 유지된다.
+        org.assertj.core.api.Assertions.assertThat(
+                datasetFormulaRepository.findByRowIdAndColKey(ids.get(0), "c1")).isEmpty();
+        org.assertj.core.api.Assertions.assertThat(
+                datasetFormulaRepository.findByRowIdAndColKey(ids.get(1), "c1")).isPresent();
     }
 
     @Test
