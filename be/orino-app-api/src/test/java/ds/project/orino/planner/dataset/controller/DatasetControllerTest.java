@@ -3,6 +3,7 @@ package ds.project.orino.planner.dataset.controller;
 import com.jayway.jsonpath.JsonPath;
 import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.domain.planner.dataset.entity.DatasetFormula;
+import ds.project.orino.domain.planner.dataset.repository.DatasetCellStyleRepository;
 import ds.project.orino.domain.planner.dataset.repository.DatasetFormulaRepository;
 import ds.project.orino.domain.planner.dataset.repository.DatasetRowRepository;
 import ds.project.orino.support.ApiTestSupport;
@@ -21,6 +22,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -32,6 +34,8 @@ class DatasetControllerTest extends ApiTestSupport {
     private DatasetRowRepository datasetRowRepository;
     @Autowired
     private DatasetFormulaRepository datasetFormulaRepository;
+    @Autowired
+    private DatasetCellStyleRepository datasetCellStyleRepository;
     @Autowired
     private DbCleaner dbCleaner;
 
@@ -1131,6 +1135,184 @@ class DatasetControllerTest extends ApiTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, otherToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"width\":200}"))
+                .andExpect(status().isNotFound());
+    }
+
+    // ---------- 셀 서식(배경색·정렬) ----------
+
+    /** 셀 서식을 지정하고 응답을 돌려준다. */
+    private String setStyle(long id, int rowIndex, String colKey, String bodyJson) throws Exception {
+        return mockMvc.perform(put("/api/datasets/{id}/rows/{r}/cells/{c}/style", id, rowIndex, colKey)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyJson))
+                .andReturn().getResponse().getContentAsString();
+    }
+
+    @Test
+    @DisplayName("PUT cells/{col}/style - 배경색·정렬을 저장하고 행 조회 시 styles로 온다")
+    void set_cell_style() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c1/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bg\":\"green\",\"align\":\"right\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.styles.c1.bg").value("green"))
+                .andExpect(jsonPath("$.data.styles.c1.align").value("right"));
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows[0].styles.c1.bg").value("green"))
+                .andExpect(jsonPath("$.data.rows[0].styles.c1.align").value("right"))
+                // 서식 없는 셀은 styles에 아예 없다(sparse).
+                .andExpect(jsonPath("$.data.rows[0].styles.c0").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("PUT cells/{col}/style - 빈 요청이면 서식을 지운다")
+    void clear_cell_style() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+        setStyle(id, 0, "c1", "{\"bg\":\"green\"}");
+
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c1/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.styles.c1").doesNotExist());
+
+        // 빈 서식 행이 남지 않아야 한다(sparse 유지).
+        org.assertj.core.api.Assertions
+                .assertThat(datasetCellStyleRepository.findByRowIdAndColKey(rowIds(id).get(0), "c1"))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("PUT cells/{col}/style - 통째로 교체한다(부분 갱신 아님)")
+    void set_cell_style_replaces() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+        setStyle(id, 0, "c1", "{\"bg\":\"green\",\"align\":\"right\"}");
+
+        // align만 보내면 bg는 사라진다.
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c1/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"align\":\"center\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.styles.c1.align").value("center"))
+                .andExpect(jsonPath("$.data.styles.c1.bg").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("PUT cells/{col}/style - 허용되지 않은 색/정렬은 거부한다")
+    void set_cell_style_rejects_invalid() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c1/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bg\":\"#ff0000\"}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c1/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"align\":\"justify\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("PUT cells/{col}/style - 없는 열은 404")
+    void set_cell_style_unknown_column() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c99/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bg\":\"green\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("셀 서식을 바꿔도 값·수식은 그대로다 - 표시 속성이라 cells를 안 건드린다")
+    void set_cell_style_keeps_value_and_formula() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"3\",\"4\"]]");
+        // c1을 수식으로 만든다. 참조는 label(과목) 기반이고 열 이름은 중괄호로 감싼다.
+        mockMvc.perform(patch("/api/datasets/{id}/rows/0", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":[\"3\",\"={과목}*2\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.cells[1]").value("6"));
+
+        setStyle(id, 0, "c1", "{\"bg\":\"yellow\"}");
+
+        // 값(6)과 수식이 유지돼야 한다.
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value("6"))
+                .andExpect(jsonPath("$.data.rows[0].formulas.c1").exists())
+                .andExpect(jsonPath("$.data.rows[0].styles.c1.bg").value("yellow"));
+    }
+
+    @Test
+    @DisplayName("열을 지우면 그 열의 셀 서식도 함께 정리된다")
+    void delete_column_clears_styles() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+        setStyle(id, 0, "c1", "{\"bg\":\"green\"}");
+        long rowId = rowIds(id).get(0);
+        org.assertj.core.api.Assertions
+                .assertThat(datasetCellStyleRepository.findByRowIdAndColKey(rowId, "c1"))
+                .isPresent();
+
+        mockMvc.perform(delete("/api/datasets/{id}/columns/c1", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk());
+
+        // 지연 정리가 아니라 즉시 정리다(수식과 같은 방식).
+        org.assertj.core.api.Assertions
+                .assertThat(datasetCellStyleRepository.findByRowIdAndColKey(rowId, "c1"))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("행을 지우면 그 행의 셀 서식도 cascade로 사라진다")
+    void delete_row_cascades_styles() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+        setStyle(id, 0, "c1", "{\"bg\":\"green\"}");
+        long rowId = rowIds(id).get(0);
+
+        mockMvc.perform(delete("/api/datasets/{id}/rows/0", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isNoContent());
+
+        org.assertj.core.api.Assertions
+                .assertThat(datasetCellStyleRepository.findByRowIdAndColKey(rowId, "c1"))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("남의 데이터셋 셀 서식은 못 바꾼다")
+    void set_cell_style_of_other_member() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+        String otherToken = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc, "other", "password");
+
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c1/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, otherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bg\":\"green\"}"))
                 .andExpect(status().isNotFound());
     }
 }

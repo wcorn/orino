@@ -87,6 +87,14 @@
   --warning-foreground: oklch(0.22 0.03 75);
   --info: oklch(0.58 0.15 250);
   --info-foreground: oklch(0.99 0 0);
+  /* 셀 배경 팔레트(라이트). 옅은 틴트라 본문 글자(--foreground)가 대비를 유지한다.
+     저장값은 토큰명(red/…)이고 렌더는 var(--cell-bg-<토큰>)으로 해결한다 — 다크는 .dark가 덮는다. */
+  --cell-bg-red: oklch(0.94 0.04 25);
+  --cell-bg-orange: oklch(0.95 0.045 60);
+  --cell-bg-yellow: oklch(0.96 0.05 95);
+  --cell-bg-green: oklch(0.94 0.04 150);
+  --cell-bg-blue: oklch(0.94 0.035 240);
+  --cell-bg-purple: oklch(0.94 0.04 300);
   --border: oklch(0.925 0 0);
   --input: oklch(0.925 0 0);
   /* 포커스 링·브랜드는 primary를 단일 진실원천으로 별칭(같은 의미=같은 값). */
@@ -121,6 +129,13 @@
   --warning-foreground: oklch(0.2 0.03 75);
   --info: oklch(0.66 0.15 250);
   --info-foreground: oklch(0.13 0 0);
+  /* 셀 배경 팔레트(다크). 낮은 명도라 밝은 본문 글자가 대비를 유지한다. */
+  --cell-bg-red: oklch(0.32 0.06 25);
+  --cell-bg-orange: oklch(0.33 0.055 60);
+  --cell-bg-yellow: oklch(0.34 0.05 95);
+  --cell-bg-green: oklch(0.32 0.05 150);
+  --cell-bg-blue: oklch(0.33 0.06 240);
+  --cell-bg-purple: oklch(0.32 0.06 300);
   --border: oklch(0.22 0 0);
   --input: oklch(0.22 0 0);
 }

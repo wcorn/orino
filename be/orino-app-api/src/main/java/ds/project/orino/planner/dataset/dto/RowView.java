@@ -16,11 +16,15 @@ import java.util.Map;
  * 수식을 지운다.
  *
  * <p>{@code formulas}는 <b>표시형</b>(열 이름·행 번호)이다. 저장형(key·행 id)은 서버 안에만 있다.
+ *
+ * <p>{@code styles}엔 서식(배경색·정렬)이 있는 셀만 열 key로 담긴다({@code formulas}와 같은
+ * sparse 맵). 서식 없는 셀은 아예 없다.
  */
 public record RowView(
         Long id,
         int rowIndex,
         List<String> cells,
-        Map<String, String> formulas
+        Map<String, String> formulas,
+        Map<String, CellStyle> styles
 ) {
 }

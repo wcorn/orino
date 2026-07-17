@@ -12,6 +12,23 @@ export const MIN_COLUMN_WIDTH = 60;
 /** 열 너비 상한(px). 서버의 DatasetColumn.MAX_WIDTH와 같아야 한다. */
 export const MAX_COLUMN_WIDTH = 800;
 
+/** 셀 배경 팔레트 토큰. 서버의 CellStyle.ALLOWED_BG·index.css의 --cell-bg-*와 같아야 한다. */
+export const CELL_BG_TOKENS = [
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "blue",
+  "purple",
+] as const;
+export type CellBgToken = (typeof CELL_BG_TOKENS)[number];
+
+/** 셀 서식(배경색·정렬). 지정 안 한 축은 없다(sparse). */
+export interface CellStyle {
+  bg?: CellBgToken;
+  align?: "left" | "center" | "right";
+}
+
 export interface DatasetMeta {
   id: number;
   columns: DatasetColumn[];
@@ -34,6 +51,8 @@ export interface DatasetRow {
    * 서버가 사용자가 직접 입력한 것으로 보고 수식을 지운다.
    */
   formulas: Record<string, string>;
+  /** 서식 있는 셀의 배경색·정렬(열 key → CellStyle). 서식 없는 셀은 없다. */
+  styles: Record<string, CellStyle>;
 }
 
 export interface RowsPage {
@@ -174,6 +193,23 @@ export async function updateDatasetRow(
   const { data } = await client.patch<ApiEnvelope<DatasetRow>>(
     `/datasets/${datasetId}/rows/${rowIndex}`,
     { cells },
+  );
+  return data.data;
+}
+
+/**
+ * 셀 서식(배경색·정렬)을 통째로 교체한다. 빈 style이면 그 셀 서식을 지운다.
+ * 값·수식과 무관한 표시 속성이라 cells는 안 바뀐다.
+ */
+export async function setCellStyle(
+  datasetId: number,
+  rowIndex: number,
+  colKey: string,
+  style: CellStyle,
+): Promise<DatasetRow> {
+  const { data } = await client.put<ApiEnvelope<DatasetRow>>(
+    `/datasets/${datasetId}/rows/${rowIndex}/cells/${colKey}/style`,
+    { bg: style.bg ?? null, align: style.align ?? null },
   );
   return data.data;
 }

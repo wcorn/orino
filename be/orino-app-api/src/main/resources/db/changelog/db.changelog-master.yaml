@@ -79,3 +79,5 @@ databaseChangeLog:
       file: db/changelog/changes/039-dataset-next-column-seq.yaml
   - include:
       file: db/changelog/changes/040-create-dataset-formula.yaml
+  - include:
+      file: db/changelog/changes/041-create-dataset-cell-style.yaml

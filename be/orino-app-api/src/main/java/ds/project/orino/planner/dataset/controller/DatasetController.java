@@ -12,6 +12,7 @@ import ds.project.orino.planner.dataset.dto.ReorderColumnsRequest;
 import ds.project.orino.planner.dataset.dto.ResizeColumnRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
+import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
 import ds.project.orino.planner.dataset.service.DatasetService;
 import jakarta.validation.Valid;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -176,5 +178,20 @@ public class DatasetController {
             @PathVariable int rowIndex) {
         datasetService.deleteRow(memberId, id, rowIndex);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * 셀 서식(배경색·정렬) 지정. 서식을 통째로 교체하며, 빈 요청({@code {}})이면 그 셀 서식을 지운다.
+     * 값·수식과 무관한 표시 속성이라 cells를 건드리지 않는다.
+     */
+    @PutMapping("/{id}/rows/{rowIndex}/cells/{colKey}/style")
+    public ApiResponse<RowView> setCellStyle(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable int rowIndex,
+            @PathVariable String colKey,
+            @Valid @RequestBody SetCellStyleRequest request) {
+        return ApiResponse.success(
+                datasetService.setCellStyle(memberId, id, rowIndex, colKey, request));
     }
 }

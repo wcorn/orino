@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 
-import { fetchDatasetRows } from "../api/datasets";
+import { type CellStyle, fetchDatasetRows } from "../api/datasets";
 import { datasetKeys } from "../queryKeys";
 
 /** 가상화 스크롤에 맞춰 페이지 단위로 행을 지연 로드하는 크기. */
@@ -16,6 +16,10 @@ export function useDatasetRows(datasetId: number) {
   const [cache, setCache] = useState<Map<number, string[]>>(() => new Map());
   // 수식은 값과 따로 캐시한다 — 화면엔 값을 그리고, 저장할 땐 수식을 돌려줘야 한다.
   const [formulas, setFormulas] = useState<Map<number, Record<string, string>>>(
+    () => new Map(),
+  );
+  // 서식(배경색·정렬)도 값과 따로 캐시한다 — 수식과 같은 방식.
+  const [styles, setStyles] = useState<Map<number, Record<string, CellStyle>>>(
     () => new Map(),
   );
   const loadedPages = useRef<Set<number>>(new Set());
@@ -55,6 +59,13 @@ export function useDatasetRows(datasetId: number) {
               );
               return next;
             });
+            setStyles((prev) => {
+              const next = new Map(prev);
+              pageData.rows.forEach((r) =>
+                next.set(r.rowIndex, r.styles ?? {}),
+              );
+              return next;
+            });
           })
           .catch(() => {})
           .finally(() => inflight.current.delete(page));
@@ -79,6 +90,14 @@ export function useDatasetRows(datasetId: number) {
     [],
   );
 
+  /** 서버가 돌려준 서식으로 갱신. */
+  const setStylesLocal = useCallback(
+    (index: number, next: Record<string, CellStyle>) => {
+      setStyles((prev) => new Map(prev).set(index, next));
+    },
+    [],
+  );
+
   /**
    * 캐시를 비우고 다시 받아 온다. 행 인덱스가 밀리거나(행 추가·삭제) 열 구성이 바뀌어
    * 캐시된 위치 배열이 더 이상 유효하지 않을 때(열 삭제) 쓴다.
@@ -88,6 +107,7 @@ export function useDatasetRows(datasetId: number) {
     inflight.current.clear();
     setCache(new Map());
     setFormulas(new Map());
+    setStyles(new Map());
     queryClient.removeQueries({ queryKey: ["datasets", datasetId, "rows"] });
     setGeneration((g) => g + 1);
   }, [datasetId, queryClient]);
@@ -97,13 +117,19 @@ export function useDatasetRows(datasetId: number) {
     (index: number) => formulas.get(index) ?? {},
     [formulas],
   );
+  const getStyles = useCallback(
+    (index: number) => styles.get(index) ?? {},
+    [styles],
+  );
 
   return {
     getRow,
     getFormulas,
+    getStyles,
     ensureRange,
     setRowLocal,
     setFormulasLocal,
+    setStylesLocal,
     reset,
   };
 }
