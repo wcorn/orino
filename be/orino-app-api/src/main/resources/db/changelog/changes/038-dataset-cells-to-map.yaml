@@ -1,0 +1,83 @@
+databaseChangeLog:
+  # dataset_row.cells를 위치 기반 배열 → key 기반 맵으로 전환 (#793).
+  #
+  # 배열(["네트워크","92"])은 열 위치와 값이 묶여 있어, 열 추가·삭제·순서변경 때마다
+  # 그 dataset의 모든 행을 재작성해야 했다(O(행수)). key 맵({"c0":"네트워크","c1":"92"})으로
+  # 두면 열 조작이 columns_json 갱신만으로 끝난다(O(1)).
+  #
+  # API 계약(RowView.cells)은 위치 배열 그대로다. DatasetService가 columns_json 순서로
+  # 맵을 투영해 배열로 내보내고, 쓰기 때 되돌린다. 그래서 FE는 이 변경의 영향을 받지 않는다.
+  - changeSet:
+      id: 038-dataset-cells-to-map
+      author: wcorn
+      comment: dataset_row.cells 배열 → columns_json의 key 기반 맵으로 백필.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: dataset_row
+      changes:
+        # JSON_TABLE로 columns_json을 (순번, key)로 펼친 뒤, 같은 순번의 배열 원소와 짝지어
+        # JSON_OBJECTAGG로 맵을 만든다. FOR ORDINALITY는 1-base라 배열 인덱스는 ord-1.
+        # 열 수보다 짧은 행(패딩 안 된 legacy)은 해당 key를 빈 문자열로 채운다.
+        - sql:
+            dbms: mysql
+            comment: 배열 형태인 행만 맵으로 변환(이미 맵이면 건너뜀 → 재실행 안전).
+            sql: |
+              UPDATE dataset_row r
+              JOIN dataset d ON d.id = r.dataset_id
+              SET r.cells = COALESCE(
+                (
+                  SELECT JSON_OBJECTAGG(
+                           c.col_key,
+                           COALESCE(
+                             JSON_UNQUOTE(
+                               JSON_EXTRACT(r.cells, CONCAT('$[', c.ord - 1, ']'))
+                             ),
+                             ''
+                           )
+                         )
+                  FROM JSON_TABLE(
+                         d.columns_json,
+                         '$[*]' COLUMNS (
+                           ord FOR ORDINALITY,
+                           col_key VARCHAR(64) PATH '$.key'
+                         )
+                       ) AS c
+                ),
+                JSON_OBJECT()
+              )
+              WHERE JSON_TYPE(r.cells) = 'ARRAY';
+      rollback:
+        # 맵 → 배열 복원. columns_json 순서대로 값을 뽑아 JSON_ARRAYAGG로 되돌린다.
+        # 주의: MySQL은 JSON_ARRAYAGG가 파생 테이블의 ORDER BY를 따르는 것을 보장하지 않는다.
+        # 실측(8.4.4)으로는 순서가 유지되나, 복구 후 열 순서를 눈으로 확인할 것.
+        - sql:
+            dbms: mysql
+            sql: |
+              UPDATE dataset_row r
+              JOIN dataset d ON d.id = r.dataset_id
+              SET r.cells = COALESCE(
+                (
+                  SELECT JSON_ARRAYAGG(
+                           COALESCE(
+                             JSON_UNQUOTE(
+                               JSON_EXTRACT(r.cells, CONCAT('$."', c.col_key, '"'))
+                             ),
+                             ''
+                           )
+                         )
+                  FROM (
+                         SELECT col_key, ord
+                         FROM JSON_TABLE(
+                                d.columns_json,
+                                '$[*]' COLUMNS (
+                                  ord FOR ORDINALITY,
+                                  col_key VARCHAR(64) PATH '$.key'
+                                )
+                              ) AS t
+                         ORDER BY ord
+                       ) AS c
+                ),
+                JSON_ARRAY()
+              )
+              WHERE JSON_TYPE(r.cells) = 'OBJECT';

@@ -210,6 +210,83 @@ class DatasetControllerTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("cells는 열 key 기반 맵으로 저장된다(API 계약은 위치 배열 유지)")
+    void cells_stored_as_key_map() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+
+        String stored = datasetRowRepository.findByDatasetIdAndRowIndex(id, 0)
+                .orElseThrow().getCells();
+        org.assertj.core.api.Assertions.assertThat(stored)
+                .contains("\"c0\"").contains("\"c1\"")
+                .contains("네트워크").contains("92")
+                .doesNotStartWith("[");
+
+        // 저장 포맷이 바뀌어도 응답은 위치 배열 그대로다.
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.rows[0].cells[0]").value("네트워크"))
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value("92"));
+    }
+
+    @Test
+    @DisplayName("PATCH row - 열 수보다 짧은 cells는 빈 값으로 채워진다")
+    void update_row_pads_short_cells() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+
+        mockMvc.perform(patch("/api/datasets/{id}/rows/{i}", id, 0)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":[\"운영체제\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.cells", hasSize(2)))
+                .andExpect(jsonPath("$.data.cells[1]").value(""));
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.rows[0].cells", hasSize(2)))
+                .andExpect(jsonPath("$.data.rows[0].cells[0]").value("운영체제"))
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value(""));
+    }
+
+    @Test
+    @DisplayName("PATCH row - 열 수를 넘는 cells는 담을 key가 없어 버려진다")
+    void update_row_drops_excess_cells() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+
+        mockMvc.perform(patch("/api/datasets/{id}/rows/{i}", id, 0)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":[\"운영체제\",\"78\",\"초과분\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.cells", hasSize(2)));
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.rows[0].cells", hasSize(2)))
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value("78"));
+    }
+
+    @Test
+    @DisplayName("열 이름을 바꿔도 key가 그대로라 셀 값이 유지된다")
+    void rename_column_keeps_cell_values() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}", id, "c1")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"최종점수\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value("92"));
+    }
+
+    @Test
     @DisplayName("PATCH column - label이 변경되고 행 데이터는 그대로다")
     void rename_column() throws Exception {
         long id = createDataset();

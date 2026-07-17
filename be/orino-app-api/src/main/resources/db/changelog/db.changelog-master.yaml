@@ -73,3 +73,5 @@ databaseChangeLog:
       file: db/changelog/changes/036-add-review-schedule-completed-index.yaml
   - include:
       file: db/changelog/changes/037-create-dataset.yaml
+  - include:
+      file: db/changelog/changes/038-dataset-cells-to-map.yaml
