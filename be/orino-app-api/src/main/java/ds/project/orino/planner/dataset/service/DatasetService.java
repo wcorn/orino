@@ -207,7 +207,7 @@ public class DatasetService {
                 .findByDatasetIdAndRowIndexGreaterThanEqualAndRowIndexLessThanOrderByRowIndexAsc(
                         datasetId, off, off + lim)
                 .stream()
-                .map(r -> new RowView(r.getRowIndex(), toCellList(r.getCells(), columns)))
+                .map(r -> new RowView(r.getId(), r.getRowIndex(), toCellList(r.getCells(), columns)))
                 .toList();
         return new RowsResponse(rows, off, lim);
     }
@@ -220,7 +220,7 @@ public class DatasetService {
                 .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
         row.updateCells(toCellMap(request.cells(), columns));
         // 저장된 값을 그대로 되돌려준다(열 수에 맞춰 잘리거나 채워진 결과).
-        return new RowView(rowIndex, toCellList(row.getCells(), columns));
+        return new RowView(row.getId(), rowIndex, toCellList(row.getCells(), columns));
     }
 
     @Transactional

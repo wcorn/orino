@@ -92,7 +92,11 @@ function mockDataset(id: number, columns: DatasetColumn[], rows: string[][]) {
       HttpResponse.json({
         code: "OK",
         data: {
-          rows: rows.map((cells, rowIndex) => ({ rowIndex, cells })),
+          rows: rows.map((cells, rowIndex) => ({
+            id: 100 + rowIndex,
+            rowIndex,
+            cells,
+          })),
           offset: 0,
           limit: 100,
         },
