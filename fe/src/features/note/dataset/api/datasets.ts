@@ -62,14 +62,16 @@ export async function fetchDatasetMeta(
   return data.data;
 }
 
-/** 열 추가(끝에). key는 서버가 발급한다. 기존 행은 서버에서 건드리지 않는다. */
+/**
+ * 열 추가(끝에). key와 기본 이름을 서버가 발급한다 — 클라이언트가 열 개수로 이름을 지으면
+ * 열을 지운 뒤 중복이 생긴다. 기존 행은 서버에서 건드리지 않는다.
+ */
 export async function addDatasetColumn(
   datasetId: number,
-  label: string,
 ): Promise<DatasetMeta> {
   const { data } = await client.post<ApiEnvelope<DatasetMeta>>(
     `/datasets/${datasetId}/columns`,
-    { label },
+    {},
   );
   return data.data;
 }

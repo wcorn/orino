@@ -476,11 +476,13 @@ class DatasetControllerTest extends ApiTestSupport {
     @DisplayName("POST column - label이 비면 400, 타인 dataset이면 404")
     void add_column_validation() throws Exception {
         long id = createDataset();
+        // label을 비우면 거부가 아니라 서버가 기본 이름을 발급한다.
         mockMvc.perform(post("/api/datasets/{id}/columns", id)
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"label\":\"  \"}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.columns[2].label").value("열 3"));
 
         String otherAuth = "Bearer " + AuthFixture.loginAndGetAccessToken(
                 mockMvc, "other", "password");
@@ -489,6 +491,108 @@ class DatasetControllerTest extends ApiTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"label\":\"침입\"}"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("생성 - Import한 중복 헤더는 거부하지 않고 자동 구분한다")
+    void create_deduplicates_labels() throws Exception {
+        // 같은 이름 헤더를 가진 스프레드시트 Import를 막으면 안 된다.
+        String body = mockMvc.perform(post("/api/datasets")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"columns":[{"key":"c0","label":"점수"},{"key":"c1","label":"점수"},
+                                            {"key":"c2","label":"점수"}]}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.columns[0].label").value("점수"))
+                .andExpect(jsonPath("$.data.columns[1].label").value("점수 (2)"))
+                .andExpect(jsonPath("$.data.columns[2].label").value("점수 (3)"))
+                .andReturn().getResponse().getContentAsString();
+
+        // 순서와 key 대응은 그대로여야 한다.
+        long id = ((Number) JsonPath.read(body, "$.data.id")).longValue();
+        mockMvc.perform(get("/api/datasets/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.columns[1].key").value("c1"));
+    }
+
+    @Test
+    @DisplayName("생성 - 자동 구분한 이름이 다른 헤더와 또 겹치면 번호를 올린다")
+    void create_dedup_avoids_secondary_collision() throws Exception {
+        mockMvc.perform(post("/api/datasets")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"columns":[{"key":"c0","label":"점수"},{"key":"c1","label":"점수 (2)"},
+                                            {"key":"c2","label":"점수"}]}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.columns[0].label").value("점수"))
+                .andExpect(jsonPath("$.data.columns[1].label").value("점수 (2)"))
+                // "점수 (2)"가 이미 있으므로 "점수 (3)"으로
+                .andExpect(jsonPath("$.data.columns[2].label").value("점수 (3)"));
+    }
+
+    @Test
+    @DisplayName("열 추가 - 서버가 발급한 기본 이름은 삭제 후에도 중복되지 않는다")
+    void generated_label_never_collides_after_delete() throws Exception {
+        long id = createDataset(); // 과목(c0), 점수(c1)
+        // 열 3 추가 → 열1/열2 아님. 기존 label은 과목/점수라 "열 3"이 나온다.
+        mockMvc.perform(post("/api/datasets/{id}/columns", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.columns[2].label").value("열 3"));
+
+        // 가운데 열을 지우면 열 개수가 2로 줄지만, 기본 이름이 "열 3"으로 되돌아가면 안 된다.
+        mockMvc.perform(delete("/api/datasets/{id}/columns/{key}", id, "c1")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/datasets/{id}/columns", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isCreated())
+                // 남은 label이 과목/열 3이므로 "열 3"을 피해 "열 4"
+                .andExpect(jsonPath("$.data.columns[2].label").value("열 4"));
+
+        mockMvc.perform(get("/api/datasets/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.columns[*].label",
+                        org.hamcrest.Matchers.containsInAnyOrder("과목", "열 3", "열 4")));
+    }
+
+    @Test
+    @DisplayName("열 추가 - 사람이 지정한 이름이 겹치면 409")
+    void add_column_duplicate_label_409() throws Exception {
+        long id = createDataset(); // 과목, 점수
+        mockMvc.perform(post("/api/datasets/{id}/columns", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"점수\"}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("rename - 다른 열과 겹치면 409, 자기 이름 그대로는 허용")
+    void rename_duplicate_label_409() throws Exception {
+        long id = createDataset(); // 과목(c0), 점수(c1)
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}", id, "c1")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"과목\"}"))
+                .andExpect(status().isConflict());
+
+        // 자기 자신과의 비교는 충돌이 아니다.
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}", id, "c1")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"점수\"}"))
+                .andExpect(status().isOk());
     }
 
     @Test

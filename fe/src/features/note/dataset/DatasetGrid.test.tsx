@@ -241,11 +241,11 @@ describe("DatasetGrid", () => {
 
   it("[열 추가]로 POST를 호출하고 새 열이 빈 칸으로 붙는다", async () => {
     mockDataset([["네트워크", "92"]]);
-    let addedLabel: string | null = null;
+    let sentBody: Record<string, unknown> | null = null;
     server.use(
       http.post(`${API_BASE}/datasets/1/columns`, async ({ request }) => {
-        const body = (await request.json()) as { label: string };
-        addedLabel = body.label;
+        sentBody = (await request.json()) as Record<string, unknown>;
+        // 이름은 서버가 붙인다.
         return HttpResponse.json({
           code: "OK",
           data: {
@@ -253,7 +253,7 @@ describe("DatasetGrid", () => {
             columns: [
               { key: "c0", label: "과목" },
               { key: "c1", label: "점수" },
-              { key: "c2", label: body.label },
+              { key: "c2", label: "열 3" },
             ],
             rowCount: 1,
           },
@@ -266,8 +266,9 @@ describe("DatasetGrid", () => {
     await screen.findByText("네트워크");
     await user.click(screen.getByRole("button", { name: "열 추가" }));
 
-    await waitFor(() => expect(addedLabel).toBe("열 3"));
     expect(await screen.findByText("열 3")).toBeInTheDocument();
+    // 클라이언트는 이름을 짓지 않는다 — 열 개수 기반 규칙이 삭제 후 중복을 만들었다.
+    expect(sentBody).toEqual({});
     // 행을 다시 받지 않으므로 기존 값이 깜빡임 없이 그대로 남는다.
     expect(screen.getByText("네트워크")).toBeInTheDocument();
     expect(screen.getByText("92")).toBeInTheDocument();

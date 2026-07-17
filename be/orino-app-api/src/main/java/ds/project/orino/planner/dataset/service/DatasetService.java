@@ -57,6 +57,8 @@ public class DatasetService {
 
     /** 열 key 규칙: {@code c<발급번호>}. 번호는 dataset의 next_column_seq에서 받는다. */
     private static final Pattern COLUMN_KEY = Pattern.compile("c(\\d+)");
+    /** 기본 열 이름 접두사. 뒤에 붙는 번호는 비어 있는 것을 찾아 쓴다. */
+    private static final String DEFAULT_LABEL_PREFIX = "열 ";
 
     private final DatasetRepository datasetRepository;
     private final DatasetRowRepository rowRepository;
@@ -66,14 +68,61 @@ public class DatasetService {
         this.rowRepository = rowRepository;
     }
 
+    /**
+     * 데이터셋 생성. 열 label은 수식이 참조를 유일하게 지목할 수 있어야 하므로 중복을 허용하지 않는다.
+     *
+     * <p>다만 여기서 오는 label은 대개 <b>기계가 만든 것</b>(Import한 스프레드시트 헤더, 기본 이름)이라
+     * 거부하지 않고 {@link #deduplicateLabels 자동 구분}한다. 중복 헤더를 가진 엑셀 파일은 흔한데,
+     * 400으로 막으면 Import 자체가 불가능해진다. 엑셀·구글시트도 같은 방식으로 붙여 구분한다.
+     */
     @Transactional
     public DatasetResponse create(Long memberId, CreateDatasetRequest request) {
         if (request.columns().size() > MAX_COLUMNS) {
             throw new CustomException(ErrorCode.INVALID_REQUEST);
         }
+        List<DatasetColumn> columns = deduplicateLabels(request.columns());
         Dataset dataset = datasetRepository.save(new Dataset(
-                memberId, serialize(request.columns()), nextSeqFor(request.columns())));
-        return DatasetResponse.of(dataset, request.columns());
+                memberId, serialize(columns), nextSeqFor(columns)));
+        return DatasetResponse.of(dataset, columns);
+    }
+
+    /**
+     * 중복 label에 {@code (2)}, {@code (3)}… 을 붙여 유일하게 만든다. 순서는 보존한다.
+     * 붙인 이름이 또 다른 label과 겹치면 번호를 계속 올린다.
+     */
+    private List<DatasetColumn> deduplicateLabels(List<DatasetColumn> columns) {
+        java.util.Set<String> taken = new java.util.HashSet<>();
+        List<DatasetColumn> result = new java.util.ArrayList<>(columns.size());
+        for (DatasetColumn column : columns) {
+            String label = column.label();
+            for (int n = 2; !taken.add(label); n++) {
+                label = column.label() + " (" + n + ")";
+            }
+            result.add(new DatasetColumn(column.key(), label));
+        }
+        return result;
+    }
+
+    /** 이미 쓰이고 있는 label이면 거부한다. {@code selfKey}는 자기 자신(rename 시 무변경 허용). */
+    private void requireLabelFree(List<DatasetColumn> columns, String label, String selfKey) {
+        boolean taken = columns.stream()
+                .anyMatch(c -> !c.key().equals(selfKey) && c.label().equals(label));
+        if (taken) {
+            throw new CustomException(ErrorCode.DUPLICATE_COLUMN_LABEL);
+        }
+    }
+
+    /** 아직 안 쓰인 {@code 열 N}을 찾아 준다. */
+    private String generateLabel(List<DatasetColumn> columns) {
+        java.util.Set<String> taken = columns.stream()
+                .map(DatasetColumn::label)
+                .collect(java.util.stream.Collectors.toSet());
+        for (int n = columns.size() + 1; ; n++) {
+            String candidate = DEFAULT_LABEL_PREFIX + n;
+            if (taken.add(candidate)) {
+                return candidate;
+            }
+        }
     }
 
     /**
@@ -109,8 +158,15 @@ public class DatasetService {
             throw new CustomException(ErrorCode.INVALID_REQUEST);
         }
 
+        // label을 안 주면 서버가 유일한 기본 이름을 발급한다(key 발급과 같은 방식).
+        // 클라이언트가 이름을 지으면 열 개수 기반 규칙이 삭제 후 중복을 만든다.
+        String label = request.label() == null || request.label().isBlank()
+                ? generateLabel(columns)
+                : request.label();
+        requireLabelFree(columns, label, null);
+
         List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
-        updated.add(new DatasetColumn("c" + dataset.issueColumnSeq(), request.label()));
+        updated.add(new DatasetColumn("c" + dataset.issueColumnSeq(), label));
         dataset.updateColumns(serialize(updated));
         return DatasetResponse.of(dataset, updated);
     }
@@ -167,6 +223,8 @@ public class DatasetService {
         if (at < 0) {
             throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
         }
+        // 사람이 직접 지정한 이름이므로 자동 구분하지 않고 충돌을 알린다.
+        requireLabelFree(columns, request.label(), key);
 
         List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
         updated.set(at, new DatasetColumn(key, request.label()));
