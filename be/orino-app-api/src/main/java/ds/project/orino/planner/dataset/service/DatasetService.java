@@ -14,6 +14,7 @@ import ds.project.orino.planner.dataset.dto.DatasetResponse;
 import ds.project.orino.planner.dataset.dto.InsertRowRequest;
 import ds.project.orino.planner.dataset.dto.InsertRowResponse;
 import ds.project.orino.planner.dataset.dto.RenameColumnRequest;
+import ds.project.orino.planner.dataset.dto.ReorderColumnsRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
@@ -200,6 +201,34 @@ public class DatasetService {
         List<DatasetColumn> updated = columns.stream()
                 .filter(c -> !c.key().equals(key))
                 .toList();
+        dataset.updateColumns(serialize(updated));
+        return DatasetResponse.of(dataset, updated);
+    }
+
+    /**
+     * 열 순서 변경. columns_json 배열 순서만 바꾸고 행은 건드리지 않아 O(1)이다 —
+     * cells가 key 맵이라 값이 위치에 묶여 있지 않고, 읽을 때 투영이 새 순서를 따라간다.
+     *
+     * <p>요청은 전체 순서이며, 현재 열 집합과 정확히 같아야 한다. 열 추가·삭제는 이 API의
+     * 일이 아니므로 집합이 다르면 거부한다.
+     */
+    @Transactional
+    public DatasetResponse reorderColumns(Long memberId, Long datasetId,
+                                          ReorderColumnsRequest request) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+
+        Map<String, DatasetColumn> byKey = new LinkedHashMap<>();
+        for (DatasetColumn column : columns) {
+            byKey.put(column.key(), column);
+        }
+        // 중복 key가 오면 size 비교만으론 못 걸러내므로 집합으로 견준다.
+        if (request.keys().size() != columns.size()
+                || !new java.util.HashSet<>(request.keys()).equals(byKey.keySet())) {
+            throw new CustomException(ErrorCode.INVALID_REQUEST);
+        }
+
+        List<DatasetColumn> updated = request.keys().stream().map(byKey::get).toList();
         dataset.updateColumns(serialize(updated));
         return DatasetResponse.of(dataset, updated);
     }

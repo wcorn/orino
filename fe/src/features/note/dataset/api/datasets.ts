@@ -76,6 +76,21 @@ export async function addDatasetColumn(
   return data.data;
 }
 
+/**
+ * 열 순서 변경. 전체 순서를 보내며 현재 열 집합과 정확히 같아야 한다.
+ * cells가 key 맵이라 서버는 columns_json 순서만 바꾸고 행은 건드리지 않는다.
+ */
+export async function reorderDatasetColumns(
+  datasetId: number,
+  keys: string[],
+): Promise<DatasetMeta> {
+  const { data } = await client.patch<ApiEnvelope<DatasetMeta>>(
+    `/datasets/${datasetId}/columns/order`,
+    { keys },
+  );
+  return data.data;
+}
+
 /** 열 삭제. 마지막 열은 지울 수 없다(400). */
 export async function deleteDatasetColumn(
   datasetId: number,

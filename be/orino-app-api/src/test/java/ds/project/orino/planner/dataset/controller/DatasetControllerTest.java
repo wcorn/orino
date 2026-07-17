@@ -300,6 +300,137 @@ class DatasetControllerTest extends ApiTestSupport {
         org.assertj.core.api.Assertions.assertThat(rowIds(id).get(0)).isEqualTo(before);
     }
 
+    /** 3열(과목/점수/비고) dataset을 만들고 1행을 채운다. */
+    private long createThreeColumnDataset() throws Exception {
+        String body = mockMvc.perform(post("/api/datasets")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"columns":[{"key":"c0","label":"과목"},{"key":"c1","label":"점수"},
+                                            {"key":"c2","label":"비고"}]}
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        long id = ((Number) JsonPath.read(body, "$.data.id")).longValue();
+        bulk(id, "[[\"네트워크\",\"92\",\"재수강\"]]");
+        return id;
+    }
+
+    @Test
+    @DisplayName("PATCH columns/order - 순서가 바뀌고 값이 열을 따라간다")
+    void reorder_columns() throws Exception {
+        long id = createThreeColumnDataset();
+
+        // 비고를 맨 앞으로: c2, c0, c1
+        mockMvc.perform(patch("/api/datasets/{id}/columns/order", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"keys\":[\"c2\",\"c0\",\"c1\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns[0].label").value("비고"))
+                .andExpect(jsonPath("$.data.columns[1].label").value("과목"))
+                .andExpect(jsonPath("$.data.columns[2].label").value("점수"));
+
+        // 값이 새 순서를 따라온다 — 위치가 아니라 key에 묶여 있으므로.
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.rows[0].cells[0]").value("재수강"))
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value("네트워크"))
+                .andExpect(jsonPath("$.data.rows[0].cells[2]").value("92"));
+    }
+
+    @Test
+    @DisplayName("열 순서 변경은 행을 건드리지 않는다")
+    void reorder_does_not_touch_rows() throws Exception {
+        long id = createThreeColumnDataset();
+        String before = datasetRowRepository.findByDatasetIdAndRowIndex(id, 0)
+                .orElseThrow().getCells();
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/order", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"keys\":[\"c2\",\"c1\",\"c0\"]}"))
+                .andExpect(status().isOk());
+
+        org.assertj.core.api.Assertions.assertThat(
+                        datasetRowRepository.findByDatasetIdAndRowIndex(id, 0).orElseThrow().getCells())
+                .as("순서 변경은 O(1)이어야 하므로 행 JSON이 그대로여야 한다")
+                .isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("PATCH columns/order - 열 집합이 다르면 400")
+    void reorder_rejects_wrong_key_set() throws Exception {
+        long id = createThreeColumnDataset();
+
+        // 하나 빠짐
+        mockMvc.perform(patch("/api/datasets/{id}/columns/order", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"keys\":[\"c1\",\"c0\"]}"))
+                .andExpect(status().isBadRequest());
+        // 없는 key
+        mockMvc.perform(patch("/api/datasets/{id}/columns/order", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"keys\":[\"c0\",\"c1\",\"c9\"]}"))
+                .andExpect(status().isBadRequest());
+        // 중복 key — 개수는 맞지만 집합이 다르다
+        mockMvc.perform(patch("/api/datasets/{id}/columns/order", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"keys\":[\"c0\",\"c0\",\"c1\"]}"))
+                .andExpect(status().isBadRequest());
+        // 빈 배열
+        mockMvc.perform(patch("/api/datasets/{id}/columns/order", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"keys\":[]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("PATCH columns/order - 타인 dataset이면 404")
+    void reorder_other_member_404() throws Exception {
+        long id = createThreeColumnDataset();
+        String otherAuth = "Bearer " + AuthFixture.loginAndGetAccessToken(
+                mockMvc, "other", "password");
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/order", id)
+                        .header(HttpHeaders.AUTHORIZATION, otherAuth)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"keys\":[\"c2\",\"c1\",\"c0\"]}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("순서를 바꿔도 rename·삭제가 key 기준으로 계속 동작한다")
+    void reorder_then_rename_and_delete() throws Exception {
+        long id = createThreeColumnDataset();
+        mockMvc.perform(patch("/api/datasets/{id}/columns/order", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"keys\":[\"c2\",\"c0\",\"c1\"]}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}", id, "c0")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"과목명\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns[1].label").value("과목명"));
+
+        mockMvc.perform(delete("/api/datasets/{id}/columns/{key}", id, "c2")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns[0].label").value("과목명"));
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.rows[0].cells[0]").value("네트워크"))
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value("92"));
+    }
+
     @Test
     @DisplayName("DELETE column - 열이 빠지고 남은 열 값은 유지된다")
     void delete_column() throws Exception {

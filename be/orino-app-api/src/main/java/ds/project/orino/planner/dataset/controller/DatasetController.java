@@ -8,6 +8,7 @@ import ds.project.orino.planner.dataset.dto.DatasetResponse;
 import ds.project.orino.planner.dataset.dto.InsertRowRequest;
 import ds.project.orino.planner.dataset.dto.InsertRowResponse;
 import ds.project.orino.planner.dataset.dto.RenameColumnRequest;
+import ds.project.orino.planner.dataset.dto.ReorderColumnsRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
@@ -80,6 +81,15 @@ public class DatasetController {
             @PathVariable Long id,
             @PathVariable String key) {
         return ApiResponse.success(datasetService.deleteColumn(memberId, id, key));
+    }
+
+    /** 열 순서 변경. 전체 순서를 받으며 현재 열 집합과 정확히 같아야 한다. */
+    @PatchMapping("/{id}/columns/order")
+    public ApiResponse<DatasetResponse> reorderColumns(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @Valid @RequestBody ReorderColumnsRequest request) {
+        return ApiResponse.success(datasetService.reorderColumns(memberId, id, request));
     }
 
     /** 열 이름 변경. key는 불변이며 label만 바꾼다. */
