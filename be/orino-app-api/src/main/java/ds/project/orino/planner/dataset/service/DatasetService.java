@@ -8,6 +8,7 @@ import ds.project.orino.domain.planner.dataset.repository.DatasetRepository;
 import ds.project.orino.domain.planner.dataset.repository.DatasetRowRepository;
 import ds.project.orino.planner.dataset.dto.AddColumnRequest;
 import ds.project.orino.planner.dataset.dto.BulkRowsRequest;
+import ds.project.orino.planner.dataset.dto.CellStyle;
 import ds.project.orino.planner.dataset.dto.CreateDatasetRequest;
 import ds.project.orino.planner.dataset.dto.DatasetColumn;
 import ds.project.orino.planner.dataset.dto.DatasetResponse;
@@ -18,6 +19,7 @@ import ds.project.orino.planner.dataset.dto.ReorderColumnsRequest;
 import ds.project.orino.planner.dataset.dto.ResizeColumnRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
+import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,12 +69,15 @@ public class DatasetService {
     private final DatasetRepository datasetRepository;
     private final DatasetRowRepository rowRepository;
     private final DatasetFormulaService formulaService;
+    private final DatasetCellStyleService styleService;
 
     public DatasetService(DatasetRepository datasetRepository, DatasetRowRepository rowRepository,
-                          DatasetFormulaService formulaService) {
+                          DatasetFormulaService formulaService,
+                          DatasetCellStyleService styleService) {
         this.datasetRepository = datasetRepository;
         this.rowRepository = rowRepository;
         this.formulaService = formulaService;
+        this.styleService = styleService;
     }
 
     /**
@@ -210,6 +215,8 @@ public class DatasetService {
         dataset.updateColumns(serialize(updated));
         // 그 열의 수식은 담길 셀이 없어졌으니 지우고, 그 열을 참조하던 수식은 #REF!가 된다.
         formulaService.invalidateColumn(datasetId, key);
+        // 그 열의 서식도 담길 셀이 없어졌으니 지운다(col_key는 FK가 아니라 cascade가 없다).
+        styleService.invalidateColumn(datasetId, key);
         return DatasetResponse.of(dataset, updated);
     }
 
@@ -356,12 +363,15 @@ public class DatasetService {
         List<DatasetRow> found = rowRepository
                 .findByDatasetIdAndRowIndexGreaterThanEqualAndRowIndexLessThanOrderByRowIndexAsc(
                         datasetId, off, off + lim);
-        // 페이지의 수식을 한 번에 가져온다. 수식 있는 셀만 담기므로 대개 비어 있다.
-        Map<Long, Map<String, String>> formulas = formulaService.displayFormulas(
-                datasetId, found.stream().map(DatasetRow::getId).toList(), columns);
+        // 페이지의 수식·서식을 한 번에 가져온다. 있는 셀만 담기므로 대개 비어 있다.
+        List<Long> rowIds = found.stream().map(DatasetRow::getId).toList();
+        Map<Long, Map<String, String>> formulas =
+                formulaService.displayFormulas(datasetId, rowIds, columns);
+        Map<Long, Map<String, CellStyle>> styles = styleService.stylesByRow(rowIds);
         List<RowView> rows = found.stream()
                 .map(r -> new RowView(r.getId(), r.getRowIndex(), toCellList(r.getCells(), columns),
-                        formulas.getOrDefault(r.getId(), Map.of())))
+                        formulas.getOrDefault(r.getId(), Map.of()),
+                        styles.getOrDefault(r.getId(), Map.of())))
                 .toList();
         return new RowsResponse(rows, off, lim);
     }
@@ -407,9 +417,35 @@ public class DatasetService {
         }
 
         // 전파가 이 행의 다른 셀을 고쳤을 수 있어 다시 읽는다.
+        return buildRowView(datasetId, row, rowIndex, columns);
+    }
+
+    /**
+     * 셀 서식(배경색·정렬) 지정. 값·수식과 무관한 표시 속성이라 cells를 건드리지 않는다.
+     * 서식을 통째로 교체하며, 둘 다 비면 그 셀 서식을 지운다.
+     */
+    @Transactional
+    public RowView setCellStyle(Long memberId, Long datasetId, int rowIndex, String colKey,
+                                SetCellStyleRequest request) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        if (indexOfColumn(columns, colKey) < 0) {
+            throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+        DatasetRow row = rowRepository.findByDatasetIdAndRowIndex(datasetId, rowIndex)
+                .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
+
+        styleService.setStyle(datasetId, row.getId(), colKey, request.bg(), request.align());
+        return buildRowView(datasetId, row, rowIndex, columns);
+    }
+
+    /** 한 행의 현재 상태를 API 형태로 조립한다(값·수식·서식을 함께 싣는다). */
+    private RowView buildRowView(Long datasetId, DatasetRow row, int rowIndex,
+                                 List<DatasetColumn> columns) {
+        List<Long> ids = List.of(row.getId());
         return new RowView(row.getId(), rowIndex, toCellList(row.getCells(), columns),
-                formulaService.displayFormulas(datasetId, List.of(row.getId()), columns)
-                        .getOrDefault(row.getId(), Map.of()));
+                formulaService.displayFormulas(datasetId, ids, columns).getOrDefault(row.getId(), Map.of()),
+                styleService.stylesByRow(ids).getOrDefault(row.getId(), Map.of()));
     }
 
     @Transactional

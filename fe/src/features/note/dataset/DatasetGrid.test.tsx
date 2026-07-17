@@ -899,4 +899,153 @@ describe("DatasetGrid", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(reordered).not.toHaveBeenCalled();
   });
+
+  // ---------- 셀 배경색 ----------
+
+  it("팔레트에서 색을 고르면 PUT하고 셀 배경이 칠해진다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let sent: unknown = null;
+    server.use(
+      http.put(
+        `${API_BASE}/datasets/1/rows/0/cells/c0/style`,
+        async ({ request }) => {
+          sent = await request.json();
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              id: 100,
+              rowIndex: 0,
+              cells: ["네트워크", "92"],
+              formulas: {},
+              styles: { c0: { bg: "green" } },
+            },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    // 셀 호버 버튼 → 팔레트 → green
+    await user.click(screen.getByLabelText("1행 1열 배경색"));
+    await user.click(screen.getByLabelText("배경색 green"));
+
+    await waitFor(() => expect(sent).toEqual({ bg: "green", align: null }));
+    const cell = screen
+      .getByText("네트워크")
+      .closest("div[style]") as HTMLElement;
+    await waitFor(() =>
+      expect(cell.style.background).toContain("--cell-bg-green"),
+    );
+  });
+
+  it("서버가 준 styles로 셀 배경을 그린다", async () => {
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수" },
+            ],
+            rowCount: 1,
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [
+              {
+                id: 100,
+                rowIndex: 0,
+                cells: ["네트워크", "92"],
+                formulas: {},
+                styles: { c1: { bg: "yellow" } },
+              },
+            ],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("92");
+
+    const colored = screen.getByText("92").closest("div[style]") as HTMLElement;
+    expect(colored.style.background).toContain("--cell-bg-yellow");
+    // 서식 없는 셀은 배경이 없다.
+    const plain = screen
+      .getByText("네트워크")
+      .closest("div[style]") as HTMLElement;
+    expect(plain.style.background).toBe("");
+  });
+
+  it("지우기를 누르면 bg를 비워 PUT한다", async () => {
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수" },
+            ],
+            rowCount: 1,
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [
+              {
+                id: 100,
+                rowIndex: 0,
+                cells: ["네트워크", "92"],
+                formulas: {},
+                styles: { c0: { bg: "green" } },
+              },
+            ],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+    let sent: unknown = null;
+    server.use(
+      http.put(
+        `${API_BASE}/datasets/1/rows/0/cells/c0/style`,
+        async ({ request }) => {
+          sent = await request.json();
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              id: 100,
+              rowIndex: 0,
+              cells: ["네트워크", "92"],
+              formulas: {},
+              styles: {},
+            },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    await user.click(screen.getByLabelText("1행 1열 배경색"));
+    await user.click(screen.getByLabelText("배경색 지우기"));
+
+    await waitFor(() => expect(sent).toEqual({ bg: null, align: null }));
+  });
 });

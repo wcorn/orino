@@ -6,7 +6,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { FunctionSquare, Plus, Trash2, X } from "lucide-react";
+import { FunctionSquare, Palette, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -18,6 +18,9 @@ import { toast } from "@/shared/lib/toast";
 
 import {
   addDatasetColumn,
+  CELL_BG_TOKENS,
+  type CellBgToken,
+  type CellStyle,
   type DatasetMeta,
   deleteDatasetColumn,
   deleteDatasetRow,
@@ -28,6 +31,7 @@ import {
   reorderDatasetColumns,
   resetDatasetColumnWidth,
   resizeDatasetColumn,
+  setCellStyle,
   updateDatasetRow,
 } from "./api/datasets";
 import { useDatasetMeta } from "./hooks/useDatasetMeta";
@@ -48,9 +52,11 @@ export function DatasetGrid({ datasetId }: Props) {
   const {
     getRow,
     getFormulas,
+    getStyles,
     ensureRange,
     setRowLocal,
     setFormulasLocal,
+    setStylesLocal,
     reset,
   } = useDatasetRows(datasetId);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -72,6 +78,10 @@ export function DatasetGrid({ datasetId }: Props) {
   } | null>(null);
   // D6 — 수식은 평소 숨기고 선택 시에만 보여준다. 이 토글은 상시 표시.
   const [showFormulas, setShowFormulas] = useState(false);
+  // 색 팔레트를 연 셀(행 index·열 index). null이면 닫힘.
+  const [palette, setPalette] = useState<{ row: number; col: number } | null>(
+    null,
+  );
 
   const colCount = meta?.columns.length ?? 0;
   const rowCount = meta?.rowCount ?? 0;
@@ -93,6 +103,16 @@ export function DatasetGrid({ datasetId }: Props) {
       const message = serverMessage(e);
       if (message) toast(message, "error");
       reset();
+    },
+  });
+  const styleMut = useMutation({
+    mutationFn: (v: { row: number; colKey: string; style: CellStyle }) =>
+      setCellStyle(datasetId, v.row, v.colKey, v.style),
+    // 서식만 바뀌므로 값·수식 캐시는 건드리지 않고 styles만 갱신한다.
+    onSuccess: (row) => setStylesLocal(row.rowIndex, row.styles ?? {}),
+    onError: (e) => {
+      const message = serverMessage(e);
+      if (message) toast(message, "error");
     },
   });
   const insertMut = useMutation({
@@ -277,6 +297,18 @@ export function DatasetGrid({ datasetId }: Props) {
     setEditing(null);
   };
 
+  /** 셀 배경색을 바꾼다. 정렬 등 다른 서식은 보존한다(서버는 통째로 교체하므로). */
+  const applyBg = (row: number, col: number, bg: CellBgToken | null) => {
+    const colKey = meta.columns[col].key;
+    const current = getStyles(row)[colKey];
+    styleMut.mutate({
+      row,
+      colKey,
+      style: { bg: bg ?? undefined, align: current?.align },
+    });
+    setPalette(null);
+  };
+
   const addRow = () =>
     insertMut.mutate(Array.from({ length: colCount }, () => ""));
 
@@ -448,13 +480,69 @@ export function DatasetGrid({ datasetId }: Props) {
                 {Array.from({ length: colCount }, (_, c) => {
                   const isEditing =
                     editing?.row === vi.index && editing.col === c;
-                  const formula = getFormulas(vi.index)[meta.columns[c].key];
+                  const colKey = meta.columns[c].key;
+                  const formula = getFormulas(vi.index)[colKey];
+                  const style = getStyles(vi.index)[colKey];
+                  const paletteOpen =
+                    palette?.row === vi.index && palette.col === c;
                   return (
                     <div
                       key={c}
-                      className="border-border truncate border-r"
+                      className="border-border group/cell relative truncate border-r"
+                      style={
+                        style?.bg
+                          ? { background: `var(--cell-bg-${style.bg})` }
+                          : undefined
+                      }
                       onClick={() => startEdit(vi.index, c)}
                     >
+                      {/* 셀 배경색 버튼 — 호버 시 나타난다. */}
+                      {!isEditing && (
+                        <button
+                          type="button"
+                          aria-label={`${vi.index + 1}행 ${c + 1}열 배경색`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPalette(
+                              paletteOpen ? null : { row: vi.index, col: c },
+                            );
+                          }}
+                          className="text-muted-foreground hover:text-foreground absolute top-0.5 right-0.5 z-10 opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100"
+                        >
+                          <Palette className="size-3" />
+                        </button>
+                      )}
+                      {paletteOpen && (
+                        <div
+                          role="menu"
+                          className="border-border bg-popover absolute top-5 right-0 z-20 flex gap-1 rounded-md border p-1 shadow-md"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {CELL_BG_TOKENS.map((token) => (
+                            <button
+                              key={token}
+                              type="button"
+                              aria-label={`배경색 ${token}`}
+                              onClick={() => applyBg(vi.index, c, token)}
+                              className={cn(
+                                "size-4 rounded-full border",
+                                style?.bg === token
+                                  ? "border-foreground"
+                                  : "border-border",
+                              )}
+                              style={{ background: `var(--cell-bg-${token})` }}
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            aria-label="배경색 지우기"
+                            onClick={() => applyBg(vi.index, c, null)}
+                            className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded-full border"
+                          >
+                            <X className="size-2.5" />
+                          </button>
+                        </div>
+                      )}
                       {isEditing ? (
                         <input
                           autoFocus

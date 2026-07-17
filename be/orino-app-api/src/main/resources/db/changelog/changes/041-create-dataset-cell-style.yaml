@@ -1,0 +1,84 @@
+databaseChangeLog:
+  # 셀 서식(배경색·정렬) 저장 스키마 (#828).
+  #
+  # 수식(dataset_formula)과 같은 전략: 값은 dataset_row.cells에 그대로 두고 서식만 여기 담는다.
+  # 서식 있는 셀만 행이 생기므로 sparse하고, cells의 포맷·투영·API 읽기 경로가 바뀌지 않는다.
+  # bg/align 둘 다 NULL이면 이 행 자체가 없다(서식 없는 셀).
+  - changeSet:
+      id: 041-create-dataset-cell-style
+      author: wcorn
+      comment: 셀 서식 테이블. 값은 dataset_row.cells에 남고 여기엔 배경색·정렬만.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: dataset_cell_style
+      changes:
+        - createTable:
+            tableName: dataset_cell_style
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: dataset_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_dataset_cell_style_dataset
+                    references: dataset(id)
+                    deleteCascade: true
+              # 행 정체성은 row_index가 아니라 id다. 행이 밀려도 서식이 따라다닌다.
+              # 행이 지워지면 cascade로 서식도 함께 사라진다(수식과 달리 끊긴 참조를 남길 이유가 없다).
+              - column:
+                  name: row_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_dataset_cell_style_row
+                    references: dataset_row(id)
+                    deleteCascade: true
+              - column:
+                  name: col_key
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              # 배경색 토큰명(red/yellow/… — hex 아님). 다크모드는 렌더 시 토큰이 해결한다.
+              - column:
+                  name: bg
+                  type: VARCHAR(32)
+              # left/center/right. NULL이면 열 기본 정렬(columns_json)이나 셀 기본을 따른다.
+              - column:
+                  name: align
+                  type: VARCHAR(16)
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        # 한 셀에 서식은 하나. 조회 키이자 중복 방지.
+        - createIndex:
+            tableName: dataset_cell_style
+            indexName: uq_dataset_cell_style_cell
+            unique: true
+            columns:
+              - column:
+                  name: row_id
+              - column:
+                  name: col_key
+        # 페이지 조회 시 그 dataset의 서식을 한 번에 가져오기 위한 인덱스.
+        - createIndex:
+            tableName: dataset_cell_style
+            indexName: idx_dataset_cell_style_dataset
+            columns:
+              - column:
+                  name: dataset_id
