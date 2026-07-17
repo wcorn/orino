@@ -6,6 +6,7 @@ import ds.project.orino.planner.dataset.dto.CreateDatasetRequest;
 import ds.project.orino.planner.dataset.dto.DatasetResponse;
 import ds.project.orino.planner.dataset.dto.InsertRowRequest;
 import ds.project.orino.planner.dataset.dto.InsertRowResponse;
+import ds.project.orino.planner.dataset.dto.RenameColumnRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
@@ -59,6 +60,16 @@ public class DatasetController {
             @PathVariable Long id) {
         datasetService.delete(memberId, id);
         return ResponseEntity.noContent().build();
+    }
+
+    /** 열 이름 변경. key는 불변이며 label만 바꾼다. */
+    @PatchMapping("/{id}/columns/{key}")
+    public ApiResponse<DatasetResponse> renameColumn(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable String key,
+            @Valid @RequestBody RenameColumnRequest request) {
+        return ApiResponse.success(datasetService.renameColumn(memberId, id, key, request));
     }
 
     /** Import 청크 — 행을 끝에 벌크 추가. */

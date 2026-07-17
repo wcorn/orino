@@ -15,8 +15,10 @@ import { LoadingText } from "@/components/ui/loading-text";
 import { cn } from "@/lib/utils";
 
 import {
+  type DatasetMeta,
   deleteDatasetRow,
   insertDatasetRow,
+  renameDatasetColumn,
   updateDatasetRow,
 } from "./api/datasets";
 import { useDatasetMeta } from "./hooks/useDatasetMeta";
@@ -40,6 +42,8 @@ export function DatasetGrid({ datasetId }: Props) {
     null,
   );
   const [draft, setDraft] = useState("");
+  const [editingCol, setEditingCol] = useState<string | null>(null);
+  const [colDraft, setColDraft] = useState("");
 
   const colCount = meta?.columns.length ?? 0;
   const rowCount = meta?.rowCount ?? 0;
@@ -65,6 +69,13 @@ export function DatasetGrid({ datasetId }: Props) {
       reset();
       void invalidateMeta();
     },
+  });
+  const renameColMut = useMutation({
+    mutationFn: (v: { key: string; label: string }) =>
+      renameDatasetColumn(datasetId, v.key, v.label),
+    onSuccess: (next: DatasetMeta) =>
+      queryClient.setQueryData(datasetKeys.meta(datasetId), next),
+    onError: () => void invalidateMeta(),
   });
 
   // TanStack Table — 열/헤더 모델만(본문은 가상화로 직접 렌더).
@@ -129,6 +140,22 @@ export function DatasetGrid({ datasetId }: Props) {
   const addRow = () =>
     insertMut.mutate(Array.from({ length: colCount }, () => ""));
 
+  const startColEdit = (key: string, label: string) => {
+    setEditingCol(key);
+    setColDraft(label);
+  };
+
+  const commitColEdit = () => {
+    if (!editingCol) return;
+    const key = editingCol;
+    const label = colDraft.trim();
+    const current = meta.columns.find((c) => c.key === key);
+    setEditingCol(null);
+    // 빈 이름은 서버가 거부하므로 보내지 않고, 변경 없으면 요청 자체를 생략한다.
+    if (!label || label === current?.label) return;
+    renameColMut.mutate({ key, label });
+  };
+
   return (
     <div
       className="border-border bg-card my-2 flex flex-col overflow-hidden rounded-md border"
@@ -146,11 +173,38 @@ export function DatasetGrid({ datasetId }: Props) {
           style={{ gridTemplateColumns }}
         >
           {table.getFlatHeaders().map((header) => (
-            <div
-              key={header.id}
-              className="border-border truncate border-r px-2 py-1.5"
-            >
-              {flexRender(header.column.columnDef.header, header.getContext())}
+            <div key={header.id} className="border-border border-r">
+              {editingCol === header.id ? (
+                <input
+                  autoFocus
+                  value={colDraft}
+                  onChange={(e) => setColDraft(e.target.value)}
+                  onBlur={commitColEdit}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitColEdit();
+                    if (e.key === "Escape") setEditingCol(null);
+                  }}
+                  aria-label={`열 이름 ${header.id}`}
+                  className="focus-visible:ring-ring h-full w-full bg-transparent px-2 py-1.5 font-semibold outline-none focus-visible:ring-1"
+                />
+              ) : (
+                <div
+                  className="cursor-text truncate px-2 py-1.5"
+                  title="더블클릭해 열 이름 변경"
+                  onDoubleClick={() =>
+                    startColEdit(
+                      header.id,
+                      meta.columns.find((c) => c.key === header.id)?.label ??
+                        "",
+                    )
+                  }
+                >
+                  {flexRender(
+                    header.column.columnDef.header,
+                    header.getContext(),
+                  )}
+                </div>
+              )}
             </div>
           ))}
           <div aria-hidden />
