@@ -18,6 +18,7 @@ public enum ErrorCode {
     DUPLICATE_COLUMN_LABEL("SP-ERR-004", "이미 있는 열 이름입니다.", 409),
     FORMULA_SYNTAX_ERROR("SP-ERR-005", "수식을 이해할 수 없습니다.", 400),
     FORMULA_CIRCULAR_REFERENCE("SP-ERR-006", "수식이 자기 자신을 참조합니다.", 409),
+    FORMULA_PROPAGATION_TOO_WIDE("SP-ERR-007", "이 편집이 다시 계산할 수식이 너무 많습니다.", 409),
 
     // PLANNER (Google Calendar 연동)
     ROUTINE_INVALID_RULE("PLN-ERR-002", "유효하지 않은 반복 규칙입니다.", 400),

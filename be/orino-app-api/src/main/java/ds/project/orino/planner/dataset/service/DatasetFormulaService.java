@@ -3,8 +3,11 @@ package ds.project.orino.planner.dataset.service;
 import ds.project.orino.domain.planner.dataset.entity.DatasetFormula;
 import ds.project.orino.domain.planner.dataset.entity.DatasetFormulaRef;
 import ds.project.orino.domain.planner.dataset.entity.DatasetRow;
+import ds.project.orino.common.exception.CustomException;
+import ds.project.orino.common.exception.ErrorCode;
 import ds.project.orino.domain.planner.dataset.repository.DatasetFormulaRefRepository;
 import ds.project.orino.domain.planner.dataset.repository.DatasetFormulaRepository;
+import ds.project.orino.domain.planner.dataset.repository.DatasetRepository;
 import ds.project.orino.domain.planner.dataset.repository.DatasetRowRepository;
 import ds.project.orino.planner.dataset.dto.DatasetColumn;
 import ds.project.orino.planner.dataset.formula.FormulaContext;
@@ -15,9 +18,12 @@ import ds.project.orino.planner.dataset.formula.FormulaValue;
 import ds.project.orino.planner.dataset.formula.FormulaWriter;
 import org.springframework.stereotype.Service;
 
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 수식 저장·평가. 파서·평가기를 DB에 잇는다.
@@ -25,8 +31,9 @@ import java.util.Optional;
  * <p>값은 {@code dataset_row.cells}에 그대로 들어가고 수식만 {@code dataset_formula}에 담긴다 —
  * 그래서 읽기 경로가 안 바뀐다.
  *
- * <p><b>이 클래스는 수식 셀 자신을 저장할 때만 계산한다.</b> 참조하던 셀이 나중에 바뀌었을 때의
- * 재계산(전파)과 순환 참조 거부는 #813의 몫이다.
+ * <p>셀이 바뀌면 그 셀을 참조하던 수식을 전이적으로 다시 계산한다({@link #propagateFrom}).
+ * 순환 참조는 <b>쓰기 시점에 거부</b>한다 — 쓸 때 계산하는 구조(O1)에서 순환이 저장되면
+ * 재계산이 끝나지 않는다.
  */
 @Service
 public class DatasetFormulaService {
@@ -34,16 +41,35 @@ public class DatasetFormulaService {
     /** 셀 값이 이걸로 시작하면 수식이다. 엑셀과 같다. */
     static final String PREFIX = "=";
 
+    /**
+     * 한 번의 쓰기가 다시 계산할 수 있는 수식 수의 상한.
+     *
+     * <p>병적인 표(예: 모든 행이 {@code =SUM(c0)})에선 셀 하나를 고치는 데 행 수만큼의 집계가
+     * 재계산되고 각 집계가 다시 전체 행을 훑어 폭발한다. 조용히 멈추면 값이 낡은 채 남으므로
+     * 차라리 거부한다. 실사용에서 걸리면 값을 올리기 전에 그 표의 설계를 먼저 볼 것.
+     */
+    static final int MAX_PROPAGATION = 1_000;
+
     private final DatasetFormulaRepository formulaRepository;
     private final DatasetFormulaRefRepository refRepository;
     private final DatasetRowRepository rowRepository;
+    private final DatasetRepository datasetRepository;
 
     public DatasetFormulaService(DatasetFormulaRepository formulaRepository,
                                  DatasetFormulaRefRepository refRepository,
-                                 DatasetRowRepository rowRepository) {
+                                 DatasetRowRepository rowRepository,
+                                 DatasetRepository datasetRepository) {
         this.formulaRepository = formulaRepository;
         this.refRepository = refRepository;
         this.rowRepository = rowRepository;
+        this.datasetRepository = datasetRepository;
+    }
+
+    /** 재계산은 그 dataset의 열 구성을 다시 읽어야 한다(호출부가 안 넘겨주는 경로). */
+    private List<DatasetColumn> columnsOf(Long datasetId) {
+        return datasetRepository.findById(datasetId)
+                .map(d -> DatasetColumns.parse(d.getColumns()))
+                .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
     }
 
     static boolean isFormula(String value) {
@@ -73,6 +99,9 @@ public class DatasetFormulaService {
             refRepository.save(toEntity(formula.getId(), datasetId, ref));
         }
 
+        // 참조를 저장한 뒤에 본다 — 자기 참조를 그래프에서 따라갈 수 있어야 한다.
+        assertNoCycle(datasetId, row.getId(), colKey, node, columns);
+
         FormulaValue value = FormulaEvaluator.evaluate(node, new DbValues(datasetId, row, rowCells));
         if (value instanceof FormulaValue.Err e) {
             formula.markError(e.code());
@@ -80,6 +109,140 @@ public class DatasetFormulaService {
             formula.clearError();
         }
         return value.asCell();
+    }
+
+    /**
+     * 셀 {@code (rowId, colKey)}가 바뀌었을 때 그 셀을 참조하던 수식들을 전이적으로 다시 계산한다.
+     *
+     * <p>전파 범위는 참조 종류가 가른다(D9) — {@code SAME_ROW}는 <b>같은 행 안에서만</b> 번지므로
+     * 계산 열(가장 흔한 패턴)의 편집이 다른 행을 건드리지 않는다. {@code COLUMN_ALL}(집계)만
+     * 열의 아무 행이 바뀌어도 걸린다.
+     *
+     * @param seen 이미 다시 계산한 셀. 재귀 사이에 공유해 같은 셀을 두 번 계산하지 않는다.
+     */
+    void propagateFrom(Long datasetId, Long rowId, String colKey, Set<String> seen) {
+        for (Long formulaId : refRepository.findDependentFormulaIds(datasetId, rowId, colKey)) {
+            DatasetFormula formula = formulaRepository.findById(formulaId).orElse(null);
+            if (formula == null) {
+                continue;
+            }
+            String cell = formula.getRowId() + ":" + formula.getColKey();
+            if (!seen.add(cell)) {
+                continue;
+            }
+            if (seen.size() > MAX_PROPAGATION) {
+                throw new CustomException(ErrorCode.FORMULA_PROPAGATION_TOO_WIDE,
+                        "다시 계산할 수식이 " + MAX_PROPAGATION + "개를 넘습니다");
+            }
+            recompute(datasetId, formula);
+            // 이 수식의 셀도 값이 바뀌었으니 그걸 참조하던 것들로 계속 번진다.
+            propagateFrom(datasetId, formula.getRowId(), formula.getColKey(), seen);
+        }
+    }
+
+    /** 수식 하나를 다시 계산해 그 셀에 값을 쓴다. */
+    private void recompute(Long datasetId, DatasetFormula formula) {
+        DatasetRow row = rowRepository.findById(formula.getRowId()).orElse(null);
+        if (row == null) {
+            return;
+        }
+        List<DatasetColumn> columns = columnsOf(datasetId);
+        Map<String, String> cells = DatasetCells.parse(row.getCells());
+
+        FormulaValue value;
+        try {
+            FormulaNode node = FormulaParser.parseStored(formula.getRaw(),
+                    new DbContext(datasetId, columns));
+            value = FormulaEvaluator.evaluate(node, new DbValues(datasetId, row, cells));
+        } catch (CustomException e) {
+            // 저장된 수식이 지금 구성으로 파싱이 안 된다 = 참조하던 열이 사라졌다는 뜻.
+            value = new FormulaValue.Err(FormulaValue.Err.REF);
+        }
+
+        if (value instanceof FormulaValue.Err e) {
+            formula.markError(e.code());
+        } else {
+            formula.clearError();
+        }
+        cells.put(formula.getColKey(), value.asCell());
+        row.updateCells(DatasetCells.serialize(cells));
+    }
+
+    /**
+     * 새 수식이 자기 자신에 닿는지 본다. 닿으면 저장 자체를 막는다.
+     *
+     * <p>참조를 따라 <b>앞으로</b> 걷는다 — 이 수식이 무엇을 참조하고, 그것들이 또 무엇을
+     * 참조하는지. 도중에 자기 셀을 만나면 순환이다.
+     */
+    private void assertNoCycle(Long datasetId, Long rowId, String colKey, FormulaNode node,
+                               List<DatasetColumn> columns) {
+        Set<Long> visited = new HashSet<>();
+        for (FormulaNode.Ref ref : FormulaParser.collectRefs(node)) {
+            for (DatasetFormula target : targetsOf(datasetId, rowId, ref)) {
+                walk(datasetId, rowId, colKey, target, visited, columns);
+            }
+        }
+    }
+
+    private void walk(Long datasetId, Long selfRow, String selfCol, DatasetFormula formula,
+                      Set<Long> visited, List<DatasetColumn> columns) {
+        if (formula.getRowId().equals(selfRow) && formula.getColKey().equals(selfCol)) {
+            throw new CustomException(ErrorCode.FORMULA_CIRCULAR_REFERENCE);
+        }
+        if (!visited.add(formula.getId())) {
+            return;
+        }
+        FormulaNode node;
+        try {
+            node = FormulaParser.parseStored(formula.getRaw(), new DbContext(datasetId, columns));
+        } catch (CustomException e) {
+            return; // 이미 깨진 수식은 순환 판정에 쓰지 않는다.
+        }
+        for (FormulaNode.Ref ref : FormulaParser.collectRefs(node)) {
+            for (DatasetFormula next : targetsOf(datasetId, formula.getRowId(), ref)) {
+                walk(datasetId, selfRow, selfCol, next, visited, columns);
+            }
+        }
+    }
+
+    /** 참조가 가리키는 자리에 있는 수식들. 값만 있는 셀은 더 따라갈 게 없다. */
+    private List<DatasetFormula> targetsOf(Long datasetId, Long fromRowId, FormulaNode.Ref ref) {
+        return switch (ref.kind()) {
+            case SAME_ROW -> formulaRepository.findByRowIdAndColKey(fromRowId, ref.colKey())
+                    .map(List::of).orElseGet(List::of);
+            case ABSOLUTE -> formulaRepository.findByRowIdAndColKey(ref.rowId(), ref.colKey())
+                    .map(List::of).orElseGet(List::of);
+            // 집계는 그 열의 모든 수식에 닿는다.
+            case COLUMN_ALL -> formulaRepository.findByDatasetIdAndColKey(datasetId, ref.colKey());
+        };
+    }
+
+    /**
+     * 그 행들의 수식을 <b>표시형</b>(열 이름·행 번호)으로. 수식 없는 셀은 담기지 않는다.
+     *
+     * <p>표시형은 저장형과 같은 문법이라 클라이언트가 그대로 돌려주면 다시 파싱된다 —
+     * 그게 행을 수정해도 수식이 안 지워지는 방법이다.
+     */
+    Map<Long, Map<String, String>> displayFormulas(Long datasetId, List<Long> rowIds,
+                                                   List<DatasetColumn> columns) {
+        if (rowIds.isEmpty()) {
+            return Map.of();
+        }
+        FormulaContext ctx = new DbContext(datasetId, columns);
+        Map<Long, Map<String, String>> out = new LinkedHashMap<>();
+        for (DatasetFormula f : formulaRepository.findByRowIdIn(rowIds)) {
+            String display;
+            try {
+                display = FormulaWriter.toDisplay(
+                        FormulaParser.parseStored(f.getRaw(), ctx), ctx);
+            } catch (CustomException e) {
+                // 참조하던 열이 사라져 파싱이 안 되면 표시할 수식이 없다(#814가 #REF!로 정리).
+                display = FormulaValue.Err.REF;
+            }
+            out.computeIfAbsent(f.getRowId(), k -> new LinkedHashMap<>())
+                    .put(f.getColKey(), display);
+        }
+        return out;
     }
 
     /** 셀이 더 이상 수식이 아니면(리터럴로 덮어씀) 수식과 참조를 지운다. */

@@ -18,7 +18,15 @@ export interface DatasetRow {
    */
   id: number;
   rowIndex: number;
+  /** 계산된 값. 수식 셀이면 계산 결과가 들어 있다. */
   cells: string[];
+  /**
+   * 수식 있는 셀의 원본(열 key → 표시형 수식). 수식 없는 셀은 없다.
+   *
+   * 행을 수정할 땐 수식 셀에 이걸 그대로 돌려줘야 한다 — 계산된 값을 돌려주면
+   * 서버가 사용자가 직접 입력한 것으로 보고 수식을 지운다.
+   */
+  formulas: Record<string, string>;
 }
 
 export interface RowsPage {
