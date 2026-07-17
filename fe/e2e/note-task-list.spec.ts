@@ -126,6 +126,29 @@ test.describe("노트 체크박스 목록", () => {
     expect(contentBox!.x).toBeGreaterThan(labelBox!.x);
   });
 
+  test("체크박스가 첫 줄 글자의 중심에 정렬된다", async ({ page }) => {
+    await page.getByLabel("노트 본문").click();
+    await page.keyboard.type("[] 우유 사기");
+    await expect(page.locator('ul[data-type="taskList"] > li')).toHaveCount(1);
+
+    // 체크박스 중심과 첫 줄 글자 중심의 세로 차이(px). 양수면 체크박스가 아래로 치우침.
+    const offset = await page.evaluate(() => {
+      const li = document.querySelector('ul[data-type="taskList"] > li')!;
+      const box = li
+        .querySelector('input[type="checkbox"]')!
+        .getBoundingClientRect();
+      const textNode = li.querySelector(":scope > div > p")!.firstChild!;
+      const range = document.createRange();
+      range.setStart(textNode, 0);
+      range.setEnd(textNode, 2);
+      const text = range.getBoundingClientRect();
+      return box.top + box.height / 2 - (text.top + text.height / 2);
+    });
+
+    // 회귀 대상: 문단 margin-top(0.15em)이 남아 체크박스가 위로 뜬 것처럼 보이던 문제.
+    expect(Math.abs(offset)).toBeLessThan(1.5);
+  });
+
   test("체크박스 목록엔 불릿 마커가 보이지 않는다", async ({ page }) => {
     await page.getByLabel("노트 본문").click();
     await page.keyboard.type("[] 우유 사기");
