@@ -24,9 +24,11 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -293,11 +295,15 @@ public class DatasetService {
         List<DatasetColumn> columns = parseColumns(dataset.getColumns());
         int off = offset == null ? 0 : Math.max(0, offset);
         int lim = clampLimit(limit);
-        List<RowView> rows = rowRepository
+        List<DatasetRow> found = rowRepository
                 .findByDatasetIdAndRowIndexGreaterThanEqualAndRowIndexLessThanOrderByRowIndexAsc(
-                        datasetId, off, off + lim)
-                .stream()
-                .map(r -> new RowView(r.getId(), r.getRowIndex(), toCellList(r.getCells(), columns)))
+                        datasetId, off, off + lim);
+        // 페이지의 수식을 한 번에 가져온다. 수식 있는 셀만 담기므로 대개 비어 있다.
+        Map<Long, Map<String, String>> formulas = formulaService.displayFormulas(
+                datasetId, found.stream().map(DatasetRow::getId).toList(), columns);
+        List<RowView> rows = found.stream()
+                .map(r -> new RowView(r.getId(), r.getRowIndex(), toCellList(r.getCells(), columns),
+                        formulas.getOrDefault(r.getId(), Map.of())))
                 .toList();
         return new RowsResponse(rows, off, lim);
     }
@@ -331,9 +337,21 @@ public class DatasetService {
                     datasetId, row, entry.getKey(), entry.getValue(), columns, cells));
         }
 
+        Map<String, String> before = DatasetCells.parse(row.getCells());
         row.updateCells(DatasetCells.serialize(cells));
-        // 저장된 값을 그대로 되돌려준다(열 수에 맞춰 잘리거나 채워진 결과, 수식은 계산된 값).
-        return new RowView(row.getId(), rowIndex, toCellList(row.getCells(), columns));
+
+        // 값이 실제로 바뀐 셀만 전파한다 — 안 바뀐 셀까지 번지면 헛일이다.
+        Set<String> recomputed = new HashSet<>();
+        for (Map.Entry<String, String> entry : cells.entrySet()) {
+            if (!entry.getValue().equals(before.get(entry.getKey()))) {
+                formulaService.propagateFrom(datasetId, row.getId(), entry.getKey(), recomputed);
+            }
+        }
+
+        // 전파가 이 행의 다른 셀을 고쳤을 수 있어 다시 읽는다.
+        return new RowView(row.getId(), rowIndex, toCellList(row.getCells(), columns),
+                formulaService.displayFormulas(datasetId, List.of(row.getId()), columns)
+                        .getOrDefault(row.getId(), Map.of()));
     }
 
     @Transactional

@@ -40,7 +40,14 @@ interface Props {
 export function DatasetGrid({ datasetId }: Props) {
   const queryClient = useQueryClient();
   const { data: meta, isLoading, isError } = useDatasetMeta(datasetId);
-  const { getRow, ensureRange, setRowLocal, reset } = useDatasetRows(datasetId);
+  const {
+    getRow,
+    getFormulas,
+    ensureRange,
+    setRowLocal,
+    setFormulasLocal,
+    reset,
+  } = useDatasetRows(datasetId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<{ row: number; col: number } | null>(
     null,
@@ -60,6 +67,12 @@ export function DatasetGrid({ datasetId }: Props) {
   const updateMut = useMutation({
     mutationFn: (v: { index: number; cells: string[] }) =>
       updateDatasetRow(datasetId, v.index, v.cells),
+    // 서버가 계산한 값과 수식으로 맞춘다 — '=1+2'를 치면 화면엔 3이 와야 하고,
+    // 전파가 같은 행의 다른 셀을 고쳤을 수도 있다.
+    onSuccess: (row) => {
+      setRowLocal(row.rowIndex, row.cells);
+      setFormulasLocal(row.rowIndex, row.formulas ?? {});
+    },
     onError: () => reset(),
   });
   const insertMut = useMutation({
@@ -161,11 +174,21 @@ export function DatasetGrid({ datasetId }: Props) {
       setEditing(null);
       return;
     }
-    const next = [...cells];
-    while (next.length < colCount) next.push("");
-    next[editing.col] = draft;
-    setRowLocal(editing.row, next);
-    updateMut.mutate({ index: editing.row, cells: next });
+    const rowFormulas = getFormulas(editing.row);
+
+    // 서버로는 수식 셀에 원본 수식을 돌려준다 — 계산된 값을 돌려주면 서버가
+    // 사용자가 직접 입력한 것으로 보고 수식을 지운다.
+    const sent = Array.from({ length: colCount }, (_, c) => {
+      if (c === editing.col) return draft;
+      return rowFormulas[meta.columns[c].key] ?? cells[c] ?? "";
+    });
+    // 화면엔 값을 유지한다(수식 원본이 잠깐 보이면 안 된다).
+    const shown = Array.from({ length: colCount }, (_, c) =>
+      c === editing.col ? draft : (cells[c] ?? ""),
+    );
+
+    setRowLocal(editing.row, shown);
+    updateMut.mutate({ index: editing.row, cells: sent });
     setEditing(null);
   };
 

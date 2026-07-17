@@ -14,6 +14,10 @@ export const DATASET_PAGE_SIZE = 100;
 export function useDatasetRows(datasetId: number) {
   const queryClient = useQueryClient();
   const [cache, setCache] = useState<Map<number, string[]>>(() => new Map());
+  // 수식은 값과 따로 캐시한다 — 화면엔 값을 그리고, 저장할 땐 수식을 돌려줘야 한다.
+  const [formulas, setFormulas] = useState<Map<number, Record<string, string>>>(
+    () => new Map(),
+  );
   const loadedPages = useRef<Set<number>>(new Set());
   const inflight = useRef<Set<number>>(new Set());
   // reset()이 스스로 재조회를 일으키기 위한 세대 번호. 호출자의 useEffect는 ensureRange를
@@ -44,6 +48,13 @@ export function useDatasetRows(datasetId: number) {
               pageData.rows.forEach((r) => next.set(r.rowIndex, r.cells));
               return next;
             });
+            setFormulas((prev) => {
+              const next = new Map(prev);
+              pageData.rows.forEach((r) =>
+                next.set(r.rowIndex, r.formulas ?? {}),
+              );
+              return next;
+            });
           })
           .catch(() => {})
           .finally(() => inflight.current.delete(page));
@@ -60,6 +71,14 @@ export function useDatasetRows(datasetId: number) {
     setCache((prev) => new Map(prev).set(index, cells));
   }, []);
 
+  /** 서버가 돌려준 수식으로 갱신. */
+  const setFormulasLocal = useCallback(
+    (index: number, next: Record<string, string>) => {
+      setFormulas((prev) => new Map(prev).set(index, next));
+    },
+    [],
+  );
+
   /**
    * 캐시를 비우고 다시 받아 온다. 행 인덱스가 밀리거나(행 추가·삭제) 열 구성이 바뀌어
    * 캐시된 위치 배열이 더 이상 유효하지 않을 때(열 삭제) 쓴다.
@@ -68,11 +87,23 @@ export function useDatasetRows(datasetId: number) {
     loadedPages.current.clear();
     inflight.current.clear();
     setCache(new Map());
+    setFormulas(new Map());
     queryClient.removeQueries({ queryKey: ["datasets", datasetId, "rows"] });
     setGeneration((g) => g + 1);
   }, [datasetId, queryClient]);
 
   const getRow = useCallback((index: number) => cache.get(index), [cache]);
+  const getFormulas = useCallback(
+    (index: number) => formulas.get(index) ?? {},
+    [formulas],
+  );
 
-  return { getRow, ensureRange, setRowLocal, reset };
+  return {
+    getRow,
+    getFormulas,
+    ensureRange,
+    setRowLocal,
+    setFormulasLocal,
+    reset,
+  };
 }

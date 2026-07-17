@@ -350,6 +350,101 @@ describe("DatasetGrid", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("다른 셀을 고칠 때 수식 셀엔 원본 수식을 돌려준다 — 값을 돌려주면 수식이 지워진다", async () => {
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "단가" },
+              { key: "c1", label: "합계" },
+            ],
+            rowCount: 1,
+          },
+        }),
+      ),
+      // c1은 수식 셀 — 화면엔 계산값 30, 원본은 formulas에.
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [
+              {
+                id: 100,
+                rowIndex: 0,
+                cells: ["10", "30"],
+                formulas: { c1: "=({단가} * 3)" },
+              },
+            ],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+    let sent: string[] | null = null;
+    server.use(
+      http.patch(`${API_BASE}/datasets/1/rows/:i`, async ({ request }) => {
+        const body = (await request.json()) as { cells: string[] };
+        sent = body.cells;
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 100,
+            rowIndex: 0,
+            cells: ["7", "21"],
+            formulas: { c1: "=({단가} * 3)" },
+          },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    // 단가만 고친다.
+    await user.click(await screen.findByText("10"));
+    const input = await screen.findByLabelText("셀 1행 1열");
+    fireEvent.change(input, { target: { value: "7" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      // 합계 자리에 계산값 "30"이 아니라 원본 수식이 실려야 한다.
+      expect(sent).toEqual(["7", "=({단가} * 3)"]);
+    });
+    // 서버가 계산한 값으로 화면이 맞춰진다.
+    expect(await screen.findByText("21")).toBeInTheDocument();
+  });
+
+  it("수식을 입력하면 화면이 서버가 계산한 값으로 바뀐다", async () => {
+    mockDataset([["10", "3"]]);
+    server.use(
+      http.patch(`${API_BASE}/datasets/1/rows/:i`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 100,
+            rowIndex: 0,
+            cells: ["10", "30"],
+            formulas: { c1: "=({과목} * 3)" },
+          },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.click(await screen.findByText("3"));
+    const input = await screen.findByLabelText("셀 1행 2열");
+    fireEvent.change(input, { target: { value: "={과목} * 3" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // 입력한 수식이 아니라 계산 결과가 보인다.
+    expect(await screen.findByText("30")).toBeInTheDocument();
+    expect(screen.queryByText("={과목} * 3")).not.toBeInTheDocument();
+  });
+
   it("[열 추가]로 POST를 호출하고 새 열이 빈 칸으로 붙는다", async () => {
     mockDataset([["네트워크", "92"]]);
     let sentBody: Record<string, unknown> | null = null;
