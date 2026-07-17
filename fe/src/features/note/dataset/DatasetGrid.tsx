@@ -22,6 +22,7 @@ import {
   deleteDatasetRow,
   insertDatasetRow,
   renameDatasetColumn,
+  reorderDatasetColumns,
   updateDatasetRow,
 } from "./api/datasets";
 import { useDatasetMeta } from "./hooks/useDatasetMeta";
@@ -48,6 +49,7 @@ export function DatasetGrid({ datasetId }: Props) {
   const [editingCol, setEditingCol] = useState<string | null>(null);
   const [colDraft, setColDraft] = useState("");
   const [pendingColDelete, setPendingColDelete] = useState<string | null>(null);
+  const [dragKey, setDragKey] = useState<string | null>(null);
 
   const colCount = meta?.columns.length ?? 0;
   const rowCount = meta?.rowCount ?? 0;
@@ -79,6 +81,15 @@ export function DatasetGrid({ datasetId }: Props) {
       renameDatasetColumn(datasetId, v.key, v.label),
     onSuccess: (next: DatasetMeta) =>
       queryClient.setQueryData(datasetKeys.meta(datasetId), next),
+    onError: () => void invalidateMeta(),
+  });
+  const reorderColMut = useMutation({
+    mutationFn: (keys: string[]) => reorderDatasetColumns(datasetId, keys),
+    onSuccess: (next: DatasetMeta) => {
+      queryClient.setQueryData(datasetKeys.meta(datasetId), next);
+      // 캐시된 cells는 이전 열 순서 기준이라 그대로 쓰면 값이 어긋난다.
+      reset();
+    },
     onError: () => void invalidateMeta(),
   });
   const deleteColMut = useMutation({
@@ -167,6 +178,19 @@ export function DatasetGrid({ datasetId }: Props) {
   const columnLabel = (key: string) =>
     meta.columns.find((c) => c.key === key)?.label ?? key;
 
+  /** 끌던 열을 대상 열 자리에 놓는다. */
+  const dropColumnOn = (targetKey: string) => {
+    const from = dragKey;
+    setDragKey(null);
+    if (!from || from === targetKey) return;
+    const keys = meta.columns.map((c) => c.key);
+    const at = keys.indexOf(from);
+    const to = keys.indexOf(targetKey);
+    if (at < 0 || to < 0) return;
+    keys.splice(to, 0, keys.splice(at, 1)[0]);
+    reorderColMut.mutate(keys);
+  };
+
   const startColEdit = (key: string, label: string) => {
     setEditingCol(key);
     setColDraft(label);
@@ -202,7 +226,18 @@ export function DatasetGrid({ datasetId }: Props) {
           {table.getFlatHeaders().map((header) => (
             <div
               key={header.id}
-              className="border-border group flex items-center border-r"
+              // 이름 편집 중엔 텍스트 선택을 막지 않도록 드래그를 끈다.
+              draggable={editingCol !== header.id}
+              onDragStart={() => setDragKey(header.id)}
+              onDragEnd={() => setDragKey(null)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => dropColumnOn(header.id)}
+              data-dragging={dragKey === header.id || undefined}
+              className={cn(
+                "border-border group flex items-center border-r",
+                editingCol !== header.id && "cursor-grab",
+                dragKey === header.id && "opacity-50",
+              )}
             >
               {editingCol === header.id ? (
                 <input

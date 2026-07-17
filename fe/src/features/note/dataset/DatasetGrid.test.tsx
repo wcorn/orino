@@ -208,6 +208,117 @@ describe("DatasetGrid", () => {
     expect(screen.queryByText("92")).not.toBeInTheDocument();
   });
 
+  it("헤더를 드래그해 순서를 바꾸면 PATCH하고 값이 열을 따라간다", async () => {
+    // 3열 과목/점수/비고 — 비고(c2)를 맨 앞으로 끈다.
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수" },
+              { key: "c2", label: "비고" },
+            ],
+            rowCount: 1,
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [
+              { id: 100, rowIndex: 0, cells: ["네트워크", "92", "재수강"] },
+            ],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    let sentKeys: string[] | null = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/columns/order`,
+        async ({ request }) => {
+          const body = (await request.json()) as { keys: string[] };
+          sentKeys = body.keys;
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              id: 1,
+              columns: [
+                { key: "c2", label: "비고" },
+                { key: "c0", label: "과목" },
+                { key: "c1", label: "점수" },
+              ],
+              rowCount: 1,
+            },
+          });
+        },
+      ),
+      // 서버는 새 열 순서로 투영해 준다.
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [
+              { id: 100, rowIndex: 0, cells: ["재수강", "네트워크", "92"] },
+            ],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+
+    const headers = document.querySelectorAll(
+      '[data-testid="dataset-grid"] .sticky > div',
+    );
+    fireEvent.dragStart(headers[2]); // 비고
+    fireEvent.dragOver(headers[0]);
+    fireEvent.drop(headers[0]); // 과목 자리에 놓기
+
+    await waitFor(() => expect(sentKeys).toEqual(["c2", "c0", "c1"]));
+    expect(await screen.findByText("비고")).toBeInTheDocument();
+    // 재조회가 안 되면 여기서 옛 순서(네트워크가 첫 칸)가 남아 실패한다.
+    await waitFor(() => {
+      const row = document.querySelector(
+        '[data-testid="dataset-grid"] div[style*="translateY(0px)"]',
+      );
+      const cells = Array.from(row!.querySelectorAll(":scope > div")).map((c) =>
+        c.textContent?.trim(),
+      );
+      expect(cells).toEqual(["재수강", "네트워크", "92"]);
+    });
+  });
+
+  it("같은 자리에 놓으면 PATCH하지 않는다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let called = false;
+    server.use(
+      http.patch(`${API_BASE}/datasets/1/columns/order`, () => {
+        called = true;
+        return new HttpResponse(null, { status: 400 });
+      }),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    const headers = document.querySelectorAll(
+      '[data-testid="dataset-grid"] .sticky > div',
+    );
+    fireEvent.dragStart(headers[0]);
+    fireEvent.drop(headers[0]);
+
+    expect(called).toBe(false);
+  });
+
   it("마지막 한 열만 남으면 삭제 버튼을 내보내지 않는다", async () => {
     server.use(
       http.get(`${API_BASE}/datasets/1`, () =>
