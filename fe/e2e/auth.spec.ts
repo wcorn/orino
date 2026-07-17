@@ -1,10 +1,16 @@
 import { expect, test } from "@playwright/test";
 
-const API_BASE = "https://api.orino.dev/api";
-
+/**
+ * 앱이 실제로 부르는 주소로 가로챈다.
+ *
+ * 호스트를 하드코딩하면(`https://api.orino.dev/api`) dev에서 매치되지 않는다 —
+ * `.env.development`가 `VITE_API_URL=/api`라 앱은 Vite 프록시(`/api/...`)로 부른다.
+ * 매치가 안 되면 요청이 프록시를 타고 실제 BE로 나가고, BE가 없으면 500이 온다.
+ * 경로 패턴은 dev·배포 양쪽에 다 걸린다.
+ */
 function mockAuthApi(page: import("@playwright/test").Page) {
   return Promise.all([
-    page.route(`${API_BASE}/auth/login`, async (route) => {
+    page.route("**/api/auth/login", async (route) => {
       const body = route.request().postDataJSON();
       if (body.loginId === "admin" && body.password === "password") {
         await route.fulfill({
@@ -27,7 +33,7 @@ function mockAuthApi(page: import("@playwright/test").Page) {
       }
     }),
 
-    page.route(`${API_BASE}/auth/reissue`, async (route) => {
+    page.route("**/api/auth/reissue", async (route) => {
       await route.fulfill({
         status: 401,
         contentType: "application/json",
@@ -38,7 +44,27 @@ function mockAuthApi(page: import("@playwright/test").Page) {
       });
     }),
 
-    page.route(`${API_BASE}/auth/logout`, async (route) => {
+    // 로그인 후 화면엔 Sidebar가 딸려 오고 복습 요약을 부른다. 안 막아두면
+    // 실제 BE가 가짜 토큰을 401로 거부하고 앱이 정상적으로 자동 로그아웃해 버린다
+    // (= BE가 떠 있으면 실패하는 테스트가 된다).
+    page.route("**/api/planner/reviews/summary*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        // 형태는 src/test/mocks/handlers.ts의 것을 따른다 — 지어내면 Sidebar가 깨진다.
+        body: JSON.stringify({
+          code: "OK",
+          data: {
+            today: "2026-05-18",
+            counts: { now: 0, overdue: 0, upcoming: 0, doneToday: 0 },
+            estimatedMinutes: 0,
+            materials: [],
+          },
+        }),
+      });
+    }),
+
+    page.route("**/api/auth/logout", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -77,7 +103,10 @@ test.describe("인증 흐름", () => {
     await page.getByRole("button", { name: "로그인" }).click();
 
     await expect(page).toHaveURL(/\/home/);
-    await expect(page.getByText("orino")).toBeVisible();
+    // 워드마크가 글자를 쪼개 놓아(or + ı + no) getByText로는 안 잡힌다. 접근성 이름으로 찾는다.
+    await expect(
+      page.getByRole("img", { name: "orino" }).first(),
+    ).toBeVisible();
     await expect(page.getByRole("button", { name: /로그아웃/ })).toBeVisible();
   });
 
@@ -104,6 +133,7 @@ test.describe("인증 흐름", () => {
 
     // 로그아웃 후 인증이 필요 없는 페이지로 이동
     await page.waitForURL(/\/(login)?$/);
-    await expect(page.getByText("orino")).toBeVisible();
+    // 로고가 보이는지보다 "로그아웃됐는지"가 이 테스트가 확인할 것이다.
+    await expect(page.getByRole("button", { name: /로그아웃/ })).toBeHidden();
   });
 });
