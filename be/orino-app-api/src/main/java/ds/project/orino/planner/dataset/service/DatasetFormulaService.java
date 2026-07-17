@@ -245,6 +245,63 @@ public class DatasetFormulaService {
         return out;
     }
 
+    /**
+     * 열이 지워졌을 때. 두 가지를 한다.
+     *
+     * <ol>
+     *   <li><b>그 열에 있던 수식은 지운다</b> — 담겨 있던 셀 자체가 사라졌다
+     *   <li><b>그 열을 참조하던 수식은 {@code #REF!}로</b> 만든다. 저장형이 없는 열을 가리키면
+     *       파싱이 실패하고, 그게 곧 참조가 끊겼다는 신호다
+     * </ol>
+     *
+     * <p>비용은 <b>O(그 열에 얽힌 수식 수)</b>지 O(행 수)가 아니다 — 열 삭제가 O(1)인 것(#800)과
+     * 양립한다.
+     */
+    void invalidateColumn(Long datasetId, String colKey) {
+        // 1. 그 열에 있던 수식 — 셀이 없어졌으니 수식도 없앤다.
+        for (DatasetFormula f : formulaRepository.findByDatasetIdAndColKey(datasetId, colKey)) {
+            refRepository.deleteByFormulaId(f.getId());
+            formulaRepository.delete(f);
+        }
+        // 2. 그 열을 참조하던 수식 — #REF!로.
+        Set<String> seen = new HashSet<>();
+        for (Long formulaId : refRepository.findFormulaIdsReferencingColumn(datasetId, colKey)) {
+            formulaRepository.findById(formulaId).ifPresent(f -> {
+                recompute(datasetId, f);
+                // 그 셀 값이 바뀌었으니 그걸 참조하던 것들로 계속 번진다.
+                propagateFrom(datasetId, f.getRowId(), f.getColKey(), seen);
+            });
+        }
+    }
+
+    /**
+     * 행이 지워진 <b>뒤에</b> 부른다. 순서가 중요하다 — 지우기 전에 부르면 평가할 때 그 행이
+     * 아직 있어 {@code #REF!}가 안 나온다. 지운 뒤라야 참조가 끊긴 게 드러난다
+     * ({@code to_row_id}엔 FK가 없어 끊긴 참조가 남는다).
+     *
+     * <p>두 가지를 한다.
+     * <ol>
+     *   <li>그 행을 <b>콕 집어</b> 참조하던 수식({@code ABSOLUTE})을 {@code #REF!}로
+     *   <li>모든 열의 <b>집계</b>({@code COLUMN_ALL})를 다시 계산 — 행이 하나 줄었으니 합계가 바뀐다
+     * </ol>
+     *
+     * <p>그 행에 있던 수식은 FK cascade로 이미 사라졌고, {@code SAME_ROW}는 자기 행만 가리키므로
+     * 따로 손댈 게 없다.
+     */
+    void invalidateAfterRowDelete(Long datasetId, Long rowId, List<DatasetColumn> columns) {
+        Set<String> seen = new HashSet<>();
+        for (Long formulaId : refRepository.findFormulaIdsReferencingRow(datasetId, rowId)) {
+            formulaRepository.findById(formulaId).ifPresent(f -> {
+                recompute(datasetId, f);
+                propagateFrom(datasetId, f.getRowId(), f.getColKey(), seen);
+            });
+        }
+        // 행이 줄어 값 집합이 바뀐 열들의 집계.
+        for (DatasetColumn column : columns) {
+            propagateFrom(datasetId, rowId, column.key(), seen);
+        }
+    }
+
     /** 셀이 더 이상 수식이 아니면(리터럴로 덮어씀) 수식과 참조를 지운다. */
     void removeIfAny(Long rowId, String colKey) {
         formulaRepository.findByRowIdAndColKey(rowId, colKey).ifPresent(f -> {
