@@ -173,6 +173,49 @@
   margin-bottom: 0;
 }
 
+/* 체크박스 목록(taskList).
+   TipTap TaskItem은 li 안에 label(inline)과 본문 div(block)를 나란히 넣는데,
+   block인 div가 label 뒤에서 줄바꿈돼 글자가 체크박스 아래 줄에 찍힌다.
+   li를 flex로 만들어 체크박스와 글자를 한 줄에 둔다.
+   prose의 disc 마커도 꺼야 체크박스 옆에 불릿이 겹치지 않는다.
+   주의: li엔 data-type이 없다(nodeView가 data-checked만 붙인다) — ul로 지목한다. */
+.tiptap ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+
+.tiptap ul[data-type="taskList"] > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+
+.tiptap ul[data-type="taskList"] > li > label {
+  flex: 0 0 auto;
+  user-select: none;
+}
+
+/* 체크박스를 첫 줄 글자의 시각 중심에 맞춘다(글자 line-height 기준). */
+.tiptap ul[data-type="taskList"] > li > label > input[type="checkbox"] {
+  margin: 0;
+  vertical-align: middle;
+  translate: 0 0.25em;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+/* min-width: 0 — 긴 단어/코드가 flex 항목을 밀어 넘치는 것을 막는다. */
+.tiptap ul[data-type="taskList"] > li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 체크 완료 항목은 흐리게 + 취소선. */
+.tiptap ul[data-type="taskList"] > li[data-checked="true"] > div {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
 .tiptap img {
   max-width: 100%;
   height: auto;
