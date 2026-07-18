@@ -1358,8 +1358,8 @@ describe("DatasetGrid", () => {
     renderWithRouter(<DatasetGrid datasetId={1} />);
     await screen.findByText("네트워크");
 
-    await user.click(screen.getByLabelText("1행 1열 서식"));
-    await user.click(screen.getByLabelText("1행 1열 오른쪽과 병합"));
+    fireEvent.contextMenu(screen.getByText("네트워크"));
+    await user.click(screen.getByRole("menuitem", { name: "오른쪽과 병합" }));
 
     await waitFor(() => expect(sent).toEqual({ rowSpan: 1, colSpan: 2 }));
     // 응답 리스트로 갱신돼 덮인 c1("92")이 화면에서 사라진다.
@@ -1392,8 +1392,8 @@ describe("DatasetGrid", () => {
     renderWithRouter(<DatasetGrid datasetId={1} />);
     await screen.findByText("네트워크");
 
-    await user.click(screen.getByLabelText("1행 1열 서식"));
-    await user.click(screen.getByLabelText("1행 1열 아래와 병합"));
+    fireEvent.contextMenu(screen.getByText("네트워크"));
+    await user.click(screen.getByRole("menuitem", { name: "아래와 병합" }));
 
     await waitFor(() => expect(sent).toEqual({ rowSpan: 2, colSpan: 1 }));
   });
@@ -1415,11 +1415,67 @@ describe("DatasetGrid", () => {
     // 병합 상태라 덮인 "92"는 처음엔 안 보인다.
     expect(screen.queryByText("92")).not.toBeInTheDocument();
 
-    await user.click(screen.getByLabelText("1행 1열 서식"));
-    await user.click(screen.getByLabelText("1행 1열 병합 해제"));
+    fireEvent.contextMenu(screen.getByText("네트워크"));
+    await user.click(screen.getByRole("menuitem", { name: "병합 해제" }));
 
     await waitFor(() => expect(deleted).toBe(true));
     // 해제되면 덮였던 셀이 되살아난다.
     await waitFor(() => expect(screen.getByText("92")).toBeInTheDocument());
+  });
+
+  it("우클릭 메뉴에서 '아래에 행 삽입'하면 atIndex로 POST한다", async () => {
+    mockDataset([
+      ["네트워크", "92"],
+      ["보안", "80"],
+    ]);
+    let sent: { atIndex?: number } | null = null;
+    server.use(
+      http.post(`${API_BASE}/datasets/1/rows`, async ({ request }) => {
+        sent = (await request.json()) as { atIndex?: number };
+        return HttpResponse.json({ code: "OK", data: { rowIndex: 1 } });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    fireEvent.contextMenu(screen.getByText("네트워크")); // 0행
+    await user.click(screen.getByRole("menuitem", { name: "아래에 행 삽입" }));
+
+    // 0행 아래 = atIndex 1.
+    await waitFor(() => expect(sent?.atIndex).toBe(1));
+  });
+
+  it("우클릭 메뉴에서 '오른쪽에 열 삽입'하면 atIndex로 POST한다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let sent: unknown = null;
+    server.use(
+      http.post(`${API_BASE}/datasets/1/columns`, async ({ request }) => {
+        sent = await request.json();
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c2", label: "새 열" },
+              { key: "c1", label: "점수" },
+            ],
+            rowCount: 1,
+          },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    fireEvent.contextMenu(screen.getByText("네트워크")); // c0
+    await user.click(
+      screen.getByRole("menuitem", { name: "오른쪽에 열 삽입" }),
+    );
+
+    // c0 오른쪽 = atIndex 1.
+    await waitFor(() => expect(sent).toEqual({ atIndex: 1 }));
   });
 });

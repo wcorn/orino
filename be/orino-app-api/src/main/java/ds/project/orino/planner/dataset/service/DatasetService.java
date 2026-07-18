@@ -184,7 +184,14 @@ public class DatasetService {
         requireLabelFree(columns, label, null);
 
         List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
-        updated.add(new DatasetColumn("c" + dataset.issueColumnSeq(), label));
+        DatasetColumn added = new DatasetColumn("c" + dataset.issueColumnSeq(), label);
+        // atIndex를 주면 그 위치에 끼우고(범위 밖은 클램프), 없으면 끝에 붙인다.
+        int at = request.atIndex() == null
+                ? updated.size()
+                : Math.max(0, Math.min(request.atIndex(), updated.size()));
+        // 삽입 위치를 가로 span이 가로지르는 병합은 해제한다(삽입 전 순서로 판정). 끝에 추가면 no-op.
+        mergeService.invalidateOnColumnInsert(datasetId, at, columns);
+        updated.add(at, added);
         dataset.updateColumns(serialize(updated));
         return DatasetResponse.of(dataset, updated);
     }
@@ -540,6 +547,8 @@ public class DatasetService {
             throw new CustomException(ErrorCode.INVALID_REQUEST);
         }
 
+        // 삽입 위치를 세로 span이 가로지르는 병합은 해제한다(행 인덱스가 밀리기 전에). 끝에 추가면 no-op.
+        mergeService.invalidateOnRowInsert(datasetId, at);
         if (at < rowCount) {
             rowRepository.shiftUp(datasetId, at); // 뒤 행을 밀어 자리 확보(flush)
         }

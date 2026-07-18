@@ -113,6 +113,13 @@ export function DatasetGrid({ datasetId }: Props) {
     startY: number;
     startHeight: number;
   } | null>(null);
+  // 우클릭 컨텍스트 메뉴(뷰포트 좌표 + 대상 셀). null이면 닫힘.
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number;
+    y: number;
+    row: number;
+    col: number;
+  } | null>(null);
 
   const colCount = meta?.columns.length ?? 0;
   const rowCount = meta?.rowCount ?? 0;
@@ -173,11 +180,12 @@ export function DatasetGrid({ datasetId }: Props) {
     },
   });
   const insertMut = useMutation({
-    mutationFn: (cells: string[]) => insertDatasetRow(datasetId, cells),
+    mutationFn: (v: { cells: string[]; atIndex?: number }) =>
+      insertDatasetRow(datasetId, v.cells, v.atIndex),
     onSuccess: () => {
       reset();
       void invalidateMeta();
-      void invalidateMerges(); // 뒤 행이 밀려 병합의 행 번호가 바뀐다.
+      void invalidateMerges(); // 뒤 행이 밀려 병합의 행 번호가 바뀌고, 안에 끼면 해제된다.
     },
   });
   const deleteMut = useMutation({
@@ -238,11 +246,17 @@ export function DatasetGrid({ datasetId }: Props) {
     onError: () => void invalidateMeta(),
   });
   const addColMut = useMutation({
-    mutationFn: () => addDatasetColumn(datasetId),
-    // 행은 다시 받지 않는다. 새 열의 key는 방금 발급돼 어느 행에도 값이 없으므로,
-    // 캐시된 짧은 cells를 그대로 두면 렌더가 새 열을 빈 칸으로 그린다(편집 시 패딩됨).
-    onSuccess: (next: DatasetMeta) =>
-      queryClient.setQueryData(datasetKeys.meta(datasetId), next),
+    mutationFn: (v: { atIndex?: number }) =>
+      addDatasetColumn(datasetId, v.atIndex),
+    onSuccess: (next: DatasetMeta, v) => {
+      queryClient.setQueryData(datasetKeys.meta(datasetId), next);
+      // 끝에 추가면 새 열 key는 어느 행에도 값이 없어 캐시된 짧은 cells를 그대로 둬도 된다.
+      // 중간 삽입이면 뒤 열이 밀려 위치 배열이 어긋나고, 안에 끼면 병합이 해제됐을 수 있다 → 다시 받는다.
+      if (v.atIndex != null) {
+        reset();
+        void invalidateMerges();
+      }
+    },
     onError: () => void invalidateMeta(),
   });
 
@@ -482,11 +496,24 @@ export function DatasetGrid({ datasetId }: Props) {
     setPalette(null);
   };
 
-  const addRow = () =>
-    insertMut.mutate(Array.from({ length: colCount }, () => ""));
+  /** 셀 우클릭 → 그 자리에 컨텍스트 메뉴를 연다(행/열 삽입·삭제·병합). */
+  const openContextMenu = (
+    event: React.MouseEvent,
+    row: number,
+    col: number,
+  ) => {
+    event.preventDefault();
+    setPalette(null);
+    setCtxMenu({ x: event.clientX, y: event.clientY, row, col });
+  };
+
+  const emptyRow = () => Array.from({ length: colCount }, () => "");
+  // atIndex를 주면 그 위치에 삽입(위/아래), 없으면 끝에 추가.
+  const addRow = (atIndex?: number) =>
+    insertMut.mutate({ cells: emptyRow(), atIndex });
 
   // 이름은 서버가 붙인다 — 열 개수로 지으면 삭제 후 중복된다.
-  const addColumn = () => addColMut.mutate();
+  const addColumn = (atIndex?: number) => addColMut.mutate({ atIndex });
 
   const columnLabel = (key: string) =>
     meta.columns.find((c) => c.key === key)?.label ?? key;
@@ -530,12 +557,9 @@ export function DatasetGrid({ datasetId }: Props) {
     const cells = getRow(rowIndex);
     const formula = getFormulas(rowIndex)[colKey];
     const style = getStyles(rowIndex)[colKey];
-    const merge = mergeAt(rowIndex, c);
     // 셀 정렬(override) > 열 기본 정렬 > 기본(left) (#828 D2).
     const align = style?.align ?? meta.columns[c].align ?? "left";
     const paletteOpen = palette?.row === rowIndex && palette.col === c;
-    const colSpan = merge?.colSpan ?? 1;
-    const rowSpan = merge?.rowSpan ?? 1;
     return (
       <>
         {/* 셀 서식·병합 버튼 — 호버 시 나타난다. */}
@@ -613,42 +637,7 @@ export function DatasetGrid({ datasetId }: Props) {
                 <X className="size-2.5" />
               </button>
             </div>
-            {/* 병합 — 오른쪽·아래로 넓히거나 해제한다 */}
-            <div className="flex gap-1">
-              {c + colSpan < colCount && (
-                <button
-                  type="button"
-                  aria-label={`${rowIndex + 1}행 ${c + 1}열 오른쪽과 병합`}
-                  title="오른쪽 열과 병합"
-                  onClick={() => mergeRight(rowIndex, c)}
-                  className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded border"
-                >
-                  <TableCellsMerge className="size-2.5" />
-                </button>
-              )}
-              {rowIndex + rowSpan < rowCount && (
-                <button
-                  type="button"
-                  aria-label={`${rowIndex + 1}행 ${c + 1}열 아래와 병합`}
-                  title="아래 행과 병합"
-                  onClick={() => mergeDown(rowIndex, c)}
-                  className="text-muted-foreground hover:text-foreground border-border flex size-4 rotate-90 items-center justify-center rounded border"
-                >
-                  <TableCellsMerge className="size-2.5" />
-                </button>
-              )}
-              {merge && (
-                <button
-                  type="button"
-                  aria-label={`${rowIndex + 1}행 ${c + 1}열 병합 해제`}
-                  title="병합 해제"
-                  onClick={() => unmerge(rowIndex, c)}
-                  className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded border"
-                >
-                  <TableCellsSplit className="size-2.5" />
-                </button>
-              )}
-            </div>
+            {/* 삽입·삭제·병합은 셀 우클릭 메뉴로. */}
           </div>
         )}
         {isEditing ? (
@@ -819,7 +808,7 @@ export function DatasetGrid({ datasetId }: Props) {
             type="button"
             aria-label="열 추가"
             title="열 추가"
-            onClick={addColumn}
+            onClick={() => addColumn()}
             disabled={addColMut.isPending}
             className="text-muted-foreground hover:text-foreground flex items-center justify-center disabled:opacity-50"
           >
@@ -875,6 +864,7 @@ export function DatasetGrid({ datasetId }: Props) {
                           : {}),
                       }}
                       onClick={() => startEdit(vi.index, c)}
+                      onContextMenu={(e) => openContextMenu(e, vi.index, c)}
                     >
                       {renderCellInner(vi.index, c)}
                     </div>
@@ -925,6 +915,7 @@ export function DatasetGrid({ datasetId }: Props) {
                           : {}),
                       }}
                       onClick={() => startEdit(m.rowIndex, ai)}
+                      onContextMenu={(e) => openContextMenu(e, m.rowIndex, ai)}
                     >
                       {renderCellInner(m.rowIndex, ai)}
                     </div>
@@ -959,7 +950,7 @@ export function DatasetGrid({ datasetId }: Props) {
           type="button"
           variant="ghost"
           size="sm"
-          onClick={addRow}
+          onClick={() => addRow()}
           disabled={insertMut.isPending}
         >
           <Plus className="size-4" /> 행 추가
@@ -995,6 +986,101 @@ export function DatasetGrid({ datasetId }: Props) {
         }}
         pending={deleteColMut.isPending}
       />
+
+      {/* 셀 우클릭 컨텍스트 메뉴 — 행/열 삽입·삭제·병합을 한 곳에 모은다. */}
+      {ctxMenu &&
+        (() => {
+          const { row, col } = ctxMenu;
+          const cm = mergeAt(row, col);
+          const colSpan = cm?.colSpan ?? 1;
+          const rowSpan = cm?.rowSpan ?? 1;
+          const colKey = meta.columns[col].key;
+          const close = () => setCtxMenu(null);
+          const item = (
+            label: string,
+            onClick: () => void,
+            opts: { icon?: React.ReactNode; destructive?: boolean } = {},
+          ) => (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onClick();
+                close();
+              }}
+              className={cn(
+                "hover:bg-accent flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm",
+                opts.destructive && "text-destructive",
+              )}
+            >
+              {opts.icon}
+              {label}
+            </button>
+          );
+          const canMergeRight = col + colSpan < colCount;
+          const canMergeDown = row + rowSpan < rowCount;
+          return (
+            <>
+              {/* 바깥 클릭·우클릭으로 닫는다. */}
+              <div
+                className="fixed inset-0 z-40"
+                onClick={close}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  close();
+                }}
+              />
+              <div
+                role="menu"
+                aria-label="셀 메뉴"
+                className="border-border bg-popover fixed z-50 min-w-40 rounded-md border p-1 shadow-md"
+                // 뷰포트 오른쪽·아래로 넘치지 않게 대략 클램프한다(메뉴 크기 여유분).
+                style={{
+                  left: Math.min(ctxMenu.x, window.innerWidth - 176),
+                  top: Math.min(ctxMenu.y, window.innerHeight - 340),
+                }}
+              >
+                {item("위에 행 삽입", () => addRow(row), {
+                  icon: <Plus className="size-3.5" />,
+                })}
+                {item("아래에 행 삽입", () => addRow(row + 1), {
+                  icon: <Plus className="size-3.5" />,
+                })}
+                {item("왼쪽에 열 삽입", () => addColumn(col), {
+                  icon: <Plus className="size-3.5" />,
+                })}
+                {item("오른쪽에 열 삽입", () => addColumn(col + 1), {
+                  icon: <Plus className="size-3.5" />,
+                })}
+                {(canMergeRight || canMergeDown || cm) && (
+                  <div className="bg-border my-1 h-px" />
+                )}
+                {canMergeRight &&
+                  item("오른쪽과 병합", () => mergeRight(row, col), {
+                    icon: <TableCellsMerge className="size-3.5" />,
+                  })}
+                {canMergeDown &&
+                  item("아래와 병합", () => mergeDown(row, col), {
+                    icon: <TableCellsMerge className="size-3.5 rotate-90" />,
+                  })}
+                {cm &&
+                  item("병합 해제", () => unmerge(row, col), {
+                    icon: <TableCellsSplit className="size-3.5" />,
+                  })}
+                <div className="bg-border my-1 h-px" />
+                {item("행 삭제", () => deleteMut.mutate(row), {
+                  icon: <Trash2 className="size-3.5" />,
+                  destructive: true,
+                })}
+                {colCount > 1 &&
+                  item("열 삭제", () => setPendingColDelete(colKey), {
+                    icon: <X className="size-3.5" />,
+                    destructive: true,
+                  })}
+              </div>
+            </>
+          );
+        })()}
     </div>
   );
 }
