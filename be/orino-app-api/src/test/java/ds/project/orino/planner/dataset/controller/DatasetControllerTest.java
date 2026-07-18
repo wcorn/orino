@@ -611,6 +611,32 @@ class DatasetControllerTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("POST column - atIndex를 주면 그 위치에 끼우고 기존 행 값은 그대로")
+    void add_column_at_index() throws Exception {
+        long id = createDataset(); // c0(과목), c1(점수)
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+
+        // 0번 자리에 삽입 → 새 열이 맨 앞, 기존 열은 뒤로 밀린다(key는 불변).
+        mockMvc.perform(post("/api/datasets/{id}/columns", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"비고\",\"atIndex\":0}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.columns", hasSize(3)))
+                .andExpect(jsonPath("$.data.columns[0].key").value("c2"))
+                .andExpect(jsonPath("$.data.columns[0].label").value("비고"))
+                .andExpect(jsonPath("$.data.columns[1].key").value("c0"))
+                .andExpect(jsonPath("$.data.columns[2].key").value("c1"));
+
+        // cells는 새 열 순서로 투영된다 — 새 열은 빈 값, 기존 값은 뒤 자리로.
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.rows[0].cells[0]").value(""))
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value("네트워크"))
+                .andExpect(jsonPath("$.data.rows[0].cells[2]").value("92"));
+    }
+
+    @Test
     @DisplayName("열 추가는 행을 건드리지 않는다(저장된 맵에 새 key가 안 생김)")
     void add_column_does_not_touch_rows() throws Exception {
         long id = createDataset();
@@ -1715,6 +1741,67 @@ class DatasetControllerTest extends ApiTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"keys\":[\"c2\",\"c1\",\"c0\"]}"))
                 .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/datasets/{id}/merges", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.merges", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("가로 병합 안에 열을 삽입하면 그 병합이 해제된다(#829 O3)")
+    void insert_column_inside_merge_dissolves_it() throws Exception {
+        long id = createDataset3(); // c0/c1/c2
+        bulk(id, "[[\"a\",\"b\",\"c\"]]");
+        merge(id, 0, "c0", 1, 2); // c0..c1
+
+        // c0와 c1 사이(index 1)에 열 삽입 → 그 병합은 온전할 수 없어 해제.
+        mockMvc.perform(post("/api/datasets/{id}/columns", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"atIndex\":1}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/datasets/{id}/merges", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.merges", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("가로 병합 밖(앞)에 열을 삽입하면 병합은 유지된다")
+    void insert_column_outside_merge_keeps_it() throws Exception {
+        long id = createDataset3();
+        bulk(id, "[[\"a\",\"b\",\"c\"]]");
+        merge(id, 0, "c1", 1, 2); // c1..c2
+
+        // 맨 앞(index 0)에 삽입 → c1..c2 병합은 함께 밀리고 온전.
+        mockMvc.perform(post("/api/datasets/{id}/columns", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"atIndex\":0}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/datasets/{id}/merges", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.merges", hasSize(1)))
+                .andExpect(jsonPath("$.data.merges[0].colKey").value("c1"));
+    }
+
+    @Test
+    @DisplayName("세로 병합 안에 행을 삽입하면 그 병합이 해제된다(#829 O3)")
+    void insert_row_inside_vertical_merge_dissolves_it() throws Exception {
+        long id = createDataset3();
+        bulk(id, "[[\"a\",\"b\",\"c\"],[\"d\",\"e\",\"f\"],[\"g\",\"h\",\"i\"]]");
+        merge(id, 0, "c0", 2, 1); // 0..1행 세로 병합
+
+        // 0행과 1행 사이(index 1)에 행 삽입 → 세로 병합 해제.
+        mockMvc.perform(post("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"atIndex\":1,\"cells\":[\"x\",\"y\",\"z\"]}"))
+                .andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/datasets/{id}/merges", id)
                         .header(HttpHeaders.AUTHORIZATION, authHeader))

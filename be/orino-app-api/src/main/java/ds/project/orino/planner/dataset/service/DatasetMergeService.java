@@ -142,6 +142,34 @@ public class DatasetMergeService {
         }
     }
 
+    /**
+     * 행이 {@code atRow}에 삽입될 때, 그 위치를 세로 span이 가로지르는 병합을 해제한다(#829 O3).
+     * 삽입 위쪽·아래쪽 병합은 함께 밀리므로 온전하다 — 영역 <b>안</b>에 끼는 것만 깨진다.
+     * 삽입으로 인덱스가 밀리기 <b>전</b>에 부른다.
+     */
+    public void invalidateOnRowInsert(Long datasetId, int atRow) {
+        for (DatasetMerge merge : mergeRepository.findByDatasetId(datasetId)) {
+            Integer anchorRow = rowRepository.findById(merge.getAnchorRowId())
+                    .map(DatasetRow::getRowIndex).orElse(null);
+            if (anchorRow != null && anchorRow < atRow && atRow < anchorRow + merge.getRowSpan()) {
+                mergeRepository.delete(merge);
+            }
+        }
+    }
+
+    /**
+     * 열이 {@code atCol}에 삽입될 때, 그 위치를 가로 span이 가로지르는 병합을 해제한다(#829 O3).
+     * {@code columns}는 삽입 <b>전</b> 순서.
+     */
+    public void invalidateOnColumnInsert(Long datasetId, int atCol, List<DatasetColumn> columns) {
+        for (DatasetMerge merge : mergeRepository.findByDatasetId(datasetId)) {
+            int anchorCol = indexOf(columns, merge.getAnchorColKey());
+            if (anchorCol >= 0 && anchorCol < atCol && atCol < anchorCol + merge.getColSpan()) {
+                mergeRepository.delete(merge);
+            }
+        }
+    }
+
     /** 병합들의 앵커 행 번호를 한 번에 조회한다. */
     private Map<Long, Integer> rowIndexById(List<DatasetMerge> merges) {
         List<Long> ids = merges.stream().map(DatasetMerge::getAnchorRowId).distinct().toList();
