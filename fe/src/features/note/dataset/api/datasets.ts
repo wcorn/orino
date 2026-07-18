@@ -34,11 +34,22 @@ export interface CellStyle {
   align?: CellAlign;
 }
 
+/** 병합 요청의 span(앵커 기준 rowSpan×colSpan). (1,1)은 병합이 아니다. */
+export interface MergeSpan {
+  rowSpan: number;
+  colSpan: number;
+}
+
 /**
- * 한 앵커 셀의 병합 범위. 병합은 표시 오버레이라 cells는 직사각형 그대로다 —
- * 앵커를 span으로 넓게 그리고 덮인 칸을 렌더에서 건너뛴다. 슬라이스 1은 rowSpan=1(가로 병합).
+ * 병합 하나의 표시형. 앵커를 **행 번호**로 가리킨다. 병합은 표시 오버레이라 cells는 직사각형
+ * 그대로다 — 앵커를 span으로 넓게 그리고 덮인 칸은 렌더에서 숨긴다.
+ *
+ * 세로 병합은 앵커 행이 화면 밖이어도 덮인 행을 그려야 해, 병합은 행 단위가 아니라 dataset
+ * 단위로 통째 조회한다(`GET /datasets/{id}/merges`).
  */
-export interface MergeSpec {
+export interface MergeView {
+  rowIndex: number;
+  colKey: string;
   rowSpan: number;
   colSpan: number;
 }
@@ -67,8 +78,6 @@ export interface DatasetRow {
   formulas: Record<string, string>;
   /** 서식 있는 셀의 배경색·정렬(열 key → CellStyle). 서식 없는 셀은 없다. */
   styles: Record<string, CellStyle>;
-  /** 병합된 앵커 셀의 span(열 key → MergeSpec). 병합 없는 앵커는 없다(sparse). */
-  merges: Record<string, MergeSpec>;
 }
 
 export interface RowsPage {
@@ -243,33 +252,43 @@ export async function setCellStyle(
   return data.data;
 }
 
+/** 그 dataset의 병합 전체. 세로 병합은 앵커가 화면 밖이어도 덮인 행을 그려야 해 통째로 받는다. */
+export async function fetchDatasetMerges(
+  datasetId: number,
+): Promise<MergeView[]> {
+  const { data } = await client.get<ApiEnvelope<{ merges: MergeView[] }>>(
+    `/datasets/${datasetId}/merges`,
+  );
+  return data.data.merges;
+}
+
 /**
  * 셀 병합. 앵커(rowIndex·colKey) 기준으로 rowSpan×colSpan 영역을 병합한다. 표시 오버레이라
- * 덮인 셀의 값은 보존되고 분할하면 되살아난다. 슬라이스 1은 가로 병합만(rowSpan=1).
+ * 덮인 셀의 값은 보존되고 분할하면 되살아난다. 갱신된 병합 전체를 돌려준다.
  */
 export async function setCellMerge(
   datasetId: number,
   rowIndex: number,
   colKey: string,
-  spec: MergeSpec,
-): Promise<DatasetRow> {
-  const { data } = await client.put<ApiEnvelope<DatasetRow>>(
+  span: MergeSpan,
+): Promise<MergeView[]> {
+  const { data } = await client.put<ApiEnvelope<{ merges: MergeView[] }>>(
     `/datasets/${datasetId}/rows/${rowIndex}/cells/${colKey}/merge`,
-    { rowSpan: spec.rowSpan, colSpan: spec.colSpan },
+    { rowSpan: span.rowSpan, colSpan: span.colSpan },
   );
-  return data.data;
+  return data.data.merges;
 }
 
-/** 병합 해제. 덮여 있던 셀 값은 그 자리에 되살아난다. */
+/** 병합 해제. 덮여 있던 셀 값은 그 자리에 되살아난다. 갱신된 병합 전체를 돌려준다. */
 export async function deleteCellMerge(
   datasetId: number,
   rowIndex: number,
   colKey: string,
-): Promise<DatasetRow> {
-  const { data } = await client.delete<ApiEnvelope<DatasetRow>>(
+): Promise<MergeView[]> {
+  const { data } = await client.delete<ApiEnvelope<{ merges: MergeView[] }>>(
     `/datasets/${datasetId}/rows/${rowIndex}/cells/${colKey}/merge`,
   );
-  return data.data;
+  return data.data.merges;
 }
 
 export async function insertDatasetRow(

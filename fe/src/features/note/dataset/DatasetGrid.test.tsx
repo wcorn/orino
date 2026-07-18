@@ -41,6 +41,18 @@ function mockDataset(rows: string[][]) {
         data: { rows: slice, offset, limit },
       });
     }),
+    http.get(`${API_BASE}/datasets/1/merges`, () =>
+      HttpResponse.json({ code: "OK", data: { merges: [] } }),
+    ),
+  );
+}
+
+/** 그 dataset의 병합 리스트를 목킹한다(GET /merges). 병합은 dataset 단위로 통째 온다. */
+function mockMerges(merges: unknown[]) {
+  server.use(
+    http.get(`${API_BASE}/datasets/1/merges`, () =>
+      HttpResponse.json({ code: "OK", data: { merges } }),
+    ),
   );
 }
 
@@ -928,7 +940,7 @@ describe("DatasetGrid", () => {
     await screen.findByText("네트워크");
 
     // 셀 호버 버튼 → 팔레트 → green
-    await user.click(screen.getByLabelText("1행 1열 배경색"));
+    await user.click(screen.getByLabelText("1행 1열 서식"));
     await user.click(screen.getByLabelText("배경색 green"));
 
     await waitFor(() => expect(sent).toEqual({ bg: "green", align: null }));
@@ -1043,7 +1055,7 @@ describe("DatasetGrid", () => {
     renderWithRouter(<DatasetGrid datasetId={1} />);
     await screen.findByText("네트워크");
 
-    await user.click(screen.getByLabelText("1행 1열 배경색"));
+    await user.click(screen.getByLabelText("1행 1열 서식"));
     await user.click(screen.getByLabelText("배경색 지우기"));
 
     await waitFor(() => expect(sent).toEqual({ bg: null, align: null }));
@@ -1182,14 +1194,14 @@ describe("DatasetGrid", () => {
     renderWithRouter(<DatasetGrid datasetId={1} />);
     await screen.findByText("네트워크");
 
-    await user.click(screen.getByLabelText("1행 1열 배경색"));
+    await user.click(screen.getByLabelText("1행 1열 서식"));
     await user.click(screen.getByLabelText("정렬 가운데"));
 
     // 배경색은 그대로 두고 정렬만 얹어 통째로 보낸다.
     await waitFor(() => expect(sent).toEqual({ bg: "green", align: "center" }));
   });
 
-  it("병합된 앵커는 colSpan으로 넓게, 덮인 셀은 렌더하지 않는다", async () => {
+  it("가로 병합 앵커는 colSpan으로 넓게, 덮인 셀은 렌더하지 않는다", async () => {
     server.use(
       http.get(`${API_BASE}/datasets/1`, () =>
         HttpResponse.json({
@@ -1216,8 +1228,6 @@ describe("DatasetGrid", () => {
                 cells: ["네트워크", "92", "재수강"],
                 formulas: {},
                 styles: {},
-                // c0가 c0..c1을 덮는다(가로 병합).
-                merges: { c0: { rowSpan: 1, colSpan: 2 } },
               },
             ],
             offset: 0,
@@ -1226,10 +1236,12 @@ describe("DatasetGrid", () => {
         }),
       ),
     );
+    // c0가 c0..c1을 덮는다(가로 병합).
+    mockMerges([{ rowIndex: 0, colKey: "c0", rowSpan: 1, colSpan: 2 }]);
     renderWithRouter(<DatasetGrid datasetId={1} />);
     await screen.findByText("네트워크");
 
-    // 앵커는 2칸을 차지한다.
+    // 앵커는 2칸을 차지한다(in-grid span).
     const anchor = screen
       .getByText("네트워크")
       .closest("div[style]") as HTMLElement;
@@ -1240,7 +1252,61 @@ describe("DatasetGrid", () => {
     expect(screen.getByText("재수강")).toBeInTheDocument();
   });
 
-  it("오른쪽과 병합을 누르면 colSpan 2로 PUT한다", async () => {
+  it("세로 병합은 오버레이로 앵커 값을 한 번만 그리고 덮인 행 셀은 숨긴다", async () => {
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수" },
+            ],
+            rowCount: 2,
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [
+              {
+                id: 100,
+                rowIndex: 0,
+                cells: ["네트워크", "92"],
+                formulas: {},
+                styles: {},
+              },
+              {
+                id: 101,
+                rowIndex: 1,
+                cells: ["보안", "80"],
+                formulas: {},
+                styles: {},
+              },
+            ],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+    // c0가 0..1행을 덮는다(세로 병합).
+    mockMerges([{ rowIndex: 0, colKey: "c0", rowSpan: 2, colSpan: 1 }]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    // 앵커 값은 오버레이에 한 번만. 덮인 행의 c0("보안")은 숨는다.
+    expect(screen.getAllByText("네트워크")).toHaveLength(1);
+    expect(screen.queryByText("보안")).not.toBeInTheDocument();
+    // 병합 밖의 셀은 그대로.
+    expect(screen.getByText("92")).toBeInTheDocument();
+    expect(screen.getByText("80")).toBeInTheDocument();
+  });
+
+  it("오른쪽과 병합을 누르면 colSpan 2로 PUT하고 리스트로 갱신한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let sent: unknown = null;
     server.use(
@@ -1251,12 +1317,7 @@ describe("DatasetGrid", () => {
           return HttpResponse.json({
             code: "OK",
             data: {
-              id: 100,
-              rowIndex: 0,
-              cells: ["네트워크", "92"],
-              formulas: {},
-              styles: {},
-              merges: { c0: { rowSpan: 1, colSpan: 2 } },
+              merges: [{ rowIndex: 0, colKey: "c0", rowSpan: 1, colSpan: 2 }],
             },
           });
         },
@@ -1266,73 +1327,54 @@ describe("DatasetGrid", () => {
     renderWithRouter(<DatasetGrid datasetId={1} />);
     await screen.findByText("네트워크");
 
-    await user.click(screen.getByLabelText("1행 1열 배경색"));
+    await user.click(screen.getByLabelText("1행 1열 서식"));
     await user.click(screen.getByLabelText("1행 1열 오른쪽과 병합"));
 
     await waitFor(() => expect(sent).toEqual({ rowSpan: 1, colSpan: 2 }));
-    // 병합 응답으로 덮인 c1("92")이 화면에서 사라진다.
+    // 응답 리스트로 갱신돼 덮인 c1("92")이 화면에서 사라진다.
     await waitFor(() =>
       expect(screen.queryByText("92")).not.toBeInTheDocument(),
     );
   });
 
-  it("병합 해제를 누르면 DELETE하고 덮였던 셀이 되살아난다", async () => {
+  it("아래와 병합을 누르면 rowSpan 2로 PUT한다", async () => {
+    mockDataset([
+      ["네트워크", "92"],
+      ["보안", "80"],
+    ]);
+    let sent: unknown = null;
     server.use(
-      http.get(`${API_BASE}/datasets/1/rows`, () =>
-        HttpResponse.json({
-          code: "OK",
-          data: {
-            rows: [
-              {
-                id: 100,
-                rowIndex: 0,
-                cells: ["네트워크", "92"],
-                formulas: {},
-                styles: {},
-                merges: { c0: { rowSpan: 1, colSpan: 2 } },
-              },
-            ],
-            offset: 0,
-            limit: 100,
-          },
-        }),
+      http.put(
+        `${API_BASE}/datasets/1/rows/0/cells/c0/merge`,
+        async ({ request }) => {
+          sent = await request.json();
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              merges: [{ rowIndex: 0, colKey: "c0", rowSpan: 2, colSpan: 1 }],
+            },
+          });
+        },
       ),
     );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    await user.click(screen.getByLabelText("1행 1열 서식"));
+    await user.click(screen.getByLabelText("1행 1열 아래와 병합"));
+
+    await waitFor(() => expect(sent).toEqual({ rowSpan: 2, colSpan: 1 }));
+  });
+
+  it("병합 해제를 누르면 DELETE하고 덮였던 셀이 되살아난다", async () => {
     mockDataset([["네트워크", "92"]]);
+    mockMerges([{ rowIndex: 0, colKey: "c0", rowSpan: 1, colSpan: 2 }]);
     let deleted = false;
     server.use(
-      http.get(`${API_BASE}/datasets/1/rows`, () =>
-        HttpResponse.json({
-          code: "OK",
-          data: {
-            rows: [
-              {
-                id: 100,
-                rowIndex: 0,
-                cells: ["네트워크", "92"],
-                formulas: {},
-                styles: {},
-                merges: { c0: { rowSpan: 1, colSpan: 2 } },
-              },
-            ],
-            offset: 0,
-            limit: 100,
-          },
-        }),
-      ),
       http.delete(`${API_BASE}/datasets/1/rows/0/cells/c0/merge`, () => {
         deleted = true;
-        return HttpResponse.json({
-          code: "OK",
-          data: {
-            id: 100,
-            rowIndex: 0,
-            cells: ["네트워크", "92"],
-            formulas: {},
-            styles: {},
-            merges: {},
-          },
-        });
+        return HttpResponse.json({ code: "OK", data: { merges: [] } });
       }),
     );
     const user = userEvent.setup();
@@ -1342,7 +1384,7 @@ describe("DatasetGrid", () => {
     // 병합 상태라 덮인 "92"는 처음엔 안 보인다.
     expect(screen.queryByText("92")).not.toBeInTheDocument();
 
-    await user.click(screen.getByLabelText("1행 1열 배경색"));
+    await user.click(screen.getByLabelText("1행 1열 서식"));
     await user.click(screen.getByLabelText("1행 1열 병합 해제"));
 
     await waitFor(() => expect(deleted).toBe(true));

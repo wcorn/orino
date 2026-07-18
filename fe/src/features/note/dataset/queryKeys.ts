@@ -3,4 +3,5 @@ export const datasetKeys = {
   meta: (id: number) => ["datasets", id, "meta"] as const,
   rows: (id: number, offset: number, limit: number) =>
     ["datasets", id, "rows", offset, limit] as const,
+  merges: (id: number) => ["datasets", id, "merges"] as const,
 };

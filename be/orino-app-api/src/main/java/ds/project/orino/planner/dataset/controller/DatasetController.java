@@ -11,6 +11,7 @@ import ds.project.orino.planner.dataset.dto.RenameColumnRequest;
 import ds.project.orino.planner.dataset.dto.ReorderColumnsRequest;
 import ds.project.orino.planner.dataset.dto.ResizeColumnRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
+import ds.project.orino.planner.dataset.dto.MergesResponse;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
 import ds.project.orino.planner.dataset.dto.SetCellMergeRequest;
 import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
@@ -216,12 +217,20 @@ public class DatasetController {
                 datasetService.setCellStyle(memberId, id, rowIndex, colKey, request));
     }
 
+    /** 그 dataset의 병합 전체. 세로 병합은 앵커가 화면 밖이어도 덮인 행을 그려야 해 통째로 준다. */
+    @GetMapping("/{id}/merges")
+    public ApiResponse<MergesResponse> merges(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id) {
+        return ApiResponse.success(datasetService.getMerges(memberId, id));
+    }
+
     /**
      * 셀 병합. 앵커(rowIndex·colKey) 기준으로 {@code rowSpan × colSpan} 영역을 병합한다.
-     * 표시 오버레이라 cells를 건드리지 않는다(덮인 셀 값 보존). 슬라이스 1은 가로 병합만.
+     * 표시 오버레이라 cells를 건드리지 않는다(덮인 셀 값 보존). 갱신된 병합 전체를 돌려준다.
      */
     @PutMapping("/{id}/rows/{rowIndex}/cells/{colKey}/merge")
-    public ApiResponse<RowView> setCellMerge(
+    public ApiResponse<MergesResponse> setCellMerge(
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long id,
             @PathVariable int rowIndex,
@@ -233,7 +242,7 @@ public class DatasetController {
 
     /** 병합 해제. 덮여 있던 셀 값은 그 자리에 되살아난다. */
     @DeleteMapping("/{id}/rows/{rowIndex}/cells/{colKey}/merge")
-    public ApiResponse<RowView> unmergeCell(
+    public ApiResponse<MergesResponse> unmergeCell(
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long id,
             @PathVariable int rowIndex,

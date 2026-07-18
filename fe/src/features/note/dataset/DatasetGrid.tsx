@@ -39,7 +39,8 @@ import {
   deleteDatasetRow,
   insertDatasetRow,
   MAX_COLUMN_WIDTH,
-  type MergeSpec,
+  type MergeSpan,
+  type MergeView,
   MIN_COLUMN_WIDTH,
   renameDatasetColumn,
   reorderDatasetColumns,
@@ -50,6 +51,7 @@ import {
   setDatasetColumnAlign,
   updateDatasetRow,
 } from "./api/datasets";
+import { useDatasetMerges } from "./hooks/useDatasetMerges";
 import { useDatasetMeta } from "./hooks/useDatasetMeta";
 import { useDatasetRows } from "./hooks/useDatasetRows";
 import { datasetKeys } from "./queryKeys";
@@ -69,14 +71,14 @@ export function DatasetGrid({ datasetId }: Props) {
     getRow,
     getFormulas,
     getStyles,
-    getMerges,
     ensureRange,
     setRowLocal,
     setFormulasLocal,
     setStylesLocal,
-    setMergesLocal,
     reset,
   } = useDatasetRows(datasetId);
+  // 병합은 dataset 단위로 통째 받는다 — 세로 병합은 앵커가 화면 밖이어도 덮인 행을 그려야 한다.
+  const { data: merges = [] } = useDatasetMerges(datasetId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<{ row: number; col: number } | null>(
     null,
@@ -106,6 +108,10 @@ export function DatasetGrid({ datasetId }: Props) {
 
   const invalidateMeta = () =>
     queryClient.invalidateQueries({ queryKey: datasetKeys.meta(datasetId) });
+  // 행/열 구조가 바뀌면 병합의 행 번호가 밀리거나(행 삽입·삭제) 병합이 해제될 수 있어(열 삭제·순서변경)
+  // 병합을 다시 받는다.
+  const invalidateMerges = () =>
+    queryClient.invalidateQueries({ queryKey: datasetKeys.merges(datasetId) });
 
   const updateMut = useMutation({
     mutationFn: (v: { index: number; cells: string[] }) =>
@@ -134,10 +140,11 @@ export function DatasetGrid({ datasetId }: Props) {
     },
   });
   const mergeMut = useMutation({
-    mutationFn: (v: { row: number; colKey: string; spec: MergeSpec }) =>
-      setCellMerge(datasetId, v.row, v.colKey, v.spec),
-    // 병합은 표시 오버레이라 값 캐시는 그대로 두고 merges만 갱신한다.
-    onSuccess: (row) => setMergesLocal(row.rowIndex, row.merges ?? {}),
+    mutationFn: (v: { row: number; colKey: string; span: MergeSpan }) =>
+      setCellMerge(datasetId, v.row, v.colKey, v.span),
+    // 병합은 표시 오버레이라 값 캐시는 그대로 두고 병합 리스트만 갱신한다(서버가 전체를 돌려준다).
+    onSuccess: (list: MergeView[]) =>
+      queryClient.setQueryData(datasetKeys.merges(datasetId), list),
     onError: (e) => {
       // 경계 초과·겹침 등은 서버가 사유를 알려준다.
       const message = serverMessage(e);
@@ -147,7 +154,8 @@ export function DatasetGrid({ datasetId }: Props) {
   const unmergeMut = useMutation({
     mutationFn: (v: { row: number; colKey: string }) =>
       deleteCellMerge(datasetId, v.row, v.colKey),
-    onSuccess: (row) => setMergesLocal(row.rowIndex, row.merges ?? {}),
+    onSuccess: (list: MergeView[]) =>
+      queryClient.setQueryData(datasetKeys.merges(datasetId), list),
     onError: (e) => {
       const message = serverMessage(e);
       if (message) toast(message, "error");
@@ -158,6 +166,7 @@ export function DatasetGrid({ datasetId }: Props) {
     onSuccess: () => {
       reset();
       void invalidateMeta();
+      void invalidateMerges(); // 뒤 행이 밀려 병합의 행 번호가 바뀐다.
     },
   });
   const deleteMut = useMutation({
@@ -165,6 +174,7 @@ export function DatasetGrid({ datasetId }: Props) {
     onSuccess: () => {
       reset();
       void invalidateMeta();
+      void invalidateMerges(); // 앵커 행 삭제는 cascade, 뒤 행은 번호가 밀린다.
     },
   });
   const renameColMut = useMutation({
@@ -180,6 +190,7 @@ export function DatasetGrid({ datasetId }: Props) {
       queryClient.setQueryData(datasetKeys.meta(datasetId), next);
       // 캐시된 cells는 이전 열 순서 기준이라 그대로 쓰면 값이 어긋난다.
       reset();
+      void invalidateMerges(); // 순서 변경 시 서버가 병합을 해제한다(v1 보수적).
     },
     onError: () => void invalidateMeta(),
   });
@@ -189,6 +200,7 @@ export function DatasetGrid({ datasetId }: Props) {
       queryClient.setQueryData(datasetKeys.meta(datasetId), next);
       // 캐시된 cells는 삭제 전 열 순서 기준이라 그대로 쓰면 값이 밀린다. 다시 받아 온다.
       reset();
+      void invalidateMerges(); // 그 열에 걸친 병합이 해제됐을 수 있다.
     },
     onError: () => void invalidateMeta(),
   });
@@ -267,6 +279,24 @@ export function DatasetGrid({ datasetId }: Props) {
         return width != null ? `${width}px` : "minmax(120px, 1fr)";
       })
       .join(" ") + " 44px";
+
+  const colIndexByKey = new Map(meta.columns.map((c, i) => [c.key, i]));
+  // 세로·블록 병합(rowSpan>1)은 오버레이로 그린다(가상화와 양립하려면 앵커 행 렌더에 의존하면 안 된다).
+  // 가로 전용 병합(rowSpan===1)은 그 행 안에서 in-grid span으로 그린다(슬라이스 1과 같다).
+  const overlayMerges = merges.filter((m) => m.rowSpan > 1);
+  const colOf = (key: string) => colIndexByKey.get(key) ?? -1;
+  /** (row,c)를 덮는 세로·블록 병합. 있으면 그 셀은 오버레이가 그리므로 base엔 자리만 둔다. */
+  const overlayCovering = (row: number, c: number) =>
+    overlayMerges.find((m) => {
+      const ai = colOf(m.colKey);
+      return (
+        ai >= 0 &&
+        ai <= c &&
+        c < ai + m.colSpan &&
+        m.rowIndex <= row &&
+        row < m.rowIndex + m.rowSpan
+      );
+    });
 
   const clampWidth = (width: number) =>
     Math.round(Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, width)));
@@ -377,14 +407,38 @@ export function DatasetGrid({ datasetId }: Props) {
     setColAlignMut.mutate({ key, align: next });
   };
 
-  /** 앵커 셀을 오른쪽 열과 한 칸 더 병합한다(가로 병합, 슬라이스 1). 이미 병합이면 span+1. */
+  /** (row,col)이 앵커인 병합. 없으면 undefined. */
+  const mergeAt = (row: number, col: number): MergeView | undefined =>
+    merges.find(
+      (m) => m.rowIndex === row && m.colKey === meta.columns[col].key,
+    );
+
+  /** 앵커 셀을 오른쪽 열과 한 칸 더 병합한다. 이미 병합이면 colSpan+1(rowSpan은 유지). */
   const mergeRight = (row: number, col: number) => {
-    const colKey = meta.columns[col].key;
-    const current = getMerges(row)[colKey];
-    const nextSpan = (current?.colSpan ?? 1) + 1;
+    const current = mergeAt(row, col);
+    const colSpan = (current?.colSpan ?? 1) + 1;
+    const rowSpan = current?.rowSpan ?? 1;
     // 오른쪽 끝을 넘으면 담을 열이 없다(서버도 막지만 헛요청을 줄인다).
-    if (col + nextSpan > colCount) return;
-    mergeMut.mutate({ row, colKey, spec: { rowSpan: 1, colSpan: nextSpan } });
+    if (col + colSpan > colCount) return;
+    mergeMut.mutate({
+      row,
+      colKey: meta.columns[col].key,
+      span: { rowSpan, colSpan },
+    });
+    setPalette(null);
+  };
+
+  /** 앵커 셀을 아래 행과 한 칸 더 병합한다. 이미 병합이면 rowSpan+1(colSpan은 유지). */
+  const mergeDown = (row: number, col: number) => {
+    const current = mergeAt(row, col);
+    const rowSpan = (current?.rowSpan ?? 1) + 1;
+    const colSpan = current?.colSpan ?? 1;
+    if (row + rowSpan > rowCount) return; // 아래 끝을 넘으면 담을 행이 없다.
+    mergeMut.mutate({
+      row,
+      colKey: meta.columns[col].key,
+      span: { rowSpan, colSpan },
+    });
     setPalette(null);
   };
 
@@ -430,6 +484,175 @@ export function DatasetGrid({ datasetId }: Props) {
     // 빈 이름은 서버가 거부하므로 보내지 않고, 변경 없으면 요청 자체를 생략한다.
     if (!label || label === current?.label) return;
     renameColMut.mutate({ key, label });
+  };
+
+  /**
+   * 셀 내부(서식 버튼·팝오버·값/입력). base 그리드 셀과 세로 병합 오버레이 박스가 함께 쓴다 —
+   * 병합 셀 UI를 오버레이에서 다시 만들지 않으려는 것.
+   */
+  const renderCellInner = (rowIndex: number, c: number) => {
+    const colKey = meta.columns[c].key;
+    const isEditing = editing?.row === rowIndex && editing.col === c;
+    const cells = getRow(rowIndex);
+    const formula = getFormulas(rowIndex)[colKey];
+    const style = getStyles(rowIndex)[colKey];
+    const merge = mergeAt(rowIndex, c);
+    // 셀 정렬(override) > 열 기본 정렬 > 기본(left) (#828 D2).
+    const align = style?.align ?? meta.columns[c].align ?? "left";
+    const paletteOpen = palette?.row === rowIndex && palette.col === c;
+    const colSpan = merge?.colSpan ?? 1;
+    const rowSpan = merge?.rowSpan ?? 1;
+    return (
+      <>
+        {/* 셀 서식·병합 버튼 — 호버 시 나타난다. */}
+        {!isEditing && (
+          <button
+            type="button"
+            aria-label={`${rowIndex + 1}행 ${c + 1}열 서식`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setPalette(paletteOpen ? null : { row: rowIndex, col: c });
+            }}
+            className="text-muted-foreground hover:text-foreground absolute top-0.5 right-0.5 z-10 opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100"
+          >
+            <Palette className="size-3" />
+          </button>
+        )}
+        {paletteOpen && (
+          <div
+            role="menu"
+            className="border-border bg-popover absolute top-5 right-0 z-20 flex flex-col gap-1 rounded-md border p-1 shadow-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 배경색 — 6색 스와치 + 지우기 */}
+            <div className="flex gap-1">
+              {CELL_BG_TOKENS.map((token) => (
+                <button
+                  key={token}
+                  type="button"
+                  aria-label={`배경색 ${token}`}
+                  onClick={() => applyBg(rowIndex, c, token)}
+                  className={cn(
+                    "size-4 rounded-full border",
+                    style?.bg === token ? "border-foreground" : "border-border",
+                  )}
+                  style={{ background: `var(--cell-bg-${token})` }}
+                />
+              ))}
+              <button
+                type="button"
+                aria-label="배경색 지우기"
+                onClick={() => applyBg(rowIndex, c, null)}
+                className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded-full border"
+              >
+                <X className="size-2.5" />
+              </button>
+            </div>
+            {/* 정렬 — 셀 단위 override(열 기본을 덮는다) + 열 기본 따르기 */}
+            <div className="flex gap-1">
+              {ALIGN_ORDER.map((value) => {
+                const Icon = ALIGN_ICONS[value];
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-label={`정렬 ${ALIGN_LABELS[value]}`}
+                    onClick={() => applyAlign(rowIndex, c, value)}
+                    className={cn(
+                      "hover:bg-accent flex size-4 items-center justify-center rounded border",
+                      style?.align === value
+                        ? "border-foreground text-foreground"
+                        : "border-border text-muted-foreground",
+                    )}
+                  >
+                    <Icon className="size-2.5" />
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                aria-label="셀 정렬 지우기 (열 기본 따르기)"
+                title="열 기본 정렬을 따른다"
+                onClick={() => applyAlign(rowIndex, c, null)}
+                className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded border"
+              >
+                <X className="size-2.5" />
+              </button>
+            </div>
+            {/* 병합 — 오른쪽·아래로 넓히거나 해제한다 */}
+            <div className="flex gap-1">
+              {c + colSpan < colCount && (
+                <button
+                  type="button"
+                  aria-label={`${rowIndex + 1}행 ${c + 1}열 오른쪽과 병합`}
+                  title="오른쪽 열과 병합"
+                  onClick={() => mergeRight(rowIndex, c)}
+                  className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded border"
+                >
+                  <TableCellsMerge className="size-2.5" />
+                </button>
+              )}
+              {rowIndex + rowSpan < rowCount && (
+                <button
+                  type="button"
+                  aria-label={`${rowIndex + 1}행 ${c + 1}열 아래와 병합`}
+                  title="아래 행과 병합"
+                  onClick={() => mergeDown(rowIndex, c)}
+                  className="text-muted-foreground hover:text-foreground border-border flex size-4 rotate-90 items-center justify-center rounded border"
+                >
+                  <TableCellsMerge className="size-2.5" />
+                </button>
+              )}
+              {merge && (
+                <button
+                  type="button"
+                  aria-label={`${rowIndex + 1}행 ${c + 1}열 병합 해제`}
+                  title="병합 해제"
+                  onClick={() => unmerge(rowIndex, c)}
+                  className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded border"
+                >
+                  <TableCellsSplit className="size-2.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        {isEditing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit();
+              if (e.key === "Escape") setEditing(null);
+            }}
+            aria-label={`셀 ${rowIndex + 1}행 ${c + 1}열`}
+            className={cn(
+              "focus-visible:ring-ring h-full w-full bg-transparent px-2 py-1 outline-none focus-visible:ring-1",
+              ALIGN_CLASS[align],
+            )}
+          />
+        ) : (
+          <div
+            className={cn(
+              "h-full cursor-text truncate px-2 py-1.5",
+              ALIGN_CLASS[align],
+              cells === undefined && "text-muted-foreground/40",
+              isCellError(cells?.[c]) && "text-destructive",
+              formula !== undefined &&
+                showFormulas &&
+                "text-muted-foreground font-mono text-xs",
+            )}
+            title={formula}
+          >
+            {cells === undefined
+              ? "…"
+              : (showFormulas && formula) || (cells[c] ?? "")}
+          </div>
+        )}
+      </>
+    );
   };
 
   return (
@@ -575,14 +798,15 @@ export function DatasetGrid({ datasetId }: Props) {
           style={{ height: virtualizer.getTotalSize(), position: "relative" }}
         >
           {virtualItems.map((vi) => {
-            const cells = getRow(vi.index);
-            const rowMerges = getMerges(vi.index);
-            // 앵커가 덮는 열(앵커 다음 칸부터)은 렌더에서 건너뛴다. 앵커는 span으로 넓게 그린다.
-            const covered = new Set<number>();
-            for (const [anchorKey, spec] of Object.entries(rowMerges)) {
-              const ai = meta.columns.findIndex((col) => col.key === anchorKey);
+            // 그 행에 앵커가 있는 가로 전용 병합(rowSpan===1). 덮인 칸은 스킵하고 앵커가 span으로 넓게.
+            const hCovered = new Set<number>();
+            const hAnchor = new Map<number, MergeView>();
+            for (const m of merges) {
+              if (m.rowIndex !== vi.index || m.rowSpan !== 1) continue;
+              const ai = colOf(m.colKey);
               if (ai < 0) continue;
-              for (let k = 1; k < spec.colSpan; k++) covered.add(ai + k);
+              hAnchor.set(ai, m);
+              for (let k = 1; k < m.colSpan; k++) hCovered.add(ai + k);
             }
             return (
               <div
@@ -595,18 +819,14 @@ export function DatasetGrid({ datasetId }: Props) {
                 }}
               >
                 {Array.from({ length: colCount }, (_, c) => {
-                  // 병합에 덮인 칸은 앵커가 span으로 차지하므로 렌더하지 않는다.
-                  if (covered.has(c)) return null;
-                  const isEditing =
-                    editing?.row === vi.index && editing.col === c;
-                  const colKey = meta.columns[c].key;
-                  const formula = getFormulas(vi.index)[colKey];
-                  const style = getStyles(vi.index)[colKey];
-                  const merge = rowMerges[colKey];
-                  // 셀 정렬(override) > 열 기본 정렬 > 기본(left) (#828 D2).
-                  const align = style?.align ?? meta.columns[c].align ?? "left";
-                  const paletteOpen =
-                    palette?.row === vi.index && palette.col === c;
+                  // 세로·블록 병합이 덮는 칸은 오버레이가 그리므로 base엔 자리만 둔다(정렬 유지).
+                  if (overlayCovering(vi.index, c)) {
+                    return <div key={c} aria-hidden className="border-r" />;
+                  }
+                  // 가로 병합에 덮인 칸은 앵커가 span으로 차지하므로 렌더하지 않는다.
+                  if (hCovered.has(c)) return null;
+                  const anchor = hAnchor.get(c);
+                  const style = getStyles(vi.index)[meta.columns[c].key];
                   return (
                     <div
                       key={c}
@@ -615,155 +835,14 @@ export function DatasetGrid({ datasetId }: Props) {
                         ...(style?.bg
                           ? { background: `var(--cell-bg-${style.bg})` }
                           : {}),
-                        // 앵커는 colSpan만큼 그리드 열을 차지한다 — 덮인 칸을 스킵한 만큼 정렬이 맞는다.
-                        ...(merge && merge.colSpan > 1
-                          ? { gridColumn: `span ${merge.colSpan}` }
+                        // 가로 병합 앵커는 colSpan만큼 그리드 열을 차지한다(덮인 칸 스킵과 짝).
+                        ...(anchor
+                          ? { gridColumn: `span ${anchor.colSpan}` }
                           : {}),
                       }}
                       onClick={() => startEdit(vi.index, c)}
                     >
-                      {/* 셀 배경색 버튼 — 호버 시 나타난다. */}
-                      {!isEditing && (
-                        <button
-                          type="button"
-                          aria-label={`${vi.index + 1}행 ${c + 1}열 배경색`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPalette(
-                              paletteOpen ? null : { row: vi.index, col: c },
-                            );
-                          }}
-                          className="text-muted-foreground hover:text-foreground absolute top-0.5 right-0.5 z-10 opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100"
-                        >
-                          <Palette className="size-3" />
-                        </button>
-                      )}
-                      {paletteOpen && (
-                        <div
-                          role="menu"
-                          className="border-border bg-popover absolute top-5 right-0 z-20 flex flex-col gap-1 rounded-md border p-1 shadow-md"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {/* 배경색 — 6색 스와치 + 지우기 */}
-                          <div className="flex gap-1">
-                            {CELL_BG_TOKENS.map((token) => (
-                              <button
-                                key={token}
-                                type="button"
-                                aria-label={`배경색 ${token}`}
-                                onClick={() => applyBg(vi.index, c, token)}
-                                className={cn(
-                                  "size-4 rounded-full border",
-                                  style?.bg === token
-                                    ? "border-foreground"
-                                    : "border-border",
-                                )}
-                                style={{
-                                  background: `var(--cell-bg-${token})`,
-                                }}
-                              />
-                            ))}
-                            <button
-                              type="button"
-                              aria-label="배경색 지우기"
-                              onClick={() => applyBg(vi.index, c, null)}
-                              className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded-full border"
-                            >
-                              <X className="size-2.5" />
-                            </button>
-                          </div>
-                          {/* 정렬 — 셀 단위 override(열 기본을 덮는다) + 열 기본 따르기 */}
-                          <div className="flex gap-1">
-                            {ALIGN_ORDER.map((value) => {
-                              const Icon = ALIGN_ICONS[value];
-                              return (
-                                <button
-                                  key={value}
-                                  type="button"
-                                  aria-label={`정렬 ${ALIGN_LABELS[value]}`}
-                                  onClick={() => applyAlign(vi.index, c, value)}
-                                  className={cn(
-                                    "hover:bg-accent flex size-4 items-center justify-center rounded border",
-                                    style?.align === value
-                                      ? "border-foreground text-foreground"
-                                      : "border-border text-muted-foreground",
-                                  )}
-                                >
-                                  <Icon className="size-2.5" />
-                                </button>
-                              );
-                            })}
-                            <button
-                              type="button"
-                              aria-label="셀 정렬 지우기 (열 기본 따르기)"
-                              title="열 기본 정렬을 따른다"
-                              onClick={() => applyAlign(vi.index, c, null)}
-                              className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded border"
-                            >
-                              <X className="size-2.5" />
-                            </button>
-                          </div>
-                          {/* 병합 — 앵커를 오른쪽으로 넓히거나 해제한다(가로 병합, 슬라이스 1) */}
-                          <div className="flex gap-1">
-                            {c + (merge?.colSpan ?? 1) < colCount && (
-                              <button
-                                type="button"
-                                aria-label={`${vi.index + 1}행 ${c + 1}열 오른쪽과 병합`}
-                                title="오른쪽 열과 병합"
-                                onClick={() => mergeRight(vi.index, c)}
-                                className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded border"
-                              >
-                                <TableCellsMerge className="size-2.5" />
-                              </button>
-                            )}
-                            {merge && merge.colSpan > 1 && (
-                              <button
-                                type="button"
-                                aria-label={`${vi.index + 1}행 ${c + 1}열 병합 해제`}
-                                title="병합 해제"
-                                onClick={() => unmerge(vi.index, c)}
-                                className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded border"
-                              >
-                                <TableCellsSplit className="size-2.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      {isEditing ? (
-                        <input
-                          autoFocus
-                          value={draft}
-                          onChange={(e) => setDraft(e.target.value)}
-                          onBlur={commitEdit}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") commitEdit();
-                            if (e.key === "Escape") setEditing(null);
-                          }}
-                          aria-label={`셀 ${vi.index + 1}행 ${c + 1}열`}
-                          className={cn(
-                            "focus-visible:ring-ring h-full w-full bg-transparent px-2 py-1 outline-none focus-visible:ring-1",
-                            ALIGN_CLASS[align],
-                          )}
-                        />
-                      ) : (
-                        <div
-                          className={cn(
-                            "h-full cursor-text truncate px-2 py-1.5",
-                            ALIGN_CLASS[align],
-                            cells === undefined && "text-muted-foreground/40",
-                            isCellError(cells?.[c]) && "text-destructive",
-                            formula !== undefined &&
-                              showFormulas &&
-                              "text-muted-foreground font-mono text-xs",
-                          )}
-                          title={formula}
-                        >
-                          {cells === undefined
-                            ? "…"
-                            : (showFormulas && formula) || (cells[c] ?? "")}
-                        </div>
-                      )}
+                      {renderCellInner(vi.index, c)}
                     </div>
                   );
                 })}
@@ -778,6 +857,47 @@ export function DatasetGrid({ datasetId }: Props) {
               </div>
             );
           })}
+
+          {/* 세로·블록 병합(rowSpan>1) 오버레이 — 가상화가 앵커 행을 안 그려도 덮인 영역을 그린다.
+              같은 gridTemplateColumns를 쓰는 grid에 열 배치로 x·폭을 맞추고(유연폭 대응),
+              고정 행 높이라 세로는 top·height를 px로 계산한다(측정 불필요). */}
+          <div
+            className="pointer-events-none absolute top-0 left-0 grid w-full"
+            style={{ gridTemplateColumns, height: virtualizer.getTotalSize() }}
+          >
+            {overlayMerges
+              .filter(
+                (m) =>
+                  m.rowIndex <= lastIndex &&
+                  m.rowIndex + m.rowSpan > firstIndex,
+              )
+              .map((m) => {
+                const ai = colOf(m.colKey);
+                if (ai < 0) return null;
+                const style = getStyles(m.rowIndex)[m.colKey];
+                return (
+                  <div
+                    key={`${m.rowIndex}:${m.colKey}`}
+                    style={{ gridColumn: `${ai + 1} / span ${m.colSpan}` }}
+                    className="relative"
+                  >
+                    <div
+                      className="border-border bg-card group/cell pointer-events-auto absolute right-0 left-0 truncate border-r border-b text-sm"
+                      style={{
+                        top: m.rowIndex * ROW_HEIGHT,
+                        height: m.rowSpan * ROW_HEIGHT,
+                        ...(style?.bg
+                          ? { background: `var(--cell-bg-${style.bg})` }
+                          : {}),
+                      }}
+                      onClick={() => startEdit(m.rowIndex, ai)}
+                    >
+                      {renderCellInner(m.rowIndex, ai)}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
         </div>
       </div>
 
