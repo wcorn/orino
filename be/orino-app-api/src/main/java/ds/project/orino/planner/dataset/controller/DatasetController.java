@@ -13,6 +13,7 @@ import ds.project.orino.planner.dataset.dto.ResizeColumnRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
 import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
+import ds.project.orino.planner.dataset.dto.SetColumnAlignRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
 import ds.project.orino.planner.dataset.service.DatasetService;
 import jakarta.validation.Valid;
@@ -123,6 +124,25 @@ public class DatasetController {
             @PathVariable Long id,
             @PathVariable String key) {
         return ApiResponse.success(datasetService.resetColumnWidth(memberId, id, key));
+    }
+
+    /** 열 기본 정렬 변경. 열 단위 표시 속성이라 행은 건드리지 않는다(셀 정렬이 있으면 그쪽이 덮는다). */
+    @PatchMapping("/{id}/columns/{key}/align")
+    public ApiResponse<DatasetResponse> setColumnAlign(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable String key,
+            @Valid @RequestBody SetColumnAlignRequest request) {
+        return ApiResponse.success(datasetService.setColumnAlign(memberId, id, key, request));
+    }
+
+    /** 열 기본 정렬 초기화 — 기본 정렬(left)로 되돌린다. */
+    @DeleteMapping("/{id}/columns/{key}/align")
+    public ApiResponse<DatasetResponse> resetColumnAlign(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable String key) {
+        return ApiResponse.success(datasetService.resetColumnAlign(memberId, id, key));
     }
 
     /** 열 이름 변경. key는 불변이며 label만 바꾼다. */
