@@ -13,6 +13,8 @@ import {
   FunctionSquare,
   Palette,
   Plus,
+  TableCellsMerge,
+  TableCellsSplit,
   Trash2,
   X,
 } from "lucide-react";
@@ -32,15 +34,18 @@ import {
   type CellBgToken,
   type CellStyle,
   type DatasetMeta,
+  deleteCellMerge,
   deleteDatasetColumn,
   deleteDatasetRow,
   insertDatasetRow,
   MAX_COLUMN_WIDTH,
+  type MergeSpec,
   MIN_COLUMN_WIDTH,
   renameDatasetColumn,
   reorderDatasetColumns,
   resetDatasetColumnWidth,
   resizeDatasetColumn,
+  setCellMerge,
   setCellStyle,
   setDatasetColumnAlign,
   updateDatasetRow,
@@ -64,10 +69,12 @@ export function DatasetGrid({ datasetId }: Props) {
     getRow,
     getFormulas,
     getStyles,
+    getMerges,
     ensureRange,
     setRowLocal,
     setFormulasLocal,
     setStylesLocal,
+    setMergesLocal,
     reset,
   } = useDatasetRows(datasetId);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -121,6 +128,26 @@ export function DatasetGrid({ datasetId }: Props) {
       setCellStyle(datasetId, v.row, v.colKey, v.style),
     // 서식만 바뀌므로 값·수식 캐시는 건드리지 않고 styles만 갱신한다.
     onSuccess: (row) => setStylesLocal(row.rowIndex, row.styles ?? {}),
+    onError: (e) => {
+      const message = serverMessage(e);
+      if (message) toast(message, "error");
+    },
+  });
+  const mergeMut = useMutation({
+    mutationFn: (v: { row: number; colKey: string; spec: MergeSpec }) =>
+      setCellMerge(datasetId, v.row, v.colKey, v.spec),
+    // 병합은 표시 오버레이라 값 캐시는 그대로 두고 merges만 갱신한다.
+    onSuccess: (row) => setMergesLocal(row.rowIndex, row.merges ?? {}),
+    onError: (e) => {
+      // 경계 초과·겹침 등은 서버가 사유를 알려준다.
+      const message = serverMessage(e);
+      if (message) toast(message, "error");
+    },
+  });
+  const unmergeMut = useMutation({
+    mutationFn: (v: { row: number; colKey: string }) =>
+      deleteCellMerge(datasetId, v.row, v.colKey),
+    onSuccess: (row) => setMergesLocal(row.rowIndex, row.merges ?? {}),
     onError: (e) => {
       const message = serverMessage(e);
       if (message) toast(message, "error");
@@ -350,6 +377,23 @@ export function DatasetGrid({ datasetId }: Props) {
     setColAlignMut.mutate({ key, align: next });
   };
 
+  /** 앵커 셀을 오른쪽 열과 한 칸 더 병합한다(가로 병합, 슬라이스 1). 이미 병합이면 span+1. */
+  const mergeRight = (row: number, col: number) => {
+    const colKey = meta.columns[col].key;
+    const current = getMerges(row)[colKey];
+    const nextSpan = (current?.colSpan ?? 1) + 1;
+    // 오른쪽 끝을 넘으면 담을 열이 없다(서버도 막지만 헛요청을 줄인다).
+    if (col + nextSpan > colCount) return;
+    mergeMut.mutate({ row, colKey, spec: { rowSpan: 1, colSpan: nextSpan } });
+    setPalette(null);
+  };
+
+  /** 병합 해제. 덮여 있던 셀 값이 그 자리에 되살아난다. */
+  const unmerge = (row: number, col: number) => {
+    unmergeMut.mutate({ row, colKey: meta.columns[col].key });
+    setPalette(null);
+  };
+
   const addRow = () =>
     insertMut.mutate(Array.from({ length: colCount }, () => ""));
 
@@ -532,6 +576,14 @@ export function DatasetGrid({ datasetId }: Props) {
         >
           {virtualItems.map((vi) => {
             const cells = getRow(vi.index);
+            const rowMerges = getMerges(vi.index);
+            // 앵커가 덮는 열(앵커 다음 칸부터)은 렌더에서 건너뛴다. 앵커는 span으로 넓게 그린다.
+            const covered = new Set<number>();
+            for (const [anchorKey, spec] of Object.entries(rowMerges)) {
+              const ai = meta.columns.findIndex((col) => col.key === anchorKey);
+              if (ai < 0) continue;
+              for (let k = 1; k < spec.colSpan; k++) covered.add(ai + k);
+            }
             return (
               <div
                 key={vi.key}
@@ -543,11 +595,14 @@ export function DatasetGrid({ datasetId }: Props) {
                 }}
               >
                 {Array.from({ length: colCount }, (_, c) => {
+                  // 병합에 덮인 칸은 앵커가 span으로 차지하므로 렌더하지 않는다.
+                  if (covered.has(c)) return null;
                   const isEditing =
                     editing?.row === vi.index && editing.col === c;
                   const colKey = meta.columns[c].key;
                   const formula = getFormulas(vi.index)[colKey];
                   const style = getStyles(vi.index)[colKey];
+                  const merge = rowMerges[colKey];
                   // 셀 정렬(override) > 열 기본 정렬 > 기본(left) (#828 D2).
                   const align = style?.align ?? meta.columns[c].align ?? "left";
                   const paletteOpen =
@@ -556,11 +611,15 @@ export function DatasetGrid({ datasetId }: Props) {
                     <div
                       key={c}
                       className="border-border group/cell relative truncate border-r"
-                      style={
-                        style?.bg
+                      style={{
+                        ...(style?.bg
                           ? { background: `var(--cell-bg-${style.bg})` }
-                          : undefined
-                      }
+                          : {}),
+                        // 앵커는 colSpan만큼 그리드 열을 차지한다 — 덮인 칸을 스킵한 만큼 정렬이 맞는다.
+                        ...(merge && merge.colSpan > 1
+                          ? { gridColumn: `span ${merge.colSpan}` }
+                          : {}),
+                      }}
                       onClick={() => startEdit(vi.index, c)}
                     >
                       {/* 셀 배경색 버튼 — 호버 시 나타난다. */}
@@ -643,6 +702,31 @@ export function DatasetGrid({ datasetId }: Props) {
                             >
                               <X className="size-2.5" />
                             </button>
+                          </div>
+                          {/* 병합 — 앵커를 오른쪽으로 넓히거나 해제한다(가로 병합, 슬라이스 1) */}
+                          <div className="flex gap-1">
+                            {c + (merge?.colSpan ?? 1) < colCount && (
+                              <button
+                                type="button"
+                                aria-label={`${vi.index + 1}행 ${c + 1}열 오른쪽과 병합`}
+                                title="오른쪽 열과 병합"
+                                onClick={() => mergeRight(vi.index, c)}
+                                className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded border"
+                              >
+                                <TableCellsMerge className="size-2.5" />
+                              </button>
+                            )}
+                            {merge && merge.colSpan > 1 && (
+                              <button
+                                type="button"
+                                aria-label={`${vi.index + 1}행 ${c + 1}열 병합 해제`}
+                                title="병합 해제"
+                                onClick={() => unmerge(vi.index, c)}
+                                className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded border"
+                              >
+                                <TableCellsSplit className="size-2.5" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}

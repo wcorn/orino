@@ -1,0 +1,91 @@
+databaseChangeLog:
+  # 셀 병합 저장 스키마 (Epic #829, 슬라이스 1 가로 병합).
+  #
+  # 수식(dataset_formula)·서식(dataset_cell_style)과 같은 오버레이 전략: 값은 dataset_row.cells에
+  # 직사각형 그대로 두고, 여기엔 "어느 앵커가 몇 칸을 덮는가"만 담는다. 덮인 셀의 값은 보존되므로
+  # 분할하면 되살아나고, 투영·수식 읽기 경로가 바뀌지 않는다. 병합 있는 앵커만 행이 생겨 sparse하다.
+  #
+  # 슬라이스 1은 가로 병합만(row_span=1). row_span 컬럼을 처음부터 둬 슬라이스 2(세로 병합)가
+  # 마이그레이션 없이 얹히게 한다.
+  - changeSet:
+      id: 042-create-dataset-merge
+      author: wcorn
+      comment: 셀 병합 테이블. 앵커(row_id,col_key) 기준 span만 담고 값은 dataset_row.cells에 남는다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: dataset_merge
+      changes:
+        - createTable:
+            tableName: dataset_merge
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: dataset_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_dataset_merge_dataset
+                    references: dataset(id)
+                    deleteCascade: true
+              # 앵커 = 좌상단 셀. 행 정체성은 row_index가 아니라 id다(행이 밀려도 병합이 따라다닌다).
+              # 앵커 행이 지워지면 cascade로 병합도 함께 사라진다.
+              - column:
+                  name: anchor_row_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_dataset_merge_row
+                    references: dataset_row(id)
+                    deleteCascade: true
+              - column:
+                  name: anchor_col_key
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              # 세로 span(>=1). 슬라이스 1은 항상 1(가로 병합만). 슬라이스 2에서 >1 허용.
+              - column:
+                  name: row_span
+                  type: INT
+                  constraints:
+                    nullable: false
+              # 가로 span(>=1).
+              - column:
+                  name: col_span
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        # 한 앵커에 병합은 하나. 조회 키이자 중복 방지.
+        - createIndex:
+            tableName: dataset_merge
+            indexName: uq_dataset_merge_anchor
+            unique: true
+            columns:
+              - column:
+                  name: anchor_row_id
+              - column:
+                  name: anchor_col_key
+        # 페이지 조회 시 그 dataset의 병합을 한 번에 가져오기 위한 인덱스.
+        - createIndex:
+            tableName: dataset_merge
+            indexName: idx_dataset_merge_dataset
+            columns:
+              - column:
+                  name: dataset_id

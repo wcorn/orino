@@ -34,6 +34,15 @@ export interface CellStyle {
   align?: CellAlign;
 }
 
+/**
+ * 한 앵커 셀의 병합 범위. 병합은 표시 오버레이라 cells는 직사각형 그대로다 —
+ * 앵커를 span으로 넓게 그리고 덮인 칸을 렌더에서 건너뛴다. 슬라이스 1은 rowSpan=1(가로 병합).
+ */
+export interface MergeSpec {
+  rowSpan: number;
+  colSpan: number;
+}
+
 export interface DatasetMeta {
   id: number;
   columns: DatasetColumn[];
@@ -58,6 +67,8 @@ export interface DatasetRow {
   formulas: Record<string, string>;
   /** 서식 있는 셀의 배경색·정렬(열 key → CellStyle). 서식 없는 셀은 없다. */
   styles: Record<string, CellStyle>;
+  /** 병합된 앵커 셀의 span(열 key → MergeSpec). 병합 없는 앵커는 없다(sparse). */
+  merges: Record<string, MergeSpec>;
 }
 
 export interface RowsPage {
@@ -228,6 +239,35 @@ export async function setCellStyle(
   const { data } = await client.put<ApiEnvelope<DatasetRow>>(
     `/datasets/${datasetId}/rows/${rowIndex}/cells/${colKey}/style`,
     { bg: style.bg ?? null, align: style.align ?? null },
+  );
+  return data.data;
+}
+
+/**
+ * 셀 병합. 앵커(rowIndex·colKey) 기준으로 rowSpan×colSpan 영역을 병합한다. 표시 오버레이라
+ * 덮인 셀의 값은 보존되고 분할하면 되살아난다. 슬라이스 1은 가로 병합만(rowSpan=1).
+ */
+export async function setCellMerge(
+  datasetId: number,
+  rowIndex: number,
+  colKey: string,
+  spec: MergeSpec,
+): Promise<DatasetRow> {
+  const { data } = await client.put<ApiEnvelope<DatasetRow>>(
+    `/datasets/${datasetId}/rows/${rowIndex}/cells/${colKey}/merge`,
+    { rowSpan: spec.rowSpan, colSpan: spec.colSpan },
+  );
+  return data.data;
+}
+
+/** 병합 해제. 덮여 있던 셀 값은 그 자리에 되살아난다. */
+export async function deleteCellMerge(
+  datasetId: number,
+  rowIndex: number,
+  colKey: string,
+): Promise<DatasetRow> {
+  const { data } = await client.delete<ApiEnvelope<DatasetRow>>(
+    `/datasets/${datasetId}/rows/${rowIndex}/cells/${colKey}/merge`,
   );
   return data.data;
 }
