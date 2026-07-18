@@ -29,6 +29,10 @@ public class DatasetRow {
     @Column(columnDefinition = "JSON", nullable = false)
     private String cells;
 
+    /** 표시 높이(px). null이면 기본 높이. 열 너비처럼 값 있는 행만 담기는 sparse 속성. */
+    @Column
+    private Integer height;
+
     protected DatasetRow() {
     }
 
@@ -40,6 +44,11 @@ public class DatasetRow {
 
     public void updateCells(String cells) {
         this.cells = cells;
+    }
+
+    /** 행 높이를 바꾼다. null이면 기본 높이로 되돌린다. */
+    public void updateHeight(Integer height) {
+        this.height = height;
     }
 
     public void updateRowIndex(int rowIndex) {
@@ -60,5 +69,9 @@ public class DatasetRow {
 
     public String getCells() {
         return cells;
+    }
+
+    public Integer getHeight() {
+        return height;
     }
 }

@@ -12,8 +12,10 @@ import ds.project.orino.planner.dataset.dto.ReorderColumnsRequest;
 import ds.project.orino.planner.dataset.dto.ResizeColumnRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.MergesResponse;
+import ds.project.orino.planner.dataset.dto.RowHeightsResponse;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
 import ds.project.orino.planner.dataset.dto.SetCellMergeRequest;
+import ds.project.orino.planner.dataset.dto.SetRowHeightRequest;
 import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.SetColumnAlignRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
@@ -249,5 +251,33 @@ public class DatasetController {
             @PathVariable String colKey) {
         return ApiResponse.success(
                 datasetService.unmergeCell(memberId, id, rowIndex, colKey));
+    }
+
+    /** 기본이 아닌 행 높이 전체. 세로 병합은 앵커가 화면 밖이어도 덮인 행 높이를 알아야 해 통째로 준다. */
+    @GetMapping("/{id}/row-heights")
+    public ApiResponse<RowHeightsResponse> rowHeights(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id) {
+        return ApiResponse.success(datasetService.getRowHeights(memberId, id));
+    }
+
+    /** 행 높이 변경(px). 행 단위 표시 속성이라 값·수식은 건드리지 않는다. */
+    @PatchMapping("/{id}/rows/{rowIndex}/height")
+    public ApiResponse<RowHeightsResponse> setRowHeight(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable int rowIndex,
+            @Valid @RequestBody SetRowHeightRequest request) {
+        return ApiResponse.success(
+                datasetService.setRowHeight(memberId, id, rowIndex, request));
+    }
+
+    /** 행 높이 초기화 — 기본 높이로 되돌린다. */
+    @DeleteMapping("/{id}/rows/{rowIndex}/height")
+    public ApiResponse<RowHeightsResponse> resetRowHeight(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable int rowIndex) {
+        return ApiResponse.success(datasetService.resetRowHeight(memberId, id, rowIndex));
     }
 }

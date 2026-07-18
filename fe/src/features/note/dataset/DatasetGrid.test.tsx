@@ -44,6 +44,9 @@ function mockDataset(rows: string[][]) {
     http.get(`${API_BASE}/datasets/1/merges`, () =>
       HttpResponse.json({ code: "OK", data: { merges: [] } }),
     ),
+    http.get(`${API_BASE}/datasets/1/row-heights`, () =>
+      HttpResponse.json({ code: "OK", data: { heights: [] } }),
+    ),
   );
 }
 
@@ -52,6 +55,15 @@ function mockMerges(merges: unknown[]) {
   server.use(
     http.get(`${API_BASE}/datasets/1/merges`, () =>
       HttpResponse.json({ code: "OK", data: { merges } }),
+    ),
+  );
+}
+
+/** 그 dataset의 행 높이 리스트를 목킹한다(GET /row-heights). 기본이 아닌 행만 sparse. */
+function mockRowHeights(heights: unknown[]) {
+  server.use(
+    http.get(`${API_BASE}/datasets/1/row-heights`, () =>
+      HttpResponse.json({ code: "OK", data: { heights } }),
     ),
   );
 }
@@ -335,9 +347,10 @@ describe("DatasetGrid", () => {
       const row = document.querySelector(
         '[data-testid="dataset-grid"] div[style*="translateY(0px)"]',
       );
-      const cells = Array.from(row!.querySelectorAll(":scope > div")).map((c) =>
-        c.textContent?.trim(),
-      );
+      // 셀 div만 — 행 높이 리사이즈 핸들(role=separator)은 제외한다.
+      const cells = Array.from(
+        row!.querySelectorAll(":scope > div:not([role='separator'])"),
+      ).map((c) => c.textContent?.trim());
       expect(cells).toEqual(["재수강", "네트워크", "92"]);
     });
   });
@@ -1477,5 +1490,112 @@ describe("DatasetGrid", () => {
 
     // c0 오른쪽 = atIndex 1.
     await waitFor(() => expect(sent).toEqual({ atIndex: 1 }));
+  });
+
+  it("저장된 행 높이를 반영하고 아래 행은 그만큼 밀린다", async () => {
+    mockDataset([
+      ["네트워크", "92"],
+      ["보안", "80"],
+    ]);
+    mockRowHeights([{ rowIndex: 0, height: 120 }]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    const row0 = document.querySelector(
+      '[data-testid="dataset-grid"] div[style*="translateY(0px)"]',
+    ) as HTMLElement;
+    expect(row0.style.height).toBe("120px");
+    // 0행이 120이라 1행은 120에서 시작(누적), 높이는 기본 36.
+    const row1 = document.querySelector(
+      'div[style*="translateY(120px)"]',
+    ) as HTMLElement;
+    expect(row1).toBeTruthy();
+    expect(row1.style.height).toBe("36px");
+  });
+
+  it("행 하단 핸들을 드래그하면 높이를 PATCH한다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let sent: unknown = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/rows/0/height`,
+        async ({ request }) => {
+          sent = await request.json();
+          return HttpResponse.json({
+            code: "OK",
+            data: { heights: [{ rowIndex: 0, height: 100 }] },
+          });
+        },
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    const handle = screen.getByLabelText("1행 높이 조절");
+    fireEvent.pointerDown(handle, { clientY: 50 });
+    fireEvent.pointerMove(handle, { clientY: 114 }); // +64 → 36+64=100
+    fireEvent.pointerUp(handle, { clientY: 114 });
+
+    await waitFor(() => expect(sent).toEqual({ height: 100 }));
+  });
+
+  it("세로 병합 오버레이는 가변 행 높이의 누적 오프셋으로 그려진다", async () => {
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수" },
+            ],
+            rowCount: 3,
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [
+              {
+                id: 100,
+                rowIndex: 0,
+                cells: ["네트워크", "92"],
+                formulas: {},
+                styles: {},
+              },
+              {
+                id: 101,
+                rowIndex: 1,
+                cells: ["보안", "80"],
+                formulas: {},
+                styles: {},
+              },
+              {
+                id: 102,
+                rowIndex: 2,
+                cells: ["암호", "70"],
+                formulas: {},
+                styles: {},
+              },
+            ],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+    // 0행 높이 100 → 1행 오프셋 = 36 + (100-36) = 100. c0가 1..2행 세로 병합.
+    mockRowHeights([{ rowIndex: 0, height: 100 }]);
+    mockMerges([{ rowIndex: 1, colKey: "c0", rowSpan: 2, colSpan: 1 }]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("보안");
+
+    const box = screen.getByText("보안").closest("div[style]") as HTMLElement;
+    // top = 누적 오프셋(100), height = 1·2행 높이 합(36+36=72).
+    expect(box.style.top).toBe("100px");
+    expect(box.style.height).toBe("72px");
   });
 });

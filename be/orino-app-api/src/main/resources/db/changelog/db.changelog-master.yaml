@@ -83,3 +83,5 @@ databaseChangeLog:
       file: db/changelog/changes/041-create-dataset-cell-style.yaml
   - include:
       file: db/changelog/changes/042-create-dataset-merge.yaml
+  - include:
+      file: db/changelog/changes/043-add-dataset-row-height.yaml
