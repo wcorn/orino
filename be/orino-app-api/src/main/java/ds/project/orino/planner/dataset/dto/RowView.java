@@ -19,12 +19,17 @@ import java.util.Map;
  *
  * <p>{@code styles}엔 서식(배경색·정렬)이 있는 셀만 열 key로 담긴다({@code formulas}와 같은
  * sparse 맵). 서식 없는 셀은 아예 없다.
+ *
+ * <p>{@code merges}엔 병합된 <b>앵커</b> 셀만 열 key로 담긴다({@code styles}와 같은 sparse 맵).
+ * 병합은 표시 오버레이라 {@code cells}는 직사각형 그대로다 — 클라이언트가 앵커를 span으로 넓게
+ * 그리고 덮인 칸을 렌더에서 건너뛴다.
  */
 public record RowView(
         Long id,
         int rowIndex,
         List<String> cells,
         Map<String, String> formulas,
-        Map<String, CellStyle> styles
+        Map<String, CellStyle> styles,
+        Map<String, MergeSpec> merges
 ) {
 }

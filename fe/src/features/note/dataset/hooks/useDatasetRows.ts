@@ -1,7 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 
-import { type CellStyle, fetchDatasetRows } from "../api/datasets";
+import {
+  type CellStyle,
+  fetchDatasetRows,
+  type MergeSpec,
+} from "../api/datasets";
 import { datasetKeys } from "../queryKeys";
 
 /** 가상화 스크롤에 맞춰 페이지 단위로 행을 지연 로드하는 크기. */
@@ -20,6 +24,10 @@ export function useDatasetRows(datasetId: number) {
   );
   // 서식(배경색·정렬)도 값과 따로 캐시한다 — 수식과 같은 방식.
   const [styles, setStyles] = useState<Map<number, Record<string, CellStyle>>>(
+    () => new Map(),
+  );
+  // 병합(앵커 span)도 값과 따로 캐시한다 — 서식과 같은 방식.
+  const [merges, setMerges] = useState<Map<number, Record<string, MergeSpec>>>(
     () => new Map(),
   );
   const loadedPages = useRef<Set<number>>(new Set());
@@ -66,6 +74,13 @@ export function useDatasetRows(datasetId: number) {
               );
               return next;
             });
+            setMerges((prev) => {
+              const next = new Map(prev);
+              pageData.rows.forEach((r) =>
+                next.set(r.rowIndex, r.merges ?? {}),
+              );
+              return next;
+            });
           })
           .catch(() => {})
           .finally(() => inflight.current.delete(page));
@@ -98,6 +113,14 @@ export function useDatasetRows(datasetId: number) {
     [],
   );
 
+  /** 서버가 돌려준 병합으로 갱신. */
+  const setMergesLocal = useCallback(
+    (index: number, next: Record<string, MergeSpec>) => {
+      setMerges((prev) => new Map(prev).set(index, next));
+    },
+    [],
+  );
+
   /**
    * 캐시를 비우고 다시 받아 온다. 행 인덱스가 밀리거나(행 추가·삭제) 열 구성이 바뀌어
    * 캐시된 위치 배열이 더 이상 유효하지 않을 때(열 삭제) 쓴다.
@@ -108,6 +131,7 @@ export function useDatasetRows(datasetId: number) {
     setCache(new Map());
     setFormulas(new Map());
     setStyles(new Map());
+    setMerges(new Map());
     queryClient.removeQueries({ queryKey: ["datasets", datasetId, "rows"] });
     setGeneration((g) => g + 1);
   }, [datasetId, queryClient]);
@@ -121,15 +145,21 @@ export function useDatasetRows(datasetId: number) {
     (index: number) => styles.get(index) ?? {},
     [styles],
   );
+  const getMerges = useCallback(
+    (index: number) => merges.get(index) ?? {},
+    [merges],
+  );
 
   return {
     getRow,
     getFormulas,
     getStyles,
+    getMerges,
     ensureRange,
     setRowLocal,
     setFormulasLocal,
     setStylesLocal,
+    setMergesLocal,
     reset,
   };
 }

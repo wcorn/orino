@@ -14,11 +14,13 @@ import ds.project.orino.planner.dataset.dto.DatasetColumn;
 import ds.project.orino.planner.dataset.dto.DatasetResponse;
 import ds.project.orino.planner.dataset.dto.InsertRowRequest;
 import ds.project.orino.planner.dataset.dto.InsertRowResponse;
+import ds.project.orino.planner.dataset.dto.MergeSpec;
 import ds.project.orino.planner.dataset.dto.RenameColumnRequest;
 import ds.project.orino.planner.dataset.dto.ReorderColumnsRequest;
 import ds.project.orino.planner.dataset.dto.ResizeColumnRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
+import ds.project.orino.planner.dataset.dto.SetCellMergeRequest;
 import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.SetColumnAlignRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
@@ -71,14 +73,17 @@ public class DatasetService {
     private final DatasetRowRepository rowRepository;
     private final DatasetFormulaService formulaService;
     private final DatasetCellStyleService styleService;
+    private final DatasetMergeService mergeService;
 
     public DatasetService(DatasetRepository datasetRepository, DatasetRowRepository rowRepository,
                           DatasetFormulaService formulaService,
-                          DatasetCellStyleService styleService) {
+                          DatasetCellStyleService styleService,
+                          DatasetMergeService mergeService) {
         this.datasetRepository = datasetRepository;
         this.rowRepository = rowRepository;
         this.formulaService = formulaService;
         this.styleService = styleService;
+        this.mergeService = mergeService;
     }
 
     /**
@@ -218,6 +223,8 @@ public class DatasetService {
         formulaService.invalidateColumn(datasetId, key);
         // 그 열의 서식도 담길 셀이 없어졌으니 지운다(col_key는 FK가 아니라 cascade가 없다).
         styleService.invalidateColumn(datasetId, key);
+        // 그 열에 걸친 병합은 영역이 온전할 수 없어 해제한다(삭제 전 열 순서로 덮는 열을 계산해야 한다).
+        mergeService.invalidateColumn(datasetId, key, columns);
         return DatasetResponse.of(dataset, updated);
     }
 
@@ -246,6 +253,8 @@ public class DatasetService {
 
         List<DatasetColumn> updated = request.keys().stream().map(byKey::get).toList();
         dataset.updateColumns(serialize(updated));
+        // 순서가 바뀌면 병합 영역이 불연속이 될 수 있어 그 dataset의 병합을 모두 해제한다(#829 O3, v1 보수적).
+        mergeService.invalidateAllOnReorder(datasetId);
         return DatasetResponse.of(dataset, updated);
     }
 
@@ -397,15 +406,17 @@ public class DatasetService {
         List<DatasetRow> found = rowRepository
                 .findByDatasetIdAndRowIndexGreaterThanEqualAndRowIndexLessThanOrderByRowIndexAsc(
                         datasetId, off, off + lim);
-        // 페이지의 수식·서식을 한 번에 가져온다. 있는 셀만 담기므로 대개 비어 있다.
+        // 페이지의 수식·서식·병합을 한 번에 가져온다. 있는 셀만 담기므로 대개 비어 있다.
         List<Long> rowIds = found.stream().map(DatasetRow::getId).toList();
         Map<Long, Map<String, String>> formulas =
                 formulaService.displayFormulas(datasetId, rowIds, columns);
         Map<Long, Map<String, CellStyle>> styles = styleService.stylesByRow(rowIds);
+        Map<Long, Map<String, MergeSpec>> merges = mergeService.mergesByRow(rowIds);
         List<RowView> rows = found.stream()
                 .map(r -> new RowView(r.getId(), r.getRowIndex(), toCellList(r.getCells(), columns),
                         formulas.getOrDefault(r.getId(), Map.of()),
-                        styles.getOrDefault(r.getId(), Map.of())))
+                        styles.getOrDefault(r.getId(), Map.of()),
+                        merges.getOrDefault(r.getId(), Map.of())))
                 .toList();
         return new RowsResponse(rows, off, lim);
     }
@@ -473,13 +484,43 @@ public class DatasetService {
         return buildRowView(datasetId, row, rowIndex, columns);
     }
 
-    /** 한 행의 현재 상태를 API 형태로 조립한다(값·수식·서식을 함께 싣는다). */
+    /**
+     * 셀 병합. 앵커(rowIndex·colKey) 기준으로 영역을 병합한다. 값·수식과 무관한 표시 오버레이라
+     * cells를 건드리지 않는다 — 덮인 셀의 값은 보존되고 분할하면 되살아난다.
+     */
+    @Transactional
+    public RowView setCellMerge(Long memberId, Long datasetId, int rowIndex, String colKey,
+                                SetCellMergeRequest request) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        DatasetRow row = rowRepository.findByDatasetIdAndRowIndex(datasetId, rowIndex)
+                .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
+
+        mergeService.setMerge(datasetId, row.getId(), colKey,
+                request.rowSpan(), request.colSpan(), columns);
+        return buildRowView(datasetId, row, rowIndex, columns);
+    }
+
+    /** 병합 해제. 덮여 있던 셀 값은 cells에 그대로 있었으므로 그 자리에 되살아난다. */
+    @Transactional
+    public RowView unmergeCell(Long memberId, Long datasetId, int rowIndex, String colKey) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        DatasetRow row = rowRepository.findByDatasetIdAndRowIndex(datasetId, rowIndex)
+                .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
+
+        mergeService.unmerge(row.getId(), colKey);
+        return buildRowView(datasetId, row, rowIndex, columns);
+    }
+
+    /** 한 행의 현재 상태를 API 형태로 조립한다(값·수식·서식·병합을 함께 싣는다). */
     private RowView buildRowView(Long datasetId, DatasetRow row, int rowIndex,
                                  List<DatasetColumn> columns) {
         List<Long> ids = List.of(row.getId());
         return new RowView(row.getId(), rowIndex, toCellList(row.getCells(), columns),
                 formulaService.displayFormulas(datasetId, ids, columns).getOrDefault(row.getId(), Map.of()),
-                styleService.stylesByRow(ids).getOrDefault(row.getId(), Map.of()));
+                styleService.stylesByRow(ids).getOrDefault(row.getId(), Map.of()),
+                mergeService.mergesByRow(ids).getOrDefault(row.getId(), Map.of()));
     }
 
     @Transactional

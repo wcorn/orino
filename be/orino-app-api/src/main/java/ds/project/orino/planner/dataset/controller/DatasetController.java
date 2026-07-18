@@ -12,6 +12,7 @@ import ds.project.orino.planner.dataset.dto.ReorderColumnsRequest;
 import ds.project.orino.planner.dataset.dto.ResizeColumnRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
+import ds.project.orino.planner.dataset.dto.SetCellMergeRequest;
 import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.SetColumnAlignRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
@@ -213,5 +214,31 @@ public class DatasetController {
             @Valid @RequestBody SetCellStyleRequest request) {
         return ApiResponse.success(
                 datasetService.setCellStyle(memberId, id, rowIndex, colKey, request));
+    }
+
+    /**
+     * 셀 병합. 앵커(rowIndex·colKey) 기준으로 {@code rowSpan × colSpan} 영역을 병합한다.
+     * 표시 오버레이라 cells를 건드리지 않는다(덮인 셀 값 보존). 슬라이스 1은 가로 병합만.
+     */
+    @PutMapping("/{id}/rows/{rowIndex}/cells/{colKey}/merge")
+    public ApiResponse<RowView> setCellMerge(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable int rowIndex,
+            @PathVariable String colKey,
+            @Valid @RequestBody SetCellMergeRequest request) {
+        return ApiResponse.success(
+                datasetService.setCellMerge(memberId, id, rowIndex, colKey, request));
+    }
+
+    /** 병합 해제. 덮여 있던 셀 값은 그 자리에 되살아난다. */
+    @DeleteMapping("/{id}/rows/{rowIndex}/cells/{colKey}/merge")
+    public ApiResponse<RowView> unmergeCell(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable int rowIndex,
+            @PathVariable String colKey) {
+        return ApiResponse.success(
+                datasetService.unmergeCell(memberId, id, rowIndex, colKey));
     }
 }

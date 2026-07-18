@@ -5,6 +5,7 @@ import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.domain.planner.dataset.entity.DatasetFormula;
 import ds.project.orino.domain.planner.dataset.repository.DatasetCellStyleRepository;
 import ds.project.orino.domain.planner.dataset.repository.DatasetFormulaRepository;
+import ds.project.orino.domain.planner.dataset.repository.DatasetMergeRepository;
 import ds.project.orino.domain.planner.dataset.repository.DatasetRowRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
@@ -36,6 +37,8 @@ class DatasetControllerTest extends ApiTestSupport {
     private DatasetFormulaRepository datasetFormulaRepository;
     @Autowired
     private DatasetCellStyleRepository datasetCellStyleRepository;
+    @Autowired
+    private DatasetMergeRepository datasetMergeRepository;
     @Autowired
     private DbCleaner dbCleaner;
 
@@ -1481,6 +1484,222 @@ class DatasetControllerTest extends ApiTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, otherToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"bg\":\"green\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    // ---------- 셀 병합(가로) ----------
+
+    /** 3열 dataset(c0/c1/c2)을 만들고 id를 반환한다 — colspan 검증엔 열이 3개 필요하다. */
+    private long createDataset3() throws Exception {
+        String body = mockMvc.perform(post("/api/datasets")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"columns":[
+                                  {"key":"c0","label":"과목"},
+                                  {"key":"c1","label":"점수"},
+                                  {"key":"c2","label":"비고"}
+                                ]}
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) JsonPath.read(body, "$.data.id")).longValue();
+    }
+
+    /** 앵커 셀을 병합하고 응답을 돌려준다. */
+    private String merge(long id, int rowIndex, String colKey, int rowSpan, int colSpan)
+            throws Exception {
+        return mockMvc.perform(put("/api/datasets/{id}/rows/{r}/cells/{c}/merge", id, rowIndex, colKey)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rowSpan\":" + rowSpan + ",\"colSpan\":" + colSpan + "}"))
+                .andReturn().getResponse().getContentAsString();
+    }
+
+    @Test
+    @DisplayName("PUT cells/{col}/merge - 병합을 저장하고 행 조회 시 merges로 온다")
+    void set_cell_merge() throws Exception {
+        long id = createDataset3();
+        bulk(id, "[[\"네트워크\",\"92\",\"재수강\"]]");
+
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c0/merge", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rowSpan\":1,\"colSpan\":2}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.merges.c0.rowSpan").value(1))
+                .andExpect(jsonPath("$.data.merges.c0.colSpan").value(2));
+
+        // 페이지 조회에도 merges가 실려 온다. 병합 없는 앵커는 담기지 않는다.
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows[0].merges.c0.colSpan").value(2))
+                .andExpect(jsonPath("$.data.rows[0].merges.c1").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("병합해도 덮인 셀의 값은 cells에 보존된다(오버레이)")
+    void merge_preserves_covered_values() throws Exception {
+        long id = createDataset3();
+        bulk(id, "[[\"네트워크\",\"92\",\"재수강\"]]");
+
+        merge(id, 0, "c0", 1, 2); // c0가 c0..c1을 덮는다
+
+        // 값은 직사각형 그대로 — 덮인 c1(92)도 남아 있다.
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows[0].cells[0]").value("네트워크"))
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value("92"))
+                .andExpect(jsonPath("$.data.rows[0].cells[2]").value("재수강"));
+    }
+
+    @Test
+    @DisplayName("DELETE merge - 분할하면 merges가 사라진다(값은 원래대로)")
+    void unmerge_cell() throws Exception {
+        long id = createDataset3();
+        bulk(id, "[[\"네트워크\",\"92\",\"재수강\"]]");
+        merge(id, 0, "c0", 1, 2);
+
+        mockMvc.perform(delete("/api/datasets/{id}/rows/0/cells/c0/merge", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.merges.c0").doesNotExist());
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows[0].merges.c0").doesNotExist())
+                .andExpect(jsonPath("$.data.rows[0].cells[1]").value("92"));
+    }
+
+    @Test
+    @DisplayName("병합 - 오른쪽 경계를 넘으면 400")
+    void merge_out_of_bounds() throws Exception {
+        long id = createDataset3(); // c0/c1/c2
+        bulk(id, "[[\"a\",\"b\",\"c\"]]");
+
+        // c1에서 colSpan=3이면 c1..c3인데 c3가 없다.
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c1/merge", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rowSpan\":1,\"colSpan\":3}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("병합 - colSpan 1은 병합이 아니라 400, 세로 병합(rowSpan>1)도 400")
+    void merge_rejects_noop_and_vertical() throws Exception {
+        long id = createDataset3();
+        bulk(id, "[[\"a\",\"b\",\"c\"]]");
+
+        // colSpan=1, rowSpan=1 → 병합할 범위 없음
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c0/merge", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rowSpan\":1,\"colSpan\":1}"))
+                .andExpect(status().isBadRequest());
+        // 세로 병합은 슬라이스 1 미지원
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c0/merge", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rowSpan\":2,\"colSpan\":1}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("병합 - 다른 병합과 겹치면 400")
+    void merge_overlap_rejected() throws Exception {
+        long id = createDataset3();
+        bulk(id, "[[\"a\",\"b\",\"c\"]]");
+        merge(id, 0, "c0", 1, 2); // c0..c1
+
+        // c1에서 병합 시도 → c0의 영역과 겹친다.
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c1/merge", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rowSpan\":1,\"colSpan\":2}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("병합 - 없는 열은 404")
+    void merge_column_not_found() throws Exception {
+        long id = createDataset3();
+        bulk(id, "[[\"a\",\"b\",\"c\"]]");
+
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c99/merge", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rowSpan\":1,\"colSpan\":2}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("병합에 걸친 열을 삭제하면 병합이 해제된다")
+    void delete_column_dissolves_merge() throws Exception {
+        long id = createDataset3();
+        bulk(id, "[[\"a\",\"b\",\"c\"]]");
+        merge(id, 0, "c0", 1, 2); // c0가 c0..c1을 덮는다
+
+        // 덮인 열 c1을 삭제 → 병합 해제.
+        mockMvc.perform(delete("/api/datasets/{id}/columns/{key}", id, "c1")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows[0].merges.c0").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("열 순서를 바꾸면 병합이 해제된다(v1 보수적 처리)")
+    void reorder_dissolves_merge() throws Exception {
+        long id = createDataset3();
+        bulk(id, "[[\"a\",\"b\",\"c\"]]");
+        merge(id, 0, "c0", 1, 2);
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/order", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"keys\":[\"c2\",\"c1\",\"c0\"]}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows[0].merges.c0").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("앵커 행을 삭제하면 병합도 cascade로 사라진다")
+    void delete_row_cascades_merge() throws Exception {
+        long id = createDataset3();
+        bulk(id, "[[\"a\",\"b\",\"c\"],[\"d\",\"e\",\"f\"]]");
+        merge(id, 0, "c0", 1, 2);
+
+        mockMvc.perform(delete("/api/datasets/{id}/rows/0", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isNoContent());
+
+        org.assertj.core.api.Assertions
+                .assertThat(datasetMergeRepository.findByDatasetId(id))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("남의 데이터셋 셀은 못 병합한다")
+    void merge_of_other_member() throws Exception {
+        long id = createDataset3();
+        bulk(id, "[[\"a\",\"b\",\"c\"]]");
+        String otherToken = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc, "other", "password");
+
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c0/merge", id)
+                        .header(HttpHeaders.AUTHORIZATION, otherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rowSpan\":1,\"colSpan\":2}"))
                 .andExpect(status().isNotFound());
     }
 }

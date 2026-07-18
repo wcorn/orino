@@ -81,3 +81,5 @@ databaseChangeLog:
       file: db/changelog/changes/040-create-dataset-formula.yaml
   - include:
       file: db/changelog/changes/041-create-dataset-cell-style.yaml
+  - include:
+      file: db/changelog/changes/042-create-dataset-merge.yaml
