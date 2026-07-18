@@ -5,7 +5,12 @@ export interface DatasetColumn {
   label: string;
   /** 표시 너비(px). 없으면 기본 폭(균등 분배). */
   width?: number;
+  /** 열 기본 정렬. 없으면 기본 정렬(left). 셀 정렬(CellStyle.align)이 있으면 그쪽이 덮는다. */
+  align?: CellAlign;
 }
+
+/** 셀·열 정렬 값. 서버의 ALLOWED_ALIGN과 같아야 한다. */
+export type CellAlign = "left" | "center" | "right";
 
 /** 열 너비 하한(px). 서버의 DatasetColumn.MIN_WIDTH와 같아야 한다. */
 export const MIN_COLUMN_WIDTH = 60;
@@ -26,7 +31,7 @@ export type CellBgToken = (typeof CELL_BG_TOKENS)[number];
 /** 셀 서식(배경색·정렬). 지정 안 한 축은 없다(sparse). */
 export interface CellStyle {
   bg?: CellBgToken;
-  align?: "left" | "center" | "right";
+  align?: CellAlign;
 }
 
 export interface DatasetMeta {
@@ -145,6 +150,19 @@ export async function resetDatasetColumnWidth(
 ): Promise<DatasetMeta> {
   const { data } = await client.delete<ApiEnvelope<DatasetMeta>>(
     `/datasets/${datasetId}/columns/${key}/width`,
+  );
+  return data.data;
+}
+
+/** 열 기본 정렬 변경. 열 단위 표시 속성이라 행은 안 건드린다(셀 정렬이 있으면 그쪽이 덮는다). */
+export async function setDatasetColumnAlign(
+  datasetId: number,
+  key: string,
+  align: CellAlign,
+): Promise<DatasetMeta> {
+  const { data } = await client.patch<ApiEnvelope<DatasetMeta>>(
+    `/datasets/${datasetId}/columns/${key}/align`,
+    { align },
   );
   return data.data;
 }

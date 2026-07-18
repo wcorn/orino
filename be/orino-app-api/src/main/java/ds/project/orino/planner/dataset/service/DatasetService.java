@@ -20,6 +20,7 @@ import ds.project.orino.planner.dataset.dto.ResizeColumnRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
 import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
+import ds.project.orino.planner.dataset.dto.SetColumnAlignRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -300,6 +301,39 @@ public class DatasetService {
 
         List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
         updated.set(at, columns.get(at).withWidth(width));
+        dataset.updateColumns(serialize(updated));
+        return DatasetResponse.of(dataset, updated);
+    }
+
+    /**
+     * 열 기본 정렬 변경. columns_json의 해당 열만 고치고 행은 건드리지 않아 O(1)이다.
+     * 정렬은 열 단위 표시 속성이라 셀 값·수식과 무관하다(셀 단위 정렬이 있으면 그쪽이 덮는다, #828 D2).
+     */
+    @Transactional
+    public DatasetResponse setColumnAlign(Long memberId, Long datasetId, String key,
+                                          SetColumnAlignRequest request) {
+        return updateAlign(memberId, datasetId, key, request.align());
+    }
+
+    /**
+     * 열 기본 정렬을 지워 기본 정렬(left)로 되돌린다. 정렬 미설정(null)이 곧 기본이므로
+     * "되돌리기"는 별도 상태가 아니라 값의 부재로 표현된다(너비와 같은 규칙).
+     */
+    @Transactional
+    public DatasetResponse resetColumnAlign(Long memberId, Long datasetId, String key) {
+        return updateAlign(memberId, datasetId, key, null);
+    }
+
+    private DatasetResponse updateAlign(Long memberId, Long datasetId, String key, String align) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        int at = indexOfColumn(columns, key);
+        if (at < 0) {
+            throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+
+        List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
+        updated.set(at, columns.get(at).withAlign(align));
         dataset.updateColumns(serialize(updated));
         return DatasetResponse.of(dataset, updated);
     }

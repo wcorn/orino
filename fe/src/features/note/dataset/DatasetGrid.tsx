@@ -6,7 +6,16 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { FunctionSquare, Palette, Plus, Trash2, X } from "lucide-react";
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  FunctionSquare,
+  Palette,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -19,6 +28,7 @@ import { toast } from "@/shared/lib/toast";
 import {
   addDatasetColumn,
   CELL_BG_TOKENS,
+  type CellAlign,
   type CellBgToken,
   type CellStyle,
   type DatasetMeta,
@@ -32,6 +42,7 @@ import {
   resetDatasetColumnWidth,
   resizeDatasetColumn,
   setCellStyle,
+  setDatasetColumnAlign,
   updateDatasetRow,
 } from "./api/datasets";
 import { useDatasetMeta } from "./hooks/useDatasetMeta";
@@ -164,6 +175,14 @@ export function DatasetGrid({ datasetId }: Props) {
   });
   const resetColWidthMut = useMutation({
     mutationFn: (key: string) => resetDatasetColumnWidth(datasetId, key),
+    onSuccess: (next: DatasetMeta) =>
+      queryClient.setQueryData(datasetKeys.meta(datasetId), next),
+    onError: () => void invalidateMeta(),
+  });
+  const setColAlignMut = useMutation({
+    mutationFn: (v: { key: string; align: CellAlign }) =>
+      setDatasetColumnAlign(datasetId, v.key, v.align),
+    // 정렬은 열 단위 속성이라 행 캐시를 버릴 이유가 없다(너비와 같다 — 값이 안 밀린다).
     onSuccess: (next: DatasetMeta) =>
       queryClient.setQueryData(datasetKeys.meta(datasetId), next),
     onError: () => void invalidateMeta(),
@@ -309,6 +328,28 @@ export function DatasetGrid({ datasetId }: Props) {
     setPalette(null);
   };
 
+  /**
+   * 셀 정렬을 바꾼다(열 기본을 덮는 셀 단위 override). 배경색은 보존한다.
+   * null이면 셀 정렬을 지워 열 기본 정렬을 따르게 한다.
+   */
+  const applyAlign = (row: number, col: number, align: CellAlign | null) => {
+    const colKey = meta.columns[col].key;
+    const current = getStyles(row)[colKey];
+    styleMut.mutate({
+      row,
+      colKey,
+      style: { bg: current?.bg, align: align ?? undefined },
+    });
+    setPalette(null);
+  };
+
+  /** 열 기본 정렬을 다음 값으로 돌린다(좌→가운데→우→좌). 기본(미설정)은 좌로 본다. */
+  const cycleColumnAlign = (key: string, current: CellAlign | undefined) => {
+    const next: CellAlign =
+      current === "center" ? "right" : current === "right" ? "left" : "center";
+    setColAlignMut.mutate({ key, align: next });
+  };
+
   const addRow = () =>
     insertMut.mutate(Array.from({ length: colCount }, () => ""));
 
@@ -412,6 +453,30 @@ export function DatasetGrid({ datasetId }: Props) {
                       header.getContext(),
                     )}
                   </div>
+                  {/* 열 기본 정렬 — 클릭하면 좌→가운데→우로 순환한다. 아이콘이 현재 정렬을 보여준다. */}
+                  {(() => {
+                    const align =
+                      meta.columns.find((c) => c.key === header.id)?.align ??
+                      "left";
+                    const Icon = ALIGN_ICONS[align];
+                    return (
+                      <button
+                        type="button"
+                        aria-label={`${columnLabel(header.id)} 열 정렬 (현재 ${ALIGN_LABELS[align]})`}
+                        title="클릭해 열 정렬 변경 (좌·가운데·우)"
+                        onClick={() =>
+                          cycleColumnAlign(
+                            header.id,
+                            meta.columns.find((c) => c.key === header.id)
+                              ?.align,
+                          )
+                        }
+                        className="text-muted-foreground hover:text-foreground mr-1 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                      >
+                        <Icon className="size-3.5" />
+                      </button>
+                    );
+                  })()}
                   {/* 마지막 한 열은 서버가 거부하므로 버튼도 내보내지 않는다. */}
                   {colCount > 1 && (
                     <button
@@ -483,6 +548,8 @@ export function DatasetGrid({ datasetId }: Props) {
                   const colKey = meta.columns[c].key;
                   const formula = getFormulas(vi.index)[colKey];
                   const style = getStyles(vi.index)[colKey];
+                  // 셀 정렬(override) > 열 기본 정렬 > 기본(left) (#828 D2).
+                  const align = style?.align ?? meta.columns[c].align ?? "left";
                   const paletteOpen =
                     palette?.row === vi.index && palette.col === c;
                   return (
@@ -515,32 +582,68 @@ export function DatasetGrid({ datasetId }: Props) {
                       {paletteOpen && (
                         <div
                           role="menu"
-                          className="border-border bg-popover absolute top-5 right-0 z-20 flex gap-1 rounded-md border p-1 shadow-md"
+                          className="border-border bg-popover absolute top-5 right-0 z-20 flex flex-col gap-1 rounded-md border p-1 shadow-md"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          {CELL_BG_TOKENS.map((token) => (
+                          {/* 배경색 — 6색 스와치 + 지우기 */}
+                          <div className="flex gap-1">
+                            {CELL_BG_TOKENS.map((token) => (
+                              <button
+                                key={token}
+                                type="button"
+                                aria-label={`배경색 ${token}`}
+                                onClick={() => applyBg(vi.index, c, token)}
+                                className={cn(
+                                  "size-4 rounded-full border",
+                                  style?.bg === token
+                                    ? "border-foreground"
+                                    : "border-border",
+                                )}
+                                style={{
+                                  background: `var(--cell-bg-${token})`,
+                                }}
+                              />
+                            ))}
                             <button
-                              key={token}
                               type="button"
-                              aria-label={`배경색 ${token}`}
-                              onClick={() => applyBg(vi.index, c, token)}
-                              className={cn(
-                                "size-4 rounded-full border",
-                                style?.bg === token
-                                  ? "border-foreground"
-                                  : "border-border",
-                              )}
-                              style={{ background: `var(--cell-bg-${token})` }}
-                            />
-                          ))}
-                          <button
-                            type="button"
-                            aria-label="배경색 지우기"
-                            onClick={() => applyBg(vi.index, c, null)}
-                            className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded-full border"
-                          >
-                            <X className="size-2.5" />
-                          </button>
+                              aria-label="배경색 지우기"
+                              onClick={() => applyBg(vi.index, c, null)}
+                              className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded-full border"
+                            >
+                              <X className="size-2.5" />
+                            </button>
+                          </div>
+                          {/* 정렬 — 셀 단위 override(열 기본을 덮는다) + 열 기본 따르기 */}
+                          <div className="flex gap-1">
+                            {ALIGN_ORDER.map((value) => {
+                              const Icon = ALIGN_ICONS[value];
+                              return (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  aria-label={`정렬 ${ALIGN_LABELS[value]}`}
+                                  onClick={() => applyAlign(vi.index, c, value)}
+                                  className={cn(
+                                    "hover:bg-accent flex size-4 items-center justify-center rounded border",
+                                    style?.align === value
+                                      ? "border-foreground text-foreground"
+                                      : "border-border text-muted-foreground",
+                                  )}
+                                >
+                                  <Icon className="size-2.5" />
+                                </button>
+                              );
+                            })}
+                            <button
+                              type="button"
+                              aria-label="셀 정렬 지우기 (열 기본 따르기)"
+                              title="열 기본 정렬을 따른다"
+                              onClick={() => applyAlign(vi.index, c, null)}
+                              className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded border"
+                            >
+                              <X className="size-2.5" />
+                            </button>
+                          </div>
                         </div>
                       )}
                       {isEditing ? (
@@ -554,12 +657,16 @@ export function DatasetGrid({ datasetId }: Props) {
                             if (e.key === "Escape") setEditing(null);
                           }}
                           aria-label={`셀 ${vi.index + 1}행 ${c + 1}열`}
-                          className="focus-visible:ring-ring h-full w-full bg-transparent px-2 py-1 outline-none focus-visible:ring-1"
+                          className={cn(
+                            "focus-visible:ring-ring h-full w-full bg-transparent px-2 py-1 outline-none focus-visible:ring-1",
+                            ALIGN_CLASS[align],
+                          )}
                         />
                       ) : (
                         <div
                           className={cn(
                             "h-full cursor-text truncate px-2 py-1.5",
+                            ALIGN_CLASS[align],
                             cells === undefined && "text-muted-foreground/40",
                             isCellError(cells?.[c]) && "text-destructive",
                             formula !== undefined &&
@@ -637,6 +744,26 @@ export function DatasetGrid({ datasetId }: Props) {
 }
 
 const EMPTY: string[][] = [];
+
+/** 정렬 값 → 아이콘. 열/셀 정렬 버튼과 렌더에 공용. */
+const ALIGN_ICONS = {
+  left: AlignLeft,
+  center: AlignCenter,
+  right: AlignRight,
+} as const;
+const ALIGN_LABELS: Record<CellAlign, string> = {
+  left: "왼쪽",
+  center: "가운데",
+  right: "오른쪽",
+};
+/** 정렬 값 → Tailwind text-align 클래스. 인라인 style 대신 클래스로 둔다. */
+const ALIGN_CLASS: Record<CellAlign, string> = {
+  left: "text-left",
+  center: "text-center",
+  right: "text-right",
+};
+/** 정렬 버튼 순서. */
+const ALIGN_ORDER: CellAlign[] = ["left", "center", "right"];
 
 /** 서버가 알려주는 실패 사유(수식 문법 오류·순환 참조 등). 없으면 조용히 넘어간다. */
 function serverMessage(e: unknown): string | null {

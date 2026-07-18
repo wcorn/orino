@@ -1138,6 +1138,174 @@ class DatasetControllerTest extends ApiTestSupport {
                 .andExpect(status().isNotFound());
     }
 
+    // ---------- 열 기본 정렬(align) ----------
+
+    /** 열 기본 정렬을 바꾸고 응답 본문을 돌려준다. */
+    private String setColumnAlign(long id, String key, String align) throws Exception {
+        return mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/align", id, key)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"align\":\"" + align + "\"}"))
+                .andReturn().getResponse().getContentAsString();
+    }
+
+    @Test
+    @DisplayName("PATCH columns/{key}/align - 정렬을 저장하고 조회 시 유지된다")
+    void set_column_align() throws Exception {
+        long id = createDataset();
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/align", id, "c1")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"align\":\"right\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns[1].align").value("right"));
+
+        // 지정하지 않은 열은 align이 없다(기본 정렬 left).
+        mockMvc.perform(get("/api/datasets/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns[1].align").value("right"))
+                .andExpect(jsonPath("$.data.columns[0].align").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("PATCH columns/{key}/align - 허용되지 않은 정렬은 거부한다")
+    void set_column_align_invalid() throws Exception {
+        long id = createDataset();
+
+        for (String bad : new String[]{"top", "justify", "LEFT", ""}) {
+            mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/align", id, "c0")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"align\":\"" + bad + "\"}"))
+                    .andExpect(status().isBadRequest());
+        }
+        // 허용값은 통과해야 한다.
+        for (String ok : new String[]{"left", "center", "right"}) {
+            mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/align", id, "c0")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"align\":\"" + ok + "\"}"))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    @DisplayName("PATCH columns/{key}/align - align 누락은 거부한다")
+    void set_column_align_requires_align() throws Exception {
+        long id = createDataset();
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/align", id, "c0")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("PATCH columns/{key}/align - 없는 열은 404")
+    void set_column_align_not_found() throws Exception {
+        long id = createDataset();
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/align", id, "c99")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"align\":\"center\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("DELETE columns/{key}/align - 정렬을 지우면 기본 정렬로 돌아간다")
+    void reset_column_align() throws Exception {
+        long id = createDataset();
+        setColumnAlign(id, "c0", "center");
+
+        mockMvc.perform(delete("/api/datasets/{id}/columns/{key}/align", id, "c0")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns[0].align").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("이름·너비를 바꿔도 열 정렬은 유지된다")
+    void rename_and_resize_preserve_align() throws Exception {
+        long id = createDataset();
+        setColumnAlign(id, "c0", "center");
+
+        // rename은 align 보존
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}", id, "c0")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"바뀐이름\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns[0].align").value("center"));
+
+        // width 변경도 align 보존
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/width", id, "c0")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"width\":300}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns[0].align").value("center"))
+                .andExpect(jsonPath("$.data.columns[0].width").value(300));
+    }
+
+    @Test
+    @DisplayName("순서를 바꿔도 정렬은 열을 따라간다")
+    void reorder_carries_align() throws Exception {
+        long id = createDataset();
+        setColumnAlign(id, "c0", "right");
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/order", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"keys\":[\"c1\",\"c0\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.columns[0].key").value("c1"))
+                .andExpect(jsonPath("$.data.columns[0].align").doesNotExist())
+                .andExpect(jsonPath("$.data.columns[1].key").value("c0"))
+                .andExpect(jsonPath("$.data.columns[1].align").value("right"));
+    }
+
+    @Test
+    @DisplayName("생성 - 허용되지 않은 align을 넣으면 거부한다 (검증을 생성으로 우회 못 함)")
+    void create_rejects_invalid_align() throws Exception {
+        mockMvc.perform(post("/api/datasets")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"columns":[{"key":"c0","label":"과목","align":"top"}]}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("생성 - align을 함께 주면 저장된다")
+    void create_with_align() throws Exception {
+        mockMvc.perform(post("/api/datasets")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"columns":[{"key":"c0","label":"과목","align":"center"}]}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.columns[0].align").value("center"));
+    }
+
+    @Test
+    @DisplayName("남의 데이터셋 열 정렬은 못 바꾼다")
+    void set_column_align_of_other_member() throws Exception {
+        long id = createDataset();
+        String otherToken = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc, "other", "password");
+
+        mockMvc.perform(patch("/api/datasets/{id}/columns/{key}/align", id, "c0")
+                        .header(HttpHeaders.AUTHORIZATION, otherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"align\":\"center\"}"))
+                .andExpect(status().isNotFound());
+    }
+
     // ---------- 셀 서식(배경색·정렬) ----------
 
     /** 셀 서식을 지정하고 응답을 돌려준다. */

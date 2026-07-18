@@ -1048,4 +1048,144 @@ describe("DatasetGrid", () => {
 
     await waitFor(() => expect(sent).toEqual({ bg: null, align: null }));
   });
+
+  it("열 정렬 버튼을 누르면 PATCH하고 셀 정렬이 바뀐다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let sent: unknown = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/columns/c1/align`,
+        async ({ request }) => {
+          sent = await request.json();
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              id: 1,
+              columns: [
+                { key: "c0", label: "과목" },
+                { key: "c1", label: "점수", align: "center" },
+              ],
+              rowCount: 1,
+            },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("92");
+
+    // 기본은 왼쪽 → 클릭하면 가운데.
+    await user.click(screen.getByLabelText("점수 열 정렬 (현재 왼쪽)"));
+
+    await waitFor(() => expect(sent).toEqual({ align: "center" }));
+    // 열 기본 정렬이 그 열 셀에 반영된다.
+    await waitFor(() =>
+      expect(screen.getByText("92").className).toContain("text-center"),
+    );
+    // 다른 열은 그대로 기본(left).
+    expect(screen.getByText("네트워크").className).toContain("text-left");
+  });
+
+  it("셀 정렬(override)이 열 기본 정렬을 덮는다", async () => {
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수", align: "right" },
+            ],
+            rowCount: 2,
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [
+              {
+                id: 100,
+                rowIndex: 0,
+                cells: ["네트워크", "92"],
+                formulas: {},
+                // 셀 override — 열 기본(right)을 덮는다.
+                styles: { c1: { align: "left" } },
+              },
+              {
+                id: 101,
+                rowIndex: 1,
+                cells: ["보안", "80"],
+                formulas: {},
+                styles: {},
+              },
+            ],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("80");
+
+    // override 있는 셀은 left, 없는 셀은 열 기본 right.
+    expect(screen.getByText("92").className).toContain("text-left");
+    expect(screen.getByText("80").className).toContain("text-right");
+    // 정렬을 안 준 열은 기본 left.
+    expect(screen.getByText("네트워크").className).toContain("text-left");
+  });
+
+  it("셀 팔레트에서 정렬을 고르면 배경색을 보존해 PUT한다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let sent: unknown = null;
+    server.use(
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [
+              {
+                id: 100,
+                rowIndex: 0,
+                cells: ["네트워크", "92"],
+                formulas: {},
+                styles: { c0: { bg: "green" } },
+              },
+            ],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+      http.put(
+        `${API_BASE}/datasets/1/rows/0/cells/c0/style`,
+        async ({ request }) => {
+          sent = await request.json();
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              id: 100,
+              rowIndex: 0,
+              cells: ["네트워크", "92"],
+              formulas: {},
+              styles: { c0: { bg: "green", align: "center" } },
+            },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    await user.click(screen.getByLabelText("1행 1열 배경색"));
+    await user.click(screen.getByLabelText("정렬 가운데"));
+
+    // 배경색은 그대로 두고 정렬만 얹어 통째로 보낸다.
+    await waitFor(() => expect(sent).toEqual({ bg: "green", align: "center" }));
+  });
 });
