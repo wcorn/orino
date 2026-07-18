@@ -17,6 +17,19 @@ export const MIN_COLUMN_WIDTH = 60;
 /** 열 너비 상한(px). 서버의 DatasetColumn.MAX_WIDTH와 같아야 한다. */
 export const MAX_COLUMN_WIDTH = 800;
 
+/** 행 높이 하한·상한(px). 서버의 SetRowHeightRequest.MIN/MAX_HEIGHT와 같아야 한다. */
+export const MIN_ROW_HEIGHT = 24;
+export const MAX_ROW_HEIGHT = 600;
+
+/**
+ * 기본이 아닌 행 높이 하나(행 번호 → px). 병합처럼 dataset 단위로 통째 받는다 —
+ * 세로 병합 오버레이가 앵커 밖 행의 누적 높이를 알아야 한다.
+ */
+export interface RowHeight {
+  rowIndex: number;
+  height: number;
+}
+
 /** 셀 배경 팔레트 토큰. 서버의 CellStyle.ALLOWED_BG·index.css의 --cell-bg-*와 같아야 한다. */
 export const CELL_BG_TOKENS = [
   "red",
@@ -292,6 +305,38 @@ export async function deleteCellMerge(
     `/datasets/${datasetId}/rows/${rowIndex}/cells/${colKey}/merge`,
   );
   return data.data.merges;
+}
+
+/** 그 dataset의 기본이 아닌 행 높이 전체. 세로 병합 오버레이의 누적 높이 계산에 필요해 통째로 받는다. */
+export async function fetchRowHeights(datasetId: number): Promise<RowHeight[]> {
+  const { data } = await client.get<ApiEnvelope<{ heights: RowHeight[] }>>(
+    `/datasets/${datasetId}/row-heights`,
+  );
+  return data.data.heights;
+}
+
+/** 행 높이 변경(px). 갱신된 높이 전체를 돌려준다. */
+export async function setRowHeight(
+  datasetId: number,
+  rowIndex: number,
+  height: number,
+): Promise<RowHeight[]> {
+  const { data } = await client.patch<ApiEnvelope<{ heights: RowHeight[] }>>(
+    `/datasets/${datasetId}/rows/${rowIndex}/height`,
+    { height },
+  );
+  return data.data.heights;
+}
+
+/** 행 높이 초기화 — 기본 높이로 되돌린다. 갱신된 높이 전체를 돌려준다. */
+export async function deleteRowHeight(
+  datasetId: number,
+  rowIndex: number,
+): Promise<RowHeight[]> {
+  const { data } = await client.delete<ApiEnvelope<{ heights: RowHeight[] }>>(
+    `/datasets/${datasetId}/rows/${rowIndex}/height`,
+  );
+  return data.data.heights;
 }
 
 export async function insertDatasetRow(
