@@ -95,6 +95,37 @@ describe("DatasetGrid", () => {
     expect(screen.getByText("78")).toBeInTheDocument();
   });
 
+  it("하단 핸들을 드래그하면 표 높이가 바뀌고 localStorage에 유지된다", async () => {
+    localStorage.clear();
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    const scroll = document.querySelector(".overflow-auto") as HTMLElement;
+    // 기본 높이 420px.
+    expect(scroll.style.maxHeight).toBe("420px");
+
+    const handle = screen.getByLabelText("표 높이 조절");
+    fireEvent.pointerDown(handle, { clientY: 100 });
+    fireEvent.pointerMove(handle, { clientY: 200 }); // +100px
+    fireEvent.pointerUp(handle, { clientY: 200 });
+
+    // 높이가 늘고, localStorage에 datasetId별로 저장된다.
+    expect(scroll.style.maxHeight).toBe("520px");
+    expect(localStorage.getItem("orino:dataset-grid-height:1")).toBe("520");
+  });
+
+  it("저장된 표 높이를 새로고침에 복원한다", async () => {
+    localStorage.setItem("orino:dataset-grid-height:1", "600");
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    const scroll = document.querySelector(".overflow-auto") as HTMLElement;
+    expect(scroll.style.maxHeight).toBe("600px");
+    localStorage.clear();
+  });
+
   it("셀을 클릭해 편집하면 PATCH로 저장한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let patched: { index: number; cells: string[] } | null = null;

@@ -11,6 +11,7 @@ import {
   AlignLeft,
   AlignRight,
   FunctionSquare,
+  GripHorizontal,
   Palette,
   Plus,
   TableCellsMerge,
@@ -57,7 +58,10 @@ import { useDatasetRows } from "./hooks/useDatasetRows";
 import { datasetKeys } from "./queryKeys";
 
 const ROW_HEIGHT = 36;
-const MAX_BODY_HEIGHT = 420;
+/** 표 뷰 높이(px) — 기본·하한·상한. 사용자가 하단 핸들로 이 범위에서 조절한다. */
+const DEFAULT_BODY_HEIGHT = 420;
+const MIN_BODY_HEIGHT = 120;
+const MAX_BODY_HEIGHT = 1200;
 
 interface Props {
   datasetId: number;
@@ -102,6 +106,13 @@ export function DatasetGrid({ datasetId }: Props) {
   const [palette, setPalette] = useState<{ row: number; col: number } | null>(
     null,
   );
+  // 표 뷰 높이(px). 하단 핸들로 조절하고 localStorage에 datasetId별로 유지한다.
+  const [bodyHeight, setBodyHeight] = useState(() => readBodyHeight(datasetId));
+  // 뷰 높이 리사이즈 중 시작점. 드래그하는 동안만 값이 있다.
+  const [viewResize, setViewResize] = useState<{
+    startY: number;
+    startHeight: number;
+  } | null>(null);
 
   const colCount = meta?.columns.length ?? 0;
   const rowCount = meta?.rowCount ?? 0;
@@ -337,6 +348,29 @@ export function DatasetGrid({ datasetId }: Props) {
     // 폭이 그대로면 저장하지 않는다 — 핸들을 그냥 누르기만 한 경우.
     if (Math.round(startWidth) === width) return;
     resizeColMut.mutate({ key, width });
+  };
+
+  // 표 뷰 높이 리사이즈 — 열 너비와 같은 pointer 패턴. 드래그 중엔 상태로 그리고,
+  // 놓을 때 localStorage에 한 번만 저장한다.
+  const startViewResize = (event: React.PointerEvent) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setViewResize({ startY: event.clientY, startHeight: bodyHeight });
+  };
+
+  const moveViewResize = (event: React.PointerEvent) => {
+    if (!viewResize) return;
+    setBodyHeight(
+      clampBodyHeight(
+        viewResize.startHeight + (event.clientY - viewResize.startY),
+      ),
+    );
+  };
+
+  const endViewResize = () => {
+    if (!viewResize) return;
+    setViewResize(null);
+    writeBodyHeight(datasetId, bodyHeight);
   };
 
   const startEdit = (row: number, col: number) => {
@@ -664,7 +698,7 @@ export function DatasetGrid({ datasetId }: Props) {
       <div
         ref={scrollRef}
         className="overflow-auto"
-        style={{ maxHeight: MAX_BODY_HEIGHT }}
+        style={{ maxHeight: bodyHeight }}
       >
         {/* 헤더 (TanStack Table) — sticky로 상단 고정 */}
         <div
@@ -901,6 +935,24 @@ export function DatasetGrid({ datasetId }: Props) {
         </div>
       </div>
 
+      {/* 표 뷰 높이 리사이즈 핸들 — 드래그해 보이는 높이를 늘리거나 줄인다. */}
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="표 높이 조절"
+        title="드래그해 표 높이 조절"
+        onPointerDown={startViewResize}
+        onPointerMove={moveViewResize}
+        onPointerUp={endViewResize}
+        onPointerCancel={endViewResize}
+        className={cn(
+          "border-border text-muted-foreground/50 hover:bg-muted hover:text-muted-foreground flex h-3 cursor-row-resize touch-none items-center justify-center border-t",
+          viewResize && "bg-muted text-muted-foreground",
+        )}
+      >
+        <GripHorizontal className="size-3.5" />
+      </div>
+
       {/* 행 추가 */}
       <div className="border-border flex items-center gap-1 border-t p-1">
         <Button
@@ -948,6 +1000,35 @@ export function DatasetGrid({ datasetId }: Props) {
 }
 
 const EMPTY: string[][] = [];
+
+/** 뷰 높이를 하한~상한으로 자른다. */
+const clampBodyHeight = (height: number) =>
+  Math.round(Math.min(MAX_BODY_HEIGHT, Math.max(MIN_BODY_HEIGHT, height)));
+
+const bodyHeightKey = (datasetId: number) =>
+  `orino:dataset-grid-height:${datasetId}`;
+
+/** 저장된 뷰 높이(localStorage). 없거나 잘못됐으면 기본값. */
+function readBodyHeight(datasetId: number): number {
+  try {
+    const raw = localStorage.getItem(bodyHeightKey(datasetId));
+    const value = raw == null ? NaN : Number(raw);
+    return Number.isFinite(value) && value > 0
+      ? clampBodyHeight(value)
+      : DEFAULT_BODY_HEIGHT;
+  } catch {
+    return DEFAULT_BODY_HEIGHT;
+  }
+}
+
+/** 뷰 높이를 datasetId별로 유지한다. 서버가 아니라 클라이언트 표시 설정이라 localStorage에 둔다. */
+function writeBodyHeight(datasetId: number, height: number): void {
+  try {
+    localStorage.setItem(bodyHeightKey(datasetId), String(height));
+  } catch {
+    // localStorage 불가(프라이빗 모드 등) — 유지만 못 할 뿐 동작은 같다.
+  }
+}
 
 /** 정렬 값 → 아이콘. 열/셀 정렬 버튼과 렌더에 공용. */
 const ALIGN_ICONS = {
