@@ -785,7 +785,9 @@ export function DatasetGrid({ datasetId }: Props) {
 
   return (
     <div
-      className="border-border bg-card group/grid relative my-2 flex flex-col overflow-hidden rounded-md border"
+      // overflow-hidden을 두지 않는다 — 선택 툴바가 선택 위/아래로 표 밖까지 떠야 해서다.
+      // 가로 넘침은 안쪽 스크롤 div(overflow-x-auto)가 자르고, 코너는 bg-card라 티가 안 난다.
+      className="border-border bg-card group/grid relative my-2 flex flex-col rounded-md border"
       data-testid="dataset-grid"
     >
       {/* 값 셀만(제목 행 없음). 가로는 열이 넘치면 스크롤하고(overflow-x-auto),
@@ -1007,7 +1009,8 @@ export function DatasetGrid({ datasetId }: Props) {
       </div>
 
       {/* 선택 위 플로팅 툴바 — 선택 범위(표/행/열/셀)에 맞는 옵션을 보여준다.
-          위치는 v1에선 표 상단 중앙 고정(정확히 선택 위 배치는 후속). */}
+          세로는 선택을 따라붙는다: 기본은 선택 바로 위, 위 공간이 부족하면(표·뷰포트 상단)
+          아래로 뒤집는다. 가로는 표 중앙 유지. */}
       {sel &&
         selRect &&
         (() => {
@@ -1022,12 +1025,26 @@ export function DatasetGrid({ datasetId }: Props) {
                   ? `${selRect.c1 - selRect.c0 + 1}열`
                   : `셀 ${area}개`;
           const divider = <div className="bg-border mx-0.5 h-5 w-px" />;
+          // 선택 첫 행 위(뷰포트 기준)에 툴바가 들어갈 자리가 있으면 위, 없으면 아래.
+          // scrollMargin=본문의 문서 오프셋, ROW_HEIGHT=고정 행 높이.
+          const selTopViewport =
+            scrollMargin + selRect.r0 * ROW_HEIGHT - window.scrollY;
+          const above = selTopViewport >= 48;
+          const anchorTop = above
+            ? selRect.r0 * ROW_HEIGHT
+            : (selRect.r1 + 1) * ROW_HEIGHT;
           return (
             <div
               role="toolbar"
               aria-label="선택 도구"
               onPointerDown={(e) => e.stopPropagation()}
-              className="border-border bg-popover absolute top-1 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-md border p-1 shadow-md"
+              style={{
+                top: anchorTop,
+                transform: above
+                  ? "translate(-50%, calc(-100% - 6px))"
+                  : "translate(-50%, 6px)",
+              }}
+              className="border-border bg-popover absolute left-1/2 z-30 flex items-center gap-1 rounded-md border p-1 whitespace-nowrap shadow-md"
             >
               <span className="text-muted-foreground px-1 text-xs whitespace-nowrap">
                 {scopeLabel}
