@@ -714,15 +714,18 @@ export function DatasetGrid({ datasetId }: Props) {
         </div>
       </div>
 
-      {/* 행/열 추가 — 공간을 차지하지 않게 절대 위치로 띄운다. 평소엔 없다가
-          표 호버(또는 키보드 포커스) 시 튀어나온다(notion 방식). */}
+      {/* 행/열 추가 — notion식 가장자리 바. 공간을 차지하지 않게 절대 위치로 두고
+          평소엔 숨겼다가 표 호버(또는 포커스) 시 나타난다. 둘 다 아이콘만(글자 없음):
+          행=하단 가로 바, 열=우측 세로 바. 같은 스타일로 통일. */}
       <button
         type="button"
+        aria-label="행 추가"
+        title="행 추가"
         onClick={() => addRow()}
         disabled={insertMut.isPending}
-        className="border-border bg-card text-muted-foreground hover:text-foreground absolute bottom-1 left-1 z-20 flex h-6 items-center gap-1 rounded-md border px-2 text-xs opacity-0 shadow-sm transition-opacity group-hover/grid:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
+        className="bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground absolute inset-x-0 bottom-0 z-20 flex h-5 items-center justify-center opacity-0 transition-opacity group-hover/grid:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
       >
-        <Plus className="size-3.5" /> 행 추가
+        <Plus className="size-3.5" />
       </button>
       <button
         type="button"
@@ -730,7 +733,7 @@ export function DatasetGrid({ datasetId }: Props) {
         title="열 추가"
         onClick={() => addColumn()}
         disabled={addColMut.isPending}
-        className="border-border bg-card text-muted-foreground hover:text-foreground absolute top-1 right-1 z-20 flex size-6 items-center justify-center rounded-md border opacity-0 shadow-sm transition-opacity group-hover/grid:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
+        className="bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground absolute inset-y-0 right-0 z-20 flex w-5 items-center justify-center opacity-0 transition-opacity group-hover/grid:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
       >
         <Plus className="size-3.5" />
       </button>
