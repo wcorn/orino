@@ -126,14 +126,15 @@ describe("DatasetGrid", () => {
     renderWithRouter(<DatasetGrid datasetId={1} />);
     await screen.findByText("네트워크");
 
-    // 행 추가 버튼 자체가 기본 opacity-0, 표(group/grid) 호버 시 드러난다.
+    // 두 버튼 다 절대 위치로 떠 있어 공간을 차지하지 않고(레이아웃에서 빠짐),
+    // 평소 opacity-0 → 표(group/grid) 호버 시 opacity-100으로 나타난다.
     const addRow = screen.getByRole("button", { name: "행 추가" });
-    expect(addRow.className).toContain("opacity-0");
-    expect(addRow.className).toContain("group-hover/grid:opacity-100");
-    // 열 추가 버튼은 오른쪽 가장자리 스트립 안에 있고, 스트립이 호버 시 드러난다.
-    const strip = screen.getByLabelText("열 추가").parentElement as HTMLElement;
-    expect(strip.className).toContain("opacity-0");
-    expect(strip.className).toContain("group-hover/grid:opacity-100");
+    const addCol = screen.getByLabelText("열 추가");
+    for (const btn of [addRow, addCol]) {
+      expect(btn.className).toContain("absolute");
+      expect(btn.className).toContain("opacity-0");
+      expect(btn.className).toContain("group-hover/grid:opacity-100");
+    }
   });
 
   it("셀을 클릭해 편집하면 PATCH로 저장한다", async () => {
@@ -543,7 +544,7 @@ describe("DatasetGrid", () => {
     });
   });
 
-  it("행 삭제 버튼으로 DELETE를 호출한다", async () => {
+  it("우클릭 메뉴 '행 삭제'로 DELETE를 호출한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let deleted: number | null = null;
     server.use(
@@ -556,7 +557,9 @@ describe("DatasetGrid", () => {
     renderWithRouter(<DatasetGrid datasetId={1} />);
 
     await screen.findByText("네트워크");
-    await user.click(screen.getByRole("button", { name: "1행 삭제" }));
+    // 인라인 삭제 버튼을 없앴으므로 행 삭제는 셀 우클릭 메뉴로 한다.
+    fireEvent.contextMenu(screen.getByText("네트워크"));
+    await user.click(await screen.findByRole("menuitem", { name: "행 삭제" }));
 
     await waitFor(() => expect(deleted).toBe(0));
   });
@@ -630,7 +633,7 @@ describe("DatasetGrid", () => {
     const row = document.querySelector(
       '[data-testid="dataset-grid"] div[style*="translateY(0px)"]',
     ) as HTMLElement;
-    expect(row.style.gridTemplateColumns).toBe("300px minmax(120px, 1fr) 44px");
+    expect(row.style.gridTemplateColumns).toBe("300px minmax(120px, 1fr)");
   });
 
   it("하한보다 좁게 끌어도 하한에서 멈춘다", async () => {
