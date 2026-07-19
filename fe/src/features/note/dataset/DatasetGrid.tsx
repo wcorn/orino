@@ -39,6 +39,7 @@ import {
   resizeDatasetColumn,
   setCellMerge,
   setCellStyle,
+  setCellStylesBulk,
   updateDatasetRow,
 } from "./api/datasets";
 import { useDatasetMerges } from "./hooks/useDatasetMerges";
@@ -149,6 +150,19 @@ export function DatasetGrid({ datasetId }: Props) {
       setCellStyle(datasetId, v.row, v.colKey, v.style),
     // 서식만 바뀌므로 값·수식 캐시는 건드리지 않고 styles만 갱신한다.
     onSuccess: (row) => setStylesLocal(row.rowIndex, row.styles ?? {}),
+    onError: (e) => {
+      const message = serverMessage(e);
+      if (message) toast(message, "error");
+    },
+  });
+  // 선택 범위 서식을 한 요청으로 적용(표 전체도 1회). 영향 행마다 styles 캐시를 갱신한다.
+  const bulkStyleMut = useMutation({
+    mutationFn: (
+      cells: Array<{ rowIndex: number; colKey: string; style: CellStyle }>,
+    ) => setCellStylesBulk(datasetId, cells),
+    onSuccess: (rows) => {
+      for (const row of rows) setStylesLocal(row.rowIndex, row.styles ?? {});
+    },
     onError: (e) => {
       const message = serverMessage(e);
       if (message) toast(message, "error");
@@ -573,31 +587,31 @@ export function DatasetGrid({ datasetId }: Props) {
     }
     return refs;
   };
-  // 서식 적용은 지금은 셀 단위 반복(표 전체는 요청이 많을 수 있다 → Phase 2에서 일괄 엔드포인트).
+  // 서식 적용은 선택 전체를 한 요청으로 보낸다(표 전체도 1회). 각 셀은 통째 교체라
+  // 바꾸지 않는 속성(정렬/배경)은 그 셀의 현재값을 채워 보존한다.
   const applyBgSel = (bg: CellBgToken | null) => {
-    for (const { row, colKey } of selCellRefs()) {
-      const cur = getStyles(row)[colKey];
-      styleMut.mutate({
-        row,
-        colKey,
-        style: { bg: bg ?? undefined, align: cur?.align },
-      });
-    }
+    const cells = selCellRefs().map(({ row, colKey }) => ({
+      rowIndex: row,
+      colKey,
+      style: { bg: bg ?? undefined, align: getStyles(row)[colKey]?.align },
+    }));
+    if (cells.length) bulkStyleMut.mutate(cells);
   };
   const applyAlignSel = (align: CellAlign | null) => {
-    for (const { row, colKey } of selCellRefs()) {
-      const cur = getStyles(row)[colKey];
-      styleMut.mutate({
-        row,
-        colKey,
-        style: { bg: cur?.bg, align: align ?? undefined },
-      });
-    }
+    const cells = selCellRefs().map(({ row, colKey }) => ({
+      rowIndex: row,
+      colKey,
+      style: { bg: getStyles(row)[colKey]?.bg, align: align ?? undefined },
+    }));
+    if (cells.length) bulkStyleMut.mutate(cells);
   };
   const clearFormatSel = () => {
-    for (const { row, colKey } of selCellRefs()) {
-      styleMut.mutate({ row, colKey, style: {} });
-    }
+    const cells = selCellRefs().map(({ row, colKey }) => ({
+      rowIndex: row,
+      colKey,
+      style: {} as CellStyle,
+    }));
+    if (cells.length) bulkStyleMut.mutate(cells);
   };
   /** 셀 사각 범위를 하나의 병합으로(2칸 이상일 때만). */
   const mergeSel = () => {

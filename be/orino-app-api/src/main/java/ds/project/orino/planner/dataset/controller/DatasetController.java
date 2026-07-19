@@ -2,6 +2,7 @@ package ds.project.orino.planner.dataset.controller;
 
 import ds.project.orino.common.response.ApiResponse;
 import ds.project.orino.planner.dataset.dto.AddColumnRequest;
+import ds.project.orino.planner.dataset.dto.BulkCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.BulkRowsRequest;
 import ds.project.orino.planner.dataset.dto.CreateDatasetRequest;
 import ds.project.orino.planner.dataset.dto.DatasetResponse;
@@ -19,6 +20,7 @@ import ds.project.orino.planner.dataset.dto.SetColumnAlignRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
 import ds.project.orino.planner.dataset.service.DatasetService;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -215,6 +217,19 @@ public class DatasetController {
             @Valid @RequestBody SetCellStyleRequest request) {
         return ApiResponse.success(
                 datasetService.setCellStyle(memberId, id, rowIndex, colKey, request));
+    }
+
+    /**
+     * 여러 셀 서식을 한 번에 지정한다(선택 범위·행·열·표 전체 적용). 셀마다 서식을 통째로
+     * 교체하며, 영향받은 행들의 최신 상태를 rowIndex 오름차순으로 돌려준다.
+     */
+    @PutMapping("/{id}/cells/style")
+    public ApiResponse<List<RowView>> setCellStylesBulk(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @Valid @RequestBody BulkCellStyleRequest request) {
+        return ApiResponse.success(
+                datasetService.setCellStylesBulk(memberId, id, request));
     }
 
     /** 그 dataset의 병합 전체. 세로 병합은 앵커가 화면 밖이어도 덮인 행을 그려야 해 통째로 준다. */
