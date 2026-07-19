@@ -1,16 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  type ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import {
   AlignCenter,
   AlignLeft,
   AlignRight,
-  FunctionSquare,
   Palette,
   Plus,
   TableCellsMerge,
@@ -18,7 +11,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -42,13 +35,10 @@ import {
   type MergeSpan,
   type MergeView,
   MIN_COLUMN_WIDTH,
-  renameDatasetColumn,
-  reorderDatasetColumns,
   resetDatasetColumnWidth,
   resizeDatasetColumn,
   setCellMerge,
   setCellStyle,
-  setDatasetColumnAlign,
   updateDatasetRow,
 } from "./api/datasets";
 import { useDatasetMerges } from "./hooks/useDatasetMerges";
@@ -64,9 +54,9 @@ interface Props {
 }
 
 /**
- * 대용량 편집 표. TanStack Table(열/헤더) + 윈도우 가상화(행) + 지연 로드 + 셀/행 편집.
- * 세로는 노트 페이지 흐름을 따라 무한히 자라고(자체 스크롤 뷰포트 없음),
- * 가로는 열이 화면을 넘으면 스크롤한다.
+ * notion 스타일 값-중심 표. 제목(헤더) 행 없이 값 셀만 그린다 + 윈도우 가상화(행) +
+ * 지연 로드 + 셀 편집. 세로는 노트 페이지 흐름을 따라 무한히 자라고(자체 스크롤 뷰포트 없음),
+ * 가로는 열이 화면을 넘으면 스크롤한다. 열 너비는 셀 오른쪽 경계 드래그로 조절한다.
  */
 export function DatasetGrid({ datasetId }: Props) {
   const queryClient = useQueryClient();
@@ -89,10 +79,7 @@ export function DatasetGrid({ datasetId }: Props) {
     null,
   );
   const [draft, setDraft] = useState("");
-  const [editingCol, setEditingCol] = useState<string | null>(null);
-  const [colDraft, setColDraft] = useState("");
   const [pendingColDelete, setPendingColDelete] = useState<string | null>(null);
-  const [dragKey, setDragKey] = useState<string | null>(null);
   // 리사이즈 중인 열과 진행 중 너비. 드래그하는 동안엔 여기 값으로 그리고,
   // 저장은 놓을 때 한 번만 한다(mousemove마다 PATCH를 보내지 않는다).
   const [resizing, setResizing] = useState<{
@@ -101,8 +88,6 @@ export function DatasetGrid({ datasetId }: Props) {
     startWidth: number;
     width: number;
   } | null>(null);
-  // D6 — 수식은 평소 숨기고 선택 시에만 보여준다. 이 토글은 상시 표시.
-  const [showFormulas, setShowFormulas] = useState(false);
   // 색 팔레트를 연 셀(행 index·열 index). null이면 닫힘.
   const [palette, setPalette] = useState<{ row: number; col: number } | null>(
     null,
@@ -193,23 +178,6 @@ export function DatasetGrid({ datasetId }: Props) {
       void invalidateMerges(); // 앵커 행 삭제는 cascade, 뒤 행은 번호가 밀린다.
     },
   });
-  const renameColMut = useMutation({
-    mutationFn: (v: { key: string; label: string }) =>
-      renameDatasetColumn(datasetId, v.key, v.label),
-    onSuccess: (next: DatasetMeta) =>
-      queryClient.setQueryData(datasetKeys.meta(datasetId), next),
-    onError: () => void invalidateMeta(),
-  });
-  const reorderColMut = useMutation({
-    mutationFn: (keys: string[]) => reorderDatasetColumns(datasetId, keys),
-    onSuccess: (next: DatasetMeta) => {
-      queryClient.setQueryData(datasetKeys.meta(datasetId), next);
-      // 캐시된 cells는 이전 열 순서 기준이라 그대로 쓰면 값이 어긋난다.
-      reset();
-      void invalidateMerges(); // 순서 변경 시 서버가 병합을 해제한다(v1 보수적).
-    },
-    onError: () => void invalidateMeta(),
-  });
   const deleteColMut = useMutation({
     mutationFn: (key: string) => deleteDatasetColumn(datasetId, key),
     onSuccess: (next: DatasetMeta) => {
@@ -234,14 +202,6 @@ export function DatasetGrid({ datasetId }: Props) {
       queryClient.setQueryData(datasetKeys.meta(datasetId), next),
     onError: () => void invalidateMeta(),
   });
-  const setColAlignMut = useMutation({
-    mutationFn: (v: { key: string; align: CellAlign }) =>
-      setDatasetColumnAlign(datasetId, v.key, v.align),
-    // 정렬은 열 단위 속성이라 행 캐시를 버릴 이유가 없다(너비와 같다 — 값이 안 밀린다).
-    onSuccess: (next: DatasetMeta) =>
-      queryClient.setQueryData(datasetKeys.meta(datasetId), next),
-    onError: () => void invalidateMeta(),
-  });
   const addColMut = useMutation({
     mutationFn: (v: { atIndex?: number }) =>
       addDatasetColumn(datasetId, v.atIndex),
@@ -255,22 +215,6 @@ export function DatasetGrid({ datasetId }: Props) {
       }
     },
     onError: () => void invalidateMeta(),
-  });
-
-  // TanStack Table — 열/헤더 모델만(본문은 가상화로 직접 렌더).
-  const columns = useMemo<ColumnDef<string[]>[]>(
-    () =>
-      (meta?.columns ?? []).map((col, c) => ({
-        id: col.key,
-        header: col.label,
-        accessorFn: (row) => row[c] ?? "",
-      })),
-    [meta],
-  );
-  const table = useReactTable({
-    data: EMPTY,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
   });
 
   const virtualizer = useWindowVirtualizer({
@@ -343,11 +287,11 @@ export function DatasetGrid({ datasetId }: Props) {
     Math.round(Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, width)));
 
   const startResize = (key: string, event: React.PointerEvent) => {
-    // 헤더 셀의 실제 렌더 폭에서 시작한다. 너비 미지정(1fr) 열도 이 값으로 잡히므로
+    // 핸들의 부모 셀 실제 렌더 폭에서 시작한다. 너비 미지정(1fr) 열도 이 값으로 잡히므로
     // 첫 드래그가 기본 폭에서 자연스럽게 이어진다.
-    const headerCell = event.currentTarget.parentElement;
-    if (!headerCell) return;
-    const startWidth = headerCell.getBoundingClientRect().width;
+    const cell = event.currentTarget.parentElement;
+    if (!cell) return;
+    const startWidth = cell.getBoundingClientRect().width;
     event.preventDefault();
     event.stopPropagation();
     // 포인터를 잡아 두면 핸들 밖으로 벗어나도 move/up이 계속 온다.
@@ -441,13 +385,6 @@ export function DatasetGrid({ datasetId }: Props) {
     setPalette(null);
   };
 
-  /** 열 기본 정렬을 다음 값으로 돌린다(좌→가운데→우→좌). 기본(미설정)은 좌로 본다. */
-  const cycleColumnAlign = (key: string, current: CellAlign | undefined) => {
-    const next: CellAlign =
-      current === "center" ? "right" : current === "right" ? "left" : "center";
-    setColAlignMut.mutate({ key, align: next });
-  };
-
   /** (row,col)이 앵커인 병합. 없으면 undefined. */
   const mergeAt = (row: number, col: number): MergeView | undefined =>
     merges.find(
@@ -510,35 +447,6 @@ export function DatasetGrid({ datasetId }: Props) {
 
   const columnLabel = (key: string) =>
     meta.columns.find((c) => c.key === key)?.label ?? key;
-
-  /** 끌던 열을 대상 열 자리에 놓는다. */
-  const dropColumnOn = (targetKey: string) => {
-    const from = dragKey;
-    setDragKey(null);
-    if (!from || from === targetKey) return;
-    const keys = meta.columns.map((c) => c.key);
-    const at = keys.indexOf(from);
-    const to = keys.indexOf(targetKey);
-    if (at < 0 || to < 0) return;
-    keys.splice(to, 0, keys.splice(at, 1)[0]);
-    reorderColMut.mutate(keys);
-  };
-
-  const startColEdit = (key: string, label: string) => {
-    setEditingCol(key);
-    setColDraft(label);
-  };
-
-  const commitColEdit = () => {
-    if (!editingCol) return;
-    const key = editingCol;
-    const label = colDraft.trim();
-    const current = meta.columns.find((c) => c.key === key);
-    setEditingCol(null);
-    // 빈 이름은 서버가 거부하므로 보내지 않고, 변경 없으면 요청 자체를 생략한다.
-    if (!label || label === current?.label) return;
-    renameColMut.mutate({ key, label });
-  };
 
   /**
    * 셀 내부(서식 버튼·팝오버·값/입력). base 그리드 셀과 세로 병합 오버레이 박스가 함께 쓴다 —
@@ -656,15 +564,10 @@ export function DatasetGrid({ datasetId }: Props) {
               ALIGN_CLASS[align],
               cells === undefined && "text-muted-foreground/40",
               isCellError(cells?.[c]) && "text-destructive",
-              formula !== undefined &&
-                showFormulas &&
-                "text-muted-foreground font-mono text-xs",
             )}
             title={formula}
           >
-            {cells === undefined
-              ? "…"
-              : (showFormulas && formula) || (cells[c] ?? "")}
+            {cells === undefined ? "…" : (cells[c] ?? "")}
           </div>
         )}
       </>
@@ -676,250 +579,169 @@ export function DatasetGrid({ datasetId }: Props) {
       className="border-border bg-card group/grid my-2 flex flex-col overflow-hidden rounded-md border"
       data-testid="dataset-grid"
     >
-      {/* 헤더+본문을 한 컨테이너에 둔다. 가로는 열이 넘치면 스크롤하고(overflow-x-auto),
-          세로는 뷰포트를 두지 않아 행이 늘수록 페이지 흐름대로 자란다. */}
-      <div className="overflow-x-auto">
-        {/* 헤더 (TanStack Table) — sticky로 상단 고정 */}
-        <div
-          className="bg-muted text-muted-foreground sticky top-0 z-10 grid border-b text-sm font-semibold"
-          style={{ gridTemplateColumns }}
-        >
-          {table.getFlatHeaders().map((header) => (
-            <div
-              key={header.id}
-              // 이름 편집 중엔 텍스트 선택을 막지 않도록 드래그를 끈다.
-              // 리사이즈 중에도 꺼야 한다 — 켜두면 핸들을 끄는 순간 HTML5 드래그가
-              // 시작돼 열 순서 변경으로 새어 나간다.
-              draggable={editingCol !== header.id && resizing === null}
-              onDragStart={() => setDragKey(header.id)}
-              onDragEnd={() => setDragKey(null)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => dropColumnOn(header.id)}
-              data-dragging={dragKey === header.id || undefined}
-              className={cn(
-                "border-border group flex items-center border-r",
-                editingCol !== header.id && "cursor-grab",
-                dragKey === header.id && "opacity-50",
-              )}
-            >
-              {editingCol === header.id ? (
-                <input
-                  autoFocus
-                  value={colDraft}
-                  onChange={(e) => setColDraft(e.target.value)}
-                  onBlur={commitColEdit}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitColEdit();
-                    if (e.key === "Escape") setEditingCol(null);
-                  }}
-                  aria-label={`열 이름 ${header.id}`}
-                  className="focus-visible:ring-ring h-full w-full bg-transparent px-2 py-1.5 font-semibold outline-none focus-visible:ring-1"
-                />
-              ) : (
-                <>
-                  <div
-                    className="min-w-0 flex-1 cursor-text truncate px-2 py-1.5"
-                    title="더블클릭해 열 이름 변경"
-                    onDoubleClick={() =>
-                      startColEdit(
-                        header.id,
-                        meta.columns.find((c) => c.key === header.id)?.label ??
-                          "",
-                      )
-                    }
-                  >
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext(),
-                    )}
-                  </div>
-                  {/* 열 기본 정렬 — 클릭하면 좌→가운데→우로 순환한다. 아이콘이 현재 정렬을 보여준다. */}
-                  {(() => {
-                    const align =
-                      meta.columns.find((c) => c.key === header.id)?.align ??
-                      "left";
-                    const Icon = ALIGN_ICONS[align];
-                    return (
-                      <button
-                        type="button"
-                        aria-label={`${columnLabel(header.id)} 열 정렬 (현재 ${ALIGN_LABELS[align]})`}
-                        title="클릭해 열 정렬 변경 (좌·가운데·우)"
-                        onClick={() =>
-                          cycleColumnAlign(
-                            header.id,
-                            meta.columns.find((c) => c.key === header.id)
-                              ?.align,
-                          )
-                        }
-                        className="text-muted-foreground hover:text-foreground mr-1 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                      >
-                        <Icon className="size-3.5" />
-                      </button>
-                    );
-                  })()}
-                  {/* 마지막 한 열은 서버가 거부하므로 버튼도 내보내지 않는다. */}
-                  {colCount > 1 && (
-                    <button
-                      type="button"
-                      aria-label={`${columnLabel(header.id)} 열 삭제`}
-                      onClick={() => setPendingColDelete(header.id)}
-                      className="text-muted-foreground hover:text-destructive mr-1 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  )}
-                </>
-              )}
-              {/* 열 경계 리사이즈 핸들. 이름 편집 중엔 내보내지 않는다. */}
-              {editingCol !== header.id && (
+      {/* 값 셀만(제목 행 없음). 가로는 열이 넘치면 스크롤하고(overflow-x-auto),
+          세로는 뷰포트를 두지 않아 행이 늘수록 페이지 흐름대로 자란다.
+          오른쪽 얇은 칸은 표 호버 시 나타나는 [열 추가]. */}
+      <div className="flex items-stretch">
+        <div className="min-w-0 flex-1 overflow-x-auto">
+          {/* 본문 (윈도우 가상화) */}
+          <div
+            ref={listRef}
+            style={{ height: virtualizer.getTotalSize(), position: "relative" }}
+          >
+            {virtualItems.map((vi) => {
+              // 그 행에 앵커가 있는 가로 전용 병합(rowSpan===1). 덮인 칸은 스킵하고 앵커가 span으로 넓게.
+              const hCovered = new Set<number>();
+              const hAnchor = new Map<number, MergeView>();
+              for (const m of merges) {
+                if (m.rowIndex !== vi.index || m.rowSpan !== 1) continue;
+                const ai = colOf(m.colKey);
+                if (ai < 0) continue;
+                hAnchor.set(ai, m);
+                for (let k = 1; k < m.colSpan; k++) hCovered.add(ai + k);
+              }
+              return (
                 <div
-                  role="separator"
-                  aria-orientation="vertical"
-                  aria-label={`${columnLabel(header.id)} 열 너비 조절`}
-                  title="드래그해 너비 조절 · 더블클릭해 기본 폭으로"
-                  onPointerDown={(e) => startResize(header.id, e)}
-                  onPointerMove={moveResize}
-                  onPointerUp={endResize}
-                  onPointerCancel={endResize}
-                  onDoubleClick={() => resetColWidthMut.mutate(header.id)}
-                  // 부모가 draggable이라 핸들에서 시작한 드래그가 순서 변경으로 새는 것을 막는다.
-                  draggable={false}
-                  onDragStart={(e) => e.preventDefault()}
-                  className={cn(
-                    "hover:bg-primary/60 -mr-[3px] h-full w-[6px] shrink-0 cursor-col-resize touch-none",
-                    resizing?.key === header.id && "bg-primary/60",
-                  )}
-                />
-              )}
+                  key={vi.key}
+                  className="border-border group/row absolute top-0 left-0 grid w-full border-b text-sm"
+                  style={{
+                    height: ROW_HEIGHT,
+                    // vi.start는 문서 좌표(scrollMargin 포함)라 목록 기준으로 되돌린다.
+                    transform: `translateY(${vi.start - scrollMargin}px)`,
+                    gridTemplateColumns,
+                  }}
+                >
+                  {Array.from({ length: colCount }, (_, c) => {
+                    // 세로·블록 병합이 덮는 칸은 오버레이가 그리므로 base엔 자리만 둔다(정렬 유지).
+                    if (overlayCovering(vi.index, c)) {
+                      return <div key={c} aria-hidden className="border-r" />;
+                    }
+                    // 가로 병합에 덮인 칸은 앵커가 span으로 차지하므로 렌더하지 않는다.
+                    if (hCovered.has(c)) return null;
+                    const anchor = hAnchor.get(c);
+                    const style = getStyles(vi.index)[meta.columns[c].key];
+                    return (
+                      <div
+                        key={c}
+                        className="border-border group/cell relative truncate border-r"
+                        style={{
+                          ...(style?.bg
+                            ? { background: `var(--cell-bg-${style.bg})` }
+                            : {}),
+                          // 가로 병합 앵커는 colSpan만큼 그리드 열을 차지한다(덮인 칸 스킵과 짝).
+                          ...(anchor
+                            ? { gridColumn: `span ${anchor.colSpan}` }
+                            : {}),
+                        }}
+                        onClick={() => startEdit(vi.index, c)}
+                        onContextMenu={(e) => openContextMenu(e, vi.index, c)}
+                      >
+                        {renderCellInner(vi.index, c)}
+                        {/* 열 너비 조절 — 셀 오른쪽 경계 드래그(제목 행이 없어 셀로 옮겼다).
+                          셀 호버 시 나타난다. 가로 병합 앵커엔 경계가 모호해 달지 않는다. */}
+                        {!anchor && (
+                          <div
+                            role="separator"
+                            aria-orientation="vertical"
+                            aria-label={`${c + 1}열 너비 조절`}
+                            title="드래그해 너비 조절 · 더블클릭해 기본 폭으로"
+                            onPointerDown={(e) =>
+                              startResize(meta.columns[c].key, e)
+                            }
+                            onPointerMove={moveResize}
+                            onPointerUp={endResize}
+                            onPointerCancel={endResize}
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              resetColWidthMut.mutate(meta.columns[c].key);
+                            }}
+                            className={cn(
+                              "hover:bg-primary/60 absolute top-0 right-0 z-10 -mr-[3px] h-full w-[6px] cursor-col-resize touch-none opacity-0 group-hover/cell:opacity-100",
+                              resizing?.key === meta.columns[c].key &&
+                                "bg-primary/60 opacity-100",
+                            )}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    aria-label={`${vi.index + 1}행 삭제`}
+                    onClick={() => deleteMut.mutate(vi.index)}
+                    className="text-muted-foreground hover:text-destructive flex items-center justify-center opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+
+            {/* 세로·블록 병합(rowSpan>1) 오버레이 — 가상화가 앵커 행을 안 그려도 덮인 영역을 그린다.
+              같은 gridTemplateColumns를 쓰는 grid에 열 배치로 x·폭을 맞추고(유연폭 대응),
+              고정 행 높이라 세로는 top·height를 px로 계산한다(측정 불필요). */}
+            <div
+              className="pointer-events-none absolute top-0 left-0 grid w-full"
+              style={{
+                gridTemplateColumns,
+                height: virtualizer.getTotalSize(),
+              }}
+            >
+              {overlayMerges
+                .filter(
+                  (m) =>
+                    m.rowIndex <= lastIndex &&
+                    m.rowIndex + m.rowSpan > firstIndex,
+                )
+                .map((m) => {
+                  const ai = colOf(m.colKey);
+                  if (ai < 0) return null;
+                  const style = getStyles(m.rowIndex)[m.colKey];
+                  return (
+                    <div
+                      key={`${m.rowIndex}:${m.colKey}`}
+                      style={{ gridColumn: `${ai + 1} / span ${m.colSpan}` }}
+                      className="relative"
+                    >
+                      <div
+                        className="border-border bg-card group/cell pointer-events-auto absolute right-0 left-0 truncate border-r border-b text-sm"
+                        style={{
+                          top: m.rowIndex * ROW_HEIGHT,
+                          height: m.rowSpan * ROW_HEIGHT,
+                          ...(style?.bg
+                            ? { background: `var(--cell-bg-${style.bg})` }
+                            : {}),
+                        }}
+                        onClick={() => startEdit(m.rowIndex, ai)}
+                        onContextMenu={(e) =>
+                          openContextMenu(e, m.rowIndex, ai)
+                        }
+                      >
+                        {renderCellInner(m.rowIndex, ai)}
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
-          ))}
-          {/* 행 삭제 버튼 열(44px) 위 자리 — 열 추가 버튼을 둔다.
-              표에 마우스를 올렸을 때(또는 키보드 포커스 시)만 보인다. */}
+          </div>
+        </div>
+        {/* 열 추가 — 표 오른쪽 가장자리. 표 호버(또는 키보드 포커스) 시 나타난다. */}
+        <div className="border-border flex w-7 shrink-0 justify-center border-l pt-1.5 opacity-0 transition-opacity group-hover/grid:opacity-100 focus-within:opacity-100">
           <button
             type="button"
             aria-label="열 추가"
             title="열 추가"
             onClick={() => addColumn()}
             disabled={addColMut.isPending}
-            className="text-muted-foreground hover:text-foreground flex items-center justify-center opacity-0 transition-opacity group-hover/grid:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
+            className="text-muted-foreground hover:text-foreground disabled:opacity-50"
           >
             <Plus className="size-3.5" />
           </button>
         </div>
-
-        {/* 본문 (윈도우 가상화) */}
-        <div
-          ref={listRef}
-          style={{ height: virtualizer.getTotalSize(), position: "relative" }}
-        >
-          {virtualItems.map((vi) => {
-            // 그 행에 앵커가 있는 가로 전용 병합(rowSpan===1). 덮인 칸은 스킵하고 앵커가 span으로 넓게.
-            const hCovered = new Set<number>();
-            const hAnchor = new Map<number, MergeView>();
-            for (const m of merges) {
-              if (m.rowIndex !== vi.index || m.rowSpan !== 1) continue;
-              const ai = colOf(m.colKey);
-              if (ai < 0) continue;
-              hAnchor.set(ai, m);
-              for (let k = 1; k < m.colSpan; k++) hCovered.add(ai + k);
-            }
-            return (
-              <div
-                key={vi.key}
-                className="border-border absolute top-0 left-0 grid w-full border-b text-sm"
-                style={{
-                  height: ROW_HEIGHT,
-                  // vi.start는 문서 좌표(scrollMargin 포함)라 목록 기준으로 되돌린다.
-                  transform: `translateY(${vi.start - scrollMargin}px)`,
-                  gridTemplateColumns,
-                }}
-              >
-                {Array.from({ length: colCount }, (_, c) => {
-                  // 세로·블록 병합이 덮는 칸은 오버레이가 그리므로 base엔 자리만 둔다(정렬 유지).
-                  if (overlayCovering(vi.index, c)) {
-                    return <div key={c} aria-hidden className="border-r" />;
-                  }
-                  // 가로 병합에 덮인 칸은 앵커가 span으로 차지하므로 렌더하지 않는다.
-                  if (hCovered.has(c)) return null;
-                  const anchor = hAnchor.get(c);
-                  const style = getStyles(vi.index)[meta.columns[c].key];
-                  return (
-                    <div
-                      key={c}
-                      className="border-border group/cell relative truncate border-r"
-                      style={{
-                        ...(style?.bg
-                          ? { background: `var(--cell-bg-${style.bg})` }
-                          : {}),
-                        // 가로 병합 앵커는 colSpan만큼 그리드 열을 차지한다(덮인 칸 스킵과 짝).
-                        ...(anchor
-                          ? { gridColumn: `span ${anchor.colSpan}` }
-                          : {}),
-                      }}
-                      onClick={() => startEdit(vi.index, c)}
-                      onContextMenu={(e) => openContextMenu(e, vi.index, c)}
-                    >
-                      {renderCellInner(vi.index, c)}
-                    </div>
-                  );
-                })}
-                <button
-                  type="button"
-                  aria-label={`${vi.index + 1}행 삭제`}
-                  onClick={() => deleteMut.mutate(vi.index)}
-                  className="text-muted-foreground hover:text-destructive flex items-center justify-center"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
-              </div>
-            );
-          })}
-
-          {/* 세로·블록 병합(rowSpan>1) 오버레이 — 가상화가 앵커 행을 안 그려도 덮인 영역을 그린다.
-              같은 gridTemplateColumns를 쓰는 grid에 열 배치로 x·폭을 맞추고(유연폭 대응),
-              고정 행 높이라 세로는 top·height를 px로 계산한다(측정 불필요). */}
-          <div
-            className="pointer-events-none absolute top-0 left-0 grid w-full"
-            style={{ gridTemplateColumns, height: virtualizer.getTotalSize() }}
-          >
-            {overlayMerges
-              .filter(
-                (m) =>
-                  m.rowIndex <= lastIndex &&
-                  m.rowIndex + m.rowSpan > firstIndex,
-              )
-              .map((m) => {
-                const ai = colOf(m.colKey);
-                if (ai < 0) return null;
-                const style = getStyles(m.rowIndex)[m.colKey];
-                return (
-                  <div
-                    key={`${m.rowIndex}:${m.colKey}`}
-                    style={{ gridColumn: `${ai + 1} / span ${m.colSpan}` }}
-                    className="relative"
-                  >
-                    <div
-                      className="border-border bg-card group/cell pointer-events-auto absolute right-0 left-0 truncate border-r border-b text-sm"
-                      style={{
-                        top: m.rowIndex * ROW_HEIGHT,
-                        height: m.rowSpan * ROW_HEIGHT,
-                        ...(style?.bg
-                          ? { background: `var(--cell-bg-${style.bg})` }
-                          : {}),
-                      }}
-                      onClick={() => startEdit(m.rowIndex, ai)}
-                      onContextMenu={(e) => openContextMenu(e, m.rowIndex, ai)}
-                    >
-                      {renderCellInner(m.rowIndex, ai)}
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-        </div>
       </div>
 
-      {/* 행 추가 — 표에 마우스를 올렸을 때(또는 키보드 포커스 시)만 [행 추가]가 보인다. */}
+      {/* 행 추가 — 표에 마우스를 올렸을 때(또는 키보드 포커스 시)만 보인다. */}
       <div className="border-border flex items-center gap-1 border-t p-1">
         <Button
           type="button"
@@ -930,16 +752,6 @@ export function DatasetGrid({ datasetId }: Props) {
           className="opacity-0 transition-opacity group-hover/grid:opacity-100 focus-visible:opacity-100"
         >
           <Plus className="size-4" /> 행 추가
-        </Button>
-        <Button
-          type="button"
-          variant={showFormulas ? "secondary" : "ghost"}
-          size="sm"
-          aria-pressed={showFormulas}
-          onClick={() => setShowFormulas((v) => !v)}
-          title="수식 셀에 계산 결과 대신 수식을 보여준다"
-        >
-          <FunctionSquare className="size-4" /> 수식 보기
         </Button>
       </div>
 
@@ -1061,9 +873,7 @@ export function DatasetGrid({ datasetId }: Props) {
   );
 }
 
-const EMPTY: string[][] = [];
-
-/** 정렬 값 → 아이콘. 열/셀 정렬 버튼과 렌더에 공용. */
+/** 정렬 값 → 아이콘. 셀 정렬 팔레트와 렌더에 공용. */
 const ALIGN_ICONS = {
   left: AlignLeft,
   center: AlignCenter,

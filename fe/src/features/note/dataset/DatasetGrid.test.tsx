@@ -83,17 +83,20 @@ describe("DatasetGrid", () => {
     vi.restoreAllMocks();
   });
 
-  it("헤더와 행을 지연 로드해 렌더한다", async () => {
+  it("제목 행 없이 값 셀만 지연 로드해 렌더한다", async () => {
     mockDataset([
       ["네트워크", "92"],
       ["운영체제", "78"],
     ]);
     renderWithRouter(<DatasetGrid datasetId={1} />);
 
-    expect(await screen.findByText("과목")).toBeInTheDocument();
-    expect(screen.getByText("점수")).toBeInTheDocument();
     expect(await screen.findByText("네트워크")).toBeInTheDocument();
+    expect(screen.getByText("92")).toBeInTheDocument();
+    expect(screen.getByText("운영체제")).toBeInTheDocument();
     expect(screen.getByText("78")).toBeInTheDocument();
+    // 열 제목(과목·점수)은 렌더되지 않는다 — 값만 있는 표.
+    expect(screen.queryByText("과목")).not.toBeInTheDocument();
+    expect(screen.queryByText("점수")).not.toBeInTheDocument();
   });
 
   it("세로 뷰포트 없이 행 수만큼 자란다 — 높이 상한이 없고 가로만 스크롤한다", async () => {
@@ -112,8 +115,9 @@ describe("DatasetGrid", () => {
     // 뷰 높이 조절 핸들은 사라졌다.
     expect(screen.queryByLabelText("표 높이 조절")).toBeNull();
 
-    // 본문 목록 높이 = 행 수 × 고정 행 높이(36).
-    const body = scroll.children[1] as HTMLElement;
+    // 제목 행이 없어 본문 목록이 스크롤의 첫 자식이다.
+    // 높이 = 행 수 × 고정 행 높이(36).
+    const body = scroll.children[0] as HTMLElement;
     expect(body.style.height).toBe("108px");
   });
 
@@ -122,13 +126,14 @@ describe("DatasetGrid", () => {
     renderWithRouter(<DatasetGrid datasetId={1} />);
     await screen.findByText("네트워크");
 
+    // 행 추가 버튼 자체가 기본 opacity-0, 표(group/grid) 호버 시 드러난다.
     const addRow = screen.getByRole("button", { name: "행 추가" });
-    const addCol = screen.getByLabelText("열 추가");
-    // 기본은 opacity-0, 표(group/grid) 호버 시 opacity-100로 드러난다.
-    for (const btn of [addRow, addCol]) {
-      expect(btn.className).toContain("opacity-0");
-      expect(btn.className).toContain("group-hover/grid:opacity-100");
-    }
+    expect(addRow.className).toContain("opacity-0");
+    expect(addRow.className).toContain("group-hover/grid:opacity-100");
+    // 열 추가 버튼은 오른쪽 가장자리 스트립 안에 있고, 스트립이 호버 시 드러난다.
+    const strip = screen.getByLabelText("열 추가").parentElement as HTMLElement;
+    expect(strip.className).toContain("opacity-0");
+    expect(strip.className).toContain("group-hover/grid:opacity-100");
   });
 
   it("셀을 클릭해 편집하면 PATCH로 저장한다", async () => {
@@ -243,7 +248,9 @@ describe("DatasetGrid", () => {
       ),
     );
 
-    await user.click(screen.getByRole("button", { name: "점수 열 삭제" }));
+    // 헤더가 없어 열 삭제는 셀 우클릭 메뉴로 한다 — c1(점수) 값 "92" 셀을 우클릭.
+    fireEvent.contextMenu(screen.getByText("92"));
+    await user.click(await screen.findByRole("menuitem", { name: "열 삭제" }));
     // 확인 전엔 요청이 나가지 않는다.
     expect(deletedKey).toBeNull();
     await user.click(screen.getByRole("button", { name: "삭제" }));
@@ -255,148 +262,6 @@ describe("DatasetGrid", () => {
     // 재조회가 안 되면 여기서 "92"가 남아 실패한다.
     expect(await screen.findByText("재수강")).toBeInTheDocument();
     expect(screen.queryByText("92")).not.toBeInTheDocument();
-  });
-
-  it("헤더를 드래그해 순서를 바꾸면 PATCH하고 값이 열을 따라간다", async () => {
-    // 3열 과목/점수/비고 — 비고(c2)를 맨 앞으로 끈다.
-    server.use(
-      http.get(`${API_BASE}/datasets/1`, () =>
-        HttpResponse.json({
-          code: "OK",
-          data: {
-            id: 1,
-            columns: [
-              { key: "c0", label: "과목" },
-              { key: "c1", label: "점수" },
-              { key: "c2", label: "비고" },
-            ],
-            rowCount: 1,
-          },
-        }),
-      ),
-      http.get(`${API_BASE}/datasets/1/rows`, () =>
-        HttpResponse.json({
-          code: "OK",
-          data: {
-            rows: [
-              { id: 100, rowIndex: 0, cells: ["네트워크", "92", "재수강"] },
-            ],
-            offset: 0,
-            limit: 100,
-          },
-        }),
-      ),
-    );
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("네트워크");
-
-    let sentKeys: string[] | null = null;
-    server.use(
-      http.patch(
-        `${API_BASE}/datasets/1/columns/order`,
-        async ({ request }) => {
-          const body = (await request.json()) as { keys: string[] };
-          sentKeys = body.keys;
-          return HttpResponse.json({
-            code: "OK",
-            data: {
-              id: 1,
-              columns: [
-                { key: "c2", label: "비고" },
-                { key: "c0", label: "과목" },
-                { key: "c1", label: "점수" },
-              ],
-              rowCount: 1,
-            },
-          });
-        },
-      ),
-      // 서버는 새 열 순서로 투영해 준다.
-      http.get(`${API_BASE}/datasets/1/rows`, () =>
-        HttpResponse.json({
-          code: "OK",
-          data: {
-            rows: [
-              { id: 100, rowIndex: 0, cells: ["재수강", "네트워크", "92"] },
-            ],
-            offset: 0,
-            limit: 100,
-          },
-        }),
-      ),
-    );
-
-    const headers = document.querySelectorAll(
-      '[data-testid="dataset-grid"] .sticky > div',
-    );
-    fireEvent.dragStart(headers[2]); // 비고
-    fireEvent.dragOver(headers[0]);
-    fireEvent.drop(headers[0]); // 과목 자리에 놓기
-
-    await waitFor(() => expect(sentKeys).toEqual(["c2", "c0", "c1"]));
-    expect(await screen.findByText("비고")).toBeInTheDocument();
-    // 재조회가 안 되면 여기서 옛 순서(네트워크가 첫 칸)가 남아 실패한다.
-    await waitFor(() => {
-      const row = document.querySelector(
-        '[data-testid="dataset-grid"] div[style*="translateY(0px)"]',
-      );
-      const cells = Array.from(row!.querySelectorAll(":scope > div")).map((c) =>
-        c.textContent?.trim(),
-      );
-      expect(cells).toEqual(["재수강", "네트워크", "92"]);
-    });
-  });
-
-  it("같은 자리에 놓으면 PATCH하지 않는다", async () => {
-    mockDataset([["네트워크", "92"]]);
-    let called = false;
-    server.use(
-      http.patch(`${API_BASE}/datasets/1/columns/order`, () => {
-        called = true;
-        return new HttpResponse(null, { status: 400 });
-      }),
-    );
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("네트워크");
-
-    const headers = document.querySelectorAll(
-      '[data-testid="dataset-grid"] .sticky > div',
-    );
-    fireEvent.dragStart(headers[0]);
-    fireEvent.drop(headers[0]);
-
-    expect(called).toBe(false);
-  });
-
-  it("마지막 한 열만 남으면 삭제 버튼을 내보내지 않는다", async () => {
-    server.use(
-      http.get(`${API_BASE}/datasets/1`, () =>
-        HttpResponse.json({
-          code: "OK",
-          data: {
-            id: 1,
-            columns: [{ key: "c0", label: "과목" }],
-            rowCount: 1,
-          },
-        }),
-      ),
-      http.get(`${API_BASE}/datasets/1/rows`, () =>
-        HttpResponse.json({
-          code: "OK",
-          data: {
-            rows: [{ id: 100, rowIndex: 0, cells: ["네트워크"] }],
-            offset: 0,
-            limit: 100,
-          },
-        }),
-      ),
-    );
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-
-    expect(await screen.findByText("과목")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "과목 열 삭제" }),
-    ).not.toBeInTheDocument();
   });
 
   it("다른 셀을 고칠 때 수식 셀엔 원본 수식을 돌려준다 — 값을 돌려주면 수식이 지워진다", async () => {
@@ -551,24 +416,6 @@ describe("DatasetGrid", () => {
     expect(await screen.findByLabelText("셀 1행 1열")).toHaveValue("10");
   });
 
-  it("[수식 보기]를 켜면 계산값 대신 수식이 보인다", async () => {
-    mockFormulaRow();
-    const user = userEvent.setup();
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("30");
-
-    await user.click(screen.getByRole("button", { name: "수식 보기" }));
-
-    expect(await screen.findByText("=({단가} * 3)")).toBeInTheDocument();
-    expect(screen.queryByText("30")).not.toBeInTheDocument();
-    // 수식 없는 셀은 그대로 값.
-    expect(screen.getByText("10")).toBeInTheDocument();
-
-    // 다시 끄면 값으로 돌아온다.
-    await user.click(screen.getByRole("button", { name: "수식 보기" }));
-    expect(await screen.findByText("30")).toBeInTheDocument();
-  });
-
   it("서버가 알려준 수식 오류를 그대로 보여준다", async () => {
     mockDataset([["10", "3"]]);
     server.use(
@@ -625,9 +472,16 @@ describe("DatasetGrid", () => {
     await screen.findByText("네트워크");
     await user.click(screen.getByRole("button", { name: "열 추가" }));
 
-    expect(await screen.findByText("열 3")).toBeInTheDocument();
-    // 클라이언트는 이름을 짓지 않는다 — 열 개수 기반 규칙이 삭제 후 중복을 만들었다.
-    expect(sentBody).toEqual({});
+    // 클라이언트는 이름을 짓지 않는다(서버가 붙인다) — 빈 body로 POST한다.
+    await waitFor(() => expect(sentBody).toEqual({}));
+    // 새 열이 붙어 행에 빈 3번째 값 셀이 생긴다(제목이 없어 셀 개수로 확인).
+    await waitFor(() => {
+      expect(
+        document.querySelector(
+          '[data-testid="dataset-grid"] div[style*="translateY(0px)"] > div:nth-child(3)',
+        ),
+      ).not.toBeNull();
+    });
     // 행을 다시 받지 않으므로 기존 값이 깜빡임 없이 그대로 남는다.
     expect(screen.getByText("네트워크")).toBeInTheDocument();
     expect(screen.getByText("92")).toBeInTheDocument();
@@ -666,7 +520,14 @@ describe("DatasetGrid", () => {
 
     await screen.findByText("네트워크");
     await user.click(screen.getByRole("button", { name: "열 추가" }));
-    await screen.findByText("열 3");
+    // 새 3번째 셀이 붙을 때까지 기다린다(제목이 없어 셀 개수로 확인).
+    await waitFor(() => {
+      expect(
+        document.querySelector(
+          '[data-testid="dataset-grid"] div[style*="translateY(0px)"] > div:nth-child(3)',
+        ),
+      ).not.toBeNull();
+    });
 
     // 편집 전엔 input이 없어 라벨로 못 찾는다 — 행의 3번째 셀 div를 눌러 편집을 연다.
     const thirdCell = document.querySelector(
@@ -680,63 +541,6 @@ describe("DatasetGrid", () => {
     await waitFor(() => {
       expect(patched).toEqual(["네트워크", "92", "재수강"]);
     });
-  });
-
-  it("열 헤더를 더블클릭해 편집하면 PATCH로 저장하고 새 이름을 보여준다", async () => {
-    mockDataset([["네트워크", "92"]]);
-    let renamed: { key: string; label: string } | null = null;
-    server.use(
-      http.patch(
-        `${API_BASE}/datasets/1/columns/:key`,
-        async ({ params, request }) => {
-          const body = (await request.json()) as { label: string };
-          renamed = { key: String(params.key), label: body.label };
-          return HttpResponse.json({
-            code: "OK",
-            data: {
-              id: 1,
-              columns: [
-                { key: "c0", label: "과목" },
-                { key: "c1", label: body.label },
-              ],
-              rowCount: 1,
-            },
-          });
-        },
-      ),
-    );
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-
-    fireEvent.doubleClick(await screen.findByText("점수"));
-    const input = await screen.findByLabelText("열 이름 c1");
-    fireEvent.change(input, { target: { value: "최종점수" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    await waitFor(() => {
-      expect(renamed).toEqual({ key: "c1", label: "최종점수" });
-    });
-    expect(await screen.findByText("최종점수")).toBeInTheDocument();
-  });
-
-  it("열 이름을 비우면 PATCH를 보내지 않는다", async () => {
-    mockDataset([["네트워크", "92"]]);
-    let called = false;
-    server.use(
-      http.patch(`${API_BASE}/datasets/1/columns/:key`, () => {
-        called = true;
-        return new HttpResponse(null, { status: 400 });
-      }),
-    );
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-
-    fireEvent.doubleClick(await screen.findByText("점수"));
-    const input = await screen.findByLabelText("열 이름 c1");
-    fireEvent.change(input, { target: { value: "   " } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    // 편집이 닫히고 원래 이름이 남는다
-    expect(await screen.findByText("점수")).toBeInTheDocument();
-    expect(called).toBe(false);
   });
 
   it("행 삭제 버튼으로 DELETE를 호출한다", async () => {
@@ -782,9 +586,9 @@ describe("DatasetGrid", () => {
       ),
     );
     renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("과목");
+    await screen.findByText("네트워크");
 
-    const handle = screen.getByLabelText("과목 열 너비 조절");
+    const handle = screen.getByLabelText("1열 너비 조절");
     // getBoundingClientRect가 800으로 목킹돼 있으므로 시작 폭은 800이다.
     fireEvent.pointerDown(handle, { clientX: 0, pointerId: 1 });
     fireEvent.pointerMove(handle, { clientX: -100, pointerId: 1 });
@@ -804,26 +608,29 @@ describe("DatasetGrid", () => {
               { key: "c0", label: "과목", width: 300 },
               { key: "c1", label: "점수" },
             ],
-            rowCount: 0,
+            rowCount: 1,
           },
         }),
       ),
       http.get(`${API_BASE}/datasets/1/rows`, () =>
         HttpResponse.json({
           code: "OK",
-          data: { rows: [], offset: 0, limit: 100 },
+          data: {
+            rows: [{ id: 100, rowIndex: 0, cells: ["네트워크", "92"] }],
+            offset: 0,
+            limit: 100,
+          },
         }),
       ),
     );
     renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("과목");
+    await screen.findByText("네트워크");
 
-    const header = screen
-      .getByText("과목")
-      .closest("div[style]") as HTMLElement;
-    expect(header.style.gridTemplateColumns).toBe(
-      "300px minmax(120px, 1fr) 44px",
-    );
+    // 제목 행이 없어졌으므로 값 행의 그리드 열 정의로 확인한다.
+    const row = document.querySelector(
+      '[data-testid="dataset-grid"] div[style*="translateY(0px)"]',
+    ) as HTMLElement;
+    expect(row.style.gridTemplateColumns).toBe("300px minmax(120px, 1fr) 44px");
   });
 
   it("하한보다 좁게 끌어도 하한에서 멈춘다", async () => {
@@ -849,9 +656,9 @@ describe("DatasetGrid", () => {
       ),
     );
     renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("과목");
+    await screen.findByText("네트워크");
 
-    const handle = screen.getByLabelText("과목 열 너비 조절");
+    const handle = screen.getByLabelText("1열 너비 조절");
     fireEvent.pointerDown(handle, { clientX: 0, pointerId: 1 });
     fireEvent.pointerMove(handle, { clientX: -5000, pointerId: 1 });
     fireEvent.pointerUp(handle, { clientX: -5000, pointerId: 1 });
@@ -870,9 +677,9 @@ describe("DatasetGrid", () => {
       }),
     );
     renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("과목");
+    await screen.findByText("네트워크");
 
-    const handle = screen.getByLabelText("과목 열 너비 조절");
+    const handle = screen.getByLabelText("1열 너비 조절");
     fireEvent.pointerDown(handle, { clientX: 0, pointerId: 1 });
     fireEvent.pointerUp(handle, { clientX: 0, pointerId: 1 });
 
@@ -900,52 +707,11 @@ describe("DatasetGrid", () => {
       }),
     );
     renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("과목");
+    await screen.findByText("네트워크");
 
-    fireEvent.doubleClick(screen.getByLabelText("과목 열 너비 조절"));
+    fireEvent.doubleClick(screen.getByLabelText("1열 너비 조절"));
 
     await waitFor(() => expect(deleted).toHaveBeenCalled());
-  });
-
-  it("너비 조절 드래그가 열 순서 변경으로 새지 않는다", async () => {
-    mockDataset([["네트워크", "92"]]);
-    const reordered = vi.fn();
-    server.use(
-      http.patch(`${API_BASE}/datasets/1/columns/order`, () => {
-        reordered();
-        return HttpResponse.json({ code: "OK", data: null });
-      }),
-      http.patch(`${API_BASE}/datasets/1/columns/c0/width`, () =>
-        HttpResponse.json({
-          code: "OK",
-          data: {
-            id: 1,
-            columns: [
-              { key: "c0", label: "과목", width: 700 },
-              { key: "c1", label: "점수" },
-            ],
-            rowCount: 1,
-          },
-        }),
-      ),
-    );
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("과목");
-
-    const handle = screen.getByLabelText("과목 열 너비 조절");
-    // 리사이즈 시작 전엔 헤더를 끌어 순서를 바꿀 수 있다.
-    const header = screen.getByText("과목").closest("[draggable]");
-    expect(header).toHaveAttribute("draggable", "true");
-
-    fireEvent.pointerDown(handle, { clientX: 0, pointerId: 1 });
-    // 리사이즈 중엔 draggable이 꺼져 HTML5 드래그가 시작되지 않는다.
-    expect(header).toHaveAttribute("draggable", "false");
-
-    fireEvent.pointerMove(handle, { clientX: -100, pointerId: 1 });
-    fireEvent.pointerUp(handle, { clientX: -100, pointerId: 1 });
-
-    await new Promise((r) => setTimeout(r, 50));
-    expect(reordered).not.toHaveBeenCalled();
   });
 
   // ---------- 셀 배경색 ----------
@@ -1095,44 +861,6 @@ describe("DatasetGrid", () => {
     await user.click(screen.getByLabelText("배경색 지우기"));
 
     await waitFor(() => expect(sent).toEqual({ bg: null, align: null }));
-  });
-
-  it("열 정렬 버튼을 누르면 PATCH하고 셀 정렬이 바뀐다", async () => {
-    mockDataset([["네트워크", "92"]]);
-    let sent: unknown = null;
-    server.use(
-      http.patch(
-        `${API_BASE}/datasets/1/columns/c1/align`,
-        async ({ request }) => {
-          sent = await request.json();
-          return HttpResponse.json({
-            code: "OK",
-            data: {
-              id: 1,
-              columns: [
-                { key: "c0", label: "과목" },
-                { key: "c1", label: "점수", align: "center" },
-              ],
-              rowCount: 1,
-            },
-          });
-        },
-      ),
-    );
-    const user = userEvent.setup();
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("92");
-
-    // 기본은 왼쪽 → 클릭하면 가운데.
-    await user.click(screen.getByLabelText("점수 열 정렬 (현재 왼쪽)"));
-
-    await waitFor(() => expect(sent).toEqual({ align: "center" }));
-    // 열 기본 정렬이 그 열 셀에 반영된다.
-    await waitFor(() =>
-      expect(screen.getByText("92").className).toContain("text-center"),
-    );
-    // 다른 열은 그대로 기본(left).
-    expect(screen.getByText("네트워크").className).toContain("text-left");
   });
 
   it("셀 정렬(override)이 열 기본 정렬을 덮는다", async () => {

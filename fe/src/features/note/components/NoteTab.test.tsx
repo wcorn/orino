@@ -368,8 +368,9 @@ describe("NoteTab", () => {
     await user.click(screen.getByRole("button", { name: "표 삽입" }));
 
     // dataset 생성 → datasetTable 노드 → NodeView → DatasetGrid 렌더
+    // 제목 행이 없는 값-중심 표라 열 라벨 대신 그리드 컨트롤(행 추가)로 확인한다.
     expect(await screen.findByTestId("dataset-grid")).toBeInTheDocument();
-    expect(screen.getByText("열 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "행 추가" })).toBeInTheDocument();
   });
 
   it("툴바 [이미지 추가]로 파일 선택 시 presign→PUT 후 본문에 이미지가 삽입된다", async () => {
@@ -469,9 +470,10 @@ describe("NoteTab", () => {
     await screen.findByText("총 1행 × 2열");
     await user.click(screen.getByRole("button", { name: "표로 가져오기" }));
 
-    // 본문에 datasetTable → DatasetGrid가 렌더되고 헤더 라벨이 보인다
+    // 본문에 datasetTable → DatasetGrid가 렌더되고 가져온 값 셀이 보인다
+    // (제목 행이 없어 헤더 라벨 대신 데이터 값 "A"로 확인 — 셀은 지연 로드라 findByText로 기다린다)
     expect(await screen.findByTestId("dataset-grid")).toBeInTheDocument();
-    expect(screen.getByText("항목")).toBeInTheDocument();
+    expect(await screen.findByText("A")).toBeInTheDocument();
   });
 
   it("자손이 있는 노트 삭제 시 확인 문구에 하위 개수를 표시한다", async () => {
@@ -543,8 +545,9 @@ describe("NoteTab", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("노트 제목")).toHaveValue("표노트");
     });
-    // 노드 → NodeView → DatasetGrid(헤더) 렌더
+    // 노드 → NodeView → DatasetGrid 렌더 (제목 행 없는 값-중심 표 —
+    // rowCount 0이라 값도 없어 그리드 컨트롤(행 추가)로 확인한다)
     expect(await screen.findByTestId("dataset-grid")).toBeInTheDocument();
-    expect(screen.getByText("과목")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "행 추가" })).toBeInTheDocument();
   });
 });
