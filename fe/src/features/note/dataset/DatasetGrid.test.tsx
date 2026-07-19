@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -156,7 +156,7 @@ describe("DatasetGrid", () => {
     const user = userEvent.setup();
     renderWithRouter(<DatasetGrid datasetId={1} />);
 
-    await user.click(await screen.findByText("92"));
+    await user.dblClick(await screen.findByText("92"));
     const input = await screen.findByLabelText("셀 1행 2열");
     // 컨트롤드 input 값을 통째로 교체 후 Enter로 커밋
     fireEvent.change(input, { target: { value: "100" } });
@@ -319,7 +319,7 @@ describe("DatasetGrid", () => {
     renderWithRouter(<DatasetGrid datasetId={1} />);
 
     // 단가만 고친다.
-    await user.click(await screen.findByText("10"));
+    await user.dblClick(await screen.findByText("10"));
     const input = await screen.findByLabelText("셀 1행 1열");
     fireEvent.change(input, { target: { value: "7" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -350,7 +350,7 @@ describe("DatasetGrid", () => {
     const user = userEvent.setup();
     renderWithRouter(<DatasetGrid datasetId={1} />);
 
-    await user.click(await screen.findByText("3"));
+    await user.dblClick(await screen.findByText("3"));
     const input = await screen.findByLabelText("셀 1행 2열");
     fireEvent.change(input, { target: { value: "={과목} * 3" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -401,7 +401,7 @@ describe("DatasetGrid", () => {
     const user = userEvent.setup();
     renderWithRouter(<DatasetGrid datasetId={1} />);
 
-    await user.click(await screen.findByText("30"));
+    await user.dblClick(await screen.findByText("30"));
 
     const input = await screen.findByLabelText("셀 1행 2열");
     expect(input).toHaveValue("=({단가} * 3)");
@@ -412,7 +412,7 @@ describe("DatasetGrid", () => {
     const user = userEvent.setup();
     renderWithRouter(<DatasetGrid datasetId={1} />);
 
-    await user.click(await screen.findByText("10"));
+    await user.dblClick(await screen.findByText("10"));
 
     expect(await screen.findByLabelText("셀 1행 1열")).toHaveValue("10");
   });
@@ -433,7 +433,7 @@ describe("DatasetGrid", () => {
     const user = userEvent.setup();
     renderWithRouter(<DatasetGrid datasetId={1} />);
 
-    await user.click(await screen.findByText("3"));
+    await user.dblClick(await screen.findByText("3"));
     const input = await screen.findByLabelText("셀 1행 2열");
     fireEvent.change(input, { target: { value: "={무엇}" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -534,7 +534,7 @@ describe("DatasetGrid", () => {
     const thirdCell = document.querySelector(
       '[data-testid="dataset-grid"] div[style*="translateY(0px)"] > div:nth-child(3)',
     );
-    fireEvent.click(thirdCell!);
+    fireEvent.doubleClick(thirdCell!);
     const input = await screen.findByLabelText("셀 1행 3열");
     fireEvent.change(input, { target: { value: "재수강" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -1213,5 +1213,116 @@ describe("DatasetGrid", () => {
 
     // c0 오른쪽 = atIndex 1.
     await waitFor(() => expect(sent).toEqual({ atIndex: 1 }));
+  });
+
+  // ---------- 선택(selection) ----------
+
+  it("셀을 한 번 클릭하면 편집이 아니라 선택되고 툴바가 뜬다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const cell = (await screen.findByText("92")).parentElement as HTMLElement;
+    fireEvent.pointerDown(cell, { button: 0 });
+
+    // 편집 input은 뜨지 않는다.
+    expect(screen.queryByLabelText("셀 1행 2열")).not.toBeInTheDocument();
+    const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
+    expect(within(toolbar).getByText("셀 1개")).toBeInTheDocument();
+  });
+
+  it("shift+클릭으로 셀 범위를 선택한다", async () => {
+    mockDataset([
+      ["네트워크", "92"],
+      ["운영체제", "78"],
+    ]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const a = (await screen.findByText("네트워크"))
+      .parentElement as HTMLElement;
+    fireEvent.pointerDown(a, { button: 0 });
+    const b = screen.getByText("78").parentElement as HTMLElement;
+    fireEvent.pointerDown(b, { button: 0, shiftKey: true });
+
+    // (0,0)~(1,1) = 4칸.
+    const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
+    expect(within(toolbar).getByText("셀 4개")).toBeInTheDocument();
+  });
+
+  it("행 핸들을 누르면 행이 선택되고 툴바에 행 옵션이 뜬다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+    fireEvent.pointerDown(screen.getByRole("button", { name: "1행 선택" }));
+
+    const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
+    expect(within(toolbar).getByText("1행")).toBeInTheDocument();
+    expect(
+      within(toolbar).getByRole("button", { name: "위 삽입" }),
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar).getByRole("button", { name: "아래 삽입" }),
+    ).toBeInTheDocument();
+  });
+
+  it("열 핸들을 누르면 열이 선택되고 툴바에 열 옵션이 뜬다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+    fireEvent.pointerDown(screen.getByRole("button", { name: "1열 선택" }));
+
+    const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
+    expect(within(toolbar).getByText("1열")).toBeInTheDocument();
+    expect(
+      within(toolbar).getByRole("button", { name: "왼쪽 삽입" }),
+    ).toBeInTheDocument();
+  });
+
+  it("코너를 누르면 표 전체가 선택된다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+    fireEvent.pointerDown(screen.getByRole("button", { name: "표 전체 선택" }));
+
+    const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
+    expect(within(toolbar).getByText("표 전체")).toBeInTheDocument();
+  });
+
+  it("선택 툴바에서 배경색을 고르면 선택한 셀에 PUT한다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let sentTo: string | null = null;
+    server.use(
+      http.put(
+        `${API_BASE}/datasets/1/rows/:r/cells/:key/style`,
+        ({ params }) => {
+          sentTo = `${params.r}/${params.key}`;
+          return HttpResponse.json({
+            code: "OK",
+            data: { id: 100, rowIndex: Number(params.r), styles: {} },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const cell = (await screen.findByText("92")).parentElement as HTMLElement; // (0,1)=c1
+    fireEvent.pointerDown(cell, { button: 0 });
+
+    const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
+    await user.click(within(toolbar).getByLabelText("배경색 green"));
+
+    await waitFor(() => expect(sentTo).toBe("0/c1"));
+  });
+
+  it("Esc로 선택을 해제한다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const cell = (await screen.findByText("92")).parentElement as HTMLElement;
+    fireEvent.pointerDown(cell, { button: 0 });
+    await screen.findByRole("toolbar", { name: "선택 도구" });
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("toolbar", { name: "선택 도구" }),
+      ).not.toBeInTheDocument(),
+    );
   });
 });
