@@ -18,6 +18,7 @@ import ds.project.orino.planner.dataset.dto.MergesResponse;
 import ds.project.orino.planner.dataset.dto.RenameColumnRequest;
 import ds.project.orino.planner.dataset.dto.ReorderColumnsRequest;
 import ds.project.orino.planner.dataset.dto.ResizeColumnRequest;
+import ds.project.orino.planner.dataset.dto.BulkCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
 import ds.project.orino.planner.dataset.dto.SetCellMergeRequest;
@@ -488,6 +489,32 @@ public class DatasetService {
 
         styleService.setStyle(datasetId, row.getId(), colKey, request.bg(), request.align());
         return buildRowView(datasetId, row, rowIndex, columns);
+    }
+
+    /**
+     * 여러 셀 서식을 한 번에 지정한다(선택 범위·행·열·표 전체 적용). 소유권은 한 번만 확인하고
+     * 대상마다 서식을 통째로 교체한다(단건과 같은 의미). 영향받은 행들의 최신 상태를
+     * rowIndex 오름차순으로 돌려준다 — FE가 행별로 styles 캐시를 갱신한다.
+     */
+    @Transactional
+    public List<RowView> setCellStylesBulk(Long memberId, Long datasetId,
+                                           BulkCellStyleRequest request) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        Map<Integer, DatasetRow> rowByIndex = new LinkedHashMap<>();
+        for (BulkCellStyleRequest.Target t : request.cells()) {
+            if (indexOfColumn(columns, t.colKey()) < 0) {
+                throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
+            }
+            DatasetRow row = rowByIndex.computeIfAbsent(t.rowIndex(), idx ->
+                    rowRepository.findByDatasetIdAndRowIndex(datasetId, idx)
+                            .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND)));
+            styleService.setStyle(datasetId, row.getId(), t.colKey(), t.bg(), t.align());
+        }
+        return rowByIndex.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(e -> buildRowView(datasetId, e.getValue(), e.getKey(), columns))
+                .toList();
     }
 
     /** 그 dataset의 병합 전체. 세로 병합을 그리려면 FE가 앵커 밖 행까지 알아야 해서 통째로 준다. */

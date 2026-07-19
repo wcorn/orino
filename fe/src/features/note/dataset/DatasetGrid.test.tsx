@@ -1285,20 +1285,25 @@ describe("DatasetGrid", () => {
     expect(within(toolbar).getByText("표 전체")).toBeInTheDocument();
   });
 
-  it("선택 툴바에서 배경색을 고르면 선택한 셀에 PUT한다", async () => {
+  it("선택 툴바에서 배경색을 고르면 선택한 셀에 일괄 PUT한다", async () => {
     mockDataset([["네트워크", "92"]]);
-    let sentTo: string | null = null;
+    let sentCells: unknown = null;
     server.use(
-      http.put(
-        `${API_BASE}/datasets/1/rows/:r/cells/:key/style`,
-        ({ params }) => {
-          sentTo = `${params.r}/${params.key}`;
-          return HttpResponse.json({
-            code: "OK",
-            data: { id: 100, rowIndex: Number(params.r), styles: {} },
-          });
-        },
-      ),
+      http.put(`${API_BASE}/datasets/1/cells/style`, async ({ request }) => {
+        sentCells = ((await request.json()) as { cells: unknown }).cells;
+        return HttpResponse.json({
+          code: "OK",
+          data: [
+            {
+              id: 100,
+              rowIndex: 0,
+              cells: ["네트워크", "92"],
+              formulas: {},
+              styles: { c1: { bg: "green" } },
+            },
+          ],
+        });
+      }),
     );
     const user = userEvent.setup();
     renderWithRouter(<DatasetGrid datasetId={1} />);
@@ -1308,7 +1313,42 @@ describe("DatasetGrid", () => {
     const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
     await user.click(within(toolbar).getByLabelText("배경색 green"));
 
-    await waitFor(() => expect(sentTo).toBe("0/c1"));
+    // 선택 셀 하나를 일괄 엔드포인트로 보낸다(정렬은 기존값 없음 → null).
+    await waitFor(() =>
+      expect(sentCells).toEqual([
+        { rowIndex: 0, colKey: "c1", bg: "green", align: null },
+      ]),
+    );
+  });
+
+  it("범위를 선택해 배경색을 고르면 한 번의 요청으로 모든 셀에 적용한다", async () => {
+    mockDataset([
+      ["네트워크", "92"],
+      ["운영체제", "78"],
+    ]);
+    let requestCount = 0;
+    let count = 0;
+    server.use(
+      http.put(`${API_BASE}/datasets/1/cells/style`, async ({ request }) => {
+        requestCount++;
+        count = ((await request.json()) as { cells: unknown[] }).cells.length;
+        return HttpResponse.json({ code: "OK", data: [] });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const a = (await screen.findByText("네트워크"))
+      .parentElement as HTMLElement; // (0,0)
+    fireEvent.pointerDown(a, { button: 0 });
+    const b = screen.getByText("78").parentElement as HTMLElement; // (1,1)
+    fireEvent.pointerDown(b, { button: 0, shiftKey: true });
+
+    const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
+    await user.click(within(toolbar).getByLabelText("배경색 blue"));
+
+    // 4칸(2×2)을 한 요청으로 보낸다.
+    await waitFor(() => expect(requestCount).toBe(1));
+    expect(count).toBe(4);
   });
 
   it("Esc로 선택을 해제한다", async () => {

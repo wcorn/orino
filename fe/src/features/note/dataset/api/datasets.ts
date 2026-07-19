@@ -255,6 +255,28 @@ export async function setCellStyle(
   return data.data;
 }
 
+/**
+ * 여러 셀 서식을 한 번에 지정한다(선택 범위·행·열·표 전체 적용). 셀마다 서식을 통째로
+ * 교체하며(각 셀의 보존할 속성은 호출자가 채운다), 영향받은 행들을 돌려준다.
+ */
+export async function setCellStylesBulk(
+  datasetId: number,
+  cells: Array<{ rowIndex: number; colKey: string; style: CellStyle }>,
+): Promise<DatasetRow[]> {
+  const { data } = await client.put<ApiEnvelope<DatasetRow[]>>(
+    `/datasets/${datasetId}/cells/style`,
+    {
+      cells: cells.map((c) => ({
+        rowIndex: c.rowIndex,
+        colKey: c.colKey,
+        bg: c.style.bg ?? null,
+        align: c.style.align ?? null,
+      })),
+    },
+  );
+  return data.data;
+}
+
 /** 그 dataset의 병합 전체. 세로 병합은 앵커가 화면 밖이어도 덮인 행을 그려야 해 통째로 받는다. */
 export async function fetchDatasetMerges(
   datasetId: number,

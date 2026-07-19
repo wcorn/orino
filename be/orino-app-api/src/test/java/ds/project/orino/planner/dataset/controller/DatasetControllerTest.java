@@ -1513,6 +1513,108 @@ class DatasetControllerTest extends ApiTestSupport {
                 .andExpect(status().isNotFound());
     }
 
+    // ---------- 셀 서식 일괄(선택 범위·행·열·표 전체) ----------
+
+    @Test
+    @DisplayName("PUT cells/style(bulk) - 여러 셀 서식을 한 번에 지정하고 영향 행을 돌려준다")
+    void set_cell_styles_bulk() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"a\",\"1\"],[\"b\",\"2\"]]");
+
+        mockMvc.perform(put("/api/datasets/{id}/cells/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":["
+                                + "{\"rowIndex\":0,\"colKey\":\"c1\",\"bg\":\"green\"},"
+                                + "{\"rowIndex\":1,\"colKey\":\"c1\",\"bg\":\"green\",\"align\":\"center\"}]}"))
+                .andExpect(status().isOk())
+                // 영향받은 행이 rowIndex 오름차순으로 온다.
+                .andExpect(jsonPath("$.data[0].rowIndex").value(0))
+                .andExpect(jsonPath("$.data[0].styles.c1.bg").value("green"))
+                .andExpect(jsonPath("$.data[1].rowIndex").value(1))
+                .andExpect(jsonPath("$.data[1].styles.c1.bg").value("green"))
+                .andExpect(jsonPath("$.data[1].styles.c1.align").value("center"));
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(jsonPath("$.data.rows[0].styles.c1.bg").value("green"))
+                .andExpect(jsonPath("$.data.rows[1].styles.c1.align").value("center"))
+                // 서식 없는 셀은 sparse.
+                .andExpect(jsonPath("$.data.rows[0].styles.c0").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("PUT cells/style(bulk) - bg·align 모두 빈 대상은 그 셀 서식을 지운다")
+    void bulk_style_clears_empty_target() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"a\",\"1\"]]");
+        setStyle(id, 0, "c1", "{\"bg\":\"green\"}");
+
+        mockMvc.perform(put("/api/datasets/{id}/cells/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":[{\"rowIndex\":0,\"colKey\":\"c1\"}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].styles.c1").doesNotExist());
+
+        org.assertj.core.api.Assertions
+                .assertThat(datasetCellStyleRepository.findByRowIdAndColKey(rowIds(id).get(0), "c1"))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("PUT cells/style(bulk) - 허용되지 않은 색은 거부한다")
+    void bulk_style_rejects_invalid() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"a\",\"1\"]]");
+
+        mockMvc.perform(put("/api/datasets/{id}/cells/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":[{\"rowIndex\":0,\"colKey\":\"c1\",\"bg\":\"pink\"}]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("PUT cells/style(bulk) - 대상이 비면 400")
+    void bulk_style_rejects_empty() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"a\",\"1\"]]");
+
+        mockMvc.perform(put("/api/datasets/{id}/cells/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":[]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("PUT cells/style(bulk) - 없는 열이 섞이면 404")
+    void bulk_style_unknown_column() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"a\",\"1\"]]");
+
+        mockMvc.perform(put("/api/datasets/{id}/cells/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":[{\"rowIndex\":0,\"colKey\":\"c99\",\"bg\":\"green\"}]}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("PUT cells/style(bulk) - 남의 데이터셋은 못 바꾼다")
+    void bulk_style_of_other_member() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"a\",\"1\"]]");
+        String otherToken = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc, "other", "password");
+
+        mockMvc.perform(put("/api/datasets/{id}/cells/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, otherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":[{\"rowIndex\":0,\"colKey\":\"c1\",\"bg\":\"green\"}]}"))
+                .andExpect(status().isNotFound());
+    }
+
     // ---------- 셀 병합(가로·세로) ----------
 
     /** 3열 dataset(c0/c1/c2)을 만들고 id를 반환한다 — colspan 검증엔 열이 3개 필요하다. */
