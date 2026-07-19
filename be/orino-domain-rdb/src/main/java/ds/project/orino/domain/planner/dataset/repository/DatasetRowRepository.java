@@ -18,9 +18,6 @@ public interface DatasetRowRepository extends JpaRepository<DatasetRow, Long> {
 
     Optional<DatasetRow> findByDatasetIdAndRowIndex(Long datasetId, int rowIndex);
 
-    /** 높이를 바꾼 행만(sparse). 세로 병합 오버레이의 누적 오프셋 계산에 쓴다. */
-    List<DatasetRow> findByDatasetIdAndHeightIsNotNullOrderByRowIndexAsc(Long datasetId);
-
     /** 열 집계용 전체 조회. 수식이 열 전체를 참조할 때만 쓴다(비싸다). */
     List<DatasetRow> findByDatasetIdOrderByRowIndexAsc(Long datasetId);
 

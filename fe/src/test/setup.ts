@@ -5,6 +5,10 @@ import { afterAll, afterEach, beforeAll } from "vitest";
 
 import { server } from "./mocks/server";
 
+// jsdom의 window.scrollTo는 "Not implemented" 스텁이라, 윈도우 스크롤 기준
+// 가상화(useWindowVirtualizer)가 스크롤을 만질 때 경고를 쏟는다. no-op로 덮는다.
+window.scrollTo = (() => {}) as typeof window.scrollTo;
+
 // jsdom에는 URL.createObjectURL/revokeObjectURL이 없어 이미지 즉시 미리보기용 polyfill.
 if (!URL.createObjectURL) {
   URL.createObjectURL = () => "blob:mock";

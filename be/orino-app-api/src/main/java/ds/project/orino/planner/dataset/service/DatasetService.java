@@ -16,14 +16,11 @@ import ds.project.orino.planner.dataset.dto.InsertRowRequest;
 import ds.project.orino.planner.dataset.dto.InsertRowResponse;
 import ds.project.orino.planner.dataset.dto.MergesResponse;
 import ds.project.orino.planner.dataset.dto.RenameColumnRequest;
-import ds.project.orino.planner.dataset.dto.RowHeightView;
-import ds.project.orino.planner.dataset.dto.RowHeightsResponse;
 import ds.project.orino.planner.dataset.dto.ReorderColumnsRequest;
 import ds.project.orino.planner.dataset.dto.ResizeColumnRequest;
 import ds.project.orino.planner.dataset.dto.RowView;
 import ds.project.orino.planner.dataset.dto.RowsResponse;
 import ds.project.orino.planner.dataset.dto.SetCellMergeRequest;
-import ds.project.orino.planner.dataset.dto.SetRowHeightRequest;
 import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.SetColumnAlignRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
@@ -526,41 +523,6 @@ public class DatasetService {
 
         mergeService.unmerge(row.getId(), colKey);
         return new MergesResponse(mergeService.allMerges(datasetId));
-    }
-
-    /** 기본이 아닌 행 높이 전체. 세로 병합을 그리려면 FE가 앵커 밖 행의 높이까지 알아야 해 통째로 준다. */
-    public RowHeightsResponse getRowHeights(Long memberId, Long datasetId) {
-        getOwned(memberId, datasetId);
-        return rowHeightsOf(datasetId);
-    }
-
-    /** 행 높이 변경. 열 너비처럼 표시 속성이라 값·수식과 무관하다. 갱신된 높이 전체를 돌려준다. */
-    @Transactional
-    public RowHeightsResponse setRowHeight(Long memberId, Long datasetId, int rowIndex,
-                                           SetRowHeightRequest request) {
-        getOwned(memberId, datasetId);
-        DatasetRow row = rowRepository.findByDatasetIdAndRowIndex(datasetId, rowIndex)
-                .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
-        row.updateHeight(request.height());
-        return rowHeightsOf(datasetId);
-    }
-
-    /** 행 높이를 지워 기본 높이로 되돌린다(값의 부재로 표현 — 열 너비와 같은 규칙). */
-    @Transactional
-    public RowHeightsResponse resetRowHeight(Long memberId, Long datasetId, int rowIndex) {
-        getOwned(memberId, datasetId);
-        DatasetRow row = rowRepository.findByDatasetIdAndRowIndex(datasetId, rowIndex)
-                .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
-        row.updateHeight(null);
-        return rowHeightsOf(datasetId);
-    }
-
-    private RowHeightsResponse rowHeightsOf(Long datasetId) {
-        List<RowHeightView> heights = rowRepository
-                .findByDatasetIdAndHeightIsNotNullOrderByRowIndexAsc(datasetId).stream()
-                .map(r -> new RowHeightView(r.getRowIndex(), r.getHeight()))
-                .toList();
-        return new RowHeightsResponse(heights);
     }
 
     /** 한 행의 현재 상태를 API 형태로 조립한다(값·수식·서식을 함께 싣는다). */
