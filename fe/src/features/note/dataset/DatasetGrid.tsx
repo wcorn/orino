@@ -4,6 +4,7 @@ import {
   AlignCenter,
   AlignLeft,
   AlignRight,
+  Eraser,
   Palette,
   Plus,
   TableCellsMerge,
@@ -47,6 +48,17 @@ import { datasetKeys } from "./queryKeys";
 
 /** 행 높이(px) — 고정. 좌우(열 너비)만 조절 가능하고 위아래는 조절하지 않는다. */
 const ROW_HEIGHT = 36;
+
+/**
+ * 선택 범위 — 셀 사각 범위(a=앵커, b=포커스) / 행 묶음 / 열 묶음 / 표 전체.
+ * null이면 선택 없음. 선택 위 플로팅 툴바가 이 종류를 보고 옵션을 바꾼다.
+ */
+type Sel =
+  | { kind: "cells"; a: [number, number]; b: [number, number] }
+  | { kind: "rows"; a: number; b: number }
+  | { kind: "cols"; a: number; b: number }
+  | { kind: "table" }
+  | null;
 
 interface Props {
   datasetId: number;
@@ -101,6 +113,10 @@ export function DatasetGrid({ datasetId }: Props) {
     row: number;
     col: number;
   } | null>(null);
+  // 선택 범위(셀/행/열/표). 클릭·드래그·핸들로 정하고, 선택 위 플로팅 툴바가 이걸 본다.
+  const [sel, setSel] = useState<Sel>(null);
+  // 드래그 선택 중인 축(셀/행/열). 눌러서 끌 때만 값이 있고 window pointerup에서 해제한다.
+  const selDrag = useRef<null | "cells" | "rows" | "cols">(null);
 
   const colCount = meta?.columns.length ?? 0;
   const rowCount = meta?.rowCount ?? 0;
@@ -249,6 +265,27 @@ export function DatasetGrid({ datasetId }: Props) {
     };
   }, []);
 
+  // 드래그 선택은 표 밖에서 손을 떼도 끝나야 하므로 window에서 pointerup을 듣는다.
+  // Esc는 선택·편집을 함께 취소한다.
+  useEffect(() => {
+    const up = () => {
+      selDrag.current = null;
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        selDrag.current = null;
+        setSel(null);
+        setEditing(null);
+      }
+    };
+    window.addEventListener("pointerup", up);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("keydown", key);
+    };
+  }, []);
+
   if (isLoading) return <LoadingText />;
   if (isError || !meta) {
     return <FieldError>표를 불러오지 못했어요.</FieldError>;
@@ -325,6 +362,8 @@ export function DatasetGrid({ datasetId }: Props) {
   const startEdit = (row: number, col: number) => {
     const cells = getRow(row);
     if (!cells) return;
+    // 편집에 들어가면 선택·툴바는 접는다(더블클릭이 선택→편집 순으로 오므로).
+    setSel(null);
     setEditing({ row, col });
     // 수식 셀을 고를 땐 계산된 값이 아니라 수식을 보여준다 — 값을 보여주면
     // 자기가 쓴 수식을 다시 볼 방법이 없다.
@@ -446,6 +485,161 @@ export function DatasetGrid({ datasetId }: Props) {
   const columnLabel = (key: string) =>
     meta.columns.find((c) => c.key === key)?.label ?? key;
 
+  // ---------- 선택(selection) ----------
+  /** 선택을 정규화한 사각 범위(행·열 인덱스 경계). null이면 선택 없음. */
+  const selRect = ((): {
+    r0: number;
+    c0: number;
+    r1: number;
+    c1: number;
+  } | null => {
+    if (!sel) return null;
+    if (sel.kind === "table")
+      return { r0: 0, c0: 0, r1: rowCount - 1, c1: colCount - 1 };
+    if (sel.kind === "rows")
+      return {
+        r0: Math.min(sel.a, sel.b),
+        c0: 0,
+        r1: Math.max(sel.a, sel.b),
+        c1: colCount - 1,
+      };
+    if (sel.kind === "cols")
+      return {
+        r0: 0,
+        c0: Math.min(sel.a, sel.b),
+        r1: rowCount - 1,
+        c1: Math.max(sel.a, sel.b),
+      };
+    return {
+      r0: Math.min(sel.a[0], sel.b[0]),
+      c0: Math.min(sel.a[1], sel.b[1]),
+      r1: Math.max(sel.a[0], sel.b[0]),
+      c1: Math.max(sel.a[1], sel.b[1]),
+    };
+  })();
+
+  /** (row,col)이 현재 선택 안에 드는가 — 셀 하이라이트에 쓴다. */
+  const inSel = (row: number, col: number) =>
+    selRect != null &&
+    row >= selRect.r0 &&
+    row <= selRect.r1 &&
+    col >= selRect.c0 &&
+    col <= selRect.c1;
+
+  // 클릭=선택, 드래그=범위, shift+클릭=확장. (더블클릭은 편집으로 따로 간다)
+  const startCellSelect = (row: number, col: number, shift: boolean) => {
+    setEditing(null);
+    setPalette(null);
+    if (shift && sel?.kind === "cells") {
+      setSel({ kind: "cells", a: sel.a, b: [row, col] });
+    } else {
+      selDrag.current = "cells";
+      setSel({ kind: "cells", a: [row, col], b: [row, col] });
+    }
+  };
+  const extendCellSelect = (row: number, col: number) => {
+    if (selDrag.current !== "cells") return;
+    setSel((s) => (s?.kind === "cells" ? { ...s, b: [row, col] } : s));
+  };
+  const startRowSelect = (row: number) => {
+    setEditing(null);
+    setPalette(null);
+    selDrag.current = "rows";
+    setSel({ kind: "rows", a: row, b: row });
+  };
+  const extendRowSelect = (row: number) => {
+    if (selDrag.current !== "rows") return;
+    setSel((s) => (s?.kind === "rows" ? { ...s, b: row } : s));
+  };
+  const startColSelect = (col: number) => {
+    setEditing(null);
+    setPalette(null);
+    selDrag.current = "cols";
+    setSel({ kind: "cols", a: col, b: col });
+  };
+  const extendColSelect = (col: number) => {
+    if (selDrag.current !== "cols") return;
+    setSel((s) => (s?.kind === "cols" ? { ...s, b: col } : s));
+  };
+
+  /** 선택에 포함된 (행 index, 열 key) 목록. 서식 일괄 적용에 쓴다. */
+  const selCellRefs = (): Array<{ row: number; colKey: string }> => {
+    if (!selRect) return [];
+    const refs: Array<{ row: number; colKey: string }> = [];
+    for (let r = selRect.r0; r <= selRect.r1; r++) {
+      for (let c = selRect.c0; c <= selRect.c1; c++) {
+        refs.push({ row: r, colKey: meta.columns[c].key });
+      }
+    }
+    return refs;
+  };
+  // 서식 적용은 지금은 셀 단위 반복(표 전체는 요청이 많을 수 있다 → Phase 2에서 일괄 엔드포인트).
+  const applyBgSel = (bg: CellBgToken | null) => {
+    for (const { row, colKey } of selCellRefs()) {
+      const cur = getStyles(row)[colKey];
+      styleMut.mutate({
+        row,
+        colKey,
+        style: { bg: bg ?? undefined, align: cur?.align },
+      });
+    }
+  };
+  const applyAlignSel = (align: CellAlign | null) => {
+    for (const { row, colKey } of selCellRefs()) {
+      const cur = getStyles(row)[colKey];
+      styleMut.mutate({
+        row,
+        colKey,
+        style: { bg: cur?.bg, align: align ?? undefined },
+      });
+    }
+  };
+  const clearFormatSel = () => {
+    for (const { row, colKey } of selCellRefs()) {
+      styleMut.mutate({ row, colKey, style: {} });
+    }
+  };
+  /** 셀 사각 범위를 하나의 병합으로(2칸 이상일 때만). */
+  const mergeSel = () => {
+    if (!selRect || sel?.kind !== "cells") return;
+    const rowSpan = selRect.r1 - selRect.r0 + 1;
+    const colSpan = selRect.c1 - selRect.c0 + 1;
+    if (rowSpan * colSpan < 2) return;
+    mergeMut.mutate({
+      row: selRect.r0,
+      colKey: meta.columns[selRect.c0].key,
+      span: { rowSpan, colSpan },
+    });
+  };
+  /** 선택한 행들을 뒤 인덱스부터 순서대로 지운다(인덱스가 밀리지 않게). */
+  const deleteRowsSel = async () => {
+    if (!selRect || sel?.kind !== "rows") return;
+    for (let r = selRect.r1; r >= selRect.r0; r--) {
+      await deleteDatasetRow(datasetId, r);
+    }
+    reset();
+    void invalidateMeta();
+    void invalidateMerges();
+    setSel(null);
+  };
+  /** 선택한 열들을 지운다(key 기준이라 순서 무관). 최소 한 열은 남긴다. */
+  const deleteColsSel = async () => {
+    if (!selRect || sel?.kind !== "cols") return;
+    const keys = meta.columns
+      .slice(selRect.c0, selRect.c1 + 1)
+      .map((c) => c.key);
+    const toDelete =
+      keys.length >= colCount ? keys.slice(0, colCount - 1) : keys;
+    let last: DatasetMeta | null = null;
+    for (const key of toDelete) {
+      last = await deleteDatasetColumn(datasetId, key);
+    }
+    if (last) queryClient.setQueryData(datasetKeys.meta(datasetId), last);
+    reset();
+    void invalidateMerges();
+    setSel(null);
+  };
+
   /**
    * 셀 내부(서식 버튼·팝오버·값/입력). base 그리드 셀과 세로 병합 오버레이 박스가 함께 쓴다 —
    * 병합 셀 UI를 오버레이에서 다시 만들지 않으려는 것.
@@ -466,6 +660,8 @@ export function DatasetGrid({ datasetId }: Props) {
           <button
             type="button"
             aria-label={`${rowIndex + 1}행 ${c + 1}열 서식`}
+            // pointerdown까지 막아야 셀 선택이 시작되지 않는다.
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               setPalette(paletteOpen ? null : { row: rowIndex, col: c });
@@ -479,6 +675,7 @@ export function DatasetGrid({ datasetId }: Props) {
           <div
             role="menu"
             className="border-border bg-popover absolute top-5 right-0 z-20 flex flex-col gap-1 rounded-md border p-1 shadow-md"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 배경색 — 6색 스와치 + 지우기 */}
@@ -586,6 +783,50 @@ export function DatasetGrid({ datasetId }: Props) {
           ref={listRef}
           style={{ height: virtualizer.getTotalSize(), position: "relative" }}
         >
+          {/* 열 선택 핸들 — 상단 얇은 바(열별). 표 호버 시 나타난다. 클릭=열 선택, 드래그=여러 열. */}
+          <div
+            className="pointer-events-none absolute top-0 left-0 z-20 grid h-1.5 w-full"
+            style={{ gridTemplateColumns }}
+          >
+            {meta.columns.map((col, c) => (
+              <div
+                key={col.key}
+                role="button"
+                aria-label={`${c + 1}열 선택`}
+                title="클릭·드래그해 열 선택"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  startColSelect(c);
+                }}
+                onPointerEnter={() => extendColSelect(c)}
+                className={cn(
+                  "hover:bg-primary/60 border-border pointer-events-auto cursor-pointer touch-none border-r opacity-0 transition-opacity group-hover/grid:opacity-100",
+                  sel?.kind === "cols" &&
+                    inSel(0, c) &&
+                    "bg-primary/60 opacity-100",
+                )}
+              />
+            ))}
+          </div>
+          {/* 표 전체 선택 코너 — 좌상단 작은 사각. */}
+          <div
+            role="button"
+            aria-label="표 전체 선택"
+            title="표 전체 선택"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setEditing(null);
+              setPalette(null);
+              selDrag.current = null;
+              setSel({ kind: "table" });
+            }}
+            className={cn(
+              "hover:bg-primary/60 absolute top-0 left-0 z-30 size-2 cursor-pointer opacity-0 transition-opacity group-hover/grid:opacity-100",
+              sel?.kind === "table" && "bg-primary/60 opacity-100",
+            )}
+          />
           {virtualItems.map((vi) => {
             // 그 행에 앵커가 있는 가로 전용 병합(rowSpan===1). 덮인 칸은 스킵하고 앵커가 span으로 넓게.
             const hCovered = new Set<number>();
@@ -607,6 +848,8 @@ export function DatasetGrid({ datasetId }: Props) {
                   transform: `translateY(${vi.start - scrollMargin}px)`,
                   gridTemplateColumns,
                 }}
+                // 행 드래그 선택 중이면 지나가는 행까지 범위를 넓힌다(다른 드래그엔 무영향).
+                onPointerEnter={() => extendRowSelect(vi.index)}
               >
                 {Array.from({ length: colCount }, (_, c) => {
                   // 세로·블록 병합이 덮는 칸은 오버레이가 그리므로 base엔 자리만 둔다(정렬 유지).
@@ -630,10 +873,20 @@ export function DatasetGrid({ datasetId }: Props) {
                           ? { gridColumn: `span ${anchor.colSpan}` }
                           : {}),
                       }}
-                      onClick={() => startEdit(vi.index, c)}
+                      // 클릭=선택, 드래그=범위, shift+클릭=확장, 더블클릭=편집.
+                      onPointerDown={(e) => {
+                        if (e.button === 0)
+                          startCellSelect(vi.index, c, e.shiftKey);
+                      }}
+                      onPointerEnter={() => extendCellSelect(vi.index, c)}
+                      onDoubleClick={() => startEdit(vi.index, c)}
                       onContextMenu={(e) => openContextMenu(e, vi.index, c)}
                     >
                       {renderCellInner(vi.index, c)}
+                      {/* 선택 하이라이트 — 셀 배경 위에 얹는 반투명 오버레이. */}
+                      {inSel(vi.index, c) && (
+                        <div className="bg-primary/15 pointer-events-none absolute inset-0 z-[5]" />
+                      )}
                       {/* 열 너비 조절 — 셀 오른쪽 경계 드래그(제목 행이 없어 셀로 옮겼다).
                           셀 호버 시 나타난다. 가로 병합 앵커엔 경계가 모호해 달지 않는다. */}
                       {!anchor && (
@@ -663,6 +916,24 @@ export function DatasetGrid({ datasetId }: Props) {
                     </div>
                   );
                 })}
+                {/* 행 선택 핸들 — 좌측 얇은 바. 표 호버 시 나타난다. 클릭=행 선택,
+                    드래그=여러 행. 셀 뒤(마지막 자식)에 둬 셀 nth-child를 밀지 않는다. */}
+                <div
+                  role="button"
+                  aria-label={`${vi.index + 1}행 선택`}
+                  title="클릭·드래그해 행 선택"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    startRowSelect(vi.index);
+                  }}
+                  className={cn(
+                    "hover:bg-primary/60 absolute top-0 left-0 z-20 h-full w-1.5 cursor-pointer touch-none opacity-0 transition-opacity group-hover/grid:opacity-100",
+                    sel?.kind === "rows" &&
+                      inSel(vi.index, 0) &&
+                      "bg-primary/60 opacity-100",
+                  )}
+                />
               </div>
             );
           })}
@@ -702,10 +973,17 @@ export function DatasetGrid({ datasetId }: Props) {
                           ? { background: `var(--cell-bg-${style.bg})` }
                           : {}),
                       }}
-                      onClick={() => startEdit(m.rowIndex, ai)}
+                      onPointerDown={(e) => {
+                        if (e.button === 0)
+                          startCellSelect(m.rowIndex, ai, e.shiftKey);
+                      }}
+                      onDoubleClick={() => startEdit(m.rowIndex, ai)}
                       onContextMenu={(e) => openContextMenu(e, m.rowIndex, ai)}
                     >
                       {renderCellInner(m.rowIndex, ai)}
+                      {inSel(m.rowIndex, ai) && (
+                        <div className="bg-primary/15 pointer-events-none absolute inset-0 z-[5]" />
+                      )}
                     </div>
                   </div>
                 );
@@ -713,6 +991,162 @@ export function DatasetGrid({ datasetId }: Props) {
           </div>
         </div>
       </div>
+
+      {/* 선택 위 플로팅 툴바 — 선택 범위(표/행/열/셀)에 맞는 옵션을 보여준다.
+          위치는 v1에선 표 상단 중앙 고정(정확히 선택 위 배치는 후속). */}
+      {sel &&
+        selRect &&
+        (() => {
+          const area =
+            (selRect.r1 - selRect.r0 + 1) * (selRect.c1 - selRect.c0 + 1);
+          const scopeLabel =
+            sel.kind === "table"
+              ? "표 전체"
+              : sel.kind === "rows"
+                ? `${selRect.r1 - selRect.r0 + 1}행`
+                : sel.kind === "cols"
+                  ? `${selRect.c1 - selRect.c0 + 1}열`
+                  : `셀 ${area}개`;
+          const divider = <div className="bg-border mx-0.5 h-5 w-px" />;
+          return (
+            <div
+              role="toolbar"
+              aria-label="선택 도구"
+              onPointerDown={(e) => e.stopPropagation()}
+              className="border-border bg-popover absolute top-1 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-md border p-1 shadow-md"
+            >
+              <span className="text-muted-foreground px-1 text-xs whitespace-nowrap">
+                {scopeLabel}
+              </span>
+              {divider}
+              {/* 배경색 — 모든 선택 공통 */}
+              {CELL_BG_TOKENS.map((token) => (
+                <button
+                  key={token}
+                  type="button"
+                  aria-label={`배경색 ${token}`}
+                  onClick={() => applyBgSel(token)}
+                  className="border-border size-4 rounded-full border"
+                  style={{ background: `var(--cell-bg-${token})` }}
+                />
+              ))}
+              <button
+                type="button"
+                aria-label="배경색 지우기"
+                onClick={() => applyBgSel(null)}
+                className="text-muted-foreground hover:text-foreground border-border flex size-5 items-center justify-center rounded border"
+              >
+                <X className="size-3" />
+              </button>
+              {divider}
+              {/* 정렬 */}
+              {ALIGN_ORDER.map((value) => {
+                const Icon = ALIGN_ICONS[value];
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-label={`정렬 ${ALIGN_LABELS[value]}`}
+                    onClick={() => applyAlignSel(value)}
+                    className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-5 items-center justify-center rounded"
+                  >
+                    <Icon className="size-3.5" />
+                  </button>
+                );
+              })}
+              {/* 서식 지우기 */}
+              <button
+                type="button"
+                aria-label="서식 지우기"
+                title="배경·정렬 초기화"
+                onClick={clearFormatSel}
+                className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-5 items-center justify-center rounded"
+              >
+                <Eraser className="size-3.5" />
+              </button>
+              {/* 병합 — 셀 사각 2칸 이상 */}
+              {sel.kind === "cells" && area > 1 && (
+                <button
+                  type="button"
+                  aria-label="병합"
+                  title="선택 범위 병합"
+                  onClick={mergeSel}
+                  className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-5 items-center justify-center rounded"
+                >
+                  <TableCellsMerge className="size-3.5" />
+                </button>
+              )}
+              {/* 행 옵션 */}
+              {sel.kind === "rows" && (
+                <>
+                  {divider}
+                  <button
+                    type="button"
+                    onClick={() => addRow(selRect.r0)}
+                    className="hover:bg-accent rounded px-1.5 py-0.5 text-xs whitespace-nowrap"
+                  >
+                    위 삽입
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addRow(selRect.r1 + 1)}
+                    className="hover:bg-accent rounded px-1.5 py-0.5 text-xs whitespace-nowrap"
+                  >
+                    아래 삽입
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="행 삭제"
+                    onClick={() => void deleteRowsSel()}
+                    className="text-destructive hover:bg-accent flex size-5 items-center justify-center rounded"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </>
+              )}
+              {/* 열 옵션 */}
+              {sel.kind === "cols" && (
+                <>
+                  {divider}
+                  <button
+                    type="button"
+                    onClick={() => addColumn(selRect.c0)}
+                    className="hover:bg-accent rounded px-1.5 py-0.5 text-xs whitespace-nowrap"
+                  >
+                    왼쪽 삽입
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addColumn(selRect.c1 + 1)}
+                    className="hover:bg-accent rounded px-1.5 py-0.5 text-xs whitespace-nowrap"
+                  >
+                    오른쪽 삽입
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      for (let c = selRect.c0; c <= selRect.c1; c++)
+                        resetColWidthMut.mutate(meta.columns[c].key);
+                    }}
+                    className="hover:bg-accent rounded px-1.5 py-0.5 text-xs whitespace-nowrap"
+                  >
+                    너비 초기화
+                  </button>
+                  {colCount > selRect.c1 - selRect.c0 + 1 && (
+                    <button
+                      type="button"
+                      aria-label="열 삭제"
+                      onClick={() => void deleteColsSel()}
+                      className="text-destructive hover:bg-accent flex size-5 items-center justify-center rounded"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })()}
 
       {/* 행/열 추가 — notion식 가장자리 바. 공간을 차지하지 않게 절대 위치로 두고
           평소엔 숨겼다가 표 호버(또는 포커스) 시 나타난다. 둘 다 아이콘만(글자 없음):
