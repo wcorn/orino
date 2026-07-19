@@ -4,5 +4,4 @@ export const datasetKeys = {
   rows: (id: number, offset: number, limit: number) =>
     ["datasets", id, "rows", offset, limit] as const,
   merges: (id: number) => ["datasets", id, "merges"] as const,
-  rowHeights: (id: number) => ["datasets", id, "rowHeights"] as const,
 };

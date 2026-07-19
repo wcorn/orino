@@ -5,13 +5,12 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import {
   AlignCenter,
   AlignLeft,
   AlignRight,
   FunctionSquare,
-  GripHorizontal,
   Palette,
   Plus,
   TableCellsMerge,
@@ -19,7 +18,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -38,43 +37,37 @@ import {
   deleteCellMerge,
   deleteDatasetColumn,
   deleteDatasetRow,
-  deleteRowHeight,
   insertDatasetRow,
   MAX_COLUMN_WIDTH,
-  MAX_ROW_HEIGHT,
   type MergeSpan,
   type MergeView,
   MIN_COLUMN_WIDTH,
-  MIN_ROW_HEIGHT,
   renameDatasetColumn,
   reorderDatasetColumns,
   resetDatasetColumnWidth,
   resizeDatasetColumn,
-  type RowHeight,
   setCellMerge,
   setCellStyle,
   setDatasetColumnAlign,
-  setRowHeight,
   updateDatasetRow,
 } from "./api/datasets";
 import { useDatasetMerges } from "./hooks/useDatasetMerges";
 import { useDatasetMeta } from "./hooks/useDatasetMeta";
-import { useDatasetRowHeights } from "./hooks/useDatasetRowHeights";
 import { useDatasetRows } from "./hooks/useDatasetRows";
 import { datasetKeys } from "./queryKeys";
 
-/** 기본 행 높이(px). 사용자가 행별로 조절하면 그 행만 달라진다(sparse, #839). */
-const DEFAULT_ROW_HEIGHT = 36;
-/** 표 뷰 높이(px) — 기본·하한·상한. 사용자가 하단 핸들로 이 범위에서 조절한다. */
-const DEFAULT_BODY_HEIGHT = 420;
-const MIN_BODY_HEIGHT = 120;
-const MAX_BODY_HEIGHT = 1200;
+/** 행 높이(px) — 고정. 좌우(열 너비)만 조절 가능하고 위아래는 조절하지 않는다. */
+const ROW_HEIGHT = 36;
 
 interface Props {
   datasetId: number;
 }
 
-/** 대용량 편집 표. TanStack Table(열/헤더) + Virtual(행 가상화) + 지연 로드 + 셀/행 편집. */
+/**
+ * 대용량 편집 표. TanStack Table(열/헤더) + 윈도우 가상화(행) + 지연 로드 + 셀/행 편집.
+ * 세로는 노트 페이지 흐름을 따라 무한히 자라고(자체 스크롤 뷰포트 없음),
+ * 가로는 열이 화면을 넘으면 스크롤한다.
+ */
 export function DatasetGrid({ datasetId }: Props) {
   const queryClient = useQueryClient();
   const { data: meta, isLoading, isError } = useDatasetMeta(datasetId);
@@ -90,9 +83,8 @@ export function DatasetGrid({ datasetId }: Props) {
   } = useDatasetRows(datasetId);
   // 병합은 dataset 단위로 통째 받는다 — 세로 병합은 앵커가 화면 밖이어도 덮인 행을 그려야 한다.
   const { data: merges = [] } = useDatasetMerges(datasetId);
-  // 행 높이도 dataset 단위 — 병합 오버레이가 앵커 밖 행의 누적 높이를 알아야 한다(#839).
-  const { data: rowHeights = [] } = useDatasetRowHeights(datasetId);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // 가상화 목록(본문)의 문서 최상단으로부터의 오프셋. 윈도우 스크롤 기준 가상화에 쓴다.
+  const listRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<{ row: number; col: number } | null>(
     null,
   );
@@ -115,26 +107,15 @@ export function DatasetGrid({ datasetId }: Props) {
   const [palette, setPalette] = useState<{ row: number; col: number } | null>(
     null,
   );
-  // 표 뷰 높이(px). 하단 핸들로 조절하고 localStorage에 datasetId별로 유지한다.
-  const [bodyHeight, setBodyHeight] = useState(() => readBodyHeight(datasetId));
-  // 뷰 높이 리사이즈 중 시작점. 드래그하는 동안만 값이 있다.
-  const [viewResize, setViewResize] = useState<{
-    startY: number;
-    startHeight: number;
-  } | null>(null);
+  // 본문 목록의 문서 오프셋(px). 윈도우 가상화의 scrollMargin — 위쪽 콘텐츠 높이가
+  // 바뀌면 달라지므로 ResizeObserver로 다시 잰다.
+  const [scrollMargin, setScrollMargin] = useState(0);
   // 우클릭 컨텍스트 메뉴(뷰포트 좌표 + 대상 셀). null이면 닫힘.
   const [ctxMenu, setCtxMenu] = useState<{
     x: number;
     y: number;
     row: number;
     col: number;
-  } | null>(null);
-  // 행 높이 리사이즈 중(대상 행·시작점·진행 높이). 드래그하는 동안만 값이 있다.
-  const [rowResize, setRowResize] = useState<{
-    index: number;
-    startY: number;
-    startHeight: number;
-    height: number;
   } | null>(null);
 
   const colCount = meta?.columns.length ?? 0;
@@ -146,11 +127,6 @@ export function DatasetGrid({ datasetId }: Props) {
   // 병합을 다시 받는다.
   const invalidateMerges = () =>
     queryClient.invalidateQueries({ queryKey: datasetKeys.merges(datasetId) });
-  // 행 삽입·삭제로 행 번호가 밀리면 높이(번호 키)도 다시 받는다.
-  const invalidateRowHeights = () =>
-    queryClient.invalidateQueries({
-      queryKey: datasetKeys.rowHeights(datasetId),
-    });
 
   const updateMut = useMutation({
     mutationFn: (v: { index: number; cells: string[] }) =>
@@ -207,7 +183,6 @@ export function DatasetGrid({ datasetId }: Props) {
       reset();
       void invalidateMeta();
       void invalidateMerges(); // 뒤 행이 밀려 병합의 행 번호가 바뀌고, 안에 끼면 해제된다.
-      void invalidateRowHeights(); // 뒤 행 높이의 행 번호도 밀린다.
     },
   });
   const deleteMut = useMutation({
@@ -216,7 +191,6 @@ export function DatasetGrid({ datasetId }: Props) {
       reset();
       void invalidateMeta();
       void invalidateMerges(); // 앵커 행 삭제는 cascade, 뒤 행은 번호가 밀린다.
-      void invalidateRowHeights();
     },
   });
   const renameColMut = useMutation({
@@ -260,23 +234,6 @@ export function DatasetGrid({ datasetId }: Props) {
       queryClient.setQueryData(datasetKeys.meta(datasetId), next),
     onError: () => void invalidateMeta(),
   });
-  const setRowHeightMut = useMutation({
-    mutationFn: (v: { index: number; height: number }) =>
-      setRowHeight(datasetId, v.index, v.height),
-    // 높이는 행 단위 표시 속성이라 값 캐시는 그대로 두고 높이 리스트만 갱신한다(서버가 전체 반환).
-    onSuccess: (list: RowHeight[]) =>
-      queryClient.setQueryData(datasetKeys.rowHeights(datasetId), list),
-    onError: (e) => {
-      const message = serverMessage(e);
-      if (message) toast(message, "error");
-    },
-  });
-  const resetRowHeightMut = useMutation({
-    mutationFn: (index: number) => deleteRowHeight(datasetId, index),
-    onSuccess: (list: RowHeight[]) =>
-      queryClient.setQueryData(datasetKeys.rowHeights(datasetId), list),
-    onError: () => void invalidateRowHeights(),
-  });
   const setColAlignMut = useMutation({
     mutationFn: (v: { key: string; align: CellAlign }) =>
       setDatasetColumnAlign(datasetId, v.key, v.align),
@@ -316,16 +273,11 @@ export function DatasetGrid({ datasetId }: Props) {
     getCoreRowModel: getCoreRowModel(),
   });
 
-  // 확정된(드래그 제외) 행 높이 — 가상화 estimateSize·누적 오프셋의 기준. 값 있는 행만 sparse.
-  const heightMap = new Map(rowHeights.map((h) => [h.rowIndex, h.height]));
-  const committedHeightAt = (i: number) =>
-    heightMap.get(i) ?? DEFAULT_ROW_HEIGHT;
-
-  const virtualizer = useVirtualizer({
+  const virtualizer = useWindowVirtualizer({
     count: rowCount,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => committedHeightAt(i),
+    estimateSize: () => ROW_HEIGHT,
     overscan: 12,
+    scrollMargin,
   });
   const virtualItems = virtualizer.getVirtualItems();
   const firstIndex = virtualItems[0]?.index ?? 0;
@@ -334,6 +286,25 @@ export function DatasetGrid({ datasetId }: Props) {
   useEffect(() => {
     if (rowCount > 0) ensureRange(firstIndex, lastIndex);
   }, [firstIndex, lastIndex, rowCount, ensureRange]);
+
+  // 본문 목록의 문서 오프셋을 잰다. 표 위의 콘텐츠(다른 노트 블록) 높이가 바뀌면
+  // 오프셋이 달라지므로 document.body 리사이즈와 창 리사이즈에 다시 측정한다.
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = listRef.current;
+      if (!el) return;
+      const next = el.getBoundingClientRect().top + window.scrollY;
+      setScrollMargin((prev) => (Math.abs(prev - next) > 0.5 ? next : prev));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(document.body);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
 
   if (isLoading) return <LoadingText />;
   if (isError || !meta) {
@@ -371,28 +342,6 @@ export function DatasetGrid({ datasetId }: Props) {
   const clampWidth = (width: number) =>
     Math.round(Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, width)));
 
-  /** 화면에 그릴 행 높이 — 드래그 중인 행은 진행 높이를 쓴다. */
-  const displayHeightAt = (i: number) =>
-    rowResize?.index === i ? rowResize.height : committedHeightAt(i);
-  /** i번 행 위쪽 누적 높이. override가 sparse라 합산이 저렴. 병합 오버레이 top에 쓴다. */
-  const rowOffset = (i: number) => {
-    let extra = 0;
-    for (const h of rowHeights) {
-      if (h.rowIndex < i) extra += h.height - DEFAULT_ROW_HEIGHT;
-    }
-    return i * DEFAULT_ROW_HEIGHT + extra;
-  };
-  /** [i, i+span) 행 높이 합. 병합 오버레이 height에 쓴다. */
-  const rowRangeHeight = (i: number, span: number) => {
-    let total = 0;
-    for (let k = i; k < i + span; k++) total += committedHeightAt(k);
-    return total;
-  };
-  // 드래그 중이면 그 아래 행들이 이만큼 밀린다(가상화 reflow 없이 시각만 반영, 놓을 때 확정).
-  const rowDragDelta = rowResize ? rowResize.height - rowResize.startHeight : 0;
-  const clampRowHeight = (h: number) =>
-    Math.round(Math.min(MAX_ROW_HEIGHT, Math.max(MIN_ROW_HEIGHT, h)));
-
   const startResize = (key: string, event: React.PointerEvent) => {
     // 헤더 셀의 실제 렌더 폭에서 시작한다. 너비 미지정(1fr) 열도 이 값으로 잡히므로
     // 첫 드래그가 기본 폭에서 자연스럽게 이어진다.
@@ -429,63 +378,6 @@ export function DatasetGrid({ datasetId }: Props) {
     // 폭이 그대로면 저장하지 않는다 — 핸들을 그냥 누르기만 한 경우.
     if (Math.round(startWidth) === width) return;
     resizeColMut.mutate({ key, width });
-  };
-
-  // 표 뷰 높이 리사이즈 — 열 너비와 같은 pointer 패턴. 드래그 중엔 상태로 그리고,
-  // 놓을 때 localStorage에 한 번만 저장한다.
-  const startViewResize = (event: React.PointerEvent) => {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    setViewResize({ startY: event.clientY, startHeight: bodyHeight });
-  };
-
-  const moveViewResize = (event: React.PointerEvent) => {
-    if (!viewResize) return;
-    setBodyHeight(
-      clampBodyHeight(
-        viewResize.startHeight + (event.clientY - viewResize.startY),
-      ),
-    );
-  };
-
-  const endViewResize = () => {
-    if (!viewResize) return;
-    setViewResize(null);
-    writeBodyHeight(datasetId, bodyHeight);
-  };
-
-  // 행 높이 리사이즈 — 열 너비와 같은 pointer 패턴. 드래그 중엔 로컬 상태로 그리고(가상화 reflow 없이
-  // 아래 행을 밀어 시각 반영), 놓을 때 서버에 한 번 저장한다.
-  const startRowResize = (index: number, event: React.PointerEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    const startHeight = committedHeightAt(index);
-    setRowResize({
-      index,
-      startY: event.clientY,
-      startHeight,
-      height: startHeight,
-    });
-  };
-
-  const moveRowResize = (event: React.PointerEvent) => {
-    if (!rowResize) return;
-    setRowResize({
-      ...rowResize,
-      height: clampRowHeight(
-        rowResize.startHeight + (event.clientY - rowResize.startY),
-      ),
-    });
-  };
-
-  const endRowResize = () => {
-    if (!rowResize) return;
-    const { index, height, startHeight } = rowResize;
-    setRowResize(null);
-    // 높이가 그대로면 저장하지 않는다 — 핸들을 그냥 누르기만 한 경우.
-    if (Math.round(startHeight) === height) return;
-    setRowHeightMut.mutate({ index, height });
   };
 
   const startEdit = (row: number, col: number) => {
@@ -661,8 +553,6 @@ export function DatasetGrid({ datasetId }: Props) {
     // 셀 정렬(override) > 열 기본 정렬 > 기본(left) (#828 D2).
     const align = style?.align ?? meta.columns[c].align ?? "left";
     const paletteOpen = palette?.row === rowIndex && palette.col === c;
-    // 높이를 늘린 행은 truncate 대신 줄바꿈해 여러 줄 표시(안 그러면 빈 여백만).
-    const tall = displayHeightAt(rowIndex) > DEFAULT_ROW_HEIGHT;
     return (
       <>
         {/* 셀 서식·병합 버튼 — 호버 시 나타난다. */}
@@ -762,10 +652,7 @@ export function DatasetGrid({ datasetId }: Props) {
         ) : (
           <div
             className={cn(
-              "h-full cursor-text px-2 py-1.5",
-              tall
-                ? "overflow-hidden break-words whitespace-pre-wrap"
-                : "truncate",
+              "h-full cursor-text truncate px-2 py-1.5",
               ALIGN_CLASS[align],
               cells === undefined && "text-muted-foreground/40",
               isCellError(cells?.[c]) && "text-destructive",
@@ -786,15 +673,12 @@ export function DatasetGrid({ datasetId }: Props) {
 
   return (
     <div
-      className="border-border bg-card my-2 flex flex-col overflow-hidden rounded-md border"
+      className="border-border bg-card group/grid my-2 flex flex-col overflow-hidden rounded-md border"
       data-testid="dataset-grid"
     >
-      {/* 헤더+본문을 한 스크롤 컨테이너에 두어 스크롤바 폭과 무관하게 열이 정렬되게 한다. */}
-      <div
-        ref={scrollRef}
-        className="overflow-auto"
-        style={{ maxHeight: bodyHeight }}
-      >
+      {/* 헤더+본문을 한 컨테이너에 둔다. 가로는 열이 넘치면 스크롤하고(overflow-x-auto),
+          세로는 뷰포트를 두지 않아 행이 늘수록 페이지 흐름대로 자란다. */}
+      <div className="overflow-x-auto">
         {/* 헤더 (TanStack Table) — sticky로 상단 고정 */}
         <div
           className="bg-muted text-muted-foreground sticky top-0 z-10 grid border-b text-sm font-semibold"
@@ -909,25 +793,24 @@ export function DatasetGrid({ datasetId }: Props) {
               )}
             </div>
           ))}
-          {/* 행 삭제 버튼 열(44px) 위 자리 — 열 추가 버튼을 둔다. */}
+          {/* 행 삭제 버튼 열(44px) 위 자리 — 열 추가 버튼을 둔다.
+              표에 마우스를 올렸을 때(또는 키보드 포커스 시)만 보인다. */}
           <button
             type="button"
             aria-label="열 추가"
             title="열 추가"
             onClick={() => addColumn()}
             disabled={addColMut.isPending}
-            className="text-muted-foreground hover:text-foreground flex items-center justify-center disabled:opacity-50"
+            className="text-muted-foreground hover:text-foreground flex items-center justify-center opacity-0 transition-opacity group-hover/grid:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
           >
             <Plus className="size-3.5" />
           </button>
         </div>
 
-        {/* 본문 (가상화) */}
+        {/* 본문 (윈도우 가상화) */}
         <div
-          style={{
-            height: virtualizer.getTotalSize() + rowDragDelta,
-            position: "relative",
-          }}
+          ref={listRef}
+          style={{ height: virtualizer.getTotalSize(), position: "relative" }}
         >
           {virtualItems.map((vi) => {
             // 그 행에 앵커가 있는 가로 전용 병합(rowSpan===1). 덮인 칸은 스킵하고 앵커가 span으로 넓게.
@@ -943,14 +826,11 @@ export function DatasetGrid({ datasetId }: Props) {
             return (
               <div
                 key={vi.key}
-                className="border-border group/row absolute top-0 left-0 grid w-full border-b text-sm"
+                className="border-border absolute top-0 left-0 grid w-full border-b text-sm"
                 style={{
-                  height: displayHeightAt(vi.index),
-                  // 드래그 중이면 그 아래 행들을 delta만큼 민다(가상화 reflow 없이 시각만).
-                  transform: `translateY(${
-                    vi.start +
-                    (rowResize && vi.index > rowResize.index ? rowDragDelta : 0)
-                  }px)`,
+                  height: ROW_HEIGHT,
+                  // vi.start는 문서 좌표(scrollMargin 포함)라 목록 기준으로 되돌린다.
+                  transform: `translateY(${vi.start - scrollMargin}px)`,
                   gridTemplateColumns,
                 }}
               >
@@ -991,23 +871,6 @@ export function DatasetGrid({ datasetId }: Props) {
                 >
                   <Trash2 className="size-3.5" />
                 </button>
-                {/* 행 하단 경계 드래그 핸들 — 열 너비의 세로판. 호버 시 나타난다. */}
-                <div
-                  role="separator"
-                  aria-orientation="horizontal"
-                  aria-label={`${vi.index + 1}행 높이 조절`}
-                  title="드래그해 행 높이 조절 · 더블클릭해 기본 높이로"
-                  onPointerDown={(e) => startRowResize(vi.index, e)}
-                  onPointerMove={moveRowResize}
-                  onPointerUp={endRowResize}
-                  onPointerCancel={endRowResize}
-                  onDoubleClick={() => resetRowHeightMut.mutate(vi.index)}
-                  className={cn(
-                    "hover:bg-primary/60 absolute bottom-0 left-0 z-10 -mb-[3px] h-[6px] w-full cursor-row-resize touch-none opacity-0 group-hover/row:opacity-100",
-                    rowResize?.index === vi.index &&
-                      "bg-primary/60 opacity-100",
-                  )}
-                />
               </div>
             );
           })}
@@ -1017,10 +880,7 @@ export function DatasetGrid({ datasetId }: Props) {
               고정 행 높이라 세로는 top·height를 px로 계산한다(측정 불필요). */}
           <div
             className="pointer-events-none absolute top-0 left-0 grid w-full"
-            style={{
-              gridTemplateColumns,
-              height: virtualizer.getTotalSize() + rowDragDelta,
-            }}
+            style={{ gridTemplateColumns, height: virtualizer.getTotalSize() }}
           >
             {overlayMerges
               .filter(
@@ -1041,9 +901,8 @@ export function DatasetGrid({ datasetId }: Props) {
                     <div
                       className="border-border bg-card group/cell pointer-events-auto absolute right-0 left-0 truncate border-r border-b text-sm"
                       style={{
-                        // 누적 오프셋 — 가변 행 높이에서도 정확(고정 높이면 rowIndex×36과 같다).
-                        top: rowOffset(m.rowIndex),
-                        height: rowRangeHeight(m.rowIndex, m.rowSpan),
+                        top: m.rowIndex * ROW_HEIGHT,
+                        height: m.rowSpan * ROW_HEIGHT,
                         ...(style?.bg
                           ? { background: `var(--cell-bg-${style.bg})` }
                           : {}),
@@ -1060,25 +919,7 @@ export function DatasetGrid({ datasetId }: Props) {
         </div>
       </div>
 
-      {/* 표 뷰 높이 리사이즈 핸들 — 드래그해 보이는 높이를 늘리거나 줄인다. */}
-      <div
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="표 높이 조절"
-        title="드래그해 표 높이 조절"
-        onPointerDown={startViewResize}
-        onPointerMove={moveViewResize}
-        onPointerUp={endViewResize}
-        onPointerCancel={endViewResize}
-        className={cn(
-          "border-border text-muted-foreground/50 hover:bg-muted hover:text-muted-foreground flex h-3 cursor-row-resize touch-none items-center justify-center border-t",
-          viewResize && "bg-muted text-muted-foreground",
-        )}
-      >
-        <GripHorizontal className="size-3.5" />
-      </div>
-
-      {/* 행 추가 */}
+      {/* 행 추가 — 표에 마우스를 올렸을 때(또는 키보드 포커스 시)만 [행 추가]가 보인다. */}
       <div className="border-border flex items-center gap-1 border-t p-1">
         <Button
           type="button"
@@ -1086,6 +927,7 @@ export function DatasetGrid({ datasetId }: Props) {
           size="sm"
           onClick={() => addRow()}
           disabled={insertMut.isPending}
+          className="opacity-0 transition-opacity group-hover/grid:opacity-100 focus-visible:opacity-100"
         >
           <Plus className="size-4" /> 행 추가
         </Button>
@@ -1220,35 +1062,6 @@ export function DatasetGrid({ datasetId }: Props) {
 }
 
 const EMPTY: string[][] = [];
-
-/** 뷰 높이를 하한~상한으로 자른다. */
-const clampBodyHeight = (height: number) =>
-  Math.round(Math.min(MAX_BODY_HEIGHT, Math.max(MIN_BODY_HEIGHT, height)));
-
-const bodyHeightKey = (datasetId: number) =>
-  `orino:dataset-grid-height:${datasetId}`;
-
-/** 저장된 뷰 높이(localStorage). 없거나 잘못됐으면 기본값. */
-function readBodyHeight(datasetId: number): number {
-  try {
-    const raw = localStorage.getItem(bodyHeightKey(datasetId));
-    const value = raw == null ? NaN : Number(raw);
-    return Number.isFinite(value) && value > 0
-      ? clampBodyHeight(value)
-      : DEFAULT_BODY_HEIGHT;
-  } catch {
-    return DEFAULT_BODY_HEIGHT;
-  }
-}
-
-/** 뷰 높이를 datasetId별로 유지한다. 서버가 아니라 클라이언트 표시 설정이라 localStorage에 둔다. */
-function writeBodyHeight(datasetId: number, height: number): void {
-  try {
-    localStorage.setItem(bodyHeightKey(datasetId), String(height));
-  } catch {
-    // localStorage 불가(프라이빗 모드 등) — 유지만 못 할 뿐 동작은 같다.
-  }
-}
 
 /** 정렬 값 → 아이콘. 열/셀 정렬 버튼과 렌더에 공용. */
 const ALIGN_ICONS = {

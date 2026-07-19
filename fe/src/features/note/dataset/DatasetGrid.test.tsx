@@ -44,9 +44,6 @@ function mockDataset(rows: string[][]) {
     http.get(`${API_BASE}/datasets/1/merges`, () =>
       HttpResponse.json({ code: "OK", data: { merges: [] } }),
     ),
-    http.get(`${API_BASE}/datasets/1/row-heights`, () =>
-      HttpResponse.json({ code: "OK", data: { heights: [] } }),
-    ),
   );
 }
 
@@ -59,17 +56,9 @@ function mockMerges(merges: unknown[]) {
   );
 }
 
-/** 그 dataset의 행 높이 리스트를 목킹한다(GET /row-heights). 기본이 아닌 행만 sparse. */
-function mockRowHeights(heights: unknown[]) {
-  server.use(
-    http.get(`${API_BASE}/datasets/1/row-heights`, () =>
-      HttpResponse.json({ code: "OK", data: { heights } }),
-    ),
-  );
-}
-
-// jsdom엔 레이아웃이 없어 스크롤 요소 크기가 0이라 TanStack Virtual이 행을 안 그린다.
-// getBoundingClientRect를 고정 크기로 목킹해 뷰포트를 만들어 준다.
+// jsdom엔 레이아웃이 없어 요소 크기·위치가 0이다. getBoundingClientRect를 고정값으로
+// 목킹해 열 너비 리사이즈의 시작 폭과 윈도우 가상화의 scrollMargin(top=0) 계산을 받쳐 준다.
+// (뷰포트 높이는 윈도우가 제공한다 — jsdom 기본 innerHeight.)
 const FAKE_RECT = {
   x: 0,
   y: 0,
@@ -107,35 +96,39 @@ describe("DatasetGrid", () => {
     expect(screen.getByText("78")).toBeInTheDocument();
   });
 
-  it("하단 핸들을 드래그하면 표 높이가 바뀌고 localStorage에 유지된다", async () => {
-    localStorage.clear();
-    mockDataset([["네트워크", "92"]]);
+  it("세로 뷰포트 없이 행 수만큼 자란다 — 높이 상한이 없고 가로만 스크롤한다", async () => {
+    mockDataset([
+      ["네트워크", "92"],
+      ["운영체제", "78"],
+      ["자료구조", "88"],
+    ]);
     renderWithRouter(<DatasetGrid datasetId={1} />);
     await screen.findByText("네트워크");
 
-    const scroll = document.querySelector(".overflow-auto") as HTMLElement;
-    // 기본 높이 420px.
-    expect(scroll.style.maxHeight).toBe("420px");
+    const scroll = document.querySelector(".overflow-x-auto") as HTMLElement;
+    expect(scroll).not.toBeNull();
+    // 세로 높이 상한(maxHeight)이 없어 페이지 흐름대로 자란다.
+    expect(scroll.style.maxHeight).toBe("");
+    // 뷰 높이 조절 핸들은 사라졌다.
+    expect(screen.queryByLabelText("표 높이 조절")).toBeNull();
 
-    const handle = screen.getByLabelText("표 높이 조절");
-    fireEvent.pointerDown(handle, { clientY: 100 });
-    fireEvent.pointerMove(handle, { clientY: 200 }); // +100px
-    fireEvent.pointerUp(handle, { clientY: 200 });
-
-    // 높이가 늘고, localStorage에 datasetId별로 저장된다.
-    expect(scroll.style.maxHeight).toBe("520px");
-    expect(localStorage.getItem("orino:dataset-grid-height:1")).toBe("520");
+    // 본문 목록 높이 = 행 수 × 고정 행 높이(36).
+    const body = scroll.children[1] as HTMLElement;
+    expect(body.style.height).toBe("108px");
   });
 
-  it("저장된 표 높이를 새로고침에 복원한다", async () => {
-    localStorage.setItem("orino:dataset-grid-height:1", "600");
+  it("행·열 추가 버튼은 평소 숨겨져 있고 표에 호버(또는 포커스)하면 보인다", async () => {
     mockDataset([["네트워크", "92"]]);
     renderWithRouter(<DatasetGrid datasetId={1} />);
     await screen.findByText("네트워크");
 
-    const scroll = document.querySelector(".overflow-auto") as HTMLElement;
-    expect(scroll.style.maxHeight).toBe("600px");
-    localStorage.clear();
+    const addRow = screen.getByRole("button", { name: "행 추가" });
+    const addCol = screen.getByLabelText("열 추가");
+    // 기본은 opacity-0, 표(group/grid) 호버 시 opacity-100로 드러난다.
+    for (const btn of [addRow, addCol]) {
+      expect(btn.className).toContain("opacity-0");
+      expect(btn.className).toContain("group-hover/grid:opacity-100");
+    }
   });
 
   it("셀을 클릭해 편집하면 PATCH로 저장한다", async () => {
@@ -347,10 +340,9 @@ describe("DatasetGrid", () => {
       const row = document.querySelector(
         '[data-testid="dataset-grid"] div[style*="translateY(0px)"]',
       );
-      // 셀 div만 — 행 높이 리사이즈 핸들(role=separator)은 제외한다.
-      const cells = Array.from(
-        row!.querySelectorAll(":scope > div:not([role='separator'])"),
-      ).map((c) => c.textContent?.trim());
+      const cells = Array.from(row!.querySelectorAll(":scope > div")).map((c) =>
+        c.textContent?.trim(),
+      );
       expect(cells).toEqual(["재수강", "네트워크", "92"]);
     });
   });
@@ -1490,112 +1482,5 @@ describe("DatasetGrid", () => {
 
     // c0 오른쪽 = atIndex 1.
     await waitFor(() => expect(sent).toEqual({ atIndex: 1 }));
-  });
-
-  it("저장된 행 높이를 반영하고 아래 행은 그만큼 밀린다", async () => {
-    mockDataset([
-      ["네트워크", "92"],
-      ["보안", "80"],
-    ]);
-    mockRowHeights([{ rowIndex: 0, height: 120 }]);
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("네트워크");
-
-    const row0 = document.querySelector(
-      '[data-testid="dataset-grid"] div[style*="translateY(0px)"]',
-    ) as HTMLElement;
-    expect(row0.style.height).toBe("120px");
-    // 0행이 120이라 1행은 120에서 시작(누적), 높이는 기본 36.
-    const row1 = document.querySelector(
-      'div[style*="translateY(120px)"]',
-    ) as HTMLElement;
-    expect(row1).toBeTruthy();
-    expect(row1.style.height).toBe("36px");
-  });
-
-  it("행 하단 핸들을 드래그하면 높이를 PATCH한다", async () => {
-    mockDataset([["네트워크", "92"]]);
-    let sent: unknown = null;
-    server.use(
-      http.patch(
-        `${API_BASE}/datasets/1/rows/0/height`,
-        async ({ request }) => {
-          sent = await request.json();
-          return HttpResponse.json({
-            code: "OK",
-            data: { heights: [{ rowIndex: 0, height: 100 }] },
-          });
-        },
-      ),
-    );
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("네트워크");
-
-    const handle = screen.getByLabelText("1행 높이 조절");
-    fireEvent.pointerDown(handle, { clientY: 50 });
-    fireEvent.pointerMove(handle, { clientY: 114 }); // +64 → 36+64=100
-    fireEvent.pointerUp(handle, { clientY: 114 });
-
-    await waitFor(() => expect(sent).toEqual({ height: 100 }));
-  });
-
-  it("세로 병합 오버레이는 가변 행 높이의 누적 오프셋으로 그려진다", async () => {
-    server.use(
-      http.get(`${API_BASE}/datasets/1`, () =>
-        HttpResponse.json({
-          code: "OK",
-          data: {
-            id: 1,
-            columns: [
-              { key: "c0", label: "과목" },
-              { key: "c1", label: "점수" },
-            ],
-            rowCount: 3,
-          },
-        }),
-      ),
-      http.get(`${API_BASE}/datasets/1/rows`, () =>
-        HttpResponse.json({
-          code: "OK",
-          data: {
-            rows: [
-              {
-                id: 100,
-                rowIndex: 0,
-                cells: ["네트워크", "92"],
-                formulas: {},
-                styles: {},
-              },
-              {
-                id: 101,
-                rowIndex: 1,
-                cells: ["보안", "80"],
-                formulas: {},
-                styles: {},
-              },
-              {
-                id: 102,
-                rowIndex: 2,
-                cells: ["암호", "70"],
-                formulas: {},
-                styles: {},
-              },
-            ],
-            offset: 0,
-            limit: 100,
-          },
-        }),
-      ),
-    );
-    // 0행 높이 100 → 1행 오프셋 = 36 + (100-36) = 100. c0가 1..2행 세로 병합.
-    mockRowHeights([{ rowIndex: 0, height: 100 }]);
-    mockMerges([{ rowIndex: 1, colKey: "c0", rowSpan: 2, colSpan: 1 }]);
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("보안");
-
-    const box = screen.getByText("보안").closest("div[style]") as HTMLElement;
-    // top = 누적 오프셋(100), height = 1·2행 높이 합(36+36=72).
-    expect(box.style.top).toBe("100px");
-    expect(box.style.height).toBe("72px");
   });
 });
