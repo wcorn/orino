@@ -5,7 +5,6 @@ import {
   AlignLeft,
   AlignRight,
   Eraser,
-  Palette,
   Plus,
   TableCellsMerge,
   TableCellsSplit,
@@ -38,7 +37,6 @@ import {
   resetDatasetColumnWidth,
   resizeDatasetColumn,
   setCellMerge,
-  setCellStyle,
   setCellStylesBulk,
   updateDatasetRow,
 } from "./api/datasets";
@@ -111,10 +109,6 @@ export function DatasetGrid({
     startWidth: number;
     width: number;
   } | null>(null);
-  // 색 팔레트를 연 셀(행 index·열 index). null이면 닫힘.
-  const [palette, setPalette] = useState<{ row: number; col: number } | null>(
-    null,
-  );
   // 본문 목록의 문서 오프셋(px). 윈도우 가상화의 scrollMargin — 위쪽 콘텐츠 높이가
   // 바뀌면 달라지므로 ResizeObserver로 다시 잰다.
   const [scrollMargin, setScrollMargin] = useState(0);
@@ -171,16 +165,6 @@ export function DatasetGrid({
         setFormulasLocal(index, prev.formulas);
       });
   };
-  const styleMut = useMutation({
-    mutationFn: (v: { row: number; colKey: string; style: CellStyle }) =>
-      setCellStyle(datasetId, v.row, v.colKey, v.style),
-    // 서식만 바뀌므로 값·수식 캐시는 건드리지 않고 styles만 갱신한다.
-    onSuccess: (row) => setStylesLocal(row.rowIndex, row.styles ?? {}),
-    onError: (e) => {
-      const message = serverMessage(e);
-      if (message) toast(message, "error");
-    },
-  });
   // 선택 범위 서식을 한 요청으로 적용(표 전체도 1회). 영향 행마다 styles 캐시를 갱신한다.
   const bulkStyleMut = useMutation({
     mutationFn: (
@@ -488,33 +472,6 @@ export function DatasetGrid({
     setEditing(null);
   };
 
-  /** 셀 배경색을 바꾼다. 정렬 등 다른 서식은 보존한다(서버는 통째로 교체하므로). */
-  const applyBg = (row: number, col: number, bg: CellBgToken | null) => {
-    const colKey = meta.columns[col].key;
-    const current = getStyles(row)[colKey];
-    styleMut.mutate({
-      row,
-      colKey,
-      style: { bg: bg ?? undefined, align: current?.align },
-    });
-    setPalette(null);
-  };
-
-  /**
-   * 셀 정렬을 바꾼다(열 기본을 덮는 셀 단위 override). 배경색은 보존한다.
-   * null이면 셀 정렬을 지워 열 기본 정렬을 따르게 한다.
-   */
-  const applyAlign = (row: number, col: number, align: CellAlign | null) => {
-    const colKey = meta.columns[col].key;
-    const current = getStyles(row)[colKey];
-    styleMut.mutate({
-      row,
-      colKey,
-      style: { bg: current?.bg, align: align ?? undefined },
-    });
-    setPalette(null);
-  };
-
   /** (row,col)이 앵커인 병합. 없으면 undefined. */
   const mergeAt = (row: number, col: number): MergeView | undefined =>
     merges.find(
@@ -533,7 +490,6 @@ export function DatasetGrid({
       colKey: meta.columns[col].key,
       span: { rowSpan, colSpan },
     });
-    setPalette(null);
   };
 
   /** 앵커 셀을 아래 행과 한 칸 더 병합한다. 이미 병합이면 rowSpan+1(colSpan은 유지). */
@@ -547,13 +503,11 @@ export function DatasetGrid({
       colKey: meta.columns[col].key,
       span: { rowSpan, colSpan },
     });
-    setPalette(null);
   };
 
   /** 병합 해제. 덮여 있던 셀 값이 그 자리에 되살아난다. */
   const unmerge = (row: number, col: number) => {
     unmergeMut.mutate({ row, colKey: meta.columns[col].key });
-    setPalette(null);
   };
 
   /**
@@ -566,7 +520,6 @@ export function DatasetGrid({
     col: number,
   ) => {
     event.preventDefault();
-    setPalette(null);
     if (!inSel(row, col)) {
       setEditing(null);
       selDrag.current = null;
@@ -630,7 +583,6 @@ export function DatasetGrid({
   // 클릭=선택, 드래그=범위, shift+클릭=확장. (더블클릭은 편집으로 따로 간다)
   const startCellSelect = (row: number, col: number, shift: boolean) => {
     setEditing(null);
-    setPalette(null);
     if (shift && sel?.kind === "cells") {
       setSel({ kind: "cells", a: sel.a, b: [row, col] });
     } else {
@@ -682,7 +634,6 @@ export function DatasetGrid({
   };
   const startRowSelect = (row: number) => {
     setEditing(null);
-    setPalette(null);
     selDrag.current = "rows";
     setSel({ kind: "rows", a: row, b: row });
   };
@@ -692,7 +643,6 @@ export function DatasetGrid({
   };
   const startColSelect = (col: number) => {
     setEditing(null);
-    setPalette(null);
     selDrag.current = "cols";
     setSel({ kind: "cols", a: col, b: col });
   };
@@ -939,91 +889,10 @@ export function DatasetGrid({
     const style = getStyles(rowIndex)[colKey];
     // 셀 정렬(override) > 열 기본 정렬 > 기본(left) (#828 D2).
     const align = style?.align ?? meta.columns[c].align ?? "left";
-    const paletteOpen = palette?.row === rowIndex && palette.col === c;
     return (
       <>
-        {/* 셀 서식·병합 버튼 — 호버 시 나타난다. */}
-        {!isEditing && (
-          <button
-            type="button"
-            aria-label={`${rowIndex + 1}행 ${c + 1}열 서식`}
-            // pointerdown까지 막아야 셀 선택이 시작되지 않는다.
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              setPalette(paletteOpen ? null : { row: rowIndex, col: c });
-            }}
-            className="text-muted-foreground hover:text-foreground absolute top-0.5 right-0.5 z-10 opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100"
-          >
-            <Palette className="size-3" />
-          </button>
-        )}
-        {paletteOpen && (
-          <div
-            role="menu"
-            className="border-border bg-popover absolute top-5 right-0 z-20 flex flex-col gap-1 rounded-md border p-1 shadow-md"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* 배경색 — 6색 스와치 + 지우기 */}
-            <div className="flex gap-1">
-              {CELL_BG_TOKENS.map((token) => (
-                <button
-                  key={token}
-                  type="button"
-                  aria-label={`배경색 ${token}`}
-                  onClick={() => applyBg(rowIndex, c, token)}
-                  className={cn(
-                    "size-4 rounded-full border",
-                    style?.bg === token ? "border-foreground" : "border-border",
-                  )}
-                  style={{ background: `var(--cell-bg-${token})` }}
-                />
-              ))}
-              <button
-                type="button"
-                aria-label="배경색 지우기"
-                onClick={() => applyBg(rowIndex, c, null)}
-                className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded-full border"
-              >
-                <X className="size-2.5" />
-              </button>
-            </div>
-            {/* 정렬 — 셀 단위 override(열 기본을 덮는다) + 열 기본 따르기 */}
-            <div className="flex gap-1">
-              {ALIGN_ORDER.map((value) => {
-                const Icon = ALIGN_ICONS[value];
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-label={`정렬 ${ALIGN_LABELS[value]}`}
-                    onClick={() => applyAlign(rowIndex, c, value)}
-                    className={cn(
-                      "hover:bg-accent flex size-4 items-center justify-center rounded border",
-                      style?.align === value
-                        ? "border-foreground text-foreground"
-                        : "border-border text-muted-foreground",
-                    )}
-                  >
-                    <Icon className="size-2.5" />
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                aria-label="셀 정렬 지우기 (열 기본 따르기)"
-                title="열 기본 정렬을 따른다"
-                onClick={() => applyAlign(rowIndex, c, null)}
-                className="text-muted-foreground hover:text-foreground border-border flex size-4 items-center justify-center rounded border"
-              >
-                <X className="size-2.5" />
-              </button>
-            </div>
-            {/* 삽입·삭제·병합은 셀 우클릭 메뉴로. */}
-          </div>
-        )}
-        {/* 표시값은 항상 렌더한다(레이아웃·테스트 기준). 활성 셀이면 그 위에 입력창이 겹친다. */}
+        {/* 표시값은 항상 렌더한다(레이아웃·테스트 기준). 활성 셀이면 그 위에 입력창이 겹친다.
+          셀 서식(배경색·정렬)은 우클릭 메뉴로 통일했다(셀별 팔레트 버튼 제거). */}
         <div
           className={cn(
             "h-full cursor-text truncate px-2 py-1.5",
@@ -1144,7 +1013,6 @@ export function DatasetGrid({
                 e.preventDefault();
                 e.stopPropagation();
                 setEditing(null);
-                setPalette(null);
                 selDrag.current = null;
                 setSel({ kind: "table" });
               }}
