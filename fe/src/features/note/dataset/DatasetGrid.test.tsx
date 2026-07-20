@@ -175,6 +175,36 @@ describe("DatasetGrid", () => {
     });
   });
 
+  it("엔터·blur 없이 타이핑만 해도 잠시 뒤 자동저장된다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let patched: { index: number; cells: string[] } | null = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/rows/:i`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { cells: string[] };
+          patched = { index: Number(params.i), cells: body.cells };
+          return HttpResponse.json({
+            code: "OK",
+            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.dblClick(await screen.findByText("92"));
+    const input = await screen.findByLabelText("셀 1행 2열");
+    fireEvent.change(input, { target: { value: "125" } });
+
+    // 엔터/blur를 하지 않아도 디바운스 뒤 자동저장된다.
+    await waitFor(
+      () => expect(patched).toEqual({ index: 0, cells: ["네트워크", "125"] }),
+      { timeout: 2000 },
+    );
+  });
+
   it("셀을 한 번 클릭한 뒤 글자를 누르면 그 글자로 편집이 시작된다", async () => {
     mockDataset([["네트워크", "92"]]);
     let patched: { index: number; cells: string[] } | null = null;
