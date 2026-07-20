@@ -14,11 +14,13 @@ import { Input } from "@/components/ui/input";
 
 import type { NoteContent, NoteDetail } from "../api/notes";
 import { deleteDataset } from "../dataset/api/datasets";
+import { DATASET_CELLS_MIME } from "../dataset/cellClipboard";
 import { ChildPage, collectChildPageIds } from "../editor/childPage";
 import { ChildPageContext } from "../editor/childPageContext";
 import { collectDatasetIds, DatasetTable } from "../editor/datasetTable";
 import { DatasetTableContext } from "../editor/datasetTableContext";
 import { extractImageFiles, uploadAndInsertImage } from "../editor/imageUpload";
+import { insertTableFromCells } from "../editor/pasteCellsAsTable";
 import { useAutoSaveNote } from "../hooks/useAutoSaveNote";
 import { useCreateNote, useDeleteNote } from "../hooks/useNoteMutations";
 import { useNoteTree } from "../hooks/useNoteTree";
@@ -89,16 +91,25 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
             "prose prose-sm dark:prose-invert max-w-none min-h-[40svh] focus:outline-none py-4 pr-4 pl-10",
           "aria-label": "노트 본문",
         },
-        // 클립보드 붙여넣기로 이미지 업로드
         handlePaste: (_view, event) => {
+          // 1) 클립보드 이미지 → 업로드 후 삽입
           const files = extractImageFiles(event.clipboardData);
-          if (files.length === 0) return false;
-          event.preventDefault();
-          files.forEach((file) => {
-            if (editorRef.current)
-              void uploadAndInsertImage(editorRef.current, file);
-          });
-          return true;
+          if (files.length > 0) {
+            event.preventDefault();
+            files.forEach((file) => {
+              if (editorRef.current)
+                void uploadAndInsertImage(editorRef.current, file);
+            });
+            return true;
+          }
+          // 2) 표에서 복사한 셀 → 그 조각으로 새 표를 만들어 삽입
+          const cellsTsv = event.clipboardData?.getData(DATASET_CELLS_MIME);
+          if (cellsTsv && editorRef.current) {
+            event.preventDefault();
+            void insertTableFromCells(editorRef.current, cellsTsv);
+            return true;
+          }
+          return false;
         },
         // 드래그앤드롭으로 이미지 업로드
         handleDrop: (_view, event) => {

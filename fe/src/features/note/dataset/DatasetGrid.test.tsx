@@ -280,9 +280,14 @@ describe("DatasetGrid", () => {
       clipboardData: { setData, getData: () => "" },
     });
 
-    // 2×2 범위를 엑셀 호환 TSV로 담는다.
+    // 2×2 범위를 엑셀 호환 TSV(text/plain)로 담는다.
     expect(setData).toHaveBeenCalledWith(
       "text/plain",
+      "네트워크\t92\n운영체제\t78",
+    );
+    // 본문 붙여넣기 시 새 표로 만들 수 있게, 커스텀 표식 타입으로도 담는다.
+    expect(setData).toHaveBeenCalledWith(
+      "text/x-orino-dataset-cells",
       "네트워크\t92\n운영체제\t78",
     );
   });
