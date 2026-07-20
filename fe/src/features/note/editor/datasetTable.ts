@@ -26,7 +26,10 @@ export const DatasetTable = Node.create({
   group: "block",
   atom: true,
   selectable: true,
-  draggable: true,
+  // draggable을 노드에 켜면 표 전체(react-renderer)가 draggable="true"가 되어, 셀을 드래그해
+  // 범위 선택하려 할 때 브라우저가 블록(또는 선택된 텍스트)을 대신 끌어 이동이 꼬인다.
+  // 블록 이동은 외부 드래그 핸들(⣿)이 view.dragging을 직접 세워 처리하므로 여기선 끈다.
+  draggable: false,
 
   addAttributes() {
     return {
