@@ -45,9 +45,10 @@ describe("collectDatasetIds", () => {
 });
 
 describe("DatasetTable 노드 스펙", () => {
-  it("atom block 이고 draggable=true 이다", () => {
+  it("atom block 이고 draggable=false 다(블록 이동은 외부 드래그 핸들이 담당)", () => {
     expect(DatasetTable.config.atom).toBe(true);
-    expect(DatasetTable.config.draggable).toBe(true);
+    // 표 전체가 draggable이면 셀 드래그 선택과 충돌해 이동이 꼬인다 → 노드는 끄고 핸들로만 이동.
+    expect(DatasetTable.config.draggable).toBe(false);
   });
 });
 
