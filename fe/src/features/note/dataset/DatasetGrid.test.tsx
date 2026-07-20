@@ -1370,19 +1370,22 @@ describe("DatasetGrid", () => {
 
   // ---------- 선택(selection) ----------
 
-  it("셀을 한 번 클릭하면 편집이 아니라 선택되고 툴바가 뜬다", async () => {
+  it("셀을 한 번 클릭하면 선택되고, 우클릭하면 '셀 1개' 메뉴가 뜬다", async () => {
     mockDataset([["네트워크", "92"]]);
     renderWithRouter(<DatasetGrid datasetId={1} />);
     const cell = (await screen.findByText("92")).parentElement as HTMLElement;
     fireEvent.pointerDown(cell, { button: 0 });
 
-    // 편집 input은 뜨지 않는다.
+    // 편집 input(셀 N행 M열)은 아직 뜨지 않는다(선택일 뿐).
     expect(screen.queryByLabelText("셀 1행 2열")).not.toBeInTheDocument();
-    const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
-    expect(within(toolbar).getByText("셀 1개")).toBeInTheDocument();
+
+    // 옵션은 플로팅 툴바 없이 우클릭 메뉴 하나로 통일 — 선택 범위가 '셀 1개'로 표시된다.
+    fireEvent.contextMenu(cell);
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    expect(within(menu).getByText("셀 1개")).toBeInTheDocument();
   });
 
-  it("shift+클릭으로 셀 범위를 선택한다", async () => {
+  it("shift+클릭으로 셀 범위를 선택하고, 우클릭 메뉴가 '셀 4개'를 보여준다", async () => {
     mockDataset([
       ["네트워크", "92"],
       ["운영체제", "78"],
@@ -1394,51 +1397,55 @@ describe("DatasetGrid", () => {
     const b = screen.getByText("78").parentElement as HTMLElement;
     fireEvent.pointerDown(b, { button: 0, shiftKey: true });
 
-    // (0,0)~(1,1) = 4칸.
-    const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
-    expect(within(toolbar).getByText("셀 4개")).toBeInTheDocument();
+    // (0,0)~(1,1) = 4칸. 선택 안을 우클릭하면 선택이 유지된다.
+    fireEvent.contextMenu(a);
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    expect(within(menu).getByText("셀 4개")).toBeInTheDocument();
   });
 
-  it("행 핸들을 누르면 행이 선택되고 툴바에 행 옵션이 뜬다", async () => {
+  it("행 핸들로 행을 선택하고 우클릭하면 '1행'과 행 삽입 옵션이 나온다", async () => {
     mockDataset([["네트워크", "92"]]);
     renderWithRouter(<DatasetGrid datasetId={1} />);
     await screen.findByText("네트워크");
     fireEvent.pointerDown(screen.getByRole("button", { name: "1행 선택" }));
 
-    const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
-    expect(within(toolbar).getByText("1행")).toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByText("네트워크"));
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    expect(within(menu).getByText("1행")).toBeInTheDocument();
     expect(
-      within(toolbar).getByRole("button", { name: "위 삽입" }),
+      within(menu).getByRole("menuitem", { name: "위에 행 삽입" }),
     ).toBeInTheDocument();
     expect(
-      within(toolbar).getByRole("button", { name: "아래 삽입" }),
+      within(menu).getByRole("menuitem", { name: "아래에 행 삽입" }),
     ).toBeInTheDocument();
   });
 
-  it("열 핸들을 누르면 열이 선택되고 툴바에 열 옵션이 뜬다", async () => {
+  it("열 핸들로 열을 선택하고 우클릭하면 '1열'과 열 삽입 옵션이 나온다", async () => {
     mockDataset([["네트워크", "92"]]);
     renderWithRouter(<DatasetGrid datasetId={1} />);
     await screen.findByText("네트워크");
     fireEvent.pointerDown(screen.getByRole("button", { name: "1열 선택" }));
 
-    const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
-    expect(within(toolbar).getByText("1열")).toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByText("네트워크"));
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    expect(within(menu).getByText("1열")).toBeInTheDocument();
     expect(
-      within(toolbar).getByRole("button", { name: "왼쪽 삽입" }),
+      within(menu).getByRole("menuitem", { name: "왼쪽에 열 삽입" }),
     ).toBeInTheDocument();
   });
 
-  it("코너를 누르면 표 전체가 선택된다", async () => {
+  it("코너로 표 전체를 선택하고 우클릭하면 '표 전체'가 나온다", async () => {
     mockDataset([["네트워크", "92"]]);
     renderWithRouter(<DatasetGrid datasetId={1} />);
     await screen.findByText("네트워크");
     fireEvent.pointerDown(screen.getByRole("button", { name: "표 전체 선택" }));
 
-    const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
-    expect(within(toolbar).getByText("표 전체")).toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByText("네트워크"));
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    expect(within(menu).getByText("표 전체")).toBeInTheDocument();
   });
 
-  it("선택 툴바에서 배경색을 고르면 선택한 셀에 일괄 PUT한다", async () => {
+  it("우클릭 메뉴에서 배경색을 고르면 선택한 셀에 일괄 PUT한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let sentCells: unknown = null;
     server.use(
@@ -1463,8 +1470,9 @@ describe("DatasetGrid", () => {
     const cell = (await screen.findByText("92")).parentElement as HTMLElement; // (0,1)=c1
     fireEvent.pointerDown(cell, { button: 0 });
 
-    const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
-    await user.click(within(toolbar).getByLabelText("배경색 green"));
+    fireEvent.contextMenu(cell);
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    await user.click(within(menu).getByLabelText("배경색 green"));
 
     // 선택 셀 하나를 일괄 엔드포인트로 보낸다(정렬은 기존값 없음 → null).
     await waitFor(() =>
@@ -1474,7 +1482,7 @@ describe("DatasetGrid", () => {
     );
   });
 
-  it("범위를 선택해 배경색을 고르면 한 번의 요청으로 모든 셀에 적용한다", async () => {
+  it("범위를 선택해 우클릭 배경색을 고르면 한 번의 요청으로 모든 셀에 적용한다", async () => {
     mockDataset([
       ["네트워크", "92"],
       ["운영체제", "78"],
@@ -1496,8 +1504,9 @@ describe("DatasetGrid", () => {
     const b = screen.getByText("78").parentElement as HTMLElement; // (1,1)
     fireEvent.pointerDown(b, { button: 0, shiftKey: true });
 
-    const toolbar = await screen.findByRole("toolbar", { name: "선택 도구" });
-    await user.click(within(toolbar).getByLabelText("배경색 blue"));
+    fireEvent.contextMenu(a);
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    await user.click(within(menu).getByLabelText("배경색 blue"));
 
     // 4칸(2×2)을 한 요청으로 보낸다.
     await waitFor(() => expect(requestCount).toBe(1));
@@ -1509,13 +1518,92 @@ describe("DatasetGrid", () => {
     renderWithRouter(<DatasetGrid datasetId={1} />);
     const cell = (await screen.findByText("92")).parentElement as HTMLElement;
     fireEvent.pointerDown(cell, { button: 0 });
-    await screen.findByRole("toolbar", { name: "선택 도구" });
+    // 선택되면 활성 입력창(선택 모드)이 뜬다.
+    expect(
+      screen.getByLabelText("1행 2열 셀 (입력하면 편집)"),
+    ).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() =>
       expect(
-        screen.queryByRole("toolbar", { name: "선택 도구" }),
+        screen.queryByLabelText("1행 2열 셀 (입력하면 편집)"),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it("셀 범위를 우클릭해 '병합'하면 앵커 셀에 rowSpan·colSpan으로 PUT한다", async () => {
+    mockDataset([
+      ["네트워크", "92"],
+      ["운영체제", "78"],
+    ]);
+    let sent: unknown = null;
+    server.use(
+      http.put(
+        `${API_BASE}/datasets/1/rows/0/cells/c0/merge`,
+        async ({ request }) => {
+          sent = await request.json();
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              merges: [{ rowIndex: 0, colKey: "c0", rowSpan: 2, colSpan: 2 }],
+            },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const a = (await screen.findByText("네트워크"))
+      .parentElement as HTMLElement; // (0,0)
+    fireEvent.pointerDown(a, { button: 0 });
+    const b = screen.getByText("78").parentElement as HTMLElement; // (1,1)
+    fireEvent.pointerDown(b, { button: 0, shiftKey: true });
+
+    fireEvent.contextMenu(a);
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    await user.click(within(menu).getByRole("menuitem", { name: "병합" }));
+
+    // 2×2 사각 범위를 앵커(0,0=c0)에 한 병합으로 보낸다.
+    await waitFor(() => expect(sent).toEqual({ rowSpan: 2, colSpan: 2 }));
+  });
+
+  it("셀 범위를 우클릭해 '내용 지우기'하면 값이 비워져 저장된다", async () => {
+    mockDataset([
+      ["네트워크", "92"],
+      ["운영체제", "78"],
+    ]);
+    const patched: Record<number, string[]> = {};
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/rows/:i`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { cells: string[] };
+          patched[Number(params.i)] = body.cells;
+          return HttpResponse.json({
+            code: "OK",
+            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const a = (await screen.findByText("네트워크"))
+      .parentElement as HTMLElement; // (0,0)
+    fireEvent.pointerDown(a, { button: 0 });
+    const b = screen.getByText("78").parentElement as HTMLElement; // (1,1)
+    fireEvent.pointerDown(b, { button: 0, shiftKey: true });
+
+    fireEvent.contextMenu(a);
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    await user.click(
+      within(menu).getByRole("menuitem", { name: "내용 지우기" }),
+    );
+
+    // 두 행의 두 열 모두 빈 값으로 저장된다.
+    await waitFor(() => {
+      expect(patched[0]).toEqual(["", ""]);
+      expect(patched[1]).toEqual(["", ""]);
+    });
   });
 });

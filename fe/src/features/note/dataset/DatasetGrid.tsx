@@ -202,14 +202,6 @@ export function DatasetGrid({ datasetId }: Props) {
       void invalidateMerges(); // 뒤 행이 밀려 병합의 행 번호가 바뀌고, 안에 끼면 해제된다.
     },
   });
-  const deleteMut = useMutation({
-    mutationFn: (index: number) => deleteDatasetRow(datasetId, index),
-    onSuccess: () => {
-      reset();
-      void invalidateMeta();
-      void invalidateMerges(); // 앵커 행 삭제는 cascade, 뒤 행은 번호가 밀린다.
-    },
-  });
   const deleteColMut = useMutation({
     mutationFn: (key: string) => deleteDatasetColumn(datasetId, key),
     onSuccess: (next: DatasetMeta) => {
@@ -502,7 +494,10 @@ export function DatasetGrid({ datasetId }: Props) {
     setPalette(null);
   };
 
-  /** 셀 우클릭 → 그 자리에 컨텍스트 메뉴를 연다(행/열 삽입·삭제·병합). */
+  /**
+   * 셀 우클릭 → 그 자리에 컨텍스트 메뉴를 연다(선택 범위에 맞춰 서식·병합·행/열 옵션을 모두 담는다).
+   * 클릭한 셀이 현재 선택 밖이면 그 셀을 단일 선택으로 잡고(엑셀식), 선택 안이면 선택을 유지한다.
+   */
   const openContextMenu = (
     event: React.MouseEvent,
     row: number,
@@ -510,6 +505,11 @@ export function DatasetGrid({ datasetId }: Props) {
   ) => {
     event.preventDefault();
     setPalette(null);
+    if (!inSel(row, col)) {
+      setEditing(null);
+      selDrag.current = null;
+      setSel({ kind: "cells", a: [row, col], b: [row, col] });
+    }
     setCtxMenu({ x: event.clientX, y: event.clientY, row, col });
   };
 
@@ -753,9 +753,9 @@ export function DatasetGrid({ datasetId }: Props) {
       span: { rowSpan, colSpan },
     });
   };
-  /** 선택한 행들을 뒤 인덱스부터 순서대로 지운다(인덱스가 밀리지 않게). */
+  /** 선택이 걸친 행들을 뒤 인덱스부터 순서대로 지운다(인덱스가 밀리지 않게). */
   const deleteRowsSel = async () => {
-    if (!selRect || sel?.kind !== "rows") return;
+    if (!selRect) return;
     for (let r = selRect.r1; r >= selRect.r0; r--) {
       await deleteDatasetRow(datasetId, r);
     }
@@ -764,9 +764,9 @@ export function DatasetGrid({ datasetId }: Props) {
     void invalidateMerges();
     setSel(null);
   };
-  /** 선택한 열들을 지운다(key 기준이라 순서 무관). 최소 한 열은 남긴다. */
+  /** 선택이 걸친 열들을 지운다(key 기준이라 순서 무관). 최소 한 열은 남긴다. */
   const deleteColsSel = async () => {
-    if (!selRect || sel?.kind !== "cols") return;
+    if (!selRect) return;
     const keys = meta.columns
       .slice(selRect.c0, selRect.c1 + 1)
       .map((c) => c.key);
@@ -1177,177 +1177,6 @@ export function DatasetGrid({ datasetId }: Props) {
           </div>
         </div>
 
-        {/* 선택 위 플로팅 툴바 — 선택 범위(표/행/열/셀)에 맞는 옵션을 보여준다.
-          세로는 선택을 따라붙는다: 기본은 선택 바로 위, 위 공간이 부족하면(표·뷰포트 상단)
-          아래로 뒤집는다. 가로는 표 중앙 유지. */}
-        {sel &&
-          selRect &&
-          (() => {
-            const area =
-              (selRect.r1 - selRect.r0 + 1) * (selRect.c1 - selRect.c0 + 1);
-            const scopeLabel =
-              sel.kind === "table"
-                ? "표 전체"
-                : sel.kind === "rows"
-                  ? `${selRect.r1 - selRect.r0 + 1}행`
-                  : sel.kind === "cols"
-                    ? `${selRect.c1 - selRect.c0 + 1}열`
-                    : `셀 ${area}개`;
-            const divider = <div className="bg-border mx-0.5 h-5 w-px" />;
-            // 선택 첫 행 위(뷰포트 기준)에 툴바가 들어갈 자리가 있으면 위, 없으면 아래.
-            // scrollMargin=본문의 문서 오프셋, ROW_HEIGHT=고정 행 높이.
-            const selTopViewport =
-              scrollMargin + selRect.r0 * ROW_HEIGHT - window.scrollY;
-            const above = selTopViewport >= 48;
-            const anchorTop = above
-              ? selRect.r0 * ROW_HEIGHT
-              : (selRect.r1 + 1) * ROW_HEIGHT;
-            return (
-              <div
-                role="toolbar"
-                aria-label="선택 도구"
-                onPointerDown={(e) => e.stopPropagation()}
-                style={{
-                  top: anchorTop,
-                  transform: above
-                    ? "translate(-50%, calc(-100% - 6px))"
-                    : "translate(-50%, 6px)",
-                }}
-                className="border-border bg-popover absolute left-1/2 z-30 flex items-center gap-1 rounded-md border p-1 whitespace-nowrap shadow-md"
-              >
-                <span className="text-muted-foreground px-1 text-xs whitespace-nowrap">
-                  {scopeLabel}
-                </span>
-                {divider}
-                {/* 배경색 — 모든 선택 공통 */}
-                {CELL_BG_TOKENS.map((token) => (
-                  <button
-                    key={token}
-                    type="button"
-                    aria-label={`배경색 ${token}`}
-                    onClick={() => applyBgSel(token)}
-                    className="border-border size-4 rounded-full border"
-                    style={{ background: `var(--cell-bg-${token})` }}
-                  />
-                ))}
-                <button
-                  type="button"
-                  aria-label="배경색 지우기"
-                  onClick={() => applyBgSel(null)}
-                  className="text-muted-foreground hover:text-foreground border-border flex size-5 items-center justify-center rounded border"
-                >
-                  <X className="size-3" />
-                </button>
-                {divider}
-                {/* 정렬 */}
-                {ALIGN_ORDER.map((value) => {
-                  const Icon = ALIGN_ICONS[value];
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      aria-label={`정렬 ${ALIGN_LABELS[value]}`}
-                      onClick={() => applyAlignSel(value)}
-                      className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-5 items-center justify-center rounded"
-                    >
-                      <Icon className="size-3.5" />
-                    </button>
-                  );
-                })}
-                {/* 서식 지우기 */}
-                <button
-                  type="button"
-                  aria-label="서식 지우기"
-                  title="배경·정렬 초기화"
-                  onClick={clearFormatSel}
-                  className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-5 items-center justify-center rounded"
-                >
-                  <Eraser className="size-3.5" />
-                </button>
-                {/* 병합 — 셀 사각 2칸 이상 */}
-                {sel.kind === "cells" && area > 1 && (
-                  <button
-                    type="button"
-                    aria-label="병합"
-                    title="선택 범위 병합"
-                    onClick={mergeSel}
-                    className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-5 items-center justify-center rounded"
-                  >
-                    <TableCellsMerge className="size-3.5" />
-                  </button>
-                )}
-                {/* 행 옵션 */}
-                {sel.kind === "rows" && (
-                  <>
-                    {divider}
-                    <button
-                      type="button"
-                      onClick={() => addRow(selRect.r0)}
-                      className="hover:bg-accent rounded px-1.5 py-0.5 text-xs whitespace-nowrap"
-                    >
-                      위 삽입
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => addRow(selRect.r1 + 1)}
-                      className="hover:bg-accent rounded px-1.5 py-0.5 text-xs whitespace-nowrap"
-                    >
-                      아래 삽입
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="행 삭제"
-                      onClick={() => void deleteRowsSel()}
-                      className="text-destructive hover:bg-accent flex size-5 items-center justify-center rounded"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  </>
-                )}
-                {/* 열 옵션 */}
-                {sel.kind === "cols" && (
-                  <>
-                    {divider}
-                    <button
-                      type="button"
-                      onClick={() => addColumn(selRect.c0)}
-                      className="hover:bg-accent rounded px-1.5 py-0.5 text-xs whitespace-nowrap"
-                    >
-                      왼쪽 삽입
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => addColumn(selRect.c1 + 1)}
-                      className="hover:bg-accent rounded px-1.5 py-0.5 text-xs whitespace-nowrap"
-                    >
-                      오른쪽 삽입
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        for (let c = selRect.c0; c <= selRect.c1; c++)
-                          resetColWidthMut.mutate(meta.columns[c].key);
-                      }}
-                      className="hover:bg-accent rounded px-1.5 py-0.5 text-xs whitespace-nowrap"
-                    >
-                      너비 초기화
-                    </button>
-                    {colCount > selRect.c1 - selRect.c0 + 1 && (
-                      <button
-                        type="button"
-                        aria-label="열 삭제"
-                        onClick={() => void deleteColsSel()}
-                        className="text-destructive hover:bg-accent flex size-5 items-center justify-center rounded"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-            );
-          })()}
-
         <ConfirmDialog
           open={pendingColDelete !== null}
           onOpenChange={(open) => {
@@ -1368,15 +1197,39 @@ export function DatasetGrid({ datasetId }: Props) {
           pending={deleteColMut.isPending}
         />
 
-        {/* 셀 우클릭 컨텍스트 메뉴 — 행/열 삽입·삭제·병합을 한 곳에 모은다. */}
+        {/* 우클릭 컨텍스트 메뉴 — 선택 범위에 맞춰 서식·병합·행/열 옵션을 한 곳에 모은다.
+          (별도 플로팅 툴바 없이 우클릭 하나로 통일한다.) */}
         {ctxMenu &&
           (() => {
             const { row, col } = ctxMenu;
             const cm = mergeAt(row, col);
             const colSpan = cm?.colSpan ?? 1;
             const rowSpan = cm?.rowSpan ?? 1;
-            const colKey = meta.columns[col].key;
+            // 선택이 있으면 그 범위, 없으면 우클릭한 셀 1칸을 대상으로 한다.
+            const rect = selRect ?? { r0: row, c0: col, r1: row, c1: col };
+            const kind = sel?.kind ?? "cells";
+            const rowN = rect.r1 - rect.r0 + 1;
+            const colN = rect.c1 - rect.c0 + 1;
+            const area = rowN * colN;
+            const scopeLabel =
+              kind === "table"
+                ? "표 전체"
+                : kind === "rows"
+                  ? `${rowN}행`
+                  : kind === "cols"
+                    ? `${colN}열`
+                    : `셀 ${area}개`;
+            const singleCell = kind === "cells" && area === 1;
+            const canMergeRight = col + colSpan < colCount;
+            const canMergeDown = row + rowSpan < rowCount;
+            const showMergeSection =
+              (kind === "cells" && area > 1) ||
+              (singleCell && (canMergeRight || canMergeDown || Boolean(cm)));
             const close = () => setCtxMenu(null);
+            const run = (fn: () => void) => () => {
+              fn();
+              close();
+            };
             const item = (
               label: string,
               onClick: () => void,
@@ -1385,10 +1238,7 @@ export function DatasetGrid({ datasetId }: Props) {
               <button
                 type="button"
                 role="menuitem"
-                onClick={() => {
-                  onClick();
-                  close();
-                }}
+                onClick={run(onClick)}
                 className={cn(
                   "hover:bg-accent flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm",
                   opts.destructive && "text-destructive",
@@ -1398,8 +1248,7 @@ export function DatasetGrid({ datasetId }: Props) {
                 {label}
               </button>
             );
-            const canMergeRight = col + colSpan < colCount;
-            const canMergeDown = row + rowSpan < rowCount;
+            const divider = <div className="bg-border my-1 h-px" />;
             return (
               <>
                 {/* 바깥 클릭·우클릭으로 닫는다. */}
@@ -1414,50 +1263,126 @@ export function DatasetGrid({ datasetId }: Props) {
                 <div
                   role="menu"
                   aria-label="셀 메뉴"
-                  className="border-border bg-popover fixed z-50 min-w-40 rounded-md border p-1 shadow-md"
+                  className="border-border bg-popover fixed z-50 min-w-44 rounded-md border p-1 shadow-md"
                   // 뷰포트 오른쪽·아래로 넘치지 않게 대략 클램프한다(메뉴 크기 여유분).
                   style={{
-                    left: Math.min(ctxMenu.x, window.innerWidth - 176),
-                    top: Math.min(ctxMenu.y, window.innerHeight - 340),
+                    left: Math.min(ctxMenu.x, window.innerWidth - 192),
+                    top: Math.min(ctxMenu.y, window.innerHeight - 420),
                   }}
                 >
-                  {item("위에 행 삽입", () => addRow(row), {
-                    icon: <Plus className="size-3.5" />,
-                  })}
-                  {item("아래에 행 삽입", () => addRow(row + 1), {
-                    icon: <Plus className="size-3.5" />,
-                  })}
-                  {item("왼쪽에 열 삽입", () => addColumn(col), {
-                    icon: <Plus className="size-3.5" />,
-                  })}
-                  {item("오른쪽에 열 삽입", () => addColumn(col + 1), {
-                    icon: <Plus className="size-3.5" />,
-                  })}
-                  {(canMergeRight || canMergeDown || cm) && (
-                    <div className="bg-border my-1 h-px" />
-                  )}
-                  {canMergeRight &&
+                  {/* 선택 범위 표시 */}
+                  <div className="text-muted-foreground px-2 py-1 text-xs">
+                    {scopeLabel}
+                  </div>
+                  {/* 배경색 — 스와치 + 지우기 */}
+                  <div className="flex items-center gap-1 px-2 py-1">
+                    {CELL_BG_TOKENS.map((token) => (
+                      <button
+                        key={token}
+                        type="button"
+                        aria-label={`배경색 ${token}`}
+                        onClick={run(() => applyBgSel(token))}
+                        className="border-border size-5 rounded-full border"
+                        style={{ background: `var(--cell-bg-${token})` }}
+                      />
+                    ))}
+                    <button
+                      type="button"
+                      aria-label="배경색 지우기"
+                      onClick={run(() => applyBgSel(null))}
+                      className="text-muted-foreground hover:text-foreground border-border flex size-5 items-center justify-center rounded-full border"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                  {/* 정렬 + 서식 지우기 */}
+                  <div className="flex items-center gap-1 px-2 py-1">
+                    {ALIGN_ORDER.map((value) => {
+                      const Icon = ALIGN_ICONS[value];
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-label={`정렬 ${ALIGN_LABELS[value]}`}
+                          onClick={run(() => applyAlignSel(value))}
+                          className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-6 items-center justify-center rounded"
+                        >
+                          <Icon className="size-4" />
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      aria-label="서식 지우기"
+                      title="배경·정렬 초기화"
+                      onClick={run(clearFormatSel)}
+                      className="text-muted-foreground hover:bg-accent hover:text-foreground ml-auto flex size-6 items-center justify-center rounded"
+                    >
+                      <Eraser className="size-4" />
+                    </button>
+                  </div>
+                  {divider}
+                  {/* 병합 — 셀 범위(2칸+)는 통합 병합, 단일 셀은 방향 병합·해제 */}
+                  {kind === "cells" &&
+                    area > 1 &&
+                    item("병합", mergeSel, {
+                      icon: <TableCellsMerge className="size-3.5" />,
+                    })}
+                  {singleCell &&
+                    canMergeRight &&
                     item("오른쪽과 병합", () => mergeRight(row, col), {
                       icon: <TableCellsMerge className="size-3.5" />,
                     })}
-                  {canMergeDown &&
+                  {singleCell &&
+                    canMergeDown &&
                     item("아래와 병합", () => mergeDown(row, col), {
                       icon: <TableCellsMerge className="size-3.5 rotate-90" />,
                     })}
-                  {cm &&
+                  {singleCell &&
+                    cm &&
                     item("병합 해제", () => unmerge(row, col), {
                       icon: <TableCellsSplit className="size-3.5" />,
                     })}
-                  <div className="bg-border my-1 h-px" />
-                  {item("행 삭제", () => deleteMut.mutate(row), {
+                  {showMergeSection && divider}
+                  {/* 행/열 삽입 + 너비 초기화 */}
+                  {item("위에 행 삽입", () => addRow(rect.r0), {
+                    icon: <Plus className="size-3.5" />,
+                  })}
+                  {item("아래에 행 삽입", () => addRow(rect.r1 + 1), {
+                    icon: <Plus className="size-3.5" />,
+                  })}
+                  {item("왼쪽에 열 삽입", () => addColumn(rect.c0), {
+                    icon: <Plus className="size-3.5" />,
+                  })}
+                  {item("오른쪽에 열 삽입", () => addColumn(rect.c1 + 1), {
+                    icon: <Plus className="size-3.5" />,
+                  })}
+                  {item("열 너비 초기화", () => {
+                    for (let c = rect.c0; c <= rect.c1; c++)
+                      resetColWidthMut.mutate(meta.columns[c].key);
+                  })}
+                  {divider}
+                  {/* 내용 지우기(값만) */}
+                  {item("내용 지우기", clearSelValues, {
+                    icon: <Eraser className="size-3.5" />,
+                  })}
+                  {divider}
+                  {/* 삭제 */}
+                  {item("행 삭제", () => void deleteRowsSel(), {
                     icon: <Trash2 className="size-3.5" />,
                     destructive: true,
                   })}
                   {colCount > 1 &&
-                    item("열 삭제", () => setPendingColDelete(colKey), {
-                      icon: <X className="size-3.5" />,
-                      destructive: true,
-                    })}
+                    item(
+                      "열 삭제",
+                      () => {
+                        // 한 열이면 데이터 손실 확인 다이얼로그, 여러 열이면 바로 지운다.
+                        if (colN === 1)
+                          setPendingColDelete(meta.columns[rect.c0].key);
+                        else void deleteColsSel();
+                      },
+                      { icon: <X className="size-3.5" />, destructive: true },
+                    )}
                 </div>
               </>
             );
