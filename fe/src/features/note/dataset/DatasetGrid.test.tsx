@@ -169,6 +169,102 @@ describe("DatasetGrid", () => {
     });
   });
 
+  it("셀을 한 번 클릭한 뒤 글자를 누르면 그 글자로 편집이 시작된다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let patched: { index: number; cells: string[] } | null = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/rows/:i`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { cells: string[] };
+          patched = { index: Number(params.i), cells: body.cells };
+          return HttpResponse.json({
+            code: "OK",
+            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    // 더블클릭이 아니라 한 번 클릭으로 선택만 한 상태에서 글자를 누른다.
+    await user.click(await screen.findByText("92"));
+    await user.keyboard("7");
+
+    // 누른 글자로 편집창이 열린다(기존 값 92를 덮어씀).
+    const input = await screen.findByLabelText("셀 1행 2열");
+    expect(input).toHaveValue("7");
+
+    fireEvent.change(input, { target: { value: "75" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => {
+      expect(patched).toEqual({ index: 0, cells: ["네트워크", "75"] });
+    });
+  });
+
+  it("셀을 선택하고 Enter를 누르면 기존 값을 이어서 편집한다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.click(await screen.findByText("92"));
+    await user.keyboard("{Enter}");
+
+    // Enter는 덮어쓰지 않고 기존 값(92)을 그대로 연다.
+    const input = await screen.findByLabelText("셀 1행 2열");
+    expect(input).toHaveValue("92");
+  });
+
+  it("셀을 선택하고 Delete를 누르면 값이 비워져 저장된다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let patched: { index: number; cells: string[] } | null = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/rows/:i`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { cells: string[] };
+          patched = { index: Number(params.i), cells: body.cells };
+          return HttpResponse.json({
+            code: "OK",
+            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.click(await screen.findByText("92"));
+    await user.keyboard("{Delete}");
+
+    // 편집창을 열지 않고 곧바로 해당 셀만 비워 저장한다.
+    await waitFor(() => {
+      expect(patched).toEqual({ index: 0, cells: ["네트워크", ""] });
+    });
+  });
+
+  it("선택 상태에서 글자를 누르면 이벤트가 상위(에디터)로 전파되지 않는다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await user.click(await screen.findByText("92"));
+
+    // 표를 감싸는 에디터가 키를 받아 단축키(표 삭제 등)를 실행하지 못하도록,
+    // 선택 상태의 키 입력은 document까지 버블링되지 않아야 한다.
+    let bubbledKey: string | null = null;
+    const spy = (e: KeyboardEvent) => {
+      bubbledKey = e.key;
+    };
+    document.addEventListener("keydown", spy);
+    await user.keyboard("d");
+    document.removeEventListener("keydown", spy);
+
+    expect(bubbledKey).toBeNull();
+    // 대신 'd'로 편집이 시작된다.
+    expect(await screen.findByLabelText("셀 1행 2열")).toHaveValue("d");
+  });
+
   it("[행 추가]로 POST를 호출한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let inserted = false;

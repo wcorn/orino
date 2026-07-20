@@ -87,6 +87,9 @@ export function DatasetGrid({ datasetId }: Props) {
   const { data: merges = [] } = useDatasetMerges(datasetId);
   // 가상화 목록(본문)의 문서 최상단으로부터의 오프셋. 윈도우 스크롤 기준 가상화에 쓴다.
   const listRef = useRef<HTMLDivElement>(null);
+  // 표 컨테이너 — 셀을 한 번 클릭하면 여기로 포커스를 옮겨(ProseMirror 대신) 키 입력을 직접 받는다.
+  // 이래야 선택된 셀 위에서 글자를 누르면 편집이 시작되고, 표를 지우는 등의 에디터 단축키가 안 튄다.
+  const gridBoxRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<{ row: number; col: number } | null>(
     null,
   );
@@ -300,6 +303,13 @@ export function DatasetGrid({ datasetId }: Props) {
     };
   }, []);
 
+  // 셀을 선택하면 표 컨테이너로 포커스를 가져온다 — 그래야 키 입력이 에디터(ProseMirror)로
+  // 새지 않고 여기서 처리돼, 글자를 누르면 편집이 시작되고 단축키가 표를 건드리지 않는다.
+  // 편집 중엔 입력창이 포커스를 가지므로 건드리지 않는다.
+  useEffect(() => {
+    if (!editing && sel) gridBoxRef.current?.focus({ preventScroll: true });
+  }, [sel, editing]);
+
   if (isLoading) return <LoadingText />;
   if (isError || !meta) {
     return <FieldError>표를 불러오지 못했어요.</FieldError>;
@@ -373,12 +383,18 @@ export function DatasetGrid({ datasetId }: Props) {
     resizeColMut.mutate({ key, width });
   };
 
-  const startEdit = (row: number, col: number) => {
+  // initial을 주면 그 값으로 편집을 연다(셀 선택 상태에서 글자를 눌러 바로 덮어쓰기 시작).
+  // 안 주면 기존 값/수식을 보여준다(더블클릭·Enter로 이어 편집).
+  const startEdit = (row: number, col: number, initial?: string) => {
     const cells = getRow(row);
     if (!cells) return;
     // 편집에 들어가면 선택·툴바는 접는다(더블클릭이 선택→편집 순으로 오므로).
     setSel(null);
     setEditing({ row, col });
+    if (initial !== undefined) {
+      setDraft(initial);
+      return;
+    }
     // 수식 셀을 고를 땐 계산된 값이 아니라 수식을 보여준다 — 값을 보여주면
     // 자기가 쓴 수식을 다시 볼 방법이 없다.
     setDraft(getFormulas(row)[meta.columns[col].key] ?? cells[col] ?? "");
@@ -574,6 +590,71 @@ export function DatasetGrid({ datasetId }: Props) {
   const extendColSelect = (col: number) => {
     if (selDrag.current !== "cols") return;
     setSel((s) => (s?.kind === "cols" ? { ...s, b: col } : s));
+  };
+
+  /** 지금 키 입력이 향할 셀 — 셀 선택이면 포커스 지점(sel.b), 아니면 선택 사각의 좌상단. */
+  const activeCell = ((): [number, number] | null => {
+    if (!selRect) return null;
+    if (sel?.kind === "cells") return sel.b;
+    return [selRect.r0, selRect.c0];
+  })();
+
+  /** 선택 범위의 셀 값을 모두 비운다(Delete/Backspace). 수식·값은 지우고 서식은 둔다. */
+  const clearSelValues = () => {
+    if (!selRect) return;
+    for (let r = selRect.r0; r <= selRect.r1; r++) {
+      const cells = getRow(r);
+      if (!cells) continue;
+      const rowFormulas = getFormulas(r);
+      const inCol = (c: number) => c >= selRect.c0 && c <= selRect.c1;
+      const sent = Array.from({ length: colCount }, (_, c) =>
+        inCol(c) ? "" : (rowFormulas[meta.columns[c].key] ?? cells[c] ?? ""),
+      );
+      const shown = Array.from({ length: colCount }, (_, c) =>
+        inCol(c) ? "" : (cells[c] ?? ""),
+      );
+      // 이미 빈 행이면 헛요청을 보내지 않는다.
+      if (shown.every((v, c) => v === (cells[c] ?? ""))) continue;
+      setRowLocal(r, shown);
+      updateMut.mutate({ index: r, cells: sent });
+    }
+  };
+
+  /**
+   * 표에 포커스가 있을 때의 키 처리. 선택된 셀 위에서 글자를 누르면 그 글자로 편집을 시작하고,
+   * Enter/F2는 기존 값을 이어 편집, Delete/Backspace는 선택 셀을 비운다. 처리한 키는
+   * 에디터(ProseMirror)로 새지 않게 막아, 표를 지우는 등의 단축키가 튀지 않게 한다.
+   */
+  const onGridKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (editing) return; // 편집 중엔 입력창이 처리한다.
+    if (!activeCell) return;
+    const [r, c] = activeCell;
+    // 한글 등 IME 조합키는 e.key가 "Process"로 오고 첫 자모를 keydown에서 얻을 수 없다.
+    // 조합키/Enter/F2는 빈 편집으로 열어 입력창(진짜 <input>)에서 이어 조합하게 한다.
+    if (e.key === "Enter" || e.key === "F2" || e.key === "Process") {
+      e.preventDefault();
+      e.stopPropagation();
+      startEdit(r, c, e.key === "Process" ? "" : undefined);
+      return;
+    }
+    if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault();
+      e.stopPropagation();
+      clearSelValues();
+      return;
+    }
+    // 순수 문자/숫자/기호 한 글자(수정키 없음) → 그 글자로 바로 편집 시작.
+    if (
+      e.key.length === 1 &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !e.nativeEvent.isComposing
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      startEdit(r, c, e.key);
+    }
   };
 
   /** 선택에 포함된 (행 index, 열 key) 목록. 서식 일괄 적용에 쓴다. */
@@ -788,9 +869,14 @@ export function DatasetGrid({ datasetId }: Props) {
     // → 추가 바가 가장자리 셀을 가리지 않고, 그 자리(아래/오른쪽)에 호버할 때만 각각 나타난다.
     <div className="relative my-2 pr-5 pb-5">
       <div
+        ref={gridBoxRef}
+        // 셀 선택 시 이 컨테이너로 포커스가 와 키 입력을 직접 받는다(에디터로 새지 않게).
+        // tabIndex=-1이라 탭 순회엔 안 잡히고, outline은 표 테두리로 충분해 숨긴다.
+        tabIndex={-1}
+        onKeyDown={onGridKeyDown}
         // overflow-hidden을 두지 않는다 — 선택 툴바가 선택 위/아래로 표 밖까지 떠야 해서다.
         // 가로 넘침은 안쪽 스크롤 div(overflow-x-auto)가 자르고, 코너는 bg-card라 티가 안 난다.
-        className="border-border bg-card group/grid relative flex flex-col rounded-md border"
+        className="border-border bg-card group/grid relative flex flex-col rounded-md border outline-none"
         data-testid="dataset-grid"
       >
         {/* 값 셀만(제목 행 없음). 가로는 열이 넘치면 스크롤하고(overflow-x-auto),
