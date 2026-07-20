@@ -244,6 +244,98 @@ describe("DatasetGrid", () => {
     });
   });
 
+  it("셀 범위를 복사하면 TSV(탭·줄바꿈)로 클립보드에 담는다", async () => {
+    mockDataset([
+      ["네트워크", "92"],
+      ["운영체제", "78"],
+    ]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const a = (await screen.findByText("네트워크"))
+      .parentElement as HTMLElement; // (0,0)
+    fireEvent.pointerDown(a, { button: 0 });
+    const b = screen.getByText("78").parentElement as HTMLElement; // (1,1)
+    fireEvent.pointerDown(b, { button: 0, shiftKey: true });
+
+    const setData = vi.fn();
+    fireEvent.copy(screen.getByTestId("dataset-grid"), {
+      clipboardData: { setData, getData: () => "" },
+    });
+
+    // 2×2 범위를 엑셀 호환 TSV로 담는다.
+    expect(setData).toHaveBeenCalledWith(
+      "text/plain",
+      "네트워크\t92\n운영체제\t78",
+    );
+  });
+
+  it("셀을 선택하고 붙여넣으면 좌상단부터 값이 채워져 저장된다", async () => {
+    mockDataset([
+      ["네트워크", "92"],
+      ["운영체제", "78"],
+    ]);
+    const patched: Record<number, string[]> = {};
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/rows/:i`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { cells: string[] };
+          patched[Number(params.i)] = body.cells;
+          return HttpResponse.json({
+            code: "OK",
+            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+          });
+        },
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const a = (await screen.findByText("네트워크"))
+      .parentElement as HTMLElement; // (0,0) 선택
+    fireEvent.pointerDown(a, { button: 0 });
+
+    // 2×2 TSV를 (0,0)부터 붙여넣는다.
+    fireEvent.paste(screen.getByTestId("dataset-grid"), {
+      clipboardData: { getData: () => "가\t나\n다\t라", setData: () => {} },
+    });
+
+    await waitFor(() => {
+      expect(patched[0]).toEqual(["가", "나"]);
+      expect(patched[1]).toEqual(["다", "라"]);
+    });
+  });
+
+  it("붙여넣기가 표 경계를 넘으면 넘치는 부분은 잘라낸다(행 자동 추가 없음)", async () => {
+    mockDataset([["네트워크", "92"]]); // 1행 2열뿐
+    const patched: Record<number, string[]> = {};
+    let rowCalls = 0;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/rows/:i`,
+        async ({ params, request }) => {
+          rowCalls++;
+          const body = (await request.json()) as { cells: string[] };
+          patched[Number(params.i)] = body.cells;
+          return HttpResponse.json({
+            code: "OK",
+            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+          });
+        },
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const a = (await screen.findByText("92")).parentElement as HTMLElement; // (0,1)
+    fireEvent.pointerDown(a, { button: 0 });
+
+    // 3열·2행짜리를 (0,1)에 붙여도, 표는 1행 2열이라 (0,1) 한 칸만 채워진다.
+    fireEvent.paste(screen.getByTestId("dataset-grid"), {
+      clipboardData: { getData: () => "A\tB\tC\nD\tE\tF", setData: () => {} },
+    });
+
+    await waitFor(() => expect(patched[0]).toEqual(["네트워크", "A"]));
+    // 두 번째 행은 존재하지 않아 요청조차 나가지 않는다.
+    expect(rowCalls).toBe(1);
+    expect(patched[1]).toBeUndefined();
+  });
+
   it("선택 상태에서 글자를 누르면 이벤트가 상위(에디터)로 전파되지 않는다", async () => {
     mockDataset([["네트워크", "92"]]);
     const user = userEvent.setup();
