@@ -7,7 +7,12 @@ import { useDatasetTableContext } from "./datasetTableContext";
  * 노트 본문의 데이터 그리드 블록. 노드엔 datasetId만 있고, 실제 표는 별도 dataset
  * 리소스에서 지연 로드해 편집한다. contentEditable=false로 ProseMirror 편집과 분리.
  */
-export function DatasetTableView({ node, editor, getPos }: NodeViewProps) {
+export function DatasetTableView({
+  node,
+  editor,
+  getPos,
+  selected,
+}: NodeViewProps) {
   const datasetId = node.attrs.datasetId as number | null;
   const { requestDeleteDataset } = useDatasetTableContext();
 
@@ -35,7 +40,13 @@ export function DatasetTableView({ node, editor, getPos }: NodeViewProps) {
       contentEditable={false}
     >
       {datasetId != null && (
-        <DatasetGrid datasetId={datasetId} onDeleteBlock={requestDelete} />
+        <DatasetGrid
+          datasetId={datasetId}
+          onDeleteBlock={requestDelete}
+          // 표 블록이 선택되면(한 번 클릭·키보드 이동 등) 그리드가 첫 셀을 잡아
+          // 곧바로 타이핑=편집이 되게 한다(블록만 선택돼 키가 먹통이던 문제 해소).
+          blockSelected={selected}
+        />
       )}
     </NodeViewWrapper>
   );
