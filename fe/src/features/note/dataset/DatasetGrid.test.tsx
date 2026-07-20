@@ -812,6 +812,31 @@ describe("DatasetGrid", () => {
     await waitFor(() => expect(deleted).toBe(0));
   });
 
+  it("우클릭 메뉴 '표 삭제'는 블록 삭제 콜백을 호출한다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    const onDeleteBlock = vi.fn();
+    const user = userEvent.setup();
+    renderWithRouter(
+      <DatasetGrid datasetId={1} onDeleteBlock={onDeleteBlock} />,
+    );
+
+    fireEvent.contextMenu(await screen.findByText("네트워크"));
+    await user.click(await screen.findByRole("menuitem", { name: "표 삭제" }));
+
+    // 표 삭제는 키보드 단축키 대신 이 메뉴로만 — 블록 제거 콜백(노드 삭제)을 부른다.
+    expect(onDeleteBlock).toHaveBeenCalledTimes(1);
+  });
+
+  it("onDeleteBlock이 없으면 '표 삭제' 항목을 보이지 않는다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    fireEvent.contextMenu(await screen.findByText("네트워크"));
+    await screen.findByRole("menu", { name: "셀 메뉴" });
+    expect(
+      screen.queryByRole("menuitem", { name: "표 삭제" }),
+    ).not.toBeInTheDocument();
+  });
+
   // ---------- 열 너비(resize) ----------
 
   it("헤더 경계를 드래그하면 너비를 PATCH하고 그 폭으로 그린다", async () => {

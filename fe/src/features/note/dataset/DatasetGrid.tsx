@@ -63,6 +63,8 @@ type Sel =
 
 interface Props {
   datasetId: number;
+  /** 표 블록(노드) 자체를 문서에서 제거한다. 우클릭 메뉴의 '표 삭제'에서 쓴다. */
+  onDeleteBlock?: () => void;
 }
 
 /**
@@ -70,7 +72,7 @@ interface Props {
  * 지연 로드 + 셀 편집. 세로는 노트 페이지 흐름을 따라 무한히 자라고(자체 스크롤 뷰포트 없음),
  * 가로는 열이 화면을 넘으면 스크롤한다. 열 너비는 셀 오른쪽 경계 드래그로 조절한다.
  */
-export function DatasetGrid({ datasetId }: Props) {
+export function DatasetGrid({ datasetId, onDeleteBlock }: Props) {
   const queryClient = useQueryClient();
   const { data: meta, isLoading, isError } = useDatasetMeta(datasetId);
   const {
@@ -1460,6 +1462,13 @@ export function DatasetGrid({ datasetId }: Props) {
                       },
                       { icon: <X className="size-3.5" />, destructive: true },
                     )}
+                  {/* 표 전체 삭제 — 키보드 단축키를 없앤 대신 유일한 표 삭제 경로.
+                    블록을 제거하면 노트가 dataset 정리 확인 다이얼로그를 띄운다. */}
+                  {onDeleteBlock &&
+                    item("표 삭제", () => onDeleteBlock(), {
+                      icon: <Trash2 className="size-3.5" />,
+                      destructive: true,
+                    })}
                 </div>
               </>
             );
