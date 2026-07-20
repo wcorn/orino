@@ -144,6 +144,13 @@ export function DatasetGrid({
   const rowVersion = useRef<Map<number, number>>(new Map());
   // 편집 중 자동저장 디바운스 타이머. 엔터/blur 없이도 타이핑이 멎으면 저장한다.
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 아직 저장 안 한 최신 편집값(셀·값). onChange가 동기로 갱신하고, blur/Enter가 이걸 flush한다.
+  // (setEditing/setDraft 상태는 blur 시점에 아직 반영 전일 수 있어 stale — ref로 확실히 잡는다.)
+  const pendingEdit = useRef<{
+    row: number;
+    col: number;
+    value: string;
+  } | null>(null);
   /**
    * 편집 저장 — 낙관적 반영은 호출 전에 하고, 여기선 백그라운드로 PATCH만 보낸다.
    * useMutation을 안 써 매 저장마다 그리드가 리렌더되지 않는다(연속 편집이 매끄럽게).
@@ -502,12 +509,18 @@ export function DatasetGrid({
     autoSaveTimer.current = null;
   };
 
+  /** 아직 저장 안 한 편집값이 있으면 저장한다(ref 기반이라 stale 상태 영향 없음). */
+  const flushPendingEdit = (silent: boolean) => {
+    const p = pendingEdit.current;
+    if (!p) return;
+    persistCellEdit(p.row, p.col, p.value, silent);
+  };
+
+  /** 편집 확정(Enter·blur) — 최신 값을 즉시 저장하고 편집을 닫는다. */
   const commitEdit = () => {
-    if (!editing) return;
     cancelAutoSave();
-    if (getRow(editing.row)) {
-      persistCellEdit(editing.row, editing.col, draft, false);
-    }
+    flushPendingEdit(false);
+    pendingEdit.current = null;
     setEditing(null);
   };
 
@@ -646,8 +659,9 @@ export function DatasetGrid({
     e.stopPropagation();
     if (e.key === "Escape") {
       e.preventDefault();
-      // 이미 자동저장된 값은 남지만, 예약된 저장은 취소하고 편집을 닫는다.
+      // 이미 자동저장된 값은 남지만, 예약된 저장·미저장 편집은 버리고 편집을 닫는다.
       cancelAutoSave();
+      pendingEdit.current = null;
       setEditing(null);
       setSel(null);
       return;
@@ -965,15 +979,16 @@ export function DatasetGrid({
               setDraft(value);
               // 첫 입력이 들어오면 편집 상태로 전환(같은 input이라 IME 조합 유지).
               if (!isEditing) setEditing({ row: rowIndex, col: c });
+              // 최신 편집값을 ref에 동기로 기록 — blur/Enter/자동저장이 이걸 저장한다.
+              pendingEdit.current = { row: rowIndex, col: c, value };
               // 엔터/blur 없이도 타이핑이 잠깐 멎으면 자동저장한다(계속 저장).
               if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-              autoSaveTimer.current = setTimeout(() => {
-                persistCellEdit(rowIndex, c, value, true);
-              }, 500);
+              autoSaveTimer.current = setTimeout(
+                () => flushPendingEdit(true),
+                500,
+              );
             }}
-            onBlur={() => {
-              if (isEditing) commitEdit();
-            }}
+            onBlur={() => commitEdit()}
             onKeyDown={(e) => onCellInputKeyDown(e, rowIndex, c)}
             // 편집 상태에서만 편집용 라벨을 붙인다(선택-만-한 상태는 편집이 아니므로 구분).
             aria-label={

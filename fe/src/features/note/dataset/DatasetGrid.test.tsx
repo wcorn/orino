@@ -205,6 +205,38 @@ describe("DatasetGrid", () => {
     );
   });
 
+  it("선택 상태에서 타이핑 후 blur하면(엔터 없이) 그 값이 곧바로 저장된다", async () => {
+    // 클릭(선택)→타이핑→blur 시 편집전환이 아직 반영 전이어도, 미저장 값을 ref로
+    // flush해 blur 즉시 저장한다(옛 값이 잠깐 보였다가 바뀌던 깜빡임 방지).
+    mockDataset([["네트워크", "92"]]);
+    let patched: { index: number; cells: string[] } | null = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/rows/:i`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { cells: string[] };
+          patched = { index: Number(params.i), cells: body.cells };
+          return HttpResponse.json({
+            code: "OK",
+            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    // 더블클릭이 아니라 한 번 클릭(선택)한 뒤 타이핑하고 blur.
+    await user.click(await screen.findByText("92"));
+    const input = screen.getByLabelText("1행 2열 셀 (입력하면 편집)");
+    fireEvent.change(input, { target: { value: "125" } });
+    fireEvent.blur(input);
+
+    await waitFor(() =>
+      expect(patched).toEqual({ index: 0, cells: ["네트워크", "125"] }),
+    );
+  });
+
   it("셀을 한 번 클릭한 뒤 글자를 누르면 그 글자로 편집이 시작된다", async () => {
     mockDataset([["네트워크", "92"]]);
     let patched: { index: number; cells: string[] } | null = null;
