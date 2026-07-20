@@ -134,22 +134,37 @@ export function DatasetGrid({ datasetId, onDeleteBlock }: Props) {
   const invalidateMerges = () =>
     queryClient.invalidateQueries({ queryKey: datasetKeys.merges(datasetId) });
 
-  const updateMut = useMutation({
-    mutationFn: (v: { index: number; cells: string[] }) =>
-      updateDatasetRow(datasetId, v.index, v.cells),
-    // 서버가 계산한 값과 수식으로 맞춘다 — '=1+2'를 치면 화면엔 3이 와야 하고,
-    // 전파가 같은 행의 다른 셀을 고쳤을 수도 있다.
-    onSuccess: (row) => {
-      setRowLocal(row.rowIndex, row.cells);
-      setFormulasLocal(row.rowIndex, row.formulas ?? {});
-    },
-    onError: (e) => {
-      // 수식 문법 오류·순환 참조는 서버가 무엇이 틀렸는지 알려준다. 그대로 보여준다.
-      const message = serverMessage(e);
-      if (message) toast(message, "error");
-      reset();
-    },
-  });
+  // 행별 저장 버전. 저장을 보낼 때마다 올리고, 응답이 오면 그 사이 같은 행을 또 고쳤는지
+  // (버전 불일치) 확인한다. 오래된 응답이 최신 편집을 덮어써 깜빡이던 문제를 없앤다.
+  const rowVersion = useRef<Map<number, number>>(new Map());
+  /**
+   * 편집 저장 — 낙관적 반영은 호출 전에 하고, 여기선 백그라운드로 PATCH만 보낸다.
+   * useMutation을 안 써 매 저장마다 그리드가 리렌더되지 않는다(연속 편집이 매끄럽게).
+   * 성공: 최신 편집일 때만 서버 계산값·수식으로 맞춘다(수식 전파 반영). 오래된 응답은 무시.
+   * 실패: 전체 리셋 대신 이 행만 직전 상태로 되돌리고 사유를 토스트한다.
+   */
+  const saveRow = (
+    index: number,
+    cells: string[],
+    prev: { cells: string[]; formulas: Record<string, string> },
+  ) => {
+    const version = (rowVersion.current.get(index) ?? 0) + 1;
+    rowVersion.current.set(index, version);
+    updateDatasetRow(datasetId, index, cells)
+      .then((row) => {
+        if (rowVersion.current.get(index) !== version) return;
+        setRowLocal(row.rowIndex, row.cells);
+        setFormulasLocal(row.rowIndex, row.formulas ?? {});
+      })
+      .catch((e) => {
+        // 수식 문법 오류·순환 참조는 서버가 무엇이 틀렸는지 알려준다. 그대로 보여준다.
+        const message = serverMessage(e);
+        if (message) toast(message, "error");
+        if (rowVersion.current.get(index) !== version) return;
+        setRowLocal(index, prev.cells);
+        setFormulasLocal(index, prev.formulas);
+      });
+  };
   const styleMut = useMutation({
     mutationFn: (v: { row: number; colKey: string; style: CellStyle }) =>
       setCellStyle(datasetId, v.row, v.colKey, v.style),
@@ -424,7 +439,7 @@ export function DatasetGrid({ datasetId, onDeleteBlock }: Props) {
     );
 
     setRowLocal(editing.row, shown);
-    updateMut.mutate({ index: editing.row, cells: sent });
+    saveRow(editing.row, sent, { cells, formulas: rowFormulas });
     setEditing(null);
   };
 
@@ -665,7 +680,7 @@ export function DatasetGrid({ datasetId, onDeleteBlock }: Props) {
       // 이미 빈 행이면 헛요청을 보내지 않는다.
       if (shown.every((v, c) => v === (cells[c] ?? ""))) continue;
       setRowLocal(r, shown);
-      updateMut.mutate({ index: r, cells: sent });
+      saveRow(r, sent, { cells, formulas: rowFormulas });
     }
   };
 
@@ -733,7 +748,7 @@ export function DatasetGrid({ datasetId, onDeleteBlock }: Props) {
         return rowFormulas[meta.columns[c].key] ?? cells[c] ?? "";
       });
       setRowLocal(r, next);
-      updateMut.mutate({ index: r, cells: next });
+      saveRow(r, next, { cells, formulas: rowFormulas });
     }
     // 붙여넣은 범위를 선택으로 표시한다(엑셀식). 1칸이면 활성 입력창 값도 맞춘다.
     setEditing(null);

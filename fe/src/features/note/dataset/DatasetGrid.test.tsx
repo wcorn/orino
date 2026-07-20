@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAuthStore } from "@/features/auth/store/authStore";
@@ -692,6 +692,93 @@ describe("DatasetGrid", () => {
         "수식을 이해할 수 없습니다. - 없는 열: 무엇",
       );
     });
+  });
+
+  it("연속 편집 시 먼저 보낸 저장의 늦은 응답이 최신 편집을 덮지 않는다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let call = 0;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/rows/:i`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { cells: string[] };
+          call++;
+          // 첫 요청(먼저 보낸 편집)의 응답을 더 늦게 돌려준다.
+          if (call === 1) await delay(80);
+          return HttpResponse.json({
+            code: "OK",
+            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    // 1) 첫째 열 편집(네트워크 → A)
+    await user.dblClick(await screen.findByText("네트워크"));
+    let input = screen.getByLabelText("셀 1행 1열");
+    fireEvent.change(input, { target: { value: "A" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // 2) 곧바로 둘째 열 편집(92 → B) — 첫 저장 응답이 아직 안 온 사이에.
+    await user.dblClick(await screen.findByText("92"));
+    input = screen.getByLabelText("셀 1행 2열");
+    fireEvent.change(input, { target: { value: "B" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(screen.getByText("B")).toBeInTheDocument());
+    // 늦은 첫 응답이 도착할 시간을 줘도, 최신 편집 B가 92로 되돌아가지 않는다.
+    await delay(140);
+    expect(screen.getByText("A")).toBeInTheDocument();
+    expect(screen.getByText("B")).toBeInTheDocument();
+    expect(screen.queryByText("92")).not.toBeInTheDocument();
+  });
+
+  it("저장 실패 시 전체 리셋(재조회) 없이 그 행만 직전 값으로 되돌린다", async () => {
+    mockDataset([
+      ["네트워크", "92"],
+      ["운영체제", "78"],
+    ]);
+    let rowsFetches = 0;
+    server.use(
+      http.get(`${API_BASE}/datasets/1/rows`, ({ request }) => {
+        rowsFetches++;
+        const url = new URL(request.url);
+        const offset = Number(url.searchParams.get("offset") ?? "0");
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [
+              { id: 100, rowIndex: 0, cells: ["네트워크", "92"] },
+              { id: 101, rowIndex: 1, cells: ["운영체제", "78"] },
+            ],
+            offset,
+            limit: 100,
+          },
+        });
+      }),
+      http.patch(`${API_BASE}/datasets/1/rows/:i`, () =>
+        HttpResponse.json({ code: "ERR", message: "안돼요" }, { status: 400 }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("92");
+    const fetchesBefore = rowsFetches;
+
+    await user.dblClick(screen.getByText("92"));
+    const input = screen.getByLabelText("셀 1행 2열");
+    fireEvent.change(input, { target: { value: "X" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // 실패하면 그 셀만 92로 되돌아온다.
+    await waitFor(() => expect(screen.getByText("92")).toBeInTheDocument());
+    expect(screen.queryByText("X")).not.toBeInTheDocument();
+    // 다른 셀은 그대로 남는다.
+    expect(screen.getByText("78")).toBeInTheDocument();
+    // 전체 리셋(행 재조회)이 일어나지 않았다.
+    expect(rowsFetches).toBe(fetchesBefore);
   });
 
   it("[열 추가]로 POST를 호출하고 새 열이 빈 칸으로 붙는다", async () => {
