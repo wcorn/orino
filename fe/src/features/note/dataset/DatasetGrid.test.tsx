@@ -277,6 +277,9 @@ describe("DatasetGrid", () => {
     expect(input).toHaveValue("92");
     // 아직 편집이 아니므로 편집용 라벨(셀 N행 M열)은 없다.
     expect(screen.queryByLabelText("셀 1행 2열")).not.toBeInTheDocument();
+    // 어느 칸이 선택됐는지 보이도록 얇은 안쪽 테두리로 강조한다.
+    expect(input.className).toContain("ring-1");
+    expect(input.className).toContain("ring-primary");
   });
 
   it("셀 선택 후 한글을 조합해 입력하면 같은 입력창에서 편집돼 저장된다", async () => {
