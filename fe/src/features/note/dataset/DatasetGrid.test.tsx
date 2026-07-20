@@ -949,6 +949,30 @@ describe("DatasetGrid", () => {
     expect(onDeleteBlock).toHaveBeenCalledTimes(1);
   });
 
+  it("표 블록이 선택되면(blockSelected) 첫 셀을 자동으로 잡아 바로 편집되게 한다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} blockSelected={true} />);
+
+    // 데이터가 로드되면 첫 셀(1행 1열)이 활성 입력창으로 잡힌다 — 이어서 키를 누르면 바로 편집.
+    expect(
+      await screen.findByLabelText("1행 1열 셀 (입력하면 편집)"),
+    ).toHaveValue("네트워크");
+  });
+
+  it("blockSelected여도 특정 셀을 클릭하면 그 셀이 선택된다(첫 셀로 안 튐)", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} blockSelected={true} />);
+    // 처음엔 블록 선택으로 첫 셀이 잡힌다.
+    await screen.findByLabelText("1행 1열 셀 (입력하면 편집)");
+
+    // 원하는 셀("92" = 1행 2열)을 정확히 클릭 → 그 셀이 활성화(첫 셀로 되돌아가지 않음).
+    const cell = (await screen.findByText("92")).parentElement as HTMLElement;
+    fireEvent.pointerDown(cell, { button: 0 });
+    expect(
+      await screen.findByLabelText("1행 2열 셀 (입력하면 편집)"),
+    ).toHaveValue("92");
+  });
+
   // ---------- 열 너비(resize) ----------
 
   it("헤더 경계를 드래그하면 너비를 PATCH하고 그 폭으로 그린다", async () => {

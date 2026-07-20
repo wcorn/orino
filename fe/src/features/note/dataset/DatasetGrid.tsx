@@ -65,6 +65,8 @@ interface Props {
   datasetId: number;
   /** 표 블록(노드) 자체를 문서에서 제거한다. 우클릭 메뉴의 '표 삭제'에서 쓴다. */
   onDeleteBlock?: () => void;
+  /** 에디터에서 표 블록이 선택된 상태(NodeSelection)인지. 첫 셀 자동 선택 트리거. */
+  blockSelected?: boolean;
 }
 
 /**
@@ -72,7 +74,11 @@ interface Props {
  * 지연 로드 + 셀 편집. 세로는 노트 페이지 흐름을 따라 무한히 자라고(자체 스크롤 뷰포트 없음),
  * 가로는 열이 화면을 넘으면 스크롤한다. 열 너비는 셀 오른쪽 경계 드래그로 조절한다.
  */
-export function DatasetGrid({ datasetId, onDeleteBlock }: Props) {
+export function DatasetGrid({
+  datasetId,
+  onDeleteBlock,
+  blockSelected,
+}: Props) {
   const queryClient = useQueryClient();
   const { data: meta, isLoading, isError, refetch } = useDatasetMeta(datasetId);
   const {
@@ -327,6 +333,21 @@ export function DatasetGrid({ datasetId, onDeleteBlock }: Props) {
     if (editing || singleActive) return;
     if (sel) gridBoxRef.current?.focus({ preventScroll: true });
   }, [sel, editing]);
+
+  // 표 블록이 선택되면(한 번 클릭·키보드 이동 등) 첫 셀을 자동으로 잡는다 → 이어서 키를 누르면
+  // 그 글자로 곧바로 편집이 시작된다(블록만 선택돼 타이핑이 먹통이던 문제 해소). 이미 셀을 고른
+  // 상태(범위·특정 셀)나 편집 중이면 건드리지 않는다.
+  useEffect(() => {
+    if (!blockSelected || sel || editing) return;
+    if (rowCount < 1 || colCount < 1) return; // 메타 로드 전.
+    const first = getRow(0);
+    if (!first) return; // 첫 행 데이터 로드 전이면, 로드되며(getRow 갱신) 다시 시도한다.
+    setSel({ kind: "cells", a: [0, 0], b: [0, 0] });
+    setDraft(first[0] ?? "");
+    // 의존성은 blockSelected(선택 진입)·로드 상태(rowCount/colCount/getRow)만 둔다. sel/editing을
+    // 넣으면 Esc로 해제(sel→null)할 때 다시 첫 셀을 잡아 버리므로 뺀다(가드로만 읽는다).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blockSelected, rowCount, colCount, getRow]);
 
   if (isLoading) return <LoadingText />;
   if (isError || !meta) {
