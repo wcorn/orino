@@ -1091,6 +1091,10 @@ export function DatasetGrid({
         onCopy={onGridCopy}
         onCut={onGridCut}
         onPaste={onGridPaste}
+        // 글자가 있는 셀에서 드래그를 시작하면 브라우저가 그 텍스트(활성 입력창의 선택 영역)를
+        // 네이티브로 끌어 셀 범위 선택 대신 텍스트가 복사됐다. 그리드 안에서 시작되는 네이티브
+        // 드래그를 막아 드래그=범위 선택만 되게 한다. 블록 이동 핸들은 그리드 밖이라 영향 없다.
+        onDragStart={(e) => e.preventDefault()}
         // overflow-hidden을 두지 않는다 — 선택 툴바가 선택 위/아래로 표 밖까지 떠야 해서다.
         // 가로 넘침은 안쪽 스크롤 div(overflow-x-auto)가 자르고, 코너는 bg-card라 티가 안 난다.
         className="border-border bg-card group/grid relative flex flex-col rounded-md border outline-none"

@@ -1,4 +1,10 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  createEvent,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -242,6 +248,19 @@ describe("DatasetGrid", () => {
     await waitFor(() => {
       expect(patched).toEqual({ index: 0, cells: ["네트워크", ""] });
     });
+  });
+
+  it("셀에서 드래그를 시작해도 글자가 끌려나가지 않는다(네이티브 드래그 차단)", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("92");
+
+    // 글자 있는 셀에서 드래그 시작(dragstart)은 preventDefault돼야 한다 — 안 그러면 활성
+    // 입력창의 선택 텍스트가 네이티브로 끌려 셀 범위 선택 대신 글자가 복사된다.
+    const grid = screen.getByTestId("dataset-grid");
+    const dragStart = createEvent.dragStart(grid);
+    fireEvent(grid, dragStart);
+    expect(dragStart.defaultPrevented).toBe(true);
   });
 
   it("셀 범위를 복사하면 TSV(탭·줄바꿈)로 클립보드에 담는다", async () => {
