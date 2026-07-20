@@ -74,7 +74,7 @@ interface Props {
  */
 export function DatasetGrid({ datasetId, onDeleteBlock }: Props) {
   const queryClient = useQueryClient();
-  const { data: meta, isLoading, isError } = useDatasetMeta(datasetId);
+  const { data: meta, isLoading, isError, refetch } = useDatasetMeta(datasetId);
   const {
     getRow,
     getFormulas,
@@ -330,7 +330,31 @@ export function DatasetGrid({ datasetId, onDeleteBlock }: Props) {
 
   if (isLoading) return <LoadingText />;
   if (isError || !meta) {
-    return <FieldError>표를 불러오지 못했어요.</FieldError>;
+    // 표를 못 불러오는 경우: 일시적 오류면 '다시 시도', 이미 삭제된 표(고아 블록)면
+    // '표 블록 제거'로 대응한다. (되돌리기로 되살아난 삭제된 표 등)
+    return (
+      <div className="border-border bg-card my-2 flex flex-col gap-2 rounded-md border p-3">
+        <FieldError>표를 불러오지 못했어요.</FieldError>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="border-border hover:bg-accent rounded-md border px-2 py-1 text-sm"
+          >
+            다시 시도
+          </button>
+          {onDeleteBlock && (
+            <button
+              type="button"
+              onClick={onDeleteBlock}
+              className="text-destructive border-border hover:bg-accent rounded-md border px-2 py-1 text-sm"
+            >
+              표 블록 제거
+            </button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   // 너비를 지정한 열은 고정 px, 안 한 열은 기존대로 남는 폭을 나눠 갖는다.

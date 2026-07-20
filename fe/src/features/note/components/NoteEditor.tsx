@@ -17,6 +17,7 @@ import { deleteDataset } from "../dataset/api/datasets";
 import { ChildPage, collectChildPageIds } from "../editor/childPage";
 import { ChildPageContext } from "../editor/childPageContext";
 import { collectDatasetIds, DatasetTable } from "../editor/datasetTable";
+import { DatasetTableContext } from "../editor/datasetTableContext";
 import { extractImageFiles, uploadAndInsertImage } from "../editor/imageUpload";
 import { useAutoSaveNote } from "../hooks/useAutoSaveNote";
 import { useCreateNote, useDeleteNote } from "../hooks/useNoteMutations";
@@ -62,6 +63,8 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
   const childIdsRef = useRef<Set<number>>(collectChildPageIds(note.content));
   // 본문의 datasetTable datasetId 집합 (블록 삭제 시 dataset 정리 diff 기준).
   const datasetIdsRef = useRef<Set<number>>(collectDatasetIds(note.content));
+  // 표 삭제 확인 시 실행할 블록 제거(되돌리기 불가). '표 삭제' 버튼 경로에서만 채워진다.
+  const pendingRemoveBlockRef = useRef<(() => void) | null>(null);
   // editorProps 핸들러(handlePaste/handleDrop)는 생성 시점 클로저라 editor를
   // 직접 못 잡으므로 ref로 우회한다.
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
@@ -189,9 +192,23 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
   };
 
   const deleteDatasetMut = useMutation({ mutationFn: deleteDataset });
+  // '표 삭제' 버튼 → 확인을 먼저 띄운다(블록은 아직 그대로). 확인 시에만 삭제한다.
+  const requestDeleteDataset = (datasetId: number, removeBlock: () => void) => {
+    pendingRemoveBlockRef.current = removeBlock;
+    setPendingDatasetDelete(datasetId);
+  };
   const confirmDatasetDelete = () => {
     if (pendingDatasetDelete == null) return;
-    deleteDatasetMut.mutate(pendingDatasetDelete, {
+    const id = pendingDatasetDelete;
+    const removeBlock = pendingRemoveBlockRef.current;
+    pendingRemoveBlockRef.current = null;
+    if (removeBlock) {
+      // diff가 이 제거를 또 감지해 중복 확인하지 않게 미리 집합에서 뺀다.
+      datasetIdsRef.current.delete(id);
+      removeBlock(); // 블록 제거(되돌리기 불가) — 확인 후에만.
+    }
+    // 실제 리소스 삭제. 이미 없는(고아) dataset이면 실패해도 블록은 이미 지웠으니 무방.
+    deleteDatasetMut.mutate(id, {
       onSuccess: () => setPendingDatasetDelete(null),
       onError: () => setPendingDatasetDelete(null),
     });
@@ -248,7 +265,9 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
         <ChildPageContext.Provider
           value={{ onOpen: onOpenNote, tree: noteTree }}
         >
-          <EditorContent editor={editor} className="relative" />
+          <DatasetTableContext.Provider value={{ requestDeleteDataset }}>
+            <EditorContent editor={editor} className="relative" />
+          </DatasetTableContext.Provider>
         </ChildPageContext.Provider>
       </div>
 
@@ -268,7 +287,11 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
       <ConfirmDialog
         open={pendingDatasetDelete !== null}
         onOpenChange={(open) => {
-          if (!open) setPendingDatasetDelete(null);
+          // 취소하면 블록 제거를 하지 않는다(확인 전엔 블록·dataset 모두 그대로).
+          if (!open) {
+            pendingRemoveBlockRef.current = null;
+            setPendingDatasetDelete(null);
+          }
         }}
         title="표(데이터셋)를 삭제할까요?"
         description="본문에서 제거한 데이터 그리드 표와 그 안의 모든 행이 삭제됩니다. 되돌릴 수 없어요."
