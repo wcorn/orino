@@ -924,6 +924,31 @@ describe("DatasetGrid", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("표를 못 불러오면 '다시 시도'와 '표 블록 제거'로 대응할 수 있다", async () => {
+    // 이미 삭제된 dataset을 가리키는 고아 블록 등 — 표 로드 실패 상태.
+    server.use(
+      http.get(
+        `${API_BASE}/datasets/1`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    const onDeleteBlock = vi.fn();
+    const user = userEvent.setup();
+    renderWithRouter(
+      <DatasetGrid datasetId={1} onDeleteBlock={onDeleteBlock} />,
+    );
+
+    expect(
+      await screen.findByText("표를 불러오지 못했어요."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "다시 시도" }),
+    ).toBeInTheDocument();
+    // 삭제된 표(고아 블록)는 '표 블록 제거'로 지운다 → 블록 제거 콜백 호출.
+    await user.click(screen.getByRole("button", { name: "표 블록 제거" }));
+    expect(onDeleteBlock).toHaveBeenCalledTimes(1);
+  });
+
   // ---------- 열 너비(resize) ----------
 
   it("헤더 경계를 드래그하면 너비를 PATCH하고 그 폭으로 그린다", async () => {
