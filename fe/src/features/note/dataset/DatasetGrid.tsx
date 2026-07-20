@@ -667,6 +667,78 @@ export function DatasetGrid({ datasetId }: Props) {
     }
   };
 
+  /** 선택 범위를 TSV(탭 구분·줄바꿈)로 만든다 — 엑셀·구글시트와 호환되는 클립보드 형식. */
+  const selectionToTSV = (): string => {
+    if (!selRect) return "";
+    const lines: string[] = [];
+    for (let r = selRect.r0; r <= selRect.r1; r++) {
+      const cells = getRow(r);
+      const cols: string[] = [];
+      for (let c = selRect.c0; c <= selRect.c1; c++)
+        cols.push(cells?.[c] ?? "");
+      lines.push(cols.join("\t"));
+    }
+    return lines.join("\n");
+  };
+
+  /** 선택 범위 복사(Cmd/Ctrl+C). 편집 중엔 입력창 기본 복사에 맡긴다. */
+  const onGridCopy = (e: React.ClipboardEvent) => {
+    if (editing || !selRect) return;
+    e.preventDefault();
+    e.clipboardData.setData("text/plain", selectionToTSV());
+  };
+
+  /** 잘라내기(Cmd/Ctrl+X) — 복사 후 선택 값을 비운다. */
+  const onGridCut = (e: React.ClipboardEvent) => {
+    if (editing || !selRect) return;
+    e.preventDefault();
+    e.clipboardData.setData("text/plain", selectionToTSV());
+    clearSelValues();
+  };
+
+  /**
+   * 붙여넣기(Cmd/Ctrl+V) — 클립보드 TSV를 선택 좌상단부터 채운다(엑셀식). 표 밖으로 넘치는
+   * 만큼은 자른다(행·열 자동 추가는 하지 않는다). 편집 중엔 입력창 기본 붙여넣기에 맡긴다.
+   */
+  const onGridPaste = (e: React.ClipboardEvent) => {
+    if (editing || !selRect) return;
+    const text = e.clipboardData.getData("text/plain");
+    if (!text) return;
+    e.preventDefault();
+    const grid = text
+      .replace(/\r\n?/g, "\n")
+      .replace(/\n$/, "")
+      .split("\n")
+      .map((line) => line.split("\t"));
+    const baseR = selRect.r0;
+    const baseC = selRect.c0;
+    let lastR = baseR;
+    let lastC = baseC;
+    for (let i = 0; i < grid.length; i++) {
+      const r = baseR + i;
+      if (r >= rowCount) break; // 표 아래로 넘치면 자른다.
+      const cells = getRow(r);
+      if (!cells) continue;
+      const rowFormulas = getFormulas(r);
+      const next = Array.from({ length: colCount }, (_, c) => {
+        const pc = c - baseC;
+        if (pc >= 0 && pc < grid[i].length) {
+          lastR = Math.max(lastR, r);
+          lastC = Math.max(lastC, c);
+          return grid[i][pc];
+        }
+        // 붙여넣기 밖 셀은 값·수식을 그대로 보존한다.
+        return rowFormulas[meta.columns[c].key] ?? cells[c] ?? "";
+      });
+      setRowLocal(r, next);
+      updateMut.mutate({ index: r, cells: next });
+    }
+    // 붙여넣은 범위를 선택으로 표시한다(엑셀식). 1칸이면 활성 입력창 값도 맞춘다.
+    setEditing(null);
+    setDraft(grid[0]?.[0] ?? "");
+    setSel({ kind: "cells", a: [baseR, baseC], b: [lastR, lastC] });
+  };
+
   /**
    * 표에 포커스가 있을 때의 키 처리. 선택된 셀 위에서 글자를 누르면 그 글자로 편집을 시작하고,
    * Enter/F2는 기존 값을 이어 편집, Delete/Backspace는 선택 셀을 비운다. 처리한 키는
@@ -953,6 +1025,10 @@ export function DatasetGrid({ datasetId }: Props) {
         // tabIndex=-1이라 탭 순회엔 안 잡히고, outline은 표 테두리로 충분해 숨긴다.
         tabIndex={-1}
         onKeyDown={onGridKeyDown}
+        // 셀 범위 복사/잘라내기/붙여넣기(엑셀식). 입력창에서 올라온 이벤트도 여기서 받는다.
+        onCopy={onGridCopy}
+        onCut={onGridCut}
+        onPaste={onGridPaste}
         // overflow-hidden을 두지 않는다 — 선택 툴바가 선택 위/아래로 표 밖까지 떠야 해서다.
         // 가로 넘침은 안쪽 스크롤 div(overflow-x-auto)가 자르고, 코너는 bg-card라 티가 안 난다.
         className="border-border bg-card group/grid relative flex flex-col rounded-md border outline-none"
