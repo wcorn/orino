@@ -142,6 +142,8 @@ export function DatasetGrid({
   // 행별 저장 버전. 저장을 보낼 때마다 올리고, 응답이 오면 그 사이 같은 행을 또 고쳤는지
   // (버전 불일치) 확인한다. 오래된 응답이 최신 편집을 덮어써 깜빡이던 문제를 없앤다.
   const rowVersion = useRef<Map<number, number>>(new Map());
+  // 편집 중 자동저장 디바운스 타이머. 엔터/blur 없이도 타이핑이 멎으면 저장한다.
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /**
    * 편집 저장 — 낙관적 반영은 호출 전에 하고, 여기선 백그라운드로 PATCH만 보낸다.
    * useMutation을 안 써 매 저장마다 그리드가 리렌더되지 않는다(연속 편집이 매끄럽게).
@@ -152,6 +154,9 @@ export function DatasetGrid({
     index: number,
     cells: string[],
     prev: { cells: string[]; formulas: Record<string, string> },
+    // 타이핑 중 자동저장이면 true — 실패해도 토스트·되돌림을 하지 않는다(미완성 수식 등은
+    // 조용히 넘기고, 최종 커밋(엔터·blur)에서 정식으로 처리한다).
+    silent = false,
   ) => {
     const version = (rowVersion.current.get(index) ?? 0) + 1;
     rowVersion.current.set(index, version);
@@ -162,6 +167,7 @@ export function DatasetGrid({
         setFormulasLocal(row.rowIndex, row.formulas ?? {});
       })
       .catch((e) => {
+        if (silent) return;
         // 수식 문법 오류·순환 참조는 서버가 무엇이 틀렸는지 알려준다. 그대로 보여준다.
         const message = serverMessage(e);
         if (message) toast(message, "error");
@@ -304,6 +310,13 @@ export function DatasetGrid({
     return () => {
       window.removeEventListener("pointerup", up);
       window.removeEventListener("keydown", key);
+    };
+  }, []);
+
+  // 언마운트 시 예약된 자동저장 타이머를 정리한다(사라진 뒤 저장 시도 방지).
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     };
   }, []);
 
@@ -457,28 +470,44 @@ export function DatasetGrid({
     setDraft(getFormulas(row)[meta.columns[col].key] ?? cells[col] ?? "");
   };
 
-  const commitEdit = () => {
-    if (!editing) return;
-    const cells = getRow(editing.row);
-    if (!cells) {
-      setEditing(null);
-      return;
-    }
-    const rowFormulas = getFormulas(editing.row);
-
+  /**
+   * 한 셀의 편집값을 저장한다(다른 셀은 값·수식을 보존). editing 상태는 건드리지 않아,
+   * 자동저장(타이핑 중)과 최종 커밋이 같은 로직을 쓴다. silent면 실패해도 조용히 넘긴다.
+   */
+  const persistCellEdit = (
+    row: number,
+    col: number,
+    value: string,
+    silent = false,
+  ) => {
+    const cells = getRow(row);
+    if (!cells) return;
+    const rowFormulas = getFormulas(row);
     // 서버로는 수식 셀에 원본 수식을 돌려준다 — 계산된 값을 돌려주면 서버가
     // 사용자가 직접 입력한 것으로 보고 수식을 지운다.
-    const sent = Array.from({ length: colCount }, (_, c) => {
-      if (c === editing.col) return draft;
-      return rowFormulas[meta.columns[c].key] ?? cells[c] ?? "";
-    });
+    const sent = Array.from({ length: colCount }, (_, c) =>
+      c === col ? value : (rowFormulas[meta.columns[c].key] ?? cells[c] ?? ""),
+    );
     // 화면엔 값을 유지한다(수식 원본이 잠깐 보이면 안 된다).
     const shown = Array.from({ length: colCount }, (_, c) =>
-      c === editing.col ? draft : (cells[c] ?? ""),
+      c === col ? value : (cells[c] ?? ""),
     );
+    setRowLocal(row, shown);
+    saveRow(row, sent, { cells, formulas: rowFormulas }, silent);
+  };
 
-    setRowLocal(editing.row, shown);
-    saveRow(editing.row, sent, { cells, formulas: rowFormulas });
+  /** 예약된 자동저장을 취소한다(커밋·해제 직전에 중복 저장을 막는다). */
+  const cancelAutoSave = () => {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = null;
+  };
+
+  const commitEdit = () => {
+    if (!editing) return;
+    cancelAutoSave();
+    if (getRow(editing.row)) {
+      persistCellEdit(editing.row, editing.col, draft, false);
+    }
     setEditing(null);
   };
 
@@ -617,6 +646,8 @@ export function DatasetGrid({
     e.stopPropagation();
     if (e.key === "Escape") {
       e.preventDefault();
+      // 이미 자동저장된 값은 남지만, 예약된 저장은 취소하고 편집을 닫는다.
+      cancelAutoSave();
       setEditing(null);
       setSel(null);
       return;
@@ -930,9 +961,15 @@ export function DatasetGrid({
               if (!isEditing) e.currentTarget.select();
             }}
             onChange={(e) => {
-              setDraft(e.target.value);
+              const value = e.target.value;
+              setDraft(value);
               // 첫 입력이 들어오면 편집 상태로 전환(같은 input이라 IME 조합 유지).
               if (!isEditing) setEditing({ row: rowIndex, col: c });
+              // 엔터/blur 없이도 타이핑이 잠깐 멎으면 자동저장한다(계속 저장).
+              if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+              autoSaveTimer.current = setTimeout(() => {
+                persistCellEdit(rowIndex, c, value, true);
+              }, 500);
             }}
             onBlur={() => {
               if (isEditing) commitEdit();
