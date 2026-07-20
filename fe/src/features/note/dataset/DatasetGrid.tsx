@@ -926,7 +926,8 @@ export function DatasetGrid({ datasetId }: Props) {
                 : `${rowIndex + 1}행 ${c + 1}열 셀 (입력하면 편집)`
             }
             className={cn(
-              "absolute inset-0 z-[6] h-full w-full px-2 py-1.5 outline-none",
+              // 활성(선택/편집) 셀은 얇은 안쪽 테두리로 강조해 어느 칸이 선택됐는지 보이게 한다.
+              "ring-primary absolute inset-0 z-[6] h-full w-full px-2 py-1.5 ring-1 outline-none ring-inset",
               ALIGN_CLASS[align],
               // 뒤 표시값을 가리도록 셀 배경색(없으면 카드색)으로 불투명하게 덮는다.
               !style?.bg && "bg-card",
