@@ -96,6 +96,10 @@ export function DatasetGrid({
   // 표 컨테이너 — 셀을 한 번 클릭하면 여기로 포커스를 옮겨(ProseMirror 대신) 키 입력을 직접 받는다.
   // 이래야 선택된 셀 위에서 글자를 누르면 편집이 시작되고, 표를 지우는 등의 에디터 단축키가 안 튄다.
   const gridBoxRef = useRef<HTMLDivElement>(null);
+  // 활성 셀 입력창 — 셀을 클릭하면 여기로 명시적으로 포커스를 옮긴다. autoFocus만으론
+  // 실제 클릭 시 ProseMirror가 포커스를 도로 가져가(글자가 표 위 문단에 쳐짐), 클릭이
+  // 끝난 뒤(useEffect) 명시적 focus로 확실히 잡아야 한다.
+  const activeInputRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState<{ row: number; col: number } | null>(
     null,
   );
@@ -314,7 +318,12 @@ export function DatasetGrid({
       sel?.kind === "cells" &&
       sel.a[0] === sel.b[0] &&
       sel.a[1] === sel.b[1];
-    if (editing || singleActive) return;
+    if (editing || singleActive) {
+      // 활성 셀 입력창으로 포커스를 확실히 가져온다(실제 클릭 시 ProseMirror가 도로
+      // 가져가는 걸 이긴다). autoFocus만으론 못 잡히는 경우가 있어 명시적으로 한다.
+      activeInputRef.current?.focus({ preventScroll: true });
+      return;
+    }
     if (sel) gridBoxRef.current?.focus({ preventScroll: true });
   }, [sel, editing]);
 
@@ -906,6 +915,7 @@ export function DatasetGrid({
         </div>
         {isActive && (
           <input
+            ref={activeInputRef}
             autoFocus
             value={draft}
             // 선택만 한 상태(편집 전)에선 값을 통째로 선택해 둔다 — 글자를 치면 덮어써지고,
@@ -956,6 +966,10 @@ export function DatasetGrid({
         // tabIndex=-1이라 탭 순회엔 안 잡히고, outline은 표 테두리로 충분해 숨긴다.
         tabIndex={-1}
         onKeyDown={onGridKeyDown}
+        // 클릭이 끝난 뒤(onClick은 mouseup 이후) 활성 셀 입력창으로 포커스를 확실히 가져온다.
+        // 실제 클릭 땐 ProseMirror가 mousedown/up에서 포커스를 도로 가져가(글자가 표 위 문단에
+        // 쳐짐), 그 뒤인 onClick 시점에 다시 잡아야 이긴다.
+        onClick={() => activeInputRef.current?.focus({ preventScroll: true })}
         // 셀 범위 복사/잘라내기/붙여넣기(엑셀식). 입력창에서 올라온 이벤트도 여기서 받는다.
         onCopy={onGridCopy}
         onCut={onGridCut}
