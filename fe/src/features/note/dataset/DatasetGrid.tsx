@@ -40,6 +40,7 @@ import {
   setCellStylesBulk,
   updateDatasetRow,
 } from "./api/datasets";
+import { DATASET_CELLS_MIME } from "./cellClipboard";
 import { useDatasetMerges } from "./hooks/useDatasetMerges";
 import { useDatasetMeta } from "./hooks/useDatasetMeta";
 import { useDatasetRows } from "./hooks/useDatasetRows";
@@ -706,14 +707,19 @@ export function DatasetGrid({
   const onGridCopy = (e: React.ClipboardEvent) => {
     if (editing || !selRect) return;
     e.preventDefault();
-    e.clipboardData.setData("text/plain", selectionToTSV());
+    const tsv = selectionToTSV();
+    e.clipboardData.setData("text/plain", tsv);
+    // 표식도 함께 담는다 — 노트 본문에 붙여넣으면 이 조각으로 새 표를 만든다.
+    e.clipboardData.setData(DATASET_CELLS_MIME, tsv);
   };
 
   /** 잘라내기(Cmd/Ctrl+X) — 복사 후 선택 값을 비운다. */
   const onGridCut = (e: React.ClipboardEvent) => {
     if (editing || !selRect) return;
     e.preventDefault();
-    e.clipboardData.setData("text/plain", selectionToTSV());
+    const tsv = selectionToTSV();
+    e.clipboardData.setData("text/plain", tsv);
+    e.clipboardData.setData(DATASET_CELLS_MIME, tsv);
     clearSelValues();
   };
 
