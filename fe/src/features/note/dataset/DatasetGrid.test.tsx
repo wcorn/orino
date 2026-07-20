@@ -121,19 +121,21 @@ describe("DatasetGrid", () => {
     expect(body.style.height).toBe("108px");
   });
 
-  it("행·열 추가 버튼은 평소 숨겨져 있고 표에 호버(또는 포커스)하면 보인다", async () => {
+  it("행·열 추가 버튼은 평소 숨겨져 있고 그 자리(아래/오른쪽)에 호버하면 각각 보인다", async () => {
     mockDataset([["네트워크", "92"]]);
     renderWithRouter(<DatasetGrid datasetId={1} />);
     await screen.findByText("네트워크");
 
-    // 두 버튼 다 절대 위치로 떠 있어 공간을 차지하지 않고(레이아웃에서 빠짐),
-    // 평소 opacity-0 → 표(group/grid) 호버 시 opacity-100으로 나타난다.
+    // 두 버튼 다 표 밖 gutter에 절대 위치로 떠 있어 가장자리 셀을 가리지 않고,
+    // 평소 opacity-0 → 표 전체가 아니라 각 버튼 자리에 호버할 때만 opacity-100으로 나타난다.
     const addRow = screen.getByRole("button", { name: "행 추가" });
     const addCol = screen.getByLabelText("열 추가");
     for (const btn of [addRow, addCol]) {
       expect(btn.className).toContain("absolute");
       expect(btn.className).toContain("opacity-0");
-      expect(btn.className).toContain("group-hover/grid:opacity-100");
+      expect(btn.className).toContain("hover:opacity-100");
+      // 표 전체 호버(group-hover)가 아니라 자기 영역 호버로 바뀌었다.
+      expect(btn.className).not.toContain("group-hover/grid:opacity-100");
     }
   });
 
