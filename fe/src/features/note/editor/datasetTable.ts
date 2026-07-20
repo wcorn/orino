@@ -1,6 +1,6 @@
 import { mergeAttributes, Node } from "@tiptap/core";
 import { Fragment, type Node as PMNode, Slice } from "@tiptap/pm/model";
-import { Plugin } from "@tiptap/pm/state";
+import { NodeSelection, Plugin } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
 import { DatasetTableView } from "./DatasetTableView";
@@ -83,6 +83,36 @@ export const DatasetTable = Node.create({
               Fragment.fromArray(kept),
               slice.openStart,
               slice.openEnd,
+            );
+          },
+          // 표 블록(노드)이 선택된 상태에서 문서를 바꾸는 키를 전부 막는다.
+          // ProseMirror는 노드가 선택됐을 때 글자를 치면 노드를 그 글자로 교체(=표 삭제)하고,
+          // Backspace/Delete로도 지운다. 셀 선택 없이 블록만 잡혔을 때 'd' 등으로 표가
+          // 사라지던 문제를 없앤다. 표 삭제는 표 우클릭 메뉴의 '표 삭제'로만 한다.
+          handleKeyDown(view, event) {
+            const { selection } = view.state;
+            const nodeSelected =
+              selection instanceof NodeSelection &&
+              selection.node.type.name === nodeType;
+            if (!nodeSelected) return false;
+            if (event.key === "Backspace" || event.key === "Delete") {
+              return true;
+            }
+            // 순수 문자/숫자/기호 한 글자(수정키 없음)로 노드가 교체되는 것을 막는다.
+            // 방향키·Esc·Tab, Cmd/Ctrl 조합(복사·실행취소 등)은 그대로 통과시킨다.
+            return (
+              event.key.length === 1 &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !event.altKey
+            );
+          },
+          // 문자 삽입 경로(beforeinput)도 막는다 — keydown만으로 잡히지 않는 브라우저 대비.
+          handleTextInput(view) {
+            const { selection } = view.state;
+            return (
+              selection instanceof NodeSelection &&
+              selection.node.type.name === nodeType
             );
           },
         },
