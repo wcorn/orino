@@ -265,6 +265,61 @@ describe("DatasetGrid", () => {
     expect(await screen.findByLabelText("셀 1행 2열")).toHaveValue("d");
   });
 
+  it("셀을 한 번 클릭하면 값이 든 입력창이 떠 바로 덮어쓸 수 있다(편집 라벨은 아직 없음)", async () => {
+    mockDataset([["네트워크", "92"]]);
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.click(await screen.findByText("92"));
+
+    // 선택-만-한 활성 입력창: 값이 들어 있고 곧바로 타이핑하면 덮어써진다.
+    const input = screen.getByLabelText("1행 2열 셀 (입력하면 편집)");
+    expect(input).toHaveValue("92");
+    // 아직 편집이 아니므로 편집용 라벨(셀 N행 M열)은 없다.
+    expect(screen.queryByLabelText("셀 1행 2열")).not.toBeInTheDocument();
+  });
+
+  it("셀 선택 후 한글을 조합해 입력하면 같은 입력창에서 편집돼 저장된다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let patched: { index: number; cells: string[] } | null = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/rows/:i`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { cells: string[] };
+          patched = { index: Number(params.i), cells: body.cells };
+          return HttpResponse.json({
+            code: "OK",
+            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.click(await screen.findByText("92"));
+    const input = screen.getByLabelText("1행 2열 셀 (입력하면 편집)");
+    // 조합이 끊기지 않으려면 같은 <input>이 유지돼야 한다 — 식별용 표식을 단다.
+    input.setAttribute("data-identity", "same");
+
+    // 한글 IME 조합 시뮬레이션(전체선택된 '92'를 덮어쓴다).
+    fireEvent.compositionStart(input);
+    fireEvent.change(input, { target: { value: "ㄱ" } });
+    fireEvent.change(input, { target: { value: "구" } });
+    fireEvent.compositionEnd(input, { data: "구" });
+
+    // 같은 입력창이 유지되고(조합 안 끊김), 편집 상태로 전환됐다.
+    expect(input.getAttribute("data-identity")).toBe("same");
+    expect(input).toHaveAttribute("aria-label", "셀 1행 2열");
+    expect(input).toHaveValue("구");
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => {
+      expect(patched).toEqual({ index: 0, cells: ["네트워크", "구"] });
+    });
+  });
+
   it("[행 추가]로 POST를 호출한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let inserted = false;

@@ -307,7 +307,16 @@ export function DatasetGrid({ datasetId }: Props) {
   // 새지 않고 여기서 처리돼, 글자를 누르면 편집이 시작되고 단축키가 표를 건드리지 않는다.
   // 편집 중엔 입력창이 포커스를 가지므로 건드리지 않는다.
   useEffect(() => {
-    if (!editing && sel) gridBoxRef.current?.focus({ preventScroll: true });
+    // 단일 셀 선택(또는 편집)일 땐 셀 입력창이 autoFocus로 포커스를 갖는다(한글 IME도
+    // 첫 자모부터 그 입력창에서 조합). 그 외 선택(행/열/범위/표)만 컨테이너로 포커스를
+    // 가져와 Delete·타이핑을 처리한다.
+    const singleActive =
+      !editing &&
+      sel?.kind === "cells" &&
+      sel.a[0] === sel.b[0] &&
+      sel.a[1] === sel.b[1];
+    if (editing || singleActive) return;
+    if (sel) gridBoxRef.current?.focus({ preventScroll: true });
   }, [sel, editing]);
 
   if (isLoading) return <LoadingText />;
@@ -565,6 +574,44 @@ export function DatasetGrid({ datasetId }: Props) {
     } else {
       selDrag.current = "cells";
       setSel({ kind: "cells", a: [row, col], b: [row, col] });
+      // 단일 선택 즉시 타이핑 대비: 셀 표시값으로 draft를 채워 둔다(입력창이 값을 전체
+      // 선택한 채 뜨므로, 글자를 치면 덮어써지고 한글은 그 입력창에서 조합된다).
+      setDraft(getRow(row)?.[col] ?? "");
+    }
+  };
+
+  /**
+   * 활성 셀 입력창의 키 처리. 선택만 한 상태에서 Enter/F2는 기존 값을 이어 편집,
+   * Delete/Backspace는 셀을 즉시 비운다. 글자/IME는 input 기본 동작(전체선택 덮어쓰기·조합)에
+   * 맡긴다. 어떤 키든 상위 에디터로 전파를 막아 단축키(표 삭제 등)가 튀지 않게 한다.
+   */
+  const onCellInputKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    r: number,
+    c: number,
+  ) => {
+    e.stopPropagation();
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setEditing(null);
+      setSel(null);
+      return;
+    }
+    if (e.key === "Enter" || e.key === "F2") {
+      e.preventDefault();
+      if (editing) {
+        commitEdit();
+        return;
+      }
+      // 선택만 한 상태 → 덮어쓰기가 아니라 기존 값/수식을 이어 편집한다.
+      setEditing({ row: r, col: c });
+      setDraft(getFormulas(r)[meta.columns[c].key] ?? getRow(r)?.[c] ?? "");
+      return;
+    }
+    if (!editing && (e.key === "Delete" || e.key === "Backspace")) {
+      e.preventDefault();
+      clearSelValues();
+      setDraft("");
     }
   };
   const extendCellSelect = (row: number, col: number) => {
@@ -742,6 +789,17 @@ export function DatasetGrid({ datasetId }: Props) {
   const renderCellInner = (rowIndex: number, c: number) => {
     const colKey = meta.columns[c].key;
     const isEditing = editing?.row === rowIndex && editing.col === c;
+    // 단일 셀만 선택된 상태(범위/행/열/표 아님)이고 이 셀이 그 셀이면 "활성"이다.
+    // 활성 셀엔 편집 전에도 입력창을 띄워 두고(값 전체선택), 글자를 치면 그대로 편집으로
+    // 넘어간다 — 같은 <input>이라 IME 조합이 끊기지 않는다.
+    const isSelectActive =
+      !editing &&
+      sel?.kind === "cells" &&
+      sel.a[0] === sel.b[0] &&
+      sel.a[1] === sel.b[1] &&
+      sel.a[0] === rowIndex &&
+      sel.a[1] === c;
+    const isActive = isEditing || isSelectActive;
     const cells = getRow(rowIndex);
     const formula = getFormulas(rowIndex)[colKey];
     const style = getStyles(rowIndex)[colKey];
@@ -831,34 +889,54 @@ export function DatasetGrid({ datasetId }: Props) {
             {/* 삽입·삭제·병합은 셀 우클릭 메뉴로. */}
           </div>
         )}
-        {isEditing ? (
+        {/* 표시값은 항상 렌더한다(레이아웃·테스트 기준). 활성 셀이면 그 위에 입력창이 겹친다. */}
+        <div
+          className={cn(
+            "h-full cursor-text truncate px-2 py-1.5",
+            ALIGN_CLASS[align],
+            cells === undefined && "text-muted-foreground/40",
+            isCellError(cells?.[c]) && "text-destructive",
+          )}
+          title={formula}
+        >
+          {cells === undefined ? "…" : (cells[c] ?? "")}
+        </div>
+        {isActive && (
           <input
             autoFocus
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commitEdit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commitEdit();
-              if (e.key === "Escape") setEditing(null);
+            // 선택만 한 상태(편집 전)에선 값을 통째로 선택해 둔다 — 글자를 치면 덮어써지고,
+            // 한글도 첫 자모부터 이 입력창에서 조합된다(엘리먼트 교체가 없어 조합이 안 끊긴다).
+            onFocus={(e) => {
+              if (!isEditing) e.currentTarget.select();
             }}
-            aria-label={`셀 ${rowIndex + 1}행 ${c + 1}열`}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              // 첫 입력이 들어오면 편집 상태로 전환(같은 input이라 IME 조합 유지).
+              if (!isEditing) setEditing({ row: rowIndex, col: c });
+            }}
+            onBlur={() => {
+              if (isEditing) commitEdit();
+            }}
+            onKeyDown={(e) => onCellInputKeyDown(e, rowIndex, c)}
+            // 편집 상태에서만 편집용 라벨을 붙인다(선택-만-한 상태는 편집이 아니므로 구분).
+            aria-label={
+              isEditing
+                ? `셀 ${rowIndex + 1}행 ${c + 1}열`
+                : `${rowIndex + 1}행 ${c + 1}열 셀 (입력하면 편집)`
+            }
             className={cn(
-              "focus-visible:ring-ring h-full w-full bg-transparent px-2 py-1 outline-none focus-visible:ring-1",
+              "absolute inset-0 z-[6] h-full w-full px-2 py-1.5 outline-none",
               ALIGN_CLASS[align],
+              // 뒤 표시값을 가리도록 셀 배경색(없으면 카드색)으로 불투명하게 덮는다.
+              !style?.bg && "bg-card",
             )}
+            style={
+              style?.bg
+                ? { background: `var(--cell-bg-${style.bg})` }
+                : undefined
+            }
           />
-        ) : (
-          <div
-            className={cn(
-              "h-full cursor-text truncate px-2 py-1.5",
-              ALIGN_CLASS[align],
-              cells === undefined && "text-muted-foreground/40",
-              isCellError(cells?.[c]) && "text-destructive",
-            )}
-            title={formula}
-          >
-            {cells === undefined ? "…" : (cells[c] ?? "")}
-          </div>
         )}
       </>
     );
