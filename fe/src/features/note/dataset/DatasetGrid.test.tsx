@@ -1147,44 +1147,6 @@ describe("DatasetGrid", () => {
 
   // ---------- 셀 배경색 ----------
 
-  it("팔레트에서 색을 고르면 PUT하고 셀 배경이 칠해진다", async () => {
-    mockDataset([["네트워크", "92"]]);
-    let sent: unknown = null;
-    server.use(
-      http.put(
-        `${API_BASE}/datasets/1/rows/0/cells/c0/style`,
-        async ({ request }) => {
-          sent = await request.json();
-          return HttpResponse.json({
-            code: "OK",
-            data: {
-              id: 100,
-              rowIndex: 0,
-              cells: ["네트워크", "92"],
-              formulas: {},
-              styles: { c0: { bg: "green" } },
-            },
-          });
-        },
-      ),
-    );
-    const user = userEvent.setup();
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("네트워크");
-
-    // 셀 호버 버튼 → 팔레트 → green
-    await user.click(screen.getByLabelText("1행 1열 서식"));
-    await user.click(screen.getByLabelText("배경색 green"));
-
-    await waitFor(() => expect(sent).toEqual({ bg: "green", align: null }));
-    const cell = screen
-      .getByText("네트워크")
-      .closest("div[style]") as HTMLElement;
-    await waitFor(() =>
-      expect(cell.style.background).toContain("--cell-bg-green"),
-    );
-  });
-
   it("서버가 준 styles로 셀 배경을 그린다", async () => {
     server.use(
       http.get(`${API_BASE}/datasets/1`, () =>
@@ -1229,69 +1191,6 @@ describe("DatasetGrid", () => {
       .getByText("네트워크")
       .closest("div[style]") as HTMLElement;
     expect(plain.style.background).toBe("");
-  });
-
-  it("지우기를 누르면 bg를 비워 PUT한다", async () => {
-    server.use(
-      http.get(`${API_BASE}/datasets/1`, () =>
-        HttpResponse.json({
-          code: "OK",
-          data: {
-            id: 1,
-            columns: [
-              { key: "c0", label: "과목" },
-              { key: "c1", label: "점수" },
-            ],
-            rowCount: 1,
-          },
-        }),
-      ),
-      http.get(`${API_BASE}/datasets/1/rows`, () =>
-        HttpResponse.json({
-          code: "OK",
-          data: {
-            rows: [
-              {
-                id: 100,
-                rowIndex: 0,
-                cells: ["네트워크", "92"],
-                formulas: {},
-                styles: { c0: { bg: "green" } },
-              },
-            ],
-            offset: 0,
-            limit: 100,
-          },
-        }),
-      ),
-    );
-    let sent: unknown = null;
-    server.use(
-      http.put(
-        `${API_BASE}/datasets/1/rows/0/cells/c0/style`,
-        async ({ request }) => {
-          sent = await request.json();
-          return HttpResponse.json({
-            code: "OK",
-            data: {
-              id: 100,
-              rowIndex: 0,
-              cells: ["네트워크", "92"],
-              formulas: {},
-              styles: {},
-            },
-          });
-        },
-      ),
-    );
-    const user = userEvent.setup();
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("네트워크");
-
-    await user.click(screen.getByLabelText("1행 1열 서식"));
-    await user.click(screen.getByLabelText("배경색 지우기"));
-
-    await waitFor(() => expect(sent).toEqual({ bg: null, align: null }));
   });
 
   it("셀 정렬(override)이 열 기본 정렬을 덮는다", async () => {
@@ -1346,9 +1245,9 @@ describe("DatasetGrid", () => {
     expect(screen.getByText("네트워크").className).toContain("text-left");
   });
 
-  it("셀 팔레트에서 정렬을 고르면 배경색을 보존해 PUT한다", async () => {
+  it("우클릭 메뉴에서 정렬을 고르면 배경색을 보존해 일괄 PUT한다", async () => {
     mockDataset([["네트워크", "92"]]);
-    let sent: unknown = null;
+    // c0에 이미 배경색(green)이 있는 상태로 시작한다.
     server.use(
       http.get(`${API_BASE}/datasets/1/rows`, () =>
         HttpResponse.json({
@@ -1368,32 +1267,30 @@ describe("DatasetGrid", () => {
           },
         }),
       ),
-      http.put(
-        `${API_BASE}/datasets/1/rows/0/cells/c0/style`,
-        async ({ request }) => {
-          sent = await request.json();
-          return HttpResponse.json({
-            code: "OK",
-            data: {
-              id: 100,
-              rowIndex: 0,
-              cells: ["네트워크", "92"],
-              formulas: {},
-              styles: { c0: { bg: "green", align: "center" } },
-            },
-          });
-        },
-      ),
+    );
+    let sentCells: unknown = null;
+    server.use(
+      http.put(`${API_BASE}/datasets/1/cells/style`, async ({ request }) => {
+        sentCells = ((await request.json()) as { cells: unknown }).cells;
+        return HttpResponse.json({ code: "OK", data: [] });
+      }),
     );
     const user = userEvent.setup();
     renderWithRouter(<DatasetGrid datasetId={1} />);
-    await screen.findByText("네트워크");
+    const cell = (await screen.findByText("네트워크"))
+      .parentElement as HTMLElement; // (0,0)=c0
+    fireEvent.pointerDown(cell, { button: 0 });
 
-    await user.click(screen.getByLabelText("1행 1열 서식"));
-    await user.click(screen.getByLabelText("정렬 가운데"));
+    fireEvent.contextMenu(cell);
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    await user.click(within(menu).getByLabelText("정렬 가운데"));
 
-    // 배경색은 그대로 두고 정렬만 얹어 통째로 보낸다.
-    await waitFor(() => expect(sent).toEqual({ bg: "green", align: "center" }));
+    // 배경색(green)은 보존하고 정렬만 얹어 일괄 엔드포인트로 보낸다.
+    await waitFor(() =>
+      expect(sentCells).toEqual([
+        { rowIndex: 0, colKey: "c0", bg: "green", align: "center" },
+      ]),
+    );
   });
 
   it("가로 병합 앵커는 colSpan으로 넓게, 덮인 셀은 렌더하지 않는다", async () => {
