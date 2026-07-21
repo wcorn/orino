@@ -6,6 +6,7 @@ import ds.project.orino.planner.dataset.dto.BulkCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.BulkRowsRequest;
 import ds.project.orino.planner.dataset.dto.CreateDatasetRequest;
 import ds.project.orino.planner.dataset.dto.DatasetResponse;
+import ds.project.orino.planner.dataset.dto.FillCellsRequest;
 import ds.project.orino.planner.dataset.dto.InsertRowRequest;
 import ds.project.orino.planner.dataset.dto.InsertRowResponse;
 import ds.project.orino.planner.dataset.dto.RenameColumnRequest;
@@ -110,6 +111,18 @@ public class DatasetController {
             @RequestParam int fromRowIndex) {
         return ApiResponse.success(
                 datasetService.fillDownColumn(memberId, id, key, fromRowIndex));
+    }
+
+    /**
+     * 채우기 핸들(세로 드래그) — 소스 블록을 대상 행들에 타일링해 채운다. 값이 바뀐(대상 +
+     * 전파) 행들을 돌려준다(행 번호 오름차순).
+     */
+    @PostMapping("/{id}/cells/fill")
+    public ApiResponse<List<RowView>> fillCells(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @Valid @RequestBody FillCellsRequest request) {
+        return ApiResponse.success(datasetService.fillCells(memberId, id, request));
     }
 
     /** 열 너비 변경(px). 열 단위 표시 속성이라 행은 건드리지 않는다. */

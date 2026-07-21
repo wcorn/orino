@@ -252,6 +252,33 @@ export async function updateDatasetRow(
   return data.data;
 }
 
+/** 채우기 핸들(세로 드래그) 요청. 서버의 `FillCellsRequest`와 같아야 한다. */
+export interface FillCellsRequest {
+  /** 채울 열들(소스·대상 공유). */
+  cols: string[];
+  /** 소스 행 범위(rowIndex, 포함). */
+  srcR0: number;
+  srcR1: number;
+  /** 대상 행 범위(rowIndex, 포함). 소스와 겹치지 않고 바로 위/아래로 인접. */
+  dstR0: number;
+  dstR1: number;
+}
+
+/**
+ * 채우기 핸들 — 소스 블록을 대상 행들에 세로로 타일링해 채운다. 값이 바뀐(대상 + 전파)
+ * 행들을 돌려준다(행 번호 오름차순). 재조회 없이 캐시에 반영하면 된다.
+ */
+export async function fillCells(
+  datasetId: number,
+  req: FillCellsRequest,
+): Promise<DatasetRow[]> {
+  const { data } = await client.post<ApiEnvelope<DatasetRow[]>>(
+    `/datasets/${datasetId}/cells/fill`,
+    req,
+  );
+  return data.data;
+}
+
 /**
  * 셀 서식(배경색·정렬)을 통째로 교체한다. 빈 style이면 그 셀 서식을 지운다.
  * 값·수식과 무관한 표시 속성이라 cells는 안 바뀐다.

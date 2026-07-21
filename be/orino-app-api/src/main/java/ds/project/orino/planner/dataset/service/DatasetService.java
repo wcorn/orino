@@ -12,6 +12,7 @@ import ds.project.orino.planner.dataset.dto.CellStyle;
 import ds.project.orino.planner.dataset.dto.CreateDatasetRequest;
 import ds.project.orino.planner.dataset.dto.DatasetColumn;
 import ds.project.orino.planner.dataset.dto.DatasetResponse;
+import ds.project.orino.planner.dataset.dto.FillCellsRequest;
 import ds.project.orino.planner.dataset.dto.InsertRowRequest;
 import ds.project.orino.planner.dataset.dto.InsertRowResponse;
 import ds.project.orino.planner.dataset.dto.MergesResponse;
@@ -383,6 +384,52 @@ public class DatasetService {
                 .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
         formulaService.fillDownColumn(datasetId, colKey, source, columns);
         return DatasetResponse.of(dataset, columns);
+    }
+
+    /**
+     * 채우기 핸들(세로 드래그) — 소스 블록을 대상 행들에 타일링해 채운다. 대상은 소스와 겹치지
+     * 않고 바로 위/아래로 인접해야 한다. 값이 바뀐(대상 + 전파) 행들을 돌려준다 — FE가 재조회
+     * 없이 반영한다.
+     */
+    @Transactional
+    public List<RowView> fillCells(Long memberId, Long datasetId, FillCellsRequest request) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        for (String col : request.cols()) {
+            if (indexOfColumn(columns, col) < 0) {
+                throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
+            }
+        }
+        int rowCount = dataset.getRowCount();
+        int srcR0 = request.srcR0();
+        int srcR1 = request.srcR1();
+        int dstR0 = request.dstR0();
+        int dstR1 = request.dstR1();
+        // 범위가 표 안에 있고, 소스·대상 각각 정상 순서인지.
+        if (srcR0 > srcR1 || dstR0 > dstR1 || srcR1 >= rowCount || dstR1 >= rowCount) {
+            throw new CustomException(ErrorCode.INVALID_REQUEST);
+        }
+        // 대상은 소스와 겹치지 않고 바로 아래(dstR0 = srcR1+1) 또는 바로 위(dstR1 = srcR0-1)여야 한다.
+        boolean below = dstR0 == srcR1 + 1;
+        boolean above = dstR1 == srcR0 - 1;
+        if (!below && !above) {
+            throw new CustomException(ErrorCode.INVALID_REQUEST,
+                    "채우기 대상은 소스 바로 위/아래로 인접해야 합니다");
+        }
+
+        List<DatasetRow> srcRows = rowRepository
+                .findByDatasetIdAndRowIndexGreaterThanEqualAndRowIndexLessThanOrderByRowIndexAsc(
+                        datasetId, srcR0, srcR1 + 1);
+        List<DatasetRow> dstRows = rowRepository
+                .findByDatasetIdAndRowIndexGreaterThanEqualAndRowIndexLessThanOrderByRowIndexAsc(
+                        datasetId, dstR0, dstR1 + 1);
+        if (srcRows.isEmpty() || dstRows.isEmpty()) {
+            throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+
+        Set<Long> affected = formulaService.fillRange(
+                datasetId, request.cols(), srcR0, srcRows, dstRows, columns);
+        return buildRowViews(datasetId, affected, columns);
     }
 
     /** 행 벌크 추가(끝에 append). Import 청크에 사용. */
