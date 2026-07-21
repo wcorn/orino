@@ -90,6 +90,16 @@ export interface RowsPage {
   limit: number;
 }
 
+/**
+ * 행 수정 결과. `edited`는 방금 고친 행, `affected`는 그 수정이 다른 행으로 번져(집계 등)
+ * 값이 바뀐 행들(편집 행 제외, 번진 곳 없으면 빈 배열). 서버가 이미 다시 계산한 교차 행을
+ * 페이지 재조회 없이 즉시 반영하려고 함께 내려준다. 서버의 `UpdateRowResponse`와 같아야 한다.
+ */
+export interface UpdateRowResult {
+  edited: DatasetRow;
+  affected: DatasetRow[];
+}
+
 interface ApiEnvelope<T> {
   code: string;
   data: T;
@@ -234,8 +244,8 @@ export async function updateDatasetRow(
   datasetId: number,
   rowIndex: number,
   cells: string[],
-): Promise<DatasetRow> {
-  const { data } = await client.patch<ApiEnvelope<DatasetRow>>(
+): Promise<UpdateRowResult> {
+  const { data } = await client.patch<ApiEnvelope<UpdateRowResult>>(
     `/datasets/${datasetId}/rows/${rowIndex}`,
     { cells },
   );

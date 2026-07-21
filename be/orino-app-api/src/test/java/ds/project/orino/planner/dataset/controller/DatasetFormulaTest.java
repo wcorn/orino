@@ -83,7 +83,7 @@ class DatasetFormulaTest extends ApiTestSupport {
     void formulaComputesAndStoresSeparately() throws Exception {
         patchRow(0, "[\"10\",\"3\",\"={단가} * {수량}\"]")
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.cells[2]").value("30"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("30"));
 
         // 읽기 경로는 그대로 — cells엔 계산된 값이 들어 있다.
         mockMvc.perform(get("/api/datasets/{id}/rows", datasetId)
@@ -118,14 +118,14 @@ class DatasetFormulaTest extends ApiTestSupport {
     void formulaSeesValuesFromSameRequest() throws Exception {
         // 단가를 10 → 7로 바꾸면서 합계 수식을 넣는다. 옛 값 10이 아니라 7을 써야 한다.
         patchRow(0, "[\"7\",\"3\",\"={단가} * {수량}\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("21"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("21"));
     }
 
     @Test
     @DisplayName("열 집계는 전체 행을 본다")
     void columnAggregate() throws Exception {
         patchRow(0, "[\"10\",\"3\",\"=SUM({단가})\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("30"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("30"));
 
         long rowId = rowRepository.findByDatasetIdAndRowIndex(datasetId, 0).orElseThrow().getId();
         long formulaId = formulaRepository.findByRowIdAndColKey(rowId, "c2").orElseThrow().getId();
@@ -139,7 +139,7 @@ class DatasetFormulaTest extends ApiTestSupport {
     void absoluteRef() throws Exception {
         // 1행의 합계가 2행의 단가(20)를 가리킨다.
         patchRow(0, "[\"10\",\"3\",\"={단가}2\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("20"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("20"));
 
         long rowId = rowRepository.findByDatasetIdAndRowIndex(datasetId, 0).orElseThrow().getId();
         long row2 = rowRepository.findByDatasetIdAndRowIndex(datasetId, 1).orElseThrow().getId();
@@ -160,33 +160,33 @@ class DatasetFormulaTest extends ApiTestSupport {
 
         // SUM은 '글자'를 무시하고 1행의 10만 더한다.
         patchRow(0, "[\"10\",\"3\",\"=SUM({단가})\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("10"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("10"));
         // COUNT도 숫자만 센다.
         patchRow(0, "[\"10\",\"3\",\"=COUNT({단가})\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("1"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("1"));
         // 산술은 무시하지 않는다.
         patchRow(1, "[\"글자\",\"2\",\"={단가} * {수량}\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("#VALUE!"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("#VALUE!"));
     }
 
     @Test
     @DisplayName("0으로 나누면 #DIV/0!, 숫자 없는 열의 AVG도 #DIV/0!")
     void divisionErrors() throws Exception {
         patchRow(0, "[\"10\",\"0\",\"={단가} / {수량}\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("#DIV/0!"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("#DIV/0!"));
 
         patchRow(0, "[\"글자\",\"0\",\"\"]").andExpect(status().isOk());
         patchRow(1, "[\"글자\",\"0\",\"=AVG({단가})\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("#DIV/0!"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("#DIV/0!"));
     }
 
     @Test
     @DisplayName("에러는 셀 단위다 — 같은 열의 다른 행은 멀쩡하다")
     void errorIsPerCell() throws Exception {
         patchRow(0, "[\"10\",\"3\",\"={단가} * {수량}\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("30"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("30"));
         patchRow(1, "[\"글자\",\"2\",\"={단가} * {수량}\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("#VALUE!"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("#VALUE!"));
 
         mockMvc.perform(get("/api/datasets/{id}/rows", datasetId)
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
@@ -202,7 +202,7 @@ class DatasetFormulaTest extends ApiTestSupport {
         long formulaId = formulaRepository.findByRowIdAndColKey(rowId, "c2").orElseThrow().getId();
 
         patchRow(0, "[\"10\",\"3\",\"직접입력\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("직접입력"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("직접입력"));
 
         assertThat(formulaRepository.findByRowIdAndColKey(rowId, "c2")).isEmpty();
         assertThat(refRepository.findByFormulaId(formulaId)).isEmpty();
@@ -246,7 +246,7 @@ class DatasetFormulaTest extends ApiTestSupport {
     @DisplayName("열 범위 집계는 입력 시 집합으로 굳는다")
     void rangeSnapshot() throws Exception {
         patchRow(0, "[\"10\",\"3\",\"=SUM({단가}:{수량})\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("35")); // 10+3+20+2
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("35")); // 10+3+20+2
 
         long rowId = rowRepository.findByDatasetIdAndRowIndex(datasetId, 0).orElseThrow().getId();
         long formulaId = formulaRepository.findByRowIdAndColKey(rowId, "c2").orElseThrow().getId();
@@ -262,9 +262,9 @@ class DatasetFormulaTest extends ApiTestSupport {
     @DisplayName("여러 열에 수식을 동시에 넣을 수 있다")
     void multipleFormulasInOneRow() throws Exception {
         patchRow(0, "[\"10\",\"=2 + 1\",\"={단가} * {수량}\"]")
-                .andExpect(jsonPath("$.data.cells[1]").value("3"))
+                .andExpect(jsonPath("$.data.edited.cells[1]").value("3"))
                 // c1이 먼저 계산돼 c2가 그 값을 본다(열 순서).
-                .andExpect(jsonPath("$.data.cells[2]").value("30"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("30"));
 
         long rowId = rowRepository.findByDatasetIdAndRowIndex(datasetId, 0).orElseThrow().getId();
         assertThat(List.of(

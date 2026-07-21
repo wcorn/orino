@@ -17,6 +17,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -77,7 +78,7 @@ class DatasetFormulaPropagationTest extends ApiTestSupport {
     @DisplayName("참조하던 셀을 고치면 수식이 따라 바뀐다 — 이 이슈의 핵심")
     void editingReferencedCellRecomputesFormula() throws Exception {
         patchRow(0, "[\"10\",\"3\",\"={단가} * {수량}\",\"\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("30"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("30"));
 
         // 단가만 고친다. 합계는 손대지 않는다.
         patchRow(0, "[\"7\",\"3\",\"={단가} * {수량}\",\"\"]").andExpect(status().isOk());
@@ -90,7 +91,7 @@ class DatasetFormulaPropagationTest extends ApiTestSupport {
     void propagatesTransitively() throws Exception {
         patchRow(0, "[\"10\",\"3\",\"={단가} * {수량}\",\"\"]").andExpect(status().isOk());
         patchRow(0, "[\"10\",\"3\",\"={단가} * {수량}\",\"={합계} + 1\"]")
-                .andExpect(jsonPath("$.data.cells[3]").value("31"));
+                .andExpect(jsonPath("$.data.edited.cells[3]").value("31"));
 
         // 단가 → 합계 → 비고 로 두 단계 번져야 한다.
         patchRow(0, "[\"5\",\"3\",\"={단가} * {수량}\",\"={합계} + 1\"]")
@@ -120,7 +121,7 @@ class DatasetFormulaPropagationTest extends ApiTestSupport {
     @DisplayName("COLUMN_ALL 전파는 그 열의 아무 행이 바뀌어도 걸린다")
     void columnAggregateRecomputesOnAnyRow() throws Exception {
         patchRow(0, "[\"10\",\"3\",\"=SUM({단가})\",\"\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("30"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("30"));
 
         // 2행의 단가를 고치면 1행의 집계가 따라 바뀐다.
         patchRow(1, "[\"5\",\"2\",\"\",\"\"]").andExpect(status().isOk());
@@ -129,11 +130,30 @@ class DatasetFormulaPropagationTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("응답에 편집 행과 전파된 교차 행이 함께 실린다 — 집계가 다른 행에 있어도 즉시 반영")
+    void responseCarriesEditedAndAffectedRows() throws Exception {
+        // 1행에 열 전체 집계를 둔다(단가 = 10 + 20 = 30).
+        patchRow(0, "[\"10\",\"3\",\"=SUM({단가})\",\"\"]")
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("30"))
+                // 이 편집은 다른 행으로 번지지 않는다.
+                .andExpect(jsonPath("$.data.affected", hasSize(0)));
+
+        // 2행 단가를 고치면 1행 집계가 다시 계산된다 — 편집 행(2행)과 교차 행(1행)이 함께 온다.
+        patchRow(1, "[\"5\",\"2\",\"\",\"\"]")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.edited.rowIndex").value(1))
+                .andExpect(jsonPath("$.data.edited.cells[0]").value("5"))
+                .andExpect(jsonPath("$.data.affected", hasSize(1)))
+                .andExpect(jsonPath("$.data.affected[0].rowIndex").value(0))
+                .andExpect(jsonPath("$.data.affected[0].cells[2]").value("15"));
+    }
+
+    @Test
     @DisplayName("절대 참조는 그 행이 바뀔 때 따라 바뀐다")
     void absoluteRefRecomputes() throws Exception {
         // 1행 비고가 2행 단가를 가리킨다.
         patchRow(0, "[\"10\",\"3\",\"\",\"={단가}2\"]")
-                .andExpect(jsonPath("$.data.cells[3]").value("20"));
+                .andExpect(jsonPath("$.data.edited.cells[3]").value("20"));
 
         patchRow(1, "[\"99\",\"2\",\"\",\"\"]").andExpect(status().isOk());
 
@@ -144,7 +164,7 @@ class DatasetFormulaPropagationTest extends ApiTestSupport {
     @DisplayName("에러도 전파된다 — 참조가 숫자가 아니게 되면 #VALUE!")
     void errorPropagates() throws Exception {
         patchRow(0, "[\"10\",\"3\",\"={단가} * {수량}\",\"\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("30"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("30"));
 
         patchRow(0, "[\"글자\",\"3\",\"={단가} * {수량}\",\"\"]").andExpect(status().isOk());
 
@@ -193,7 +213,7 @@ class DatasetFormulaPropagationTest extends ApiTestSupport {
         patchRow(0, "[\"10\",\"3\",\"\",\"={단가}2\"]").andExpect(status().isOk());
         // 2행 합계 = 같은 행 단가*수량. 위와 무관.
         patchRow(1, "[\"20\",\"2\",\"={단가} * {수량}\",\"\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("40"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("40"));
     }
 
     @Test
@@ -209,7 +229,7 @@ class DatasetFormulaPropagationTest extends ApiTestSupport {
 
         // 그 수식을 그대로 돌려주면 살아남는다.
         patchRow(0, "[\"2\",\"3\",\"=({단가} * {수량})\",\"\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("6"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("6"));
         rows().andExpect(jsonPath("$.data.rows[0].formulas.c2").exists());
 
         // 계산된 값을 돌려주면 사용자가 직접 입력한 것으로 보고 수식을 지운다.

@@ -156,7 +156,14 @@ describe("DatasetGrid", () => {
           patched = { index: Number(params.i), cells: body.cells };
           return HttpResponse.json({
             code: "OK",
-            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
           });
         },
       ),
@@ -186,7 +193,14 @@ describe("DatasetGrid", () => {
           patched = { index: Number(params.i), cells: body.cells };
           return HttpResponse.json({
             code: "OK",
-            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
           });
         },
       ),
@@ -218,7 +232,14 @@ describe("DatasetGrid", () => {
           patched = { index: Number(params.i), cells: body.cells };
           return HttpResponse.json({
             code: "OK",
-            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
           });
         },
       ),
@@ -248,7 +269,14 @@ describe("DatasetGrid", () => {
           patched = { index: Number(params.i), cells: body.cells };
           return HttpResponse.json({
             code: "OK",
-            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
           });
         },
       ),
@@ -295,7 +323,14 @@ describe("DatasetGrid", () => {
           patched = { index: Number(params.i), cells: body.cells };
           return HttpResponse.json({
             code: "OK",
-            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
           });
         },
       ),
@@ -368,7 +403,14 @@ describe("DatasetGrid", () => {
           patched[Number(params.i)] = body.cells;
           return HttpResponse.json({
             code: "OK",
-            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
           });
         },
       ),
@@ -402,7 +444,14 @@ describe("DatasetGrid", () => {
           patched[Number(params.i)] = body.cells;
           return HttpResponse.json({
             code: "OK",
-            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
           });
         },
       ),
@@ -471,7 +520,14 @@ describe("DatasetGrid", () => {
           patched = { index: Number(params.i), cells: body.cells };
           return HttpResponse.json({
             code: "OK",
-            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
           });
         },
       ),
@@ -641,10 +697,13 @@ describe("DatasetGrid", () => {
         return HttpResponse.json({
           code: "OK",
           data: {
-            id: 100,
-            rowIndex: 0,
-            cells: ["7", "21"],
-            formulas: { c1: "=({단가} * 3)" },
+            edited: {
+              id: 100,
+              rowIndex: 0,
+              cells: ["7", "21"],
+              formulas: { c1: "=({단가} * 3)" },
+            },
+            affected: [],
           },
         });
       }),
@@ -673,10 +732,13 @@ describe("DatasetGrid", () => {
         HttpResponse.json({
           code: "OK",
           data: {
-            id: 100,
-            rowIndex: 0,
-            cells: ["10", "30"],
-            formulas: { c1: "=({과목} * 3)" },
+            edited: {
+              id: 100,
+              rowIndex: 0,
+              cells: ["10", "30"],
+              formulas: { c1: "=({과목} * 3)" },
+            },
+            affected: [],
           },
         }),
       ),
@@ -692,6 +754,116 @@ describe("DatasetGrid", () => {
     // 입력한 수식이 아니라 계산 결과가 보인다.
     expect(await screen.findByText("30")).toBeInTheDocument();
     expect(screen.queryByText("={과목} * 3")).not.toBeInTheDocument();
+  });
+
+  it("수식을 입력하면 서버 응답 전에 낙관적으로 계산해 보여주고, 응답이 오면 서버 확정값으로 맞춘다", async () => {
+    mockDataset([["10", "3"]]); // 과목(c0)=10, 점수(c1)=3
+    server.use(
+      http.patch(`${API_BASE}/datasets/1/rows/:i`, async () => {
+        await delay(200);
+        // 서버 확정값(999)은 프리뷰(20)와 다르게 둬, 언제 어느 쪽이 보이는지 구분한다.
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            edited: {
+              id: 100,
+              rowIndex: 0,
+              cells: ["10", "999"],
+              formulas: { c1: "=({과목} * 2)" },
+            },
+            affected: [],
+          },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.dblClick(await screen.findByText("3"));
+    const input = await screen.findByLabelText("셀 1행 2열");
+    fireEvent.change(input, { target: { value: "={과목} * 2" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // 서버 응답(200ms) 전에 FE가 계산한 20이 곧바로 보인다(원본 수식은 안 보인다).
+    expect(await screen.findByText("20")).toBeInTheDocument();
+    expect(screen.queryByText("={과목} * 2")).not.toBeInTheDocument();
+    // 응답이 오면 서버 확정값(999)으로 바뀐다.
+    expect(await screen.findByText("999")).toBeInTheDocument();
+  });
+
+  it("수정이 다른 행의 집계로 번지면(affected) 재조회 없이 그 행도 서버 확정값으로 갱신된다", async () => {
+    // 1행 합계(c1)는 SUM(과목) 집계 — 아무 행의 과목이 바뀌면 다시 계산된다.
+    let rowsFetches = 0;
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "합계" },
+            ],
+            rowCount: 2,
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/datasets/1/rows`, () => {
+        rowsFetches++;
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [
+              {
+                id: 100,
+                rowIndex: 0,
+                cells: ["10", "30"],
+                formulas: { c1: "=SUM({과목})" },
+              },
+              { id: 101, rowIndex: 1, cells: ["20", ""] },
+            ],
+            offset: 0,
+            limit: 100,
+          },
+        });
+      }),
+      http.get(`${API_BASE}/datasets/1/merges`, () =>
+        HttpResponse.json({ code: "OK", data: { merges: [] } }),
+      ),
+      // 2행 과목을 20→5로 고치면 1행 집계가 30→15로 번진다.
+      http.patch(`${API_BASE}/datasets/1/rows/:i`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            edited: { id: 101, rowIndex: 1, cells: ["5", ""] },
+            affected: [
+              {
+                id: 100,
+                rowIndex: 0,
+                cells: ["10", "15"],
+                formulas: { c1: "=SUM({과목})" },
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    expect(await screen.findByText("30")).toBeInTheDocument();
+    const fetchesBefore = rowsFetches;
+
+    await user.dblClick(await screen.findByText("20"));
+    const input = await screen.findByLabelText("셀 2행 1열");
+    fireEvent.change(input, { target: { value: "5" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // 응답의 affected 행(1행 합계)이 재조회 없이 30→15로 갱신된다.
+    expect(await screen.findByText("15")).toBeInTheDocument();
+    expect(screen.queryByText("30")).not.toBeInTheDocument();
+    expect(screen.getByText("5")).toBeInTheDocument();
+    // 전체 행 재조회(GET /rows)가 다시 일어나지 않았다.
+    expect(rowsFetches).toBe(fetchesBefore);
   });
 
   /** c1이 수식 셀인 표 — 화면엔 30, 원본은 formulas에. */
@@ -793,7 +965,14 @@ describe("DatasetGrid", () => {
           if (call === 1) await delay(80);
           return HttpResponse.json({
             code: "OK",
-            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
           });
         },
       ),
@@ -933,7 +1112,10 @@ describe("DatasetGrid", () => {
         patched = body.cells;
         return HttpResponse.json({
           code: "OK",
-          data: { id: 100, rowIndex: 0, cells: body.cells },
+          data: {
+            edited: { id: 100, rowIndex: 0, cells: body.cells },
+            affected: [],
+          },
         });
       }),
     );
@@ -1909,7 +2091,14 @@ describe("DatasetGrid", () => {
           patched[Number(params.i)] = body.cells;
           return HttpResponse.json({
             code: "OK",
-            data: { id: 100, rowIndex: Number(params.i), cells: body.cells },
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
           });
         },
       ),

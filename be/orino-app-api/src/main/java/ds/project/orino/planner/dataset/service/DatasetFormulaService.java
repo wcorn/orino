@@ -50,6 +50,19 @@ public class DatasetFormulaService {
      */
     static final int MAX_PROPAGATION = 1_000;
 
+    /**
+     * 전파 중복 방지 셋({@code seen})의 셀 키 형식({@code rowId:colKey}). 이 형식은 여기서만
+     * 만들고 여기서만 되읽는다({@link #rowIdOf}) — 호출부가 값이 바뀐 행을 추려낼 때 쓴다.
+     */
+    static String seenKey(Long rowId, String colKey) {
+        return rowId + ":" + colKey;
+    }
+
+    /** {@link #seenKey}가 만든 키에서 행 id를 되읽는다. */
+    static Long rowIdOf(String seenKey) {
+        return Long.parseLong(seenKey.substring(0, seenKey.indexOf(':')));
+    }
+
     private final DatasetFormulaRepository formulaRepository;
     private final DatasetFormulaRefRepository refRepository;
     private final DatasetRowRepository rowRepository;
@@ -131,7 +144,7 @@ public class DatasetFormulaService {
             if (formula == null) {
                 continue;
             }
-            String cell = formula.getRowId() + ":" + formula.getColKey();
+            String cell = seenKey(formula.getRowId(), formula.getColKey());
             if (!seen.add(cell)) {
                 continue;
             }
