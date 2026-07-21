@@ -739,6 +739,9 @@ export function DatasetGrid({
     c: number,
   ) => {
     e.stopPropagation();
+    // 선택-만-한 상태에선 방향키가 셀 이동, Cmd/Ctrl+A가 표 전체 선택이다(편집 중엔 입력창
+    // 기본 동작 유지 — 커서 이동·텍스트 전체선택).
+    if (!editing && handleNavKey(e)) return;
     if (e.key === "Escape") {
       e.preventDefault();
       // 이미 자동저장된 값은 남지만, 예약된 저장·미저장 편집은 버리고 편집을 닫는다.
@@ -769,8 +772,13 @@ export function DatasetGrid({
     if (selDrag.current !== "cells") return;
     setSel((s) => (s?.kind === "cells" ? { ...s, b: [row, col] } : s));
   };
-  const startRowSelect = (row: number) => {
+  const startRowSelect = (row: number, shift = false) => {
     setEditing(null);
+    // shift+클릭: 기존 행 선택의 앵커를 유지하고 여기까지 확장(셀 범위 shift 확장과 같은 결).
+    if (shift && sel?.kind === "rows") {
+      setSel({ kind: "rows", a: sel.a, b: row });
+      return;
+    }
     selDrag.current = "rows";
     setSel({ kind: "rows", a: row, b: row });
   };
@@ -778,8 +786,12 @@ export function DatasetGrid({
     if (selDrag.current !== "rows") return;
     setSel((s) => (s?.kind === "rows" ? { ...s, b: row } : s));
   };
-  const startColSelect = (col: number) => {
+  const startColSelect = (col: number, shift = false) => {
     setEditing(null);
+    if (shift && sel?.kind === "cols") {
+      setSel({ kind: "cols", a: sel.a, b: col });
+      return;
+    }
     selDrag.current = "cols";
     setSel({ kind: "cols", a: col, b: col });
   };
@@ -794,6 +806,61 @@ export function DatasetGrid({
     if (sel?.kind === "cells") return sel.b;
     return [selRect.r0, selRect.c0];
   })();
+
+  /**
+   * 활성 셀을 (dr,dc)만큼 옮긴다(경계 안으로 클램프). extend면 셀 범위를 확장한다(앵커 유지,
+   * 셀 선택이 아니었으면 현재 활성점을 앵커로 새 범위 시작). 가상화로 렌더 밖 행이면 스크롤해
+   * 들여, 옮긴 셀의 입력창이 렌더·포커스되게 한다(포커스 이동은 sel 변경 effect가 맡는다).
+   */
+  const moveActive = (dr: number, dc: number, extend: boolean) => {
+    if (!activeCell || rowCount < 1 || colCount < 1) return;
+    const [r, c] = activeCell;
+    const nr = Math.min(rowCount - 1, Math.max(0, r + dr));
+    const nc = Math.min(colCount - 1, Math.max(0, c + dc));
+    if (nr === r && nc === c && !extend) return; // 경계에서 제자리면 그대로.
+    setEditing(null);
+    if (extend) {
+      setSel((s) =>
+        s?.kind === "cells"
+          ? { kind: "cells", a: s.a, b: [nr, nc] }
+          : { kind: "cells", a: [r, c], b: [nr, nc] },
+      );
+    } else {
+      setSel({ kind: "cells", a: [nr, nc], b: [nr, nc] });
+      setDraft(getRow(nr)?.[nc] ?? "");
+    }
+    virtualizer.scrollToIndex(nr);
+  };
+
+  /**
+   * 방향키 이동·Ctrl/Cmd+A(표 전체)를 처리한다. 처리했으면 true.
+   * 편집 중이 아닐 때(선택-만-한 상태)만 호출해야 한다 — 편집 중엔 입력창 기본 동작
+   * (커서 이동·텍스트 전체선택)을 그대로 둔다.
+   */
+  const handleNavKey = (e: React.KeyboardEvent): boolean => {
+    if ((e.metaKey || e.ctrlKey) && (e.key === "a" || e.key === "A")) {
+      e.preventDefault();
+      setEditing(null);
+      setSel({ kind: "table" });
+      return true;
+    }
+    const d: [number, number] | null =
+      e.key === "ArrowUp"
+        ? [-1, 0]
+        : e.key === "ArrowDown"
+          ? [1, 0]
+          : e.key === "ArrowLeft"
+            ? [0, -1]
+            : e.key === "ArrowRight"
+              ? [0, 1]
+              : null;
+    if (d && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      moveActive(d[0], d[1], e.shiftKey);
+      return true;
+    }
+    return false;
+  };
 
   /** 선택 범위의 셀 값을 모두 비운다(Delete/Backspace). 수식·값은 지우고 서식은 둔다. */
   const clearSelValues = () => {
@@ -900,6 +967,11 @@ export function DatasetGrid({
    */
   const onGridKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (editing) return; // 편집 중엔 입력창이 처리한다.
+    // 방향키 이동·Cmd/Ctrl+A(표 전체)를 먼저 처리한다.
+    if (handleNavKey(e)) {
+      e.stopPropagation();
+      return;
+    }
     if (!activeCell) return;
     const [r, c] = activeCell;
     // 한글 등 IME 조합키는 e.key가 "Process"로 오고 첫 자모를 keydown에서 얻을 수 없다.
@@ -1173,7 +1245,7 @@ export function DatasetGrid({
                   onPointerDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    startColSelect(c);
+                    startColSelect(c, e.shiftKey);
                   }}
                   onPointerEnter={() => extendColSelect(c)}
                   className={cn(
@@ -1300,7 +1372,7 @@ export function DatasetGrid({
                     onPointerDown={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      startRowSelect(vi.index);
+                      startRowSelect(vi.index, e.shiftKey);
                     }}
                     className={cn(
                       "hover:bg-primary/60 absolute top-0 left-0 z-20 h-full w-1.5 cursor-pointer touch-none opacity-0 transition-opacity group-hover/grid:opacity-100",
