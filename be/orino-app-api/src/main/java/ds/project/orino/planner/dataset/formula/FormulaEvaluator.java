@@ -51,6 +51,26 @@ public final class FormulaEvaluator {
             case FormulaNode.Binary b -> binary(b, src);
             case FormulaNode.Ref r -> ref(r, src);
             case FormulaNode.Agg a -> agg(a, src);
+            case FormulaNode.Call c -> call(c, src);
+        };
+    }
+
+    /**
+     * 스칼라 함수. 인자를 좌→우로 평가하고 <b>에러는 그대로 번진다</b>(첫 에러 우선).
+     * arity는 파서가 이미 보장하므로 여기선 안 센다.
+     */
+    private static FormulaValue call(FormulaNode.Call c, ValueSource src) {
+        List<BigDecimal> args = new ArrayList<>();
+        for (FormulaNode arg : c.args()) {
+            FormulaValue v = evaluate(arg, src);
+            if (v instanceof FormulaValue.Err) {
+                return v;
+            }
+            args.add(((FormulaValue.Num) v).value());
+        }
+        return switch (c.func()) {
+            case "ABS" -> new FormulaValue.Num(args.get(0).abs());
+            default -> new FormulaValue.Err(FormulaValue.Err.VALUE);
         };
     }
 

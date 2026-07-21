@@ -43,4 +43,14 @@ public sealed interface FormulaNode {
      */
     record Agg(String func, List<String> colKeys) implements FormulaNode {
     }
+
+    /**
+     * 스칼라 함수 호출. 집계({@link Agg})와 달리 인자가 <b>열 참조가 아니라 식</b>이다 —
+     * {@code ABS({점수} - 10)}처럼 셀·산술을 품는다. 각 인자는 셀 단위로 평가된다.
+     *
+     * <p>IF·AND·OR·NOT이 올라탈 구조라 여기서 먼저 깐다(#893). 함수별 인자 개수(arity)는
+     * 파싱 시점에 검증한다.
+     */
+    record Call(String func, List<FormulaNode> args) implements FormulaNode {
+    }
 }

@@ -314,4 +314,51 @@ class FormulaParserTest {
                     .isEqualTo("=0.5");
         }
     }
+
+    @Nested
+    @DisplayName("스칼라 함수 (#893) — 집계와 달리 인자가 식")
+    class Scalar {
+
+        @Test
+        @DisplayName("ABS는 Call 노드로 파싱된다")
+        void absParses() {
+            assertThat(FormulaParser.parseInput("=ABS({SFI})", ctx))
+                    .isEqualTo(new FormulaNode.Call("ABS",
+                            List.of(new FormulaNode.Ref(FormulaRefKind.SAME_ROW, "c2", null))));
+        }
+
+        @Test
+        @DisplayName("집계와 달리 산술 인자를 받는다")
+        void takesExpressionArg() {
+            // SUM({SFI} * 2)는 오류지만 ABS({SFI} * 2)는 정상이다.
+            assertThat(FormulaWriter.toStored(FormulaParser.parseInput("=ABS({SFI} * 2)", ctx)))
+                    .isEqualTo("=ABS(({c2} * 2))");
+        }
+
+        @Test
+        @DisplayName("저장형·표시형이 같은 모양이고 인자를 재귀로 쓴다")
+        void writesBothForms() {
+            FormulaNode n = FormulaParser.parseInput("=ABS({SFI Rank} * {SFI})", ctx);
+            assertThat(FormulaWriter.toStored(n)).isEqualTo("=ABS(({c1} * {c2}))");
+            assertThat(FormulaWriter.toDisplay(n, ctx)).isEqualTo("=ABS(({SFI Rank} * {SFI}))");
+        }
+
+        @Test
+        @DisplayName("인자 속 참조가 의존성으로 잡힌다")
+        void argRefsCollected() {
+            FormulaNode n = FormulaParser.parseInput("=ABS({SFI Rank} * {SFI})", ctx);
+            assertThat(FormulaParser.collectRefs(n)).containsExactlyInAnyOrder(
+                    new FormulaNode.Ref(FormulaRefKind.SAME_ROW, "c1", null),
+                    new FormulaNode.Ref(FormulaRefKind.SAME_ROW, "c2", null));
+        }
+
+        @Test
+        @DisplayName("인자 개수가 안 맞으면 오류")
+        void wrongArity() {
+            assertThatThrownBy(() -> FormulaParser.parseInput("=ABS()", ctx))
+                    .isInstanceOf(CustomException.class);
+            assertThatThrownBy(() -> FormulaParser.parseInput("=ABS({SFI}, {SFI})", ctx))
+                    .isInstanceOf(CustomException.class);
+        }
+    }
 }

@@ -61,6 +61,17 @@ public final class FormulaWriter {
                             .map(k -> "{" + name(k, ctx) + "}")
                             .collect(Collectors.joining(", ")))
                     .append(')');
+            case FormulaNode.Call c -> {
+                // 스칼라 함수는 인자가 식이라 재귀로 쓴다. 저장형·표시형이 같은 모양.
+                sb.append(c.func()).append('(');
+                for (int i = 0; i < c.args().size(); i++) {
+                    if (i > 0) {
+                        sb.append(", ");
+                    }
+                    write(c.args().get(i), sb, ctx);
+                }
+                sb.append(')');
+            }
             case FormulaNode.Ref r -> {
                 sb.append('{').append(name(r.colKey(), ctx)).append('}');
                 if (r.kind() == FormulaRefKind.ABSOLUTE) {
