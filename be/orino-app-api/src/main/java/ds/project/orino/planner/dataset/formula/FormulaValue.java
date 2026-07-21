@@ -12,6 +12,14 @@ public sealed interface FormulaValue {
     record Num(BigDecimal value) implements FormulaValue {
     }
 
+    /** 문자열. 텍스트 셀·문자열 리터럴·문자열 비교의 결과가 여기로 온다. */
+    record Text(String value) implements FormulaValue {
+    }
+
+    /** 참/거짓. 비교연산자·논리 함수(IF 조건·AND/OR/NOT)의 결과. 엑셀처럼 셀엔 TRUE/FALSE로 담긴다. */
+    record Bool(boolean value) implements FormulaValue {
+    }
+
     /** {@code #VALUE!} {@code #DIV/0!} {@code #REF!} 같은 셀 에러. */
     record Err(String code) implements FormulaValue {
 
@@ -24,6 +32,8 @@ public sealed interface FormulaValue {
     default String asCell() {
         return switch (this) {
             case Num n -> n.value().stripTrailingZeros().toPlainString();
+            case Text t -> t.value();
+            case Bool b -> b.value() ? "TRUE" : "FALSE";
             case Err e -> e.code();
         };
     }

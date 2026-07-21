@@ -41,11 +41,15 @@ public final class FormulaParser {
     private static final Set<String> AGGREGATES = Set.of("SUM", "AVG", "COUNT", "MIN", "MAX");
 
     /**
-     * 스칼라 함수 — 인자가 식(셀·산술). 값은 [최소, 최대] 인자 개수(arity). {@code Integer.MAX_VALUE}는 가변.
-     * IF/AND/OR/NOT이 여기로 들어온다(#892 §13). 지금은 워킹 스켈레톤으로 {@code ABS}만.
+     * 스칼라 함수 — 인자가 식(셀·산술·비교). 값은 [최소, 최대] 인자 개수(arity). {@code Integer.MAX_VALUE}는 가변.
+     * {@code IF}/{@code AND}/{@code OR}/{@code NOT}은 여기로 들어오되 평가는 값 타입 규칙을 따른다(#892 §13).
      */
-    private static final java.util.Map<String, int[]> SCALAR_FUNCS =
-            java.util.Map.of("ABS", new int[] {1, 1});
+    private static final java.util.Map<String, int[]> SCALAR_FUNCS = java.util.Map.of(
+            "ABS", new int[] {1, 1},
+            "IF", new int[] {3, 3},
+            "AND", new int[] {1, Integer.MAX_VALUE},
+            "OR", new int[] {1, Integer.MAX_VALUE},
+            "NOT", new int[] {1, 1});
 
     private final String src;
     private final FormulaContext ctx;
@@ -85,8 +89,14 @@ public final class FormulaParser {
                 collect(b.right(), out);
             }
             case FormulaNode.Unary u -> collect(u.operand(), out);
+            case FormulaNode.Compare cmp -> {
+                collect(cmp.left(), out);
+                collect(cmp.right(), out);
+            }
             case FormulaNode.Call c -> c.args().forEach(arg -> collect(arg, out));
             case FormulaNode.Num ignored -> {
+            }
+            case FormulaNode.Str ignored -> {
             }
         }
     }
@@ -102,7 +112,33 @@ public final class FormulaParser {
         return node;
     }
 
+    /** 최상위 = 비교. 산술보다 우선순위가 낮다(엑셀과 같다). 좌결합. */
     private FormulaNode expr() {
+        FormulaNode left = additive();
+        while (true) {
+            skipSpace();
+            String op = peekCompareOp();
+            if (op == null) {
+                return left;
+            }
+            pos += op.length();
+            left = new FormulaNode.Compare(op, left, additive());
+        }
+    }
+
+    /** 현재 위치의 비교 연산자를 본다. {@code = <> <= >= < >} 중 하나거나 null. */
+    private String peekCompareOp() {
+        char c = peek();
+        char n = pos + 1 < src.length() ? src.charAt(pos + 1) : '\0';
+        return switch (c) {
+            case '=' -> "=";
+            case '<' -> n == '=' ? "<=" : n == '>' ? "<>" : "<";
+            case '>' -> n == '=' ? ">=" : ">";
+            default -> null;
+        };
+    }
+
+    private FormulaNode additive() {
         FormulaNode left = term();
         while (true) {
             skipSpace();
@@ -151,6 +187,9 @@ public final class FormulaParser {
         if (c == '{') {
             return ref(false);
         }
+        if (c == '"') {
+            return string();
+        }
         if (Character.isDigit(c) || c == '.') {
             return number();
         }
@@ -158,6 +197,28 @@ public final class FormulaParser {
             return functionCall();
         }
         throw syntaxError("예상하지 못한 문자: '" + c + "'");
+    }
+
+    /** {@code "..."} — 안의 {@code ""}는 큰따옴표 하나로 읽는다(엑셀식 이스케이프). */
+    private FormulaNode string() {
+        expect('"');
+        StringBuilder sb = new StringBuilder();
+        while (true) {
+            if (pos >= src.length()) {
+                throw syntaxError("문자열을 닫는 '\"'가 없습니다");
+            }
+            char c = src.charAt(pos++);
+            if (c == '"') {
+                if (peek() == '"') {
+                    sb.append('"');
+                    pos++;
+                } else {
+                    return new FormulaNode.Str(sb.toString());
+                }
+            } else {
+                sb.append(c);
+            }
+        }
     }
 
     private FormulaNode number() {

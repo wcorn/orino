@@ -257,10 +257,10 @@ class FormulaParserTest {
         }
 
         @Test
-        @DisplayName("D8 범위 밖 함수면 오류 — IF는 아직 없다")
+        @DisplayName("지원하지 않는 함수면 오류 — IF는 이제 되지만 COUNTA는 아직")
         void unsupportedFunction() {
-            expectSyntaxError("=IF({SFI} > 1, 1, 0)");
             expectSyntaxError("=COUNTA({SFI})");
+            expectSyntaxError("=VLOOKUP({SFI}, {Lemma}, 1)");
         }
 
         @Test
@@ -359,6 +359,72 @@ class FormulaParserTest {
                     .isInstanceOf(CustomException.class);
             assertThatThrownBy(() -> FormulaParser.parseInput("=ABS({SFI}, {SFI})", ctx))
                     .isInstanceOf(CustomException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("조건·비교·논리 (#895)")
+    class Conditional {
+
+        @Test
+        @DisplayName("비교는 산술보다 우선순위가 낮다")
+        void comparisonBelowArithmetic() {
+            // 1 + 2 < 4  →  (1+2) < 4
+            assertThat(FormulaWriter.toStored(FormulaParser.parseInput("=1 + 2 < 4", ctx)))
+                    .isEqualTo("=((1 + 2) < 4)");
+        }
+
+        @Test
+        @DisplayName("두 글자 비교 연산자를 읽는다")
+        void twoCharOperators() {
+            assertThat(FormulaWriter.toStored(FormulaParser.parseInput("={SFI} <> {SFI Rank}", ctx)))
+                    .isEqualTo("=({c2} <> {c1})");
+            assertThat(FormulaWriter.toStored(FormulaParser.parseInput("={SFI} >= 1", ctx)))
+                    .isEqualTo("=({c2} >= 1)");
+        }
+
+        @Test
+        @DisplayName("문자열 리터럴 — 안의 \"\"는 따옴표 하나")
+        void stringLiteral() {
+            assertThat(FormulaParser.parseInput("=\"엔\"", ctx))
+                    .isEqualTo(new FormulaNode.Str("엔"));
+            assertThat(FormulaParser.parseInput("=\"a\"\"b\"", ctx))
+                    .isEqualTo(new FormulaNode.Str("a\"b"));
+        }
+
+        @Test
+        @DisplayName("IF는 조건·가지 세 인자를 받고 비교·문자열을 품는다")
+        void ifParses() {
+            FormulaNode n = FormulaParser.parseInput(
+                    "=IF({SFI} = \"엔\", {SFI Rank} * 2, {SFI Rank})", ctx);
+            assertThat(FormulaWriter.toStored(n))
+                    .isEqualTo("=IF(({c2} = \"엔\"), ({c1} * 2), {c1})");
+        }
+
+        @Test
+        @DisplayName("IF 인자 개수가 3이 아니면 오류")
+        void ifArity() {
+            assertThatThrownBy(() -> FormulaParser.parseInput("=IF({SFI} > 1, 1)", ctx))
+                    .isInstanceOf(CustomException.class);
+        }
+
+        @Test
+        @DisplayName("IF·문자열·비교의 저장형을 다시 파싱하면 같은 트리 — 서비스 왕복 안전")
+        void storedReparsesIdentically() {
+            FormulaNode a = FormulaParser.parseInput(
+                    "=IF({SFI} = \"엔\", {SFI Rank} * 2, {SFI Rank})", ctx);
+            FormulaNode b = FormulaParser.parseStored(FormulaWriter.toStored(a), ctx);
+            assertThat(b).isEqualTo(a);
+        }
+
+        @Test
+        @DisplayName("AND/OR/NOT + 조건 속 참조가 의존성으로 잡힌다")
+        void logicalRefs() {
+            FormulaNode n = FormulaParser.parseInput(
+                    "=AND({SFI} > 1, NOT({SFI Rank} = 0))", ctx);
+            assertThat(FormulaParser.collectRefs(n)).containsExactlyInAnyOrder(
+                    new FormulaNode.Ref(FormulaRefKind.SAME_ROW, "c2", null),
+                    new FormulaNode.Ref(FormulaRefKind.SAME_ROW, "c1", null));
         }
     }
 }

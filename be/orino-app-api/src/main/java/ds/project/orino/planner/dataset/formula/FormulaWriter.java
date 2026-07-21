@@ -44,6 +44,9 @@ public final class FormulaWriter {
     private static void write(FormulaNode node, StringBuilder sb, FormulaContext ctx) {
         switch (node) {
             case FormulaNode.Num n -> sb.append(plain(n.value()));
+            case FormulaNode.Str s -> sb.append('"')
+                    .append(s.value().replace("\"", "\"\""))
+                    .append('"');
             case FormulaNode.Unary u -> {
                 sb.append(u.op());
                 write(u.operand(), sb, ctx);
@@ -54,6 +57,13 @@ public final class FormulaWriter {
                 write(b.left(), sb, ctx);
                 sb.append(' ').append(b.op()).append(' ');
                 write(b.right(), sb, ctx);
+                sb.append(')');
+            }
+            case FormulaNode.Compare c -> {
+                sb.append('(');
+                write(c.left(), sb, ctx);
+                sb.append(' ').append(c.op()).append(' ');
+                write(c.right(), sb, ctx);
                 sb.append(')');
             }
             case FormulaNode.Agg a -> sb.append(a.func()).append('(')
