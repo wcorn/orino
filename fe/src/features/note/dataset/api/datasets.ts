@@ -1,5 +1,8 @@
 import { client } from "@/shared/api";
 
+/** 열 푸터 요약 함수. 서버의 DatasetColumn.ALLOWED_SUMMARY와 같아야 한다. */
+export type SummaryFn = "SUM" | "AVERAGE" | "COUNT" | "MIN" | "MAX";
+
 export interface DatasetColumn {
   key: string;
   label: string;
@@ -7,6 +10,8 @@ export interface DatasetColumn {
   width?: number;
   /** 열 기본 정렬. 없으면 기본 정렬(left). 셀 정렬(CellStyle.align)이 있으면 그쪽이 덮는다. */
   align?: CellAlign;
+  /** 열 푸터 요약 함수. 없으면 이 열엔 푸터 요약이 없다. 계산된 값은 DatasetMeta.summaries로 온다. */
+  summary?: SummaryFn;
 }
 
 /** 셀·열 정렬 값. 서버의 ALLOWED_ALIGN과 같아야 한다. */
@@ -62,6 +67,11 @@ export interface DatasetMeta {
   id: number;
   columns: DatasetColumn[];
   rowCount: number;
+  /**
+   * 푸터 요약 값 — summary 함수가 설정된 열의 key → 계산된 값. 값이 null이면 아직 계산 전이라
+   * placeholder(`—`)로 그린다. (함수는 column.summary에, 값은 여기에. 값은 데이터마다 바뀐다.)
+   */
+  summaries?: Record<string, string | null>;
 }
 
 export interface DatasetRow {

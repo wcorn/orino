@@ -18,6 +18,7 @@ import ds.project.orino.planner.dataset.dto.RowsResponse;
 import ds.project.orino.planner.dataset.dto.SetCellMergeRequest;
 import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.SetColumnAlignRequest;
+import ds.project.orino.planner.dataset.dto.SetColumnSummaryRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowResponse;
 import ds.project.orino.planner.dataset.service.DatasetService;
@@ -152,6 +153,20 @@ public class DatasetController {
             @PathVariable String key,
             @Valid @RequestBody SetColumnAlignRequest request) {
         return ApiResponse.success(datasetService.setColumnAlign(memberId, id, key, request));
+    }
+
+    /**
+     * 열 푸터 요약 함수 설정/해제(멱등 교체). {@code summary}가 null이면 해제. 값(집계)은 여기서
+     * 계산하지 않고 응답의 {@code summaries}로 따로 온다(#907 표면; 값은 #908).
+     */
+    @PatchMapping("/{id}/columns/{key}/summary")
+    public ApiResponse<DatasetResponse> setColumnSummary(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable String key,
+            @Valid @RequestBody SetColumnSummaryRequest request) {
+        return ApiResponse.success(
+                datasetService.setColumnSummary(memberId, id, key, request.summary()));
     }
 
     /** 열 기본 정렬 초기화 — 기본 정렬(left)로 되돌린다. */

@@ -1541,6 +1541,28 @@ export function DatasetGrid({
                 })}
             </div>
           </div>
+          {/* 열 푸터 요약 — 요약 함수가 걸린 열이 하나라도 있으면 데이터 밑에 한 줄 뜬다.
+            같은 gridTemplateColumns로 열 폭에 맞추고, 가로 스크롤을 본문과 함께 탄다.
+            값(summaries[key])이 아직 없으면(null) placeholder(—) — 집계 채우기는 #908. */}
+          {meta.columns.some((col) => col.summary) && (
+            <div
+              className="border-border bg-muted/30 grid border-t text-sm"
+              style={{ gridTemplateColumns }}
+              aria-label="열 요약"
+            >
+              {meta.columns.map((col) => (
+                <div
+                  key={col.key}
+                  className={cn(
+                    "text-muted-foreground border-border truncate border-r px-2 py-1.5",
+                    ALIGN_CLASS[col.align ?? "left"],
+                  )}
+                >
+                  {col.summary ? (meta.summaries?.[col.key] ?? "—") : ""}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <ConfirmDialog

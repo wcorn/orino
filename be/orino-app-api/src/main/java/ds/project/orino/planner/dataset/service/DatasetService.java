@@ -359,6 +359,26 @@ public class DatasetService {
         return DatasetResponse.of(dataset, updated);
     }
 
+    /**
+     * 열 푸터 요약 함수를 설정/해제한다(멱등 교체). {@code summary}가 null이면 그 열 요약을 지운다.
+     * <b>값(집계)은 여기서 계산하지 않는다</b> — 함수만 columns_json에 담고, 계산된 값은 응답의
+     * {@code summaries} 맵으로 따로 온다(#907 표면; 값 채우기는 #908).
+     */
+    @Transactional
+    public DatasetResponse setColumnSummary(Long memberId, Long datasetId, String key,
+                                            String summary) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        int at = indexOfColumn(columns, key);
+        if (at < 0) {
+            throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+        List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
+        updated.set(at, columns.get(at).withSummary(summary));
+        dataset.updateColumns(serialize(updated));
+        return DatasetResponse.of(dataset, updated);
+    }
+
     private int indexOfColumn(List<DatasetColumn> columns, String key) {
         for (int i = 0; i < columns.size(); i++) {
             if (columns.get(i).key().equals(key)) {
