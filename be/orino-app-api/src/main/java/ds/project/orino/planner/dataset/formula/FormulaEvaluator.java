@@ -40,46 +40,76 @@ public final class FormulaEvaluator {
     public static FormulaValue evaluate(FormulaNode node, ValueSource src) {
         return switch (node) {
             case FormulaNode.Num n -> new FormulaValue.Num(n.value());
-            case FormulaNode.Unary u -> {
-                FormulaValue v = evaluate(u.operand(), src);
-                yield switch (v) {
-                    case FormulaValue.Err e -> e;
-                    case FormulaValue.Num n ->
-                            new FormulaValue.Num(u.op() == '-' ? n.value().negate() : n.value());
-                };
-            }
+            case FormulaNode.Str s -> new FormulaValue.Text(s.value());
+            case FormulaNode.Unary u -> unary(u, src);
             case FormulaNode.Binary b -> binary(b, src);
+            case FormulaNode.Compare c -> compare(c, src);
             case FormulaNode.Ref r -> ref(r, src);
             case FormulaNode.Agg a -> agg(a, src);
             case FormulaNode.Call c -> call(c, src);
         };
     }
 
+    private static FormulaValue unary(FormulaNode.Unary u, ValueSource src) {
+        FormulaValue n = asNumber(evaluate(u.operand(), src));
+        if (n instanceof FormulaValue.Err) {
+            return n;
+        }
+        BigDecimal v = ((FormulaValue.Num) n).value();
+        return new FormulaValue.Num(u.op() == '-' ? v.negate() : v);
+    }
+
     /**
-     * 스칼라 함수. 인자를 좌→우로 평가하고 <b>에러는 그대로 번진다</b>(첫 에러 우선).
-     * arity는 파서가 이미 보장하므로 여기선 안 센다.
+     * 스칼라 함수. {@code IF}는 <b>고른 가지만</b> 평가(지연)하고, 나머지는 인자를 평가해 값 규칙을 적용한다.
+     * 어디서든 에러는 좌→우 첫 에러가 번진다. arity는 파서가 보장한다.
      */
     private static FormulaValue call(FormulaNode.Call c, ValueSource src) {
-        List<BigDecimal> args = new ArrayList<>();
-        for (FormulaNode arg : c.args()) {
-            FormulaValue v = evaluate(arg, src);
-            if (v instanceof FormulaValue.Err) {
-                return v;
-            }
-            args.add(((FormulaValue.Num) v).value());
-        }
+        List<FormulaNode> a = c.args();
         return switch (c.func()) {
-            case "ABS" -> new FormulaValue.Num(args.get(0).abs());
+            case "ABS" -> {
+                FormulaValue n = asNumber(evaluate(a.get(0), src));
+                yield n instanceof FormulaValue.Err ? n
+                        : new FormulaValue.Num(((FormulaValue.Num) n).value().abs());
+            }
+            case "IF" -> {
+                FormulaValue cond = asBool(evaluate(a.get(0), src));
+                if (cond instanceof FormulaValue.Err) {
+                    yield cond;
+                }
+                // 지연 평가: 고른 가지만 계산한다(안 고른 가지의 에러·비용 억제).
+                yield evaluate(((FormulaValue.Bool) cond).value() ? a.get(1) : a.get(2), src);
+            }
+            case "NOT" -> {
+                FormulaValue v = asBool(evaluate(a.get(0), src));
+                yield v instanceof FormulaValue.Err ? v
+                        : new FormulaValue.Bool(!((FormulaValue.Bool) v).value());
+            }
+            case "AND", "OR" -> logical(c.func(), a, src);
             default -> new FormulaValue.Err(FormulaValue.Err.VALUE);
         };
     }
 
+    /** {@code AND}/{@code OR} — 인자를 다 평가하되(엑셀식) 에러는 전파한다. */
+    private static FormulaValue logical(String func, List<FormulaNode> args, ValueSource src) {
+        boolean and = func.equals("AND");
+        boolean acc = and;
+        for (FormulaNode arg : args) {
+            FormulaValue v = asBool(evaluate(arg, src));
+            if (v instanceof FormulaValue.Err) {
+                return v;
+            }
+            boolean b = ((FormulaValue.Bool) v).value();
+            acc = and ? acc && b : acc || b;
+        }
+        return new FormulaValue.Bool(acc);
+    }
+
     private static FormulaValue binary(FormulaNode.Binary b, ValueSource src) {
-        FormulaValue l = evaluate(b.left(), src);
+        FormulaValue l = asNumber(evaluate(b.left(), src));
         if (l instanceof FormulaValue.Err) {
             return l;
         }
-        FormulaValue r = evaluate(b.right(), src);
+        FormulaValue r = asNumber(evaluate(b.right(), src));
         if (r instanceof FormulaValue.Err) {
             return r;
         }
@@ -96,7 +126,82 @@ public final class FormulaEvaluator {
         };
     }
 
-    /** 산술 속 참조. 빈 칸은 0으로 보고(엑셀과 같다), 숫자가 아니면 {@code #VALUE!}. */
+    /**
+     * 비교 → boolean. 같은 타입끼리는 그 타입으로, 다르면 <b>number &lt; text &lt; boolean</b> 순위로 견준다
+     * (엑셀 타입 순서 — 임의 텍스트가 임의 숫자보다 크다). 텍스트는 대소문자를 무시한다.
+     */
+    private static FormulaValue compare(FormulaNode.Compare c, ValueSource src) {
+        FormulaValue l = evaluate(c.left(), src);
+        if (l instanceof FormulaValue.Err) {
+            return l;
+        }
+        FormulaValue r = evaluate(c.right(), src);
+        if (r instanceof FormulaValue.Err) {
+            return r;
+        }
+        int cmp = order(l, r);
+        boolean result = switch (c.op()) {
+            case "=" -> cmp == 0;
+            case "<>" -> cmp != 0;
+            case "<" -> cmp < 0;
+            case ">" -> cmp > 0;
+            case "<=" -> cmp <= 0;
+            case ">=" -> cmp >= 0;
+            default -> false;
+        };
+        return new FormulaValue.Bool(result);
+    }
+
+    private static int order(FormulaValue l, FormulaValue r) {
+        if (l instanceof FormulaValue.Num a && r instanceof FormulaValue.Num b) {
+            return a.value().compareTo(b.value());
+        }
+        if (l instanceof FormulaValue.Text a && r instanceof FormulaValue.Text b) {
+            return a.value().compareToIgnoreCase(b.value());
+        }
+        if (l instanceof FormulaValue.Bool a && r instanceof FormulaValue.Bool b) {
+            return Boolean.compare(a.value(), b.value());
+        }
+        return Integer.compare(rank(l), rank(r));
+    }
+
+    private static int rank(FormulaValue v) {
+        return switch (v) {
+            case FormulaValue.Num ignored -> 0;
+            case FormulaValue.Text ignored -> 1;
+            case FormulaValue.Bool ignored -> 2;
+            case FormulaValue.Err ignored -> 3;
+        };
+    }
+
+    /** 산술·ABS·비교 피연산자를 숫자로 강제한다. Bool→1/0, Text→{@code #VALUE!}(빈 셀은 이미 0). */
+    private static FormulaValue asNumber(FormulaValue v) {
+        return switch (v) {
+            case FormulaValue.Num n -> n;
+            case FormulaValue.Bool b -> new FormulaValue.Num(b.value() ? BigDecimal.ONE : BigDecimal.ZERO);
+            case FormulaValue.Text ignored -> new FormulaValue.Err(FormulaValue.Err.VALUE);
+            case FormulaValue.Err e -> e;
+        };
+    }
+
+    /** IF 조건·AND/OR/NOT 인자를 boolean으로 강제한다. Num→0이면 거짓, Text는 "TRUE"/"FALSE"만 허용. */
+    private static FormulaValue asBool(FormulaValue v) {
+        return switch (v) {
+            case FormulaValue.Bool b -> b;
+            case FormulaValue.Num n -> new FormulaValue.Bool(n.value().signum() != 0);
+            case FormulaValue.Text t -> {
+                if (t.value().equalsIgnoreCase("TRUE")) {
+                    yield new FormulaValue.Bool(true);
+                }
+                yield t.value().equalsIgnoreCase("FALSE")
+                        ? new FormulaValue.Bool(false)
+                        : new FormulaValue.Err(FormulaValue.Err.VALUE);
+            }
+            case FormulaValue.Err e -> e;
+        };
+    }
+
+    /** 참조 → 셀 내용을 타입으로. 빈 칸은 0(엑셀식), 숫자는 Num, 에러 문자열은 번지고, 그 외는 Text. */
     private static FormulaValue ref(FormulaNode.Ref r, ValueSource src) {
         Optional<String> raw = r.kind() == FormulaRefKind.ABSOLUTE
                 ? src.absolute(r.rowId(), r.colKey())
@@ -114,7 +219,7 @@ public final class FormulaEvaluator {
         }
         return number(s)
                 .<FormulaValue>map(FormulaValue.Num::new)
-                .orElseGet(() -> new FormulaValue.Err(FormulaValue.Err.VALUE));
+                .orElseGet(() -> new FormulaValue.Text(s));
     }
 
     /**

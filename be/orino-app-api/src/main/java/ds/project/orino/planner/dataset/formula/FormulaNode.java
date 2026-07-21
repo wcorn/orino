@@ -17,12 +17,23 @@ public sealed interface FormulaNode {
     record Num(BigDecimal value) implements FormulaNode {
     }
 
+    /** 리터럴 문자열. {@code "엔"}처럼 큰따옴표로 감싼다. */
+    record Str(String value) implements FormulaNode {
+    }
+
     /** 단항 부호. {@code op}는 '+' 또는 '-'. */
     record Unary(char op, FormulaNode operand) implements FormulaNode {
     }
 
     /** 이항 산술. {@code op}는 '+' '-' '*' '/'. */
     record Binary(char op, FormulaNode left, FormulaNode right) implements FormulaNode {
+    }
+
+    /**
+     * 비교. {@code op}는 {@code = <> < > <= >=}. 산술({@link Binary})보다 우선순위가 낮고
+     * 결과는 boolean이다. 두 글자 연산자가 있어 op를 String으로 둔다.
+     */
+    record Compare(String op, FormulaNode left, FormulaNode right) implements FormulaNode {
     }
 
     /**

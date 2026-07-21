@@ -138,11 +138,34 @@ class FormulaConformanceTest {
                 Arguments.of("MIN", "=MIN({단가})", "3"),
                 Arguments.of("MAX", "=MAX({단가})", "10"),
                 Arguments.of("집계는 텍스트를 무시(합 0)", "=SUM({메모})", "0"),
-                // ── 스칼라 함수 ABS (#893 신규) ──
+                // ── 스칼라 함수 ABS (#893) ──
                 Arguments.of("ABS 리터럴", "=ABS(-5)", "5"),
                 Arguments.of("ABS 식 인자", "=ABS({수량} - {단가})", "1"),
                 Arguments.of("ABS 빈 셀 인자", "=ABS({재고} - 3)", "3"),
-                Arguments.of("ABS 인자 에러 전파", "=ABS({메모})", "#VALUE!"));
+                Arguments.of("ABS 인자 에러 전파", "=ABS({메모})", "#VALUE!"),
+                // ── 비교 → boolean (#895) ──
+                Arguments.of("숫자 비교", "={수량} < {단가}", "TRUE"),
+                Arguments.of("숫자 같음", "={수량} = 2", "TRUE"),
+                Arguments.of("다름", "={수량} <> 2", "FALSE"),
+                Arguments.of("텍스트 비교(대소문자 무시)", "={메모} = \"A\"", "TRUE"),
+                Arguments.of("교차 타입: 텍스트 > 숫자", "={메모} > 999", "TRUE"),
+                Arguments.of("비교 피연산자 에러 전파", "={상태} = 1", "#DIV/0!"),
+                // ── IF (#895) ──
+                Arguments.of("IF 참 가지", "=IF({수량} = 2, {단가}, -1)", "3"),
+                Arguments.of("IF 거짓 가지", "=IF({수량} = 9, {단가}, -1)", "-1"),
+                Arguments.of("환율 자동환산 예시", "=IF({메모} = \"a\", {수량} * 10, {수량})", "20"),
+                Arguments.of("IF 지연 평가 — 안 고른 가지 에러 무시", "=IF({수량} > 0, 7, 1 / 0)", "7"),
+                Arguments.of("IF 조건 에러 전파", "=IF({상태} = 1, 1, 0)", "#DIV/0!"),
+                // ── AND/OR/NOT (#895) ──
+                Arguments.of("AND", "=AND({수량} = 2, {단가} = 3)", "TRUE"),
+                Arguments.of("AND 하나 거짓", "=AND({수량} = 2, {단가} = 9)", "FALSE"),
+                Arguments.of("OR", "=OR({수량} = 9, {단가} = 3)", "TRUE"),
+                Arguments.of("NOT", "=NOT({수량} = 2)", "FALSE"),
+                Arguments.of("숫자 0은 거짓", "=NOT({재고})", "TRUE"),
+                Arguments.of("문자열 인자는 #VALUE!", "=AND({메모}, 1 = 1)", "#VALUE!"),
+                // ── 산술이 boolean·문자열을 만나면 ──
+                Arguments.of("boolean은 산술에서 1", "=(1 < 2) + 5", "6"),
+                Arguments.of("문자열 산술은 #VALUE!", "=\"a\" + 1", "#VALUE!"));
     }
 
     @ParameterizedTest(name = "{0}: {1} → {2}")
