@@ -49,7 +49,7 @@ import {
 } from "./api/datasets";
 import { DATASET_CELLS_MIME } from "./cellClipboard";
 import type { FormulaContext, ValueSource } from "./formula";
-import { evaluateFormula } from "./formula";
+import { aggregate, asCell, evaluateFormula } from "./formula";
 import { useDatasetMerges } from "./hooks/useDatasetMerges";
 import { useDatasetMeta } from "./hooks/useDatasetMeta";
 import { useDatasetRows } from "./hooks/useDatasetRows";
@@ -902,6 +902,40 @@ export function DatasetGrid({
     return null;
   })();
 
+  /**
+   * 선택 범위 요약(표시 전용). 셀 범위(≥2칸)를 고르면 그 안 숫자 셀의 합계·평균·개수·최소·최대를
+   * 즉석 계산한다. <b>새 집계를 구현하지 않고</b> #900 평가기의 {@link aggregate}(=수식과 같은
+   * `agg`, conformance로 BE와 교차검증)를 그대로 태워 이중화를 만들지 않는다. 문서 값엔 절대 안
+   * 샌다 — 화면 글랜스용. 로드된 셀만 본다(가상화). 숫자가 없으면 null(바 미표시).
+   */
+  const selectionSummary = ((): {
+    count: string;
+    sum: string;
+    avg: string;
+    min: string;
+    max: string;
+  } | null => {
+    if (sel?.kind !== "cells" || !selRect) return null;
+    const area = (selRect.r1 - selRect.r0 + 1) * (selRect.c1 - selRect.c0 + 1);
+    if (area < 2) return null;
+    const values: string[] = [];
+    for (let r = selRect.r0; r <= selRect.r1; r++) {
+      const cells = getRow(r);
+      if (!cells) continue;
+      for (let c = selRect.c0; c <= selRect.c1; c++)
+        values.push(cells[c] ?? "");
+    }
+    const count = aggregate("COUNT", values);
+    if (count.kind !== "num" || count.value === 0) return null;
+    return {
+      count: asCell(count),
+      sum: asCell(aggregate("SUM", values)),
+      avg: asCell(aggregate("AVERAGE", values)),
+      min: asCell(aggregate("MIN", values)),
+      max: asCell(aggregate("MAX", values)),
+    };
+  })();
+
   /** 채우기 프리뷰(드래그로 정해진 대상)에 든 셀인지 — 소스 열 범위 안이고 대상 행 범위 안. */
   const inFillTarget = (row: number, col: number): boolean =>
     !!fillTargetRows &&
@@ -1586,6 +1620,21 @@ export function DatasetGrid({
             </div>
           )}
         </div>
+
+        {/* 선택 범위 요약 — 셀 범위를 고르는 동안에만 뜨는 얇은 바(상태바 축소판). 표시 전용:
+          문서 값엔 안 새고, 계산은 평가기 aggregate 재사용(BE와 교차검증된 그 규칙). */}
+        {selectionSummary && (
+          <div
+            aria-label="선택 요약"
+            className="border-border text-muted-foreground flex items-center justify-end gap-4 border-t px-3 py-1 text-xs"
+          >
+            <span>개수 {selectionSummary.count}</span>
+            <span>합계 {selectionSummary.sum}</span>
+            <span>평균 {selectionSummary.avg}</span>
+            <span>최소 {selectionSummary.min}</span>
+            <span>최대 {selectionSummary.max}</span>
+          </div>
+        )}
 
         <ConfirmDialog
           open={pendingColDelete !== null}
