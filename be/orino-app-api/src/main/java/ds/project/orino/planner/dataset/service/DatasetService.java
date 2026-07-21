@@ -106,7 +106,7 @@ public class DatasetService {
         List<DatasetColumn> columns = deduplicateLabels(request.columns());
         Dataset dataset = datasetRepository.save(new Dataset(
                 memberId, serialize(columns), nextSeqFor(columns)));
-        return DatasetResponse.of(dataset, columns);
+        return metaResponse(dataset, columns);
     }
 
     /**
@@ -198,12 +198,12 @@ public class DatasetService {
         mergeService.invalidateOnColumnInsert(datasetId, at, columns);
         updated.add(at, added);
         dataset.updateColumns(serialize(updated));
-        return DatasetResponse.of(dataset, updated);
+        return metaResponse(dataset, updated);
     }
 
     public DatasetResponse getMeta(Long memberId, Long datasetId) {
         Dataset dataset = getOwned(memberId, datasetId);
-        return DatasetResponse.of(dataset, parseColumns(dataset.getColumns()));
+        return metaResponse(dataset, parseColumns(dataset.getColumns()));
     }
 
     /**
@@ -237,7 +237,7 @@ public class DatasetService {
         styleService.invalidateColumn(datasetId, key);
         // 그 열에 걸친 병합은 영역이 온전할 수 없어 해제한다(삭제 전 열 순서로 덮는 열을 계산해야 한다).
         mergeService.invalidateColumn(datasetId, key, columns);
-        return DatasetResponse.of(dataset, updated);
+        return metaResponse(dataset, updated);
     }
 
     /**
@@ -267,7 +267,7 @@ public class DatasetService {
         dataset.updateColumns(serialize(updated));
         // 순서가 바뀌면 병합 영역이 불연속이 될 수 있어 그 dataset의 병합을 모두 해제한다(#829 O3, v1 보수적).
         mergeService.invalidateAllOnReorder(datasetId);
-        return DatasetResponse.of(dataset, updated);
+        return metaResponse(dataset, updated);
     }
 
     /**
@@ -290,7 +290,7 @@ public class DatasetService {
         // withLabel — 이름만 바꾸고 width는 보존한다. 새로 만들면 설정한 너비가 날아간다.
         updated.set(at, columns.get(at).withLabel(request.label()));
         dataset.updateColumns(serialize(updated));
-        return DatasetResponse.of(dataset, updated);
+        return metaResponse(dataset, updated);
     }
 
     /**
@@ -323,7 +323,7 @@ public class DatasetService {
         List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
         updated.set(at, columns.get(at).withWidth(width));
         dataset.updateColumns(serialize(updated));
-        return DatasetResponse.of(dataset, updated);
+        return metaResponse(dataset, updated);
     }
 
     /**
@@ -356,7 +356,7 @@ public class DatasetService {
         List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
         updated.set(at, columns.get(at).withAlign(align));
         dataset.updateColumns(serialize(updated));
-        return DatasetResponse.of(dataset, updated);
+        return metaResponse(dataset, updated);
     }
 
     /**
@@ -376,7 +376,13 @@ public class DatasetService {
         List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
         updated.set(at, columns.get(at).withSummary(summary));
         dataset.updateColumns(serialize(updated));
-        return DatasetResponse.of(dataset, updated);
+        return metaResponse(dataset, updated);
+    }
+
+    /** 메타 응답을 조립한다 — 요약 값(집계)을 계산해 함께 싣는다(#908). */
+    private DatasetResponse metaResponse(Dataset dataset, List<DatasetColumn> columns) {
+        return DatasetResponse.of(dataset, columns,
+                formulaService.computeSummaries(dataset.getId(), columns));
     }
 
     private int indexOfColumn(List<DatasetColumn> columns, String key) {
@@ -403,7 +409,7 @@ public class DatasetService {
         DatasetRow source = rowRepository.findByDatasetIdAndRowIndex(datasetId, fromRowIndex)
                 .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
         formulaService.fillDownColumn(datasetId, colKey, source, columns);
-        return DatasetResponse.of(dataset, columns);
+        return metaResponse(dataset, columns);
     }
 
     /**
@@ -473,7 +479,7 @@ public class DatasetService {
         }
         rowRepository.saveAll(entities);
         dataset.setRowCount(start + rows.size());
-        return DatasetResponse.of(dataset, columns);
+        return metaResponse(dataset, columns);
     }
 
     public RowsResponse getRows(Long memberId, Long datasetId, Integer offset, Integer limit) {

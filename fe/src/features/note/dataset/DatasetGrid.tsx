@@ -43,6 +43,8 @@ import {
   resizeDatasetColumn,
   setCellMerge,
   setCellStylesBulk,
+  setColumnSummary,
+  type SummaryFn,
   updateDatasetRow,
 } from "./api/datasets";
 import { DATASET_CELLS_MIME } from "./cellClipboard";
@@ -146,6 +148,12 @@ export function DatasetGrid({
 
   const invalidateMeta = () =>
     queryClient.invalidateQueries({ queryKey: datasetKeys.meta(datasetId) });
+  // 요약이 걸린 열이 하나라도 있으면 데이터 변경 후 메타를 다시 받아 푸터 값을 갱신한다.
+  // 요약이 없으면 헛요청을 아낀다(대부분의 표).
+  const summariesActive = meta?.columns.some((c) => c.summary) ?? false;
+  const refreshSummaries = () => {
+    if (summariesActive) void invalidateMeta();
+  };
   // 행/열 구조가 바뀌면 병합의 행 번호가 밀리거나(행 삽입·삭제) 병합이 해제될 수 있어(열 삭제·순서변경)
   // 병합을 다시 받는다.
   const invalidateMerges = () =>
@@ -188,6 +196,8 @@ export function DatasetGrid({
           setRowLocal(row.rowIndex, row.cells);
           setFormulasLocal(row.rowIndex, row.formulas ?? {});
         }
+        // 최종 커밋(자동저장 아님)이면 열 요약 값도 갱신한다.
+        if (!silent) refreshSummaries();
       })
       .catch((e) => {
         if (silent) return;
@@ -266,6 +276,17 @@ export function DatasetGrid({
     onSuccess: (next: DatasetMeta) =>
       queryClient.setQueryData(datasetKeys.meta(datasetId), next),
     onError: () => void invalidateMeta(),
+  });
+  // 열 푸터 요약 설정/해제. 응답 메타엔 계산된 summaries가 실려 있어 푸터가 즉시 맞는다.
+  const summaryMut = useMutation({
+    mutationFn: (v: { key: string; fn: SummaryFn | null }) =>
+      setColumnSummary(datasetId, v.key, v.fn),
+    onSuccess: (next: DatasetMeta) =>
+      queryClient.setQueryData(datasetKeys.meta(datasetId), next),
+    onError: (e) => {
+      const message = serverMessage(e);
+      if (message) toast(message, "error");
+    },
   });
   const addColMut = useMutation({
     mutationFn: (v: { atIndex?: number }) =>
@@ -933,6 +954,7 @@ export function DatasetGrid({
           a: [Math.min(r0, target.from), c0],
           b: [Math.max(selRect.r1, target.to), c1],
         });
+        refreshSummaries();
       })
       .catch((e) => {
         const message = serverMessage(e);
@@ -1725,6 +1747,51 @@ export function DatasetGrid({
                     </button>
                   </div>
                   {divider}
+                  {/* 열 요약 — 한 열만 걸쳤을 때. 그 열 푸터에 SUM/AVG/… 를 걸거나 지운다. */}
+                  {rect.c0 === rect.c1 && (
+                    <>
+                      <div className="text-muted-foreground px-2 pt-1 text-xs">
+                        열 요약
+                      </div>
+                      <div className="flex items-center gap-1 px-2 py-1">
+                        {SUMMARY_FNS.map((fn) => (
+                          <button
+                            key={fn}
+                            type="button"
+                            role="menuitem"
+                            aria-label={`요약 ${SUMMARY_LABELS[fn]}`}
+                            onClick={run(() =>
+                              summaryMut.mutate({
+                                key: meta.columns[rect.c0].key,
+                                fn,
+                              }),
+                            )}
+                            className={cn(
+                              "hover:bg-accent rounded px-1.5 py-1 text-xs",
+                              meta.columns[rect.c0].summary === fn &&
+                                "bg-accent text-foreground",
+                            )}
+                          >
+                            {SUMMARY_LABELS[fn]}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          aria-label="요약 지우기"
+                          onClick={run(() =>
+                            summaryMut.mutate({
+                              key: meta.columns[rect.c0].key,
+                              fn: null,
+                            }),
+                          )}
+                          className="text-muted-foreground hover:text-foreground flex size-6 items-center justify-center rounded"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                      {divider}
+                    </>
+                  )}
                   {/* 병합 — 셀 범위(2칸+)는 통합 병합, 단일 셀은 방향 병합·해제 */}
                   {kind === "cells" &&
                     area > 1 &&
@@ -1824,6 +1891,16 @@ export function DatasetGrid({
     </div>
   );
 }
+
+/** 열 푸터 요약 함수 목록·라벨. 서버의 ALLOWED_SUMMARY와 같아야 한다. */
+const SUMMARY_FNS: SummaryFn[] = ["SUM", "AVERAGE", "COUNT", "MIN", "MAX"];
+const SUMMARY_LABELS: Record<SummaryFn, string> = {
+  SUM: "합계",
+  AVERAGE: "평균",
+  COUNT: "개수",
+  MIN: "최소",
+  MAX: "최대",
+};
 
 /** 정렬 값 → 아이콘. 셀 정렬 팔레트와 렌더에 공용. */
 const ALIGN_ICONS = {
