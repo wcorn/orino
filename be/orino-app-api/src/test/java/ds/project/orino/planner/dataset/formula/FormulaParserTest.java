@@ -427,4 +427,47 @@ class FormulaParserTest {
                     new FormulaNode.Ref(FormulaRefKind.SAME_ROW, "c1", null));
         }
     }
+
+    @Nested
+    @DisplayName("조건부 집계 SUMIF·COUNTIF (#897)")
+    class ConditionalAggregate {
+
+        @Test
+        @DisplayName("COUNTIF는 열·criteria 두 인자")
+        void countifParses() {
+            assertThat(FormulaParser.parseInput("=COUNTIF({SFI}, \">80\")", ctx))
+                    .isEqualTo(new FormulaNode.AggIf(
+                            "COUNTIF", "c2", new FormulaNode.Str(">80"), null));
+        }
+
+        @Test
+        @DisplayName("SUMIF는 조건 열·criteria·합 열 세 인자, 저장형·표시형 왕복")
+        void sumifWrites() {
+            FormulaNode n = FormulaParser.parseInput(
+                    "=SUMIF({SFI}, \">80\", {SFI Rank})", ctx);
+            assertThat(FormulaWriter.toStored(n)).isEqualTo("=SUMIF({c2}, \">80\", {c1})");
+            assertThat(FormulaWriter.toDisplay(n, ctx))
+                    .isEqualTo("=SUMIF({SFI}, \">80\", {SFI Rank})");
+            assertThat(FormulaParser.parseStored(FormulaWriter.toStored(n), ctx)).isEqualTo(n);
+        }
+
+        @Test
+        @DisplayName("열들은 COLUMN_ALL, criteria 속 참조는 그 문맥대로 의존성에 잡힌다")
+        void refsCollected() {
+            FormulaNode n = FormulaParser.parseInput("=SUMIF({SFI}, {SFI Rank}, {Lemma})", ctx);
+            assertThat(FormulaParser.collectRefs(n)).containsExactlyInAnyOrder(
+                    new FormulaNode.Ref(FormulaRefKind.COLUMN_ALL, "c2", null),
+                    new FormulaNode.Ref(FormulaRefKind.COLUMN_ALL, "c0", null),
+                    new FormulaNode.Ref(FormulaRefKind.SAME_ROW, "c1", null));
+        }
+
+        @Test
+        @DisplayName("인자가 모자라면 오류")
+        void malformed() {
+            assertThatThrownBy(() -> FormulaParser.parseInput("=COUNTIF({SFI})", ctx))
+                    .isInstanceOf(CustomException.class);
+            assertThatThrownBy(() -> FormulaParser.parseInput("=SUMIF({SFI}, 1)", ctx))
+                    .isInstanceOf(CustomException.class);
+        }
+    }
 }

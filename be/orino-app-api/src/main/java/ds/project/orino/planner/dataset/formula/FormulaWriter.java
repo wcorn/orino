@@ -71,6 +71,14 @@ public final class FormulaWriter {
                             .map(k -> "{" + name(k, ctx) + "}")
                             .collect(Collectors.joining(", ")))
                     .append(')');
+            case FormulaNode.AggIf a -> {
+                sb.append(a.func()).append("({").append(name(a.critCol(), ctx)).append("}, ");
+                write(a.criteria(), sb, ctx);
+                if (a.sumCol() != null) {
+                    sb.append(", {").append(name(a.sumCol(), ctx)).append('}');
+                }
+                sb.append(')');
+            }
             case FormulaNode.Call c -> {
                 // 스칼라 함수는 인자가 식이라 재귀로 쓴다. 저장형·표시형이 같은 모양.
                 sb.append(c.func()).append('(');

@@ -40,6 +40,9 @@ public final class FormulaParser {
     /** 집계 함수 — 인자가 열 참조(열 전체). */
     private static final Set<String> AGGREGATES = Set.of("SUM", "AVG", "COUNT", "MIN", "MAX");
 
+    /** 조건부 집계 — 열 인자 + criteria 식. 행별 조건으로 견준다. */
+    private static final Set<String> COND_AGGREGATES = Set.of("SUMIF", "COUNTIF");
+
     /**
      * 스칼라 함수 — 인자가 식(셀·산술·비교). 값은 [최소, 최대] 인자 개수(arity). {@code Integer.MAX_VALUE}는 가변.
      * {@code IF}/{@code AND}/{@code OR}/{@code NOT}은 여기로 들어오되 평가는 값 타입 규칙을 따른다(#892 §13).
@@ -84,6 +87,13 @@ public final class FormulaParser {
             case FormulaNode.Ref r -> out.add(r);
             case FormulaNode.Agg a -> a.colKeys()
                     .forEach(k -> out.add(new FormulaNode.Ref(FormulaRefKind.COLUMN_ALL, k, null)));
+            case FormulaNode.AggIf a -> {
+                out.add(new FormulaNode.Ref(FormulaRefKind.COLUMN_ALL, a.critCol(), null));
+                if (a.sumCol() != null) {
+                    out.add(new FormulaNode.Ref(FormulaRefKind.COLUMN_ALL, a.sumCol(), null));
+                }
+                collect(a.criteria(), out);
+            }
             case FormulaNode.Binary b -> {
                 collect(b.left(), out);
                 collect(b.right(), out);
@@ -243,10 +253,36 @@ public final class FormulaParser {
         if (AGGREGATES.contains(name)) {
             return aggregate(name);
         }
+        if (COND_AGGREGATES.contains(name)) {
+            return conditionalAggregate(name);
+        }
         if (SCALAR_FUNCS.containsKey(name)) {
             return scalar(name);
         }
         throw syntaxError("지원하지 않는 함수: " + name);
+    }
+
+    /**
+     * 조건부 집계 — {@code COUNTIF(열, criteria)} · {@code SUMIF(열, criteria, 열)}.
+     * 열 인자는 집계처럼 열 참조({@code ref(true)})로, criteria는 스칼라 식으로 읽는다.
+     */
+    private FormulaNode conditionalAggregate(String name) {
+        boolean sumif = name.equals("SUMIF");
+        skipSpace();
+        expect('(');
+        String critCol = ((FormulaNode.Ref) ref(true)).colKey();
+        skipSpace();
+        expect(',');
+        FormulaNode criteria = expr();
+        String sumCol = null;
+        if (sumif) {
+            skipSpace();
+            expect(',');
+            sumCol = ((FormulaNode.Ref) ref(true)).colKey();
+        }
+        skipSpace();
+        expect(')');
+        return new FormulaNode.AggIf(name, critCol, criteria, sumCol);
     }
 
     /** 스칼라 함수 — 식 인자를 콤마로 나열. arity를 검증한다. */

@@ -165,7 +165,17 @@ class FormulaConformanceTest {
                 Arguments.of("문자열 인자는 #VALUE!", "=AND({메모}, 1 = 1)", "#VALUE!"),
                 // ── 산술이 boolean·문자열을 만나면 ──
                 Arguments.of("boolean은 산술에서 1", "=(1 < 2) + 5", "6"),
-                Arguments.of("문자열 산술은 #VALUE!", "=\"a\" + 1", "#VALUE!"));
+                Arguments.of("문자열 산술은 #VALUE!", "=\"a\" + 1", "#VALUE!"),
+                // ── 조건부 집계 SUMIF·COUNTIF (#897) ──
+                Arguments.of("COUNTIF 텍스트 정확일치", "=COUNTIF({메모}, \"a\")", "1"),
+                Arguments.of("COUNTIF 숫자 정확일치", "=COUNTIF({단가}, 3)", "1"),
+                Arguments.of("COUNTIF 연산자 criteria", "=COUNTIF({단가}, \">4\")", "2"),
+                Arguments.of("COUNTIF 부정 — 빈 셀은 스킵", "=COUNTIF({메모}, \"<>a\")", "1"),
+                Arguments.of("SUMIF 텍스트 조건", "=SUMIF({메모}, \"a\", {수량})", "2"),
+                Arguments.of("SUMIF 숫자 조건 — 합 열 빈칸 무시", "=SUMIF({단가}, \">4\", {수량})", "4"),
+                Arguments.of("SUMIF — 조건 열 빈 행 스킵", "=SUMIF({수량}, \">0\", {단가})", "8"),
+                Arguments.of("criteria가 식이어도 된다", "=COUNTIF({수량}, {단가} - 1)", "1"),
+                Arguments.of("조건 열 에러는 번진다", "=COUNTIF({상태}, \"x\")", "#DIV/0!"));
     }
 
     @ParameterizedTest(name = "{0}: {1} → {2}")
