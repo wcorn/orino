@@ -37,8 +37,15 @@ import java.util.Set;
  */
 public final class FormulaParser {
 
-    /** D8이 정한 함수 범위. IF는 비교·논리 연산자와 세트라 제외. */
+    /** 집계 함수 — 인자가 열 참조(열 전체). */
     private static final Set<String> AGGREGATES = Set.of("SUM", "AVG", "COUNT", "MIN", "MAX");
+
+    /**
+     * 스칼라 함수 — 인자가 식(셀·산술). 값은 [최소, 최대] 인자 개수(arity). {@code Integer.MAX_VALUE}는 가변.
+     * IF/AND/OR/NOT이 여기로 들어온다(#892 §13). 지금은 워킹 스켈레톤으로 {@code ABS}만.
+     */
+    private static final java.util.Map<String, int[]> SCALAR_FUNCS =
+            java.util.Map.of("ABS", new int[] {1, 1});
 
     private final String src;
     private final FormulaContext ctx;
@@ -78,6 +85,7 @@ public final class FormulaParser {
                 collect(b.right(), out);
             }
             case FormulaNode.Unary u -> collect(u.operand(), out);
+            case FormulaNode.Call c -> c.args().forEach(arg -> collect(arg, out));
             case FormulaNode.Num ignored -> {
             }
         }
@@ -147,7 +155,7 @@ public final class FormulaParser {
             return number();
         }
         if (Character.isLetter(c)) {
-            return agg();
+            return functionCall();
         }
         throw syntaxError("예상하지 못한 문자: '" + c + "'");
     }
@@ -164,15 +172,47 @@ public final class FormulaParser {
         }
     }
 
-    private FormulaNode agg() {
+    /** {@code NAME(...)} — 함수 이름을 읽고 집계/스칼라로 분기한다. */
+    private FormulaNode functionCall() {
         int start = pos;
         while (pos < src.length() && Character.isLetter(src.charAt(pos))) {
             pos++;
         }
         String name = src.substring(start, pos).toUpperCase(Locale.ROOT);
-        if (!AGGREGATES.contains(name)) {
-            throw syntaxError("지원하지 않는 함수: " + name);
+        if (AGGREGATES.contains(name)) {
+            return aggregate(name);
         }
+        if (SCALAR_FUNCS.containsKey(name)) {
+            return scalar(name);
+        }
+        throw syntaxError("지원하지 않는 함수: " + name);
+    }
+
+    /** 스칼라 함수 — 식 인자를 콤마로 나열. arity를 검증한다. */
+    private FormulaNode scalar(String name) {
+        skipSpace();
+        expect('(');
+        List<FormulaNode> args = new ArrayList<>();
+        skipSpace();
+        if (peek() != ')') {
+            args.add(expr());
+            skipSpace();
+            while (peek() == ',') {
+                pos++;
+                args.add(expr());
+                skipSpace();
+            }
+        }
+        expect(')');
+        int[] arity = SCALAR_FUNCS.get(name);
+        if (args.size() < arity[0] || args.size() > arity[1]) {
+            throw syntaxError("함수 " + name + "의 인자 개수가 맞지 않습니다: " + args.size());
+        }
+        return new FormulaNode.Call(name, List.copyOf(args));
+    }
+
+    /** 집계 함수 — 열 참조(범위·나열)를 인자로. */
+    private FormulaNode aggregate(String name) {
         skipSpace();
         expect('(');
 
