@@ -46,6 +46,7 @@ public final class FormulaEvaluator {
             case FormulaNode.Compare c -> compare(c, src);
             case FormulaNode.Ref r -> ref(r, src);
             case FormulaNode.Agg a -> agg(a, src);
+            case FormulaNode.AggIf a -> aggIf(a, src);
             case FormulaNode.Call c -> call(c, src);
         };
     }
@@ -139,8 +140,12 @@ public final class FormulaEvaluator {
         if (r instanceof FormulaValue.Err) {
             return r;
         }
-        int cmp = order(l, r);
-        boolean result = switch (c.op()) {
+        return new FormulaValue.Bool(satisfies(c.op(), order(l, r)));
+    }
+
+    /** 비교 연산자를 {@code order()} 결과(음수/0/양수)에 적용한다. 비교·조건부 집계가 공유한다. */
+    private static boolean satisfies(String op, int cmp) {
+        return switch (op) {
             case "=" -> cmp == 0;
             case "<>" -> cmp != 0;
             case "<" -> cmp < 0;
@@ -149,7 +154,6 @@ public final class FormulaEvaluator {
             case ">=" -> cmp >= 0;
             default -> false;
         };
-        return new FormulaValue.Bool(result);
     }
 
     private static int order(FormulaValue l, FormulaValue r) {
@@ -259,6 +263,97 @@ public final class FormulaEvaluator {
                     nums.stream().max(BigDecimal::compareTo).orElse(BigDecimal.ZERO));
             default -> new FormulaValue.Err(FormulaValue.Err.VALUE);
         };
+    }
+
+    /**
+     * 조건부 집계. criteria를 한 번 평가해 (연산자, 기준값)으로 풀고, 조건 열을 행별로 견준다.
+     * 빈 셀은 매치 안 하고, 에러 셀은 번진다. {@code SUMIF}는 매치된 행의 합 열 숫자만 더한다.
+     */
+    private static FormulaValue aggIf(FormulaNode.AggIf a, ValueSource src) {
+        FormulaValue critRaw = evaluate(a.criteria(), src);
+        if (critRaw instanceof FormulaValue.Err) {
+            return critRaw;
+        }
+        Criteria crit = parseCriteria(critRaw);
+
+        Optional<List<String>> critCol = src.column(a.critCol());
+        if (critCol.isEmpty()) {
+            return new FormulaValue.Err(FormulaValue.Err.REF);
+        }
+        List<String> critCells = critCol.get();
+
+        boolean sumif = a.sumCol() != null;
+        List<String> sumCells = List.of();
+        if (sumif) {
+            Optional<List<String>> sc = src.column(a.sumCol());
+            if (sc.isEmpty()) {
+                return new FormulaValue.Err(FormulaValue.Err.REF);
+            }
+            sumCells = sc.get();
+        }
+
+        BigDecimal sum = BigDecimal.ZERO;
+        int count = 0;
+        for (int i = 0; i < critCells.size(); i++) {
+            String cell = critCells.get(i) == null ? "" : critCells.get(i).trim();
+            if (cell.isEmpty()) {
+                continue; // 빈 셀은 어떤 조건에도 매치하지 않는다(엑셀식)
+            }
+            if (cell.startsWith("#")) {
+                return new FormulaValue.Err(cell);
+            }
+            if (!matches(crit.op(), cellValue(cell), crit.target())) {
+                continue;
+            }
+            count++;
+            if (sumif) {
+                String sc = i < sumCells.size() && sumCells.get(i) != null
+                        ? sumCells.get(i).trim() : "";
+                if (sc.startsWith("#")) {
+                    return new FormulaValue.Err(sc);
+                }
+                Optional<BigDecimal> n = number(sc);
+                if (n.isPresent()) {
+                    sum = sum.add(n.get());
+                }
+            }
+        }
+        return new FormulaValue.Num(sumif ? sum : BigDecimal.valueOf(count));
+    }
+
+    /** criteria(연산자 접두 + 기준값). 연산자가 없으면 정확 일치({@code =}). */
+    private record Criteria(String op, FormulaValue target) {
+    }
+
+    private static final String[] CRITERIA_OPS = {"<=", ">=", "<>", "<", ">", "="};
+
+    private static Criteria parseCriteria(FormulaValue v) {
+        if (v instanceof FormulaValue.Text t) {
+            String s = t.value();
+            for (String op : CRITERIA_OPS) {
+                if (s.startsWith(op)) {
+                    return new Criteria(op, cellValue(s.substring(op.length()).trim()));
+                }
+            }
+            return new Criteria("=", cellValue(s)); // "80"도 숫자로 봐 셀 80과 맞춘다
+        }
+        return new Criteria("=", v); // 숫자·불린은 그대로 정확 일치
+    }
+
+    /** 셀·기준 문자열을 타입으로. 숫자로 읽히면 Num, 아니면 Text. */
+    private static FormulaValue cellValue(String s) {
+        return number(s).<FormulaValue>map(FormulaValue.Num::new)
+                .orElseGet(() -> new FormulaValue.Text(s));
+    }
+
+    /**
+     * 셀이 criteria에 맞는가. 같은 종류(둘 다 숫자/둘 다 텍스트)면 {@code order()}로 견주고,
+     * 종류가 다르면 같을 수 없으니 {@code <>}만 참이다 — 텍스트 셀은 {@code >80}에 안 걸린다.
+     */
+    private static boolean matches(String op, FormulaValue cell, FormulaValue target) {
+        boolean sameKind = (cell instanceof FormulaValue.Num && target instanceof FormulaValue.Num)
+                || (cell instanceof FormulaValue.Text && target instanceof FormulaValue.Text);
+        return sameKind ? satisfies(op, order(cell, target)) : op.equals("<>");
     }
 
     private static Optional<BigDecimal> number(String s) {

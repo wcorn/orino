@@ -64,4 +64,19 @@ public sealed interface FormulaNode {
      */
     record Call(String func, List<FormulaNode> args) implements FormulaNode {
     }
+
+    /**
+     * 조건부 집계({@code COUNTIF}·{@code SUMIF}). 집계와 스칼라의 하이브리드 — 열 인자(조건 열·합 열)와
+     * criteria 식(행별로 견줄 값)을 함께 든다.
+     *
+     * <ul>
+     *   <li>{@code critCol} — 조건을 검사할 열 key
+     *   <li>{@code criteria} — 한 번 평가해 얻는 조건. 문자열이면 {@code ">80"}처럼 연산자 접두를 해석하고,
+     *       아니면 정확 일치
+     *   <li>{@code sumCol} — 합할 열 key. {@code COUNTIF}는 null(개수만 센다)
+     * </ul>
+     */
+    record AggIf(String func, String critCol, FormulaNode criteria, String sumCol)
+            implements FormulaNode {
+    }
 }
