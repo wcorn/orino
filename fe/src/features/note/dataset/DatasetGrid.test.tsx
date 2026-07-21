@@ -2209,6 +2209,106 @@ describe("DatasetGrid", () => {
     expect(within(footer).queryByText("—")).not.toBeInTheDocument();
   });
 
+  it("우클릭에서 요약 함수를 고르면 그 열에 PATCH하고 푸터에 값이 뜬다(#908)", async () => {
+    mockDataset([
+      ["a", "10"],
+      ["b", "20"],
+    ]);
+    let patched: unknown = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/columns/:key/summary`,
+        async ({ params, request }) => {
+          patched = { key: params.key, body: await request.json() };
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              id: 1,
+              columns: [
+                { key: "c0", label: "과목" },
+                { key: "c1", label: "점수", summary: "SUM" },
+              ],
+              rowCount: 2,
+              summaries: { c1: "30" },
+            },
+          });
+        },
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    // c1(점수) 열의 한 셀을 선택 → 한 열만 걸쳐 요약 메뉴가 뜬다.
+    const cell = (await screen.findByText("10")).parentElement as HTMLElement;
+    fireEvent.pointerDown(cell, { button: 0 });
+    fireEvent.contextMenu(cell);
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "요약 합계" }));
+
+    await waitFor(() =>
+      expect(patched).toEqual({ key: "c1", body: { summary: "SUM" } }),
+    );
+    const footer = await screen.findByLabelText("열 요약");
+    expect(within(footer).getByText("30")).toBeInTheDocument();
+  });
+
+  it("셀을 고쳐 커밋하면 요약 값이 갱신된다(#908)", async () => {
+    mockDataset([
+      ["a", "10"],
+      ["b", "20"],
+    ]);
+    let sum = "30";
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수", summary: "SUM" },
+            ],
+            rowCount: 2,
+            summaries: { c1: sum },
+          },
+        }),
+      ),
+      http.patch(
+        `${API_BASE}/datasets/1/rows/:i`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { cells: string[] };
+          sum = "999"; // 서버가 재계산했다고 가정.
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    const footer = await screen.findByLabelText("열 요약");
+    expect(within(footer).getByText("30")).toBeInTheDocument();
+
+    // 데이터 셀(10)을 고쳐 커밋하면 메타를 다시 받아 요약이 갱신된다.
+    await user.dblClick(screen.getByText("10"));
+    const input = await screen.findByLabelText("셀 1행 2열");
+    fireEvent.change(input, { target: { value: "15" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(
+        within(screen.getByLabelText("열 요약")).getByText("999"),
+      ).toBeInTheDocument(),
+    );
+  });
+
   it("우클릭 메뉴에서 배경색을 고르면 선택한 셀에 일괄 PUT한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let sentCells: unknown = null;

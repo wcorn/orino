@@ -214,6 +214,22 @@ export async function setDatasetColumnAlign(
   return data.data;
 }
 
+/**
+ * 열 푸터 요약 함수 설정/해제(멱등 교체). null이면 해제. 갱신된 메타(계산된 summaries 포함)를
+ * 돌려준다 — 캐시에 바로 반영하면 푸터 값이 즉시 맞는다.
+ */
+export async function setColumnSummary(
+  datasetId: number,
+  key: string,
+  summary: SummaryFn | null,
+): Promise<DatasetMeta> {
+  const { data } = await client.patch<ApiEnvelope<DatasetMeta>>(
+    `/datasets/${datasetId}/columns/${key}/summary`,
+    { summary },
+  );
+  return data.data;
+}
+
 /** 열 삭제. 마지막 열은 지울 수 없다(400). */
 export async function deleteDatasetColumn(
   datasetId: number,

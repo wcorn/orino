@@ -526,6 +526,66 @@ public class DatasetFormulaService {
         }
     }
 
+    /** 요약 함수 토큰(FE·columns_json) → 엔진 집계 함수명. AVERAGE만 엔진에선 AVG다. */
+    private static final Map<String, String> SUMMARY_ENGINE_FUNC = Map.of(
+            "SUM", "SUM", "AVERAGE", "AVG", "COUNT", "COUNT", "MIN", "MIN", "MAX", "MAX");
+
+    /**
+     * 요약 함수가 설정된 열들의 값을 계산한다(#908). 기존 엔진의 열 집계({@link FormulaNode.Agg},
+     * {@code COLUMN_ALL})를 그대로 재사용한다 — 새 계산 로직·ref kind가 없다. 전체 행을 한 번만
+     * 읽어 여러 열에 나눠 쓴다. 요약이 없으면 빈 맵.
+     *
+     * @return 열 key → 계산된 값(문자열). 열 집계는 숫자만 세고 빈/텍스트는 규칙대로 다룬다.
+     */
+    Map<String, String> computeSummaries(Long datasetId, List<DatasetColumn> columns) {
+        List<DatasetColumn> withSummary = columns.stream()
+                .filter(c -> c.summary() != null)
+                .toList();
+        Map<String, String> out = new LinkedHashMap<>();
+        if (withSummary.isEmpty()) {
+            return out;
+        }
+        FormulaEvaluator.ValueSource src = new SummaryValues(datasetId);
+        for (DatasetColumn col : withSummary) {
+            String func = SUMMARY_ENGINE_FUNC.get(col.summary());
+            FormulaValue value = FormulaEvaluator.evaluate(
+                    new FormulaNode.Agg(func, List.of(col.key())), src);
+            out.put(col.key(), value.asCell());
+        }
+        return out;
+    }
+
+    /**
+     * 열 집계 계산용 읽기 소스. 전체 행을 한 번 로드해 {@code column()}에만 답한다(요약은 열
+     * 전체 집계뿐이라 {@code sameRow}/{@code absolute}는 쓰지 않는다).
+     */
+    private final class SummaryValues implements FormulaEvaluator.ValueSource {
+        private final List<Map<String, String>> rows;
+
+        private SummaryValues(Long datasetId) {
+            this.rows = rowRepository.findByDatasetIdOrderByRowIndexAsc(datasetId).stream()
+                    .map(r -> DatasetCells.parse(r.getCells()))
+                    .toList();
+        }
+
+        @Override
+        public Optional<String> sameRow(String colKey) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<String> absolute(long rowId, String colKey) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<List<String>> column(String colKey) {
+            return Optional.of(rows.stream()
+                    .map(cells -> cells.getOrDefault(colKey, ""))
+                    .toList());
+        }
+    }
+
     /** 평가기가 읽을 셀 값을 DB(와 지금 만드는 행)에서 가져온다. */
     private final class DbValues implements FormulaEvaluator.ValueSource {
         private final Long datasetId;
