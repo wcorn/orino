@@ -2157,6 +2157,58 @@ describe("DatasetGrid", () => {
     expect(called).toBe(false);
   });
 
+  // ---------- 열 푸터 요약 표면(#907) ----------
+
+  /** meta에 summary 함수/값을 실어 GET /datasets/1을 덮어쓴다. */
+  function mockSummaryMeta(
+    summary: string | undefined,
+    summaries: Record<string, string | null>,
+  ) {
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수", summary },
+            ],
+            rowCount: 1,
+            summaries,
+          },
+        }),
+      ),
+    );
+  }
+
+  it("summary가 설정된 열이 있으면 데이터 밑에 요약 푸터가 뜬다(값 없으면 —)", async () => {
+    mockDataset([["네트워크", "92"]]);
+    mockSummaryMeta("SUM", { c1: null });
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    const footer = await screen.findByLabelText("열 요약");
+    // 요약 걸린 열(c1)엔 placeholder, 안 걸린 열(c0)엔 값이 없다.
+    expect(within(footer).getByText("—")).toBeInTheDocument();
+  });
+
+  it("summary가 없으면 요약 푸터가 뜨지 않는다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+    expect(screen.queryByLabelText("열 요약")).not.toBeInTheDocument();
+  });
+
+  it("summaries에 값이 있으면 placeholder 대신 그 값을 보여준다(#908 계약)", async () => {
+    mockDataset([["네트워크", "92"]]);
+    mockSummaryMeta("SUM", { c1: "92" });
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    const footer = await screen.findByLabelText("열 요약");
+    expect(within(footer).getByText("92")).toBeInTheDocument();
+    expect(within(footer).queryByText("—")).not.toBeInTheDocument();
+  });
+
   it("우클릭 메뉴에서 배경색을 고르면 선택한 셀에 일괄 PUT한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let sentCells: unknown = null;
