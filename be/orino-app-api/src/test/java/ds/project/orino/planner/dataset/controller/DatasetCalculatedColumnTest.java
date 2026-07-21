@@ -83,7 +83,7 @@ class DatasetCalculatedColumnTest extends ApiTestSupport {
     @DisplayName("fill down — 한 셀의 수식이 그 열 전체에 채워지고 각 행이 자기 행을 계산한다")
     void fillDownAppliesToWholeColumn() throws Exception {
         patchRow(0, "[\"10\",\"3\",\"={단가} * {수량}\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("30"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("30"));
 
         fillDown("c2", 0).andExpect(status().isOk());
 
@@ -203,7 +203,7 @@ class DatasetCalculatedColumnTest extends ApiTestSupport {
     @DisplayName("행을 추가하면 열 집계가 다시 계산된다")
     void newRowRecomputesAggregate() throws Exception {
         patchRow(0, "[\"10\",\"3\",\"=SUM({단가})\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("35")); // 10+20+5
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("35")); // 10+20+5
 
         mockMvc.perform(post("/api/datasets/{id}/rows", datasetId)
                         .header(HttpHeaders.AUTHORIZATION, authHeader)

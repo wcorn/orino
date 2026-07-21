@@ -45,6 +45,8 @@ import {
   updateDatasetRow,
 } from "./api/datasets";
 import { DATASET_CELLS_MIME } from "./cellClipboard";
+import type { FormulaContext, ValueSource } from "./formula";
+import { evaluateFormula } from "./formula";
 import { useDatasetMerges } from "./hooks/useDatasetMerges";
 import { useDatasetMeta } from "./hooks/useDatasetMeta";
 import { useDatasetRows } from "./hooks/useDatasetRows";
@@ -172,10 +174,14 @@ export function DatasetGrid({
     const version = (rowVersion.current.get(index) ?? 0) + 1;
     rowVersion.current.set(index, version);
     updateDatasetRow(datasetId, index, cells)
-      .then((row) => {
+      .then((res) => {
         if (rowVersion.current.get(index) !== version) return;
-        setRowLocal(row.rowIndex, row.cells);
-        setFormulasLocal(row.rowIndex, row.formulas ?? {});
+        // 편집 행 + 전파로 값이 바뀐 교차 행(집계 등)을 서버 확정값으로 맞춘다. affected 행은
+        // 로드 범위 밖일 수 있지만 setRowLocal은 인덱스 단위라 보이는 행만 실제로 갱신된다.
+        for (const row of [res.edited, ...res.affected]) {
+          setRowLocal(row.rowIndex, row.cells);
+          setFormulasLocal(row.rowIndex, row.formulas ?? {});
+        }
       })
       .catch((e) => {
         if (silent) return;
@@ -482,6 +488,80 @@ export function DatasetGrid({
   };
 
   /**
+   * 편집을 낙관적으로 미리 계산한 표시 배열을 만든다(Epic #892 반응성). 서버 확정 전까지
+   * 원본 {@code =…}가 보이지 않게, FE 경량 평가기로 편집 행의 수식을 그 자리서 계산한다.
+   *
+   * 범위는 편집 행 한 줄이다 — 편집 셀과 같은 행의 의존 수식만. 다른 행으로 번지는 집계는
+   * 서버 응답의 affected 행이 채운다. 열 전체 참조는 로드된 행만 봐서 근사이며 서버가 확정한다.
+   * 미완성·문법오류 수식은 계산을 건너뛰고 친 그대로 둔다(계속 타이핑 중일 수 있다).
+   */
+  const previewRow = (
+    row: number,
+    editedCol: number,
+    value: string,
+    cells: string[],
+    rowFormulas: Record<string, string>,
+  ): string[] => {
+    const editedKey = meta.columns[editedCol].key;
+    const editedIsFormula = value.startsWith("=");
+
+    // 이 행의 수식 맵(편집 반영). 편집 셀이 수식이면 넣고, 리터럴이면 뺀다.
+    const formulas: Record<string, string> = { ...rowFormulas };
+    if (editedIsFormula) formulas[editedKey] = value;
+    else delete formulas[editedKey];
+
+    // 작업 중 표시값. 리터럴 편집은 즉시 반영, 수식 셀은 아래서 계산해 덮는다.
+    const values = Array.from({ length: colCount }, (_, c) =>
+      c === editedCol && !editedIsFormula ? value : (cells[c] ?? ""),
+    );
+
+    const ctx: FormulaContext = {
+      columnKeys: () => meta.columns.map((c) => c.key),
+      keyByLabel: (label) => meta.columns.find((c) => c.label === label)?.key,
+      labelByKey: (key) => meta.columns.find((c) => c.key === key)?.label,
+      // 행 번호(1-base) ↔ 행 인덱스(0-base)를 그대로 가상 id로 쓴다 — 미리보기 안에서만 일관되면 된다.
+      rowIdByNumber: (n) => (n >= 1 && n <= rowCount ? n - 1 : undefined),
+      rowNumberById: (id) => (id >= 0 && id < rowCount ? id + 1 : undefined),
+    };
+    // 현재 행은 작업 중 값(values)을, 다른 행은 캐시를 본다.
+    const cellsOf = (r: number): string[] | undefined =>
+      r === row ? values : getRow(r);
+    const source: ValueSource = {
+      sameRow: (colKey) => {
+        const i = colOf(colKey);
+        return i < 0 ? undefined : values[i];
+      },
+      absolute: (rowId, colKey) => {
+        const i = colOf(colKey);
+        return i < 0 ? undefined : cellsOf(rowId)?.[i];
+      },
+      column: (colKey) => {
+        const i = colOf(colKey);
+        if (i < 0) return undefined;
+        const out: string[] = [];
+        for (let r = 0; r < rowCount; r++) {
+          const rc = cellsOf(r);
+          if (rc) out.push(rc[i] ?? "");
+        }
+        return out;
+      },
+    };
+
+    // 열 순서로 계산해 뒤 수식이 앞 결과를 보게 한다(서버의 인라인 패스와 같은 순서).
+    for (let c = 0; c < colCount; c++) {
+      const f = formulas[meta.columns[c].key];
+      if (f === undefined) continue;
+      try {
+        values[c] = evaluateFormula(f, ctx, source);
+      } catch {
+        // 미완성/문법오류: 편집 셀은 친 그대로, 나머지는 기존 값 유지.
+        if (c === editedCol) values[c] = value;
+      }
+    }
+    return values;
+  };
+
+  /**
    * 한 셀의 편집값을 저장한다(다른 셀은 값·수식을 보존). editing 상태는 건드리지 않아,
    * 자동저장(타이핑 중)과 최종 커밋이 같은 로직을 쓴다. silent면 실패해도 조용히 넘긴다.
    */
@@ -499,10 +579,8 @@ export function DatasetGrid({
     const sent = Array.from({ length: colCount }, (_, c) =>
       c === col ? value : (rowFormulas[meta.columns[c].key] ?? cells[c] ?? ""),
     );
-    // 화면엔 값을 유지한다(수식 원본이 잠깐 보이면 안 된다).
-    const shown = Array.from({ length: colCount }, (_, c) =>
-      c === col ? value : (cells[c] ?? ""),
-    );
+    // 화면엔 낙관적으로 계산한 값을 보여준다(수식 원본이 잠깐 보이면 안 된다).
+    const shown = previewRow(row, col, value, cells, rowFormulas);
     setRowLocal(row, shown);
     saveRow(row, sent, { cells, formulas: rowFormulas }, silent);
   };

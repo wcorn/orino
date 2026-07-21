@@ -145,7 +145,7 @@ class DatasetControllerTest extends ApiTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"cells\":[\"네트워크\",\"100\"]}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.cells[1]").value("100"));
+                .andExpect(jsonPath("$.data.edited.cells[1]").value("100"));
 
         mockMvc.perform(get("/api/datasets/{id}/rows", id)
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
@@ -287,7 +287,7 @@ class DatasetControllerTest extends ApiTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"cells\":[\"A수정\",\"1\"]}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.id").value(firstId));
+                .andExpect(jsonPath("$.data.edited.id").value(firstId));
     }
 
     @Test
@@ -817,7 +817,7 @@ class DatasetControllerTest extends ApiTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"cells\":[\"네트워크\",\"92\",\"재수강\"]}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.cells[2]").value("재수강"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("재수강"));
 
         org.assertj.core.api.Assertions.assertThat(
                         datasetRowRepository.findByDatasetIdAndRowIndex(id, 0).orElseThrow().getCells())
@@ -855,8 +855,8 @@ class DatasetControllerTest extends ApiTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"cells\":[\"운영체제\"]}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.cells", hasSize(2)))
-                .andExpect(jsonPath("$.data.cells[1]").value(""));
+                .andExpect(jsonPath("$.data.edited.cells", hasSize(2)))
+                .andExpect(jsonPath("$.data.edited.cells[1]").value(""));
 
         mockMvc.perform(get("/api/datasets/{id}/rows", id)
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
@@ -876,7 +876,7 @@ class DatasetControllerTest extends ApiTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"cells\":[\"운영체제\",\"78\",\"초과분\"]}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.cells", hasSize(2)));
+                .andExpect(jsonPath("$.data.edited.cells", hasSize(2)));
 
         mockMvc.perform(get("/api/datasets/{id}/rows", id)
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
@@ -1473,7 +1473,7 @@ class DatasetControllerTest extends ApiTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"cells\":[\"3\",\"={과목}*2\"]}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.cells[1]").value("6"));
+                .andExpect(jsonPath("$.data.edited.cells[1]").value("6"));
 
         setStyle(id, 0, "c1", "{\"bg\":\"yellow\"}");
 

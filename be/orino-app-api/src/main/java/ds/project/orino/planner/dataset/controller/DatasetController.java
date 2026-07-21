@@ -18,6 +18,7 @@ import ds.project.orino.planner.dataset.dto.SetCellMergeRequest;
 import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.SetColumnAlignRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
+import ds.project.orino.planner.dataset.dto.UpdateRowResponse;
 import ds.project.orino.planner.dataset.service.DatasetService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -177,8 +178,12 @@ public class DatasetController {
         return ApiResponse.success(datasetService.getRows(memberId, id, offset, limit));
     }
 
+    /**
+     * 한 행을 수정한다. 편집한 행뿐 아니라 전파로 값이 바뀐 교차 행(집계 등)까지 함께 돌려준다 —
+     * 클라가 다른 행의 재계산도 즉시 반영하도록. 늘 편집 행을 포함한다(행 번호 오름차순).
+     */
     @PatchMapping("/{id}/rows/{rowIndex}")
-    public ApiResponse<RowView> updateRow(
+    public ApiResponse<UpdateRowResponse> updateRow(
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long id,
             @PathVariable int rowIndex,

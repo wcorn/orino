@@ -87,7 +87,7 @@ class DatasetFormulaRefIntegrityTest extends ApiTestSupport {
     @DisplayName("참조하던 열을 지우면 수식이 #REF!가 된다 — 삭제를 막지 않는다")
     void deletingReferencedColumnMakesRef() throws Exception {
         patchRow(0, "[\"10\",\"3\",\"={단가} * {수량}\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("30"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("30"));
 
         deleteColumn("c1").andExpect(status().isOk());
 
@@ -117,7 +117,7 @@ class DatasetFormulaRefIntegrityTest extends ApiTestSupport {
     @DisplayName("열 집계가 참조하던 열을 지워도 #REF!")
     void deletingAggregatedColumnMakesRef() throws Exception {
         patchRow(0, "[\"10\",\"3\",\"=SUM({단가})\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("30"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("30"));
 
         deleteColumn("c0").andExpect(status().isOk());
 
@@ -130,7 +130,7 @@ class DatasetFormulaRefIntegrityTest extends ApiTestSupport {
         patchRow(0, "[\"10\",\"3\",\"={단가} * {수량}\"]").andExpect(status().isOk());
         // 합계를 참조하는 수식을 2행에 둔다.
         patchRow(1, "[\"20\",\"2\",\"={합계}1\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("30"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("30"));
 
         deleteColumn("c1").andExpect(status().isOk());
 
@@ -175,7 +175,7 @@ class DatasetFormulaRefIntegrityTest extends ApiTestSupport {
     void deletingReferencedRowMakesRef() throws Exception {
         // 1행 합계가 2행 단가를 콕 집어 참조.
         patchRow(0, "[\"10\",\"3\",\"={단가}2\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("20"));
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("20"));
 
         mockMvc.perform(delete("/api/datasets/{id}/rows/{i}", datasetId, 1)
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
@@ -188,7 +188,7 @@ class DatasetFormulaRefIntegrityTest extends ApiTestSupport {
     @DisplayName("행을 지우면 열 집계가 다시 계산된다 — 값이 하나 줄었다")
     void deletingRowRecomputesAggregate() throws Exception {
         patchRow(0, "[\"10\",\"3\",\"=SUM({단가})\"]")
-                .andExpect(jsonPath("$.data.cells[2]").value("30")); // 10 + 20
+                .andExpect(jsonPath("$.data.edited.cells[2]").value("30")); // 10 + 20
 
         mockMvc.perform(delete("/api/datasets/{id}/rows/{i}", datasetId, 1)
                         .header(HttpHeaders.AUTHORIZATION, authHeader))

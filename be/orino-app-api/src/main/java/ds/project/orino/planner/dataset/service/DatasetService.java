@@ -25,14 +25,17 @@ import ds.project.orino.planner.dataset.dto.SetCellMergeRequest;
 import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.SetColumnAlignRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
+import ds.project.orino.planner.dataset.dto.UpdateRowResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -433,7 +436,8 @@ public class DatasetService {
      * (수식 원본은 {@code dataset_formula}에 따로). 엑셀과 같은 진입이라 별도 API가 없다.
      */
     @Transactional
-    public RowView updateRow(Long memberId, Long datasetId, int rowIndex, UpdateRowRequest request) {
+    public UpdateRowResponse updateRow(Long memberId, Long datasetId, int rowIndex,
+                                       UpdateRowRequest request) {
         Dataset dataset = getOwned(memberId, datasetId);
         List<DatasetColumn> columns = parseColumns(dataset.getColumns());
         DatasetRow row = rowRepository.findByDatasetIdAndRowIndex(datasetId, rowIndex)
@@ -468,8 +472,40 @@ public class DatasetService {
             }
         }
 
-        // 전파가 이 행의 다른 셀을 고쳤을 수 있어 다시 읽는다.
-        return buildRowView(datasetId, row, rowIndex, columns);
+        // 전파로 값이 바뀐 교차 행(집계 SUMIF 등)을 함께 돌려준다 — 클라가 다른 행의 재계산도
+        // 즉시 반영하도록. recomputed는 "rowId:colKey"들이라 행 id만 추리고, 편집 행은 뺀다.
+        Set<Long> affectedRowIds = new LinkedHashSet<>();
+        for (String cell : recomputed) {
+            affectedRowIds.add(DatasetFormulaService.rowIdOf(cell));
+        }
+        affectedRowIds.remove(row.getId());
+
+        // 편집 행: 전파가 이 행의 다른 셀도 고쳤을 수 있어 다시 읽는다.
+        RowView edited = buildRowView(datasetId, row, rowIndex, columns);
+        return new UpdateRowResponse(edited, buildRowViews(datasetId, affectedRowIds, columns));
+    }
+
+    /**
+     * 여러 행의 현재 상태를 한 번에 조립한다(수식·서식은 배치 조회). 행 번호 오름차순으로 돌려준다.
+     * 전파가 셀을 고친 뒤라 각 행 엔티티는 최신 값을 담고 있다(같은 트랜잭션의 영속 컨텍스트).
+     */
+    private List<RowView> buildRowViews(Long datasetId, Set<Long> rowIds,
+                                        List<DatasetColumn> columns) {
+        if (rowIds.isEmpty()) {
+            return List.of();
+        }
+        List<DatasetRow> rows = rowRepository.findAllById(rowIds);
+        List<Long> ids = rows.stream().map(DatasetRow::getId).toList();
+        Map<Long, Map<String, String>> formulas =
+                formulaService.displayFormulas(datasetId, ids, columns);
+        Map<Long, Map<String, CellStyle>> styles = styleService.stylesByRow(ids);
+        return rows.stream()
+                .sorted(Comparator.comparingInt(DatasetRow::getRowIndex))
+                .map(r -> new RowView(r.getId(), r.getRowIndex(),
+                        toCellList(r.getCells(), columns),
+                        formulas.getOrDefault(r.getId(), Map.of()),
+                        styles.getOrDefault(r.getId(), Map.of())))
+                .toList();
     }
 
     /**
