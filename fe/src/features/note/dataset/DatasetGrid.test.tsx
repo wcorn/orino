@@ -1955,6 +1955,104 @@ describe("DatasetGrid", () => {
     expect(within(menu).getByText("표 전체")).toBeInTheDocument();
   });
 
+  it("방향키로 활성 셀을 상하좌우로 옮긴다", async () => {
+    mockDataset([
+      ["a", "b"],
+      ["c", "d"],
+    ]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const cell = (await screen.findByText("a")).parentElement as HTMLElement;
+    fireEvent.pointerDown(cell, { button: 0 }); // (0,0) 선택
+    const input = await screen.findByLabelText("1행 1열 셀 (입력하면 편집)");
+
+    // → 오른쪽 칸으로.
+    fireEvent.keyDown(input, { key: "ArrowRight" });
+    expect(
+      await screen.findByLabelText("1행 2열 셀 (입력하면 편집)"),
+    ).toBeInTheDocument();
+
+    // ↓ 아래 칸으로.
+    fireEvent.keyDown(screen.getByLabelText("1행 2열 셀 (입력하면 편집)"), {
+      key: "ArrowDown",
+    });
+    expect(
+      await screen.findByLabelText("2행 2열 셀 (입력하면 편집)"),
+    ).toBeInTheDocument();
+  });
+
+  it("Shift+방향키로 셀 범위를 확장한다 — 우클릭 메뉴가 '셀 2개'", async () => {
+    mockDataset([["a", "b"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const a = (await screen.findByText("a")).parentElement as HTMLElement;
+    fireEvent.pointerDown(a, { button: 0 }); // (0,0)
+    const input = await screen.findByLabelText("1행 1열 셀 (입력하면 편집)");
+    fireEvent.keyDown(input, { key: "ArrowRight", shiftKey: true }); // (0,0)~(0,1)
+
+    fireEvent.contextMenu(a);
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    expect(within(menu).getByText("셀 2개")).toBeInTheDocument();
+  });
+
+  it("Ctrl/Cmd+A로 표 전체를 선택한다", async () => {
+    mockDataset([
+      ["a", "b"],
+      ["c", "d"],
+    ]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const cell = (await screen.findByText("a")).parentElement as HTMLElement;
+    fireEvent.pointerDown(cell, { button: 0 });
+    const input = await screen.findByLabelText("1행 1열 셀 (입력하면 편집)");
+    fireEvent.keyDown(input, { key: "a", metaKey: true });
+
+    fireEvent.contextMenu(cell);
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    expect(within(menu).getByText("표 전체")).toBeInTheDocument();
+  });
+
+  it("편집 중엔 방향키가 셀을 옮기지 않는다(입력창 커서 이동에 맡긴다)", async () => {
+    mockDataset([["a", "b"]]);
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await user.dblClick(await screen.findByText("a")); // 편집 진입
+    const input = await screen.findByLabelText("셀 1행 1열");
+    fireEvent.keyDown(input, { key: "ArrowRight" });
+
+    // 여전히 같은 셀을 편집 중 — 옆 칸으로 안 넘어간다.
+    expect(screen.getByLabelText("셀 1행 1열")).toBeInTheDocument();
+    expect(screen.queryByLabelText("셀 1행 2열")).not.toBeInTheDocument();
+  });
+
+  it("행 핸들 shift+클릭으로 여러 행을 선택한다 — 우클릭 메뉴가 '2행'", async () => {
+    mockDataset([
+      ["a", "b"],
+      ["c", "d"],
+    ]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("a");
+    fireEvent.pointerDown(screen.getByRole("button", { name: "1행 선택" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "2행 선택" }), {
+      shiftKey: true,
+    });
+
+    fireEvent.contextMenu(screen.getByText("a"));
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    expect(within(menu).getByText("2행")).toBeInTheDocument();
+  });
+
+  it("열 핸들 shift+클릭으로 여러 열을 선택한다 — 우클릭 메뉴가 '2열'", async () => {
+    mockDataset([["a", "b"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("a");
+    fireEvent.pointerDown(screen.getByRole("button", { name: "1열 선택" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "2열 선택" }), {
+      shiftKey: true,
+    });
+
+    fireEvent.contextMenu(screen.getByText("a"));
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    expect(within(menu).getByText("2열")).toBeInTheDocument();
+  });
+
   it("우클릭 메뉴에서 배경색을 고르면 선택한 셀에 일괄 PUT한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let sentCells: unknown = null;
