@@ -4,6 +4,9 @@ import {
   AlignCenter,
   AlignLeft,
   AlignRight,
+  AlignVerticalJustifyCenter,
+  AlignVerticalJustifyEnd,
+  AlignVerticalJustifyStart,
   Eraser,
   Plus,
   TableCellsMerge,
@@ -25,6 +28,7 @@ import {
   type CellAlign,
   type CellBgToken,
   type CellStyle,
+  type CellValign,
   type DatasetMeta,
   deleteCellMerge,
   deleteDatasetColumn,
@@ -862,19 +866,36 @@ export function DatasetGrid({
   // 서식 적용은 선택 전체를 한 요청으로 보낸다(표 전체도 1회). 각 셀은 통째 교체라
   // 바꾸지 않는 속성(정렬/배경)은 그 셀의 현재값을 채워 보존한다.
   const applyBgSel = (bg: CellBgToken | null) => {
-    const cells = selCellRefs().map(({ row, colKey }) => ({
-      rowIndex: row,
-      colKey,
-      style: { bg: bg ?? undefined, align: getStyles(row)[colKey]?.align },
-    }));
+    const cells = selCellRefs().map(({ row, colKey }) => {
+      const cur = getStyles(row)[colKey];
+      return {
+        rowIndex: row,
+        colKey,
+        style: { bg: bg ?? undefined, align: cur?.align, valign: cur?.valign },
+      };
+    });
     if (cells.length) bulkStyleMut.mutate(cells);
   };
   const applyAlignSel = (align: CellAlign | null) => {
-    const cells = selCellRefs().map(({ row, colKey }) => ({
-      rowIndex: row,
-      colKey,
-      style: { bg: getStyles(row)[colKey]?.bg, align: align ?? undefined },
-    }));
+    const cells = selCellRefs().map(({ row, colKey }) => {
+      const cur = getStyles(row)[colKey];
+      return {
+        rowIndex: row,
+        colKey,
+        style: { bg: cur?.bg, align: align ?? undefined, valign: cur?.valign },
+      };
+    });
+    if (cells.length) bulkStyleMut.mutate(cells);
+  };
+  const applyValignSel = (valign: CellValign | null) => {
+    const cells = selCellRefs().map(({ row, colKey }) => {
+      const cur = getStyles(row)[colKey];
+      return {
+        rowIndex: row,
+        colKey,
+        style: { bg: cur?.bg, align: cur?.align, valign: valign ?? undefined },
+      };
+    });
     if (cells.length) bulkStyleMut.mutate(cells);
   };
   const clearFormatSel = () => {
@@ -949,13 +970,23 @@ export function DatasetGrid({
     const style = getStyles(rowIndex)[colKey];
     // 셀 정렬(override) > 열 기본 정렬 > 기본(left) (#828 D2).
     const align = style?.align ?? meta.columns[c].align ?? "left";
+    // 세로 정렬은 셀 서식에만 있다. 없으면 위(top).
+    const valign = style?.valign ?? "top";
     return (
       <>
         {/* 표시값은 항상 렌더한다(레이아웃·테스트 기준). 활성 셀이면 그 위에 입력창이 겹친다.
-          셀 서식(배경색·정렬)은 우클릭 메뉴로 통일했다(셀별 팔레트 버튼 제거). */}
+          셀 서식(배경색·정렬)은 우클릭 메뉴로 통일했다(셀별 팔레트 버튼 제거).
+          기본(top)은 truncate 블록 그대로(말줄임 유지). 가운데/아래일 때만 세로 flex로 내려
+          justify-*로 위치를 잡는다 — 세로 병합된 큰 셀에서 유용하다. */}
         <div
           className={cn(
-            "h-full cursor-text truncate px-2 py-1.5",
+            "h-full cursor-text px-2 py-1.5",
+            valign === "top"
+              ? "truncate"
+              : cn(
+                  "flex flex-col overflow-hidden whitespace-nowrap",
+                  VALIGN_CLASS[valign],
+                ),
             ALIGN_CLASS[align],
             cells === undefined && "text-muted-foreground/40",
             isCellError(cells?.[c]) && "text-destructive",
@@ -1394,10 +1425,25 @@ export function DatasetGrid({
                         </button>
                       );
                     })}
+                    <span className="bg-border mx-0.5 h-4 w-px" />
+                    {VALIGN_ORDER.map((value) => {
+                      const Icon = VALIGN_ICONS[value];
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-label={`세로 정렬 ${VALIGN_LABELS[value]}`}
+                          onClick={run(() => applyValignSel(value))}
+                          className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-6 items-center justify-center rounded"
+                        >
+                          <Icon className="size-4" />
+                        </button>
+                      );
+                    })}
                     <button
                       type="button"
                       aria-label="서식 지우기"
-                      title="배경·정렬 초기화"
+                      title="배경·정렬·세로정렬 초기화"
                       onClick={run(clearFormatSel)}
                       className="text-muted-foreground hover:bg-accent hover:text-foreground ml-auto flex size-6 items-center justify-center rounded"
                     >
@@ -1524,6 +1570,26 @@ const ALIGN_CLASS: Record<CellAlign, string> = {
 };
 /** 정렬 버튼 순서. */
 const ALIGN_ORDER: CellAlign[] = ["left", "center", "right"];
+
+/** 세로 정렬 값 → 아이콘. 셀 정렬 팔레트와 렌더에 공용. */
+const VALIGN_ICONS = {
+  top: AlignVerticalJustifyStart,
+  middle: AlignVerticalJustifyCenter,
+  bottom: AlignVerticalJustifyEnd,
+} as const;
+const VALIGN_LABELS: Record<CellValign, string> = {
+  top: "위",
+  middle: "가운데",
+  bottom: "아래",
+};
+/** 세로 정렬 값 → Tailwind flex 정렬 클래스. 셀은 세로 flex라 justify-*로 위/아래를 잡는다. */
+const VALIGN_CLASS: Record<CellValign, string> = {
+  top: "justify-start",
+  middle: "justify-center",
+  bottom: "justify-end",
+};
+/** 세로 정렬 버튼 순서. */
+const VALIGN_ORDER: CellValign[] = ["top", "middle", "bottom"];
 
 /** 서버가 알려주는 실패 사유(수식 문법 오류·순환 참조 등). 없으면 조용히 넘어간다. */
 function serverMessage(e: unknown): string | null {

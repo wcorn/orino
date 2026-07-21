@@ -12,6 +12,9 @@ export interface DatasetColumn {
 /** 셀·열 정렬 값. 서버의 ALLOWED_ALIGN과 같아야 한다. */
 export type CellAlign = "left" | "center" | "right";
 
+/** 셀 세로 정렬 값. 서버의 ALLOWED_VALIGN과 같아야 한다. 세로 병합 셀 등에서 쓴다. */
+export type CellValign = "top" | "middle" | "bottom";
+
 /** 열 너비 하한(px). 서버의 DatasetColumn.MIN_WIDTH와 같아야 한다. */
 export const MIN_COLUMN_WIDTH = 60;
 /** 열 너비 상한(px). 서버의 DatasetColumn.MAX_WIDTH와 같아야 한다. */
@@ -32,6 +35,7 @@ export type CellBgToken = (typeof CELL_BG_TOKENS)[number];
 export interface CellStyle {
   bg?: CellBgToken;
   align?: CellAlign;
+  valign?: CellValign;
 }
 
 /** 병합 요청의 span(앵커 기준 rowSpan×colSpan). (1,1)은 병합이 아니다. */
@@ -250,7 +254,11 @@ export async function setCellStyle(
 ): Promise<DatasetRow> {
   const { data } = await client.put<ApiEnvelope<DatasetRow>>(
     `/datasets/${datasetId}/rows/${rowIndex}/cells/${colKey}/style`,
-    { bg: style.bg ?? null, align: style.align ?? null },
+    {
+      bg: style.bg ?? null,
+      align: style.align ?? null,
+      valign: style.valign ?? null,
+    },
   );
   return data.data;
 }
@@ -271,6 +279,7 @@ export async function setCellStylesBulk(
         colKey: c.colKey,
         bg: c.style.bg ?? null,
         align: c.style.align ?? null,
+        valign: c.style.valign ?? null,
       })),
     },
   );

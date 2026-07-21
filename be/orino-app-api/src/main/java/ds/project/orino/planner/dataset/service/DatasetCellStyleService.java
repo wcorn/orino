@@ -27,18 +27,19 @@ public class DatasetCellStyleService {
      * 셀 서식을 통째로 교체한다(부분 갱신 아님). 둘 다 null이면 서식이 없어진 것이므로 행을 지운다 —
      * 빈 행을 남기면 sparse가 깨진다.
      */
-    public void setStyle(Long datasetId, Long rowId, String colKey, String bg, String align) {
+    public void setStyle(
+            Long datasetId, Long rowId, String colKey, String bg, String align, String valign) {
         DatasetCellStyle existing = styleRepository.findByRowIdAndColKey(rowId, colKey).orElse(null);
-        if (bg == null && align == null) {
+        if (bg == null && align == null && valign == null) {
             if (existing != null) {
                 styleRepository.delete(existing);
             }
             return;
         }
         if (existing == null) {
-            styleRepository.save(new DatasetCellStyle(datasetId, rowId, colKey, bg, align));
+            styleRepository.save(new DatasetCellStyle(datasetId, rowId, colKey, bg, align, valign));
         } else {
-            existing.update(bg, align);
+            existing.update(bg, align, valign);
         }
     }
 
@@ -50,7 +51,9 @@ public class DatasetCellStyleService {
         Map<Long, Map<String, CellStyle>> result = new HashMap<>();
         for (DatasetCellStyle style : styleRepository.findByRowIdIn(rowIds)) {
             result.computeIfAbsent(style.getRowId(), k -> new HashMap<>())
-                    .put(style.getColKey(), new CellStyle(style.getBg(), style.getAlign()));
+                    .put(
+                            style.getColKey(),
+                            new CellStyle(style.getBg(), style.getAlign(), style.getValign()));
         }
         return result;
     }

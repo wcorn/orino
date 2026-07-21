@@ -1355,9 +1355,98 @@ describe("DatasetGrid", () => {
     // 배경색(green)은 보존하고 정렬만 얹어 일괄 엔드포인트로 보낸다.
     await waitFor(() =>
       expect(sentCells).toEqual([
-        { rowIndex: 0, colKey: "c0", bg: "green", align: "center" },
+        {
+          rowIndex: 0,
+          colKey: "c0",
+          bg: "green",
+          align: "center",
+          valign: null,
+        },
       ]),
     );
+  });
+
+  it("우클릭 메뉴에서 세로 정렬을 고르면 배경색·가로 정렬을 보존해 일괄 PUT한다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    // c0에 이미 배경색(green)·가로 정렬(right)이 있는 상태로 시작한다.
+    server.use(
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [
+              {
+                id: 100,
+                rowIndex: 0,
+                cells: ["네트워크", "92"],
+                formulas: {},
+                styles: { c0: { bg: "green", align: "right" } },
+              },
+            ],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+    let sentCells: unknown = null;
+    server.use(
+      http.put(`${API_BASE}/datasets/1/cells/style`, async ({ request }) => {
+        sentCells = ((await request.json()) as { cells: unknown }).cells;
+        return HttpResponse.json({ code: "OK", data: [] });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const cell = (await screen.findByText("네트워크"))
+      .parentElement as HTMLElement; // (0,0)=c0
+    fireEvent.pointerDown(cell, { button: 0 });
+
+    fireEvent.contextMenu(cell);
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    await user.click(within(menu).getByLabelText("세로 정렬 가운데"));
+
+    // 배경색(green)·가로 정렬(right)은 보존하고 세로 정렬만 얹어 보낸다.
+    await waitFor(() =>
+      expect(sentCells).toEqual([
+        {
+          rowIndex: 0,
+          colKey: "c0",
+          bg: "green",
+          align: "right",
+          valign: "middle",
+        },
+      ]),
+    );
+  });
+
+  it("서버가 준 valign으로 셀 세로 정렬 클래스를 그린다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    server.use(
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [
+              {
+                id: 100,
+                rowIndex: 0,
+                cells: ["네트워크", "92"],
+                formulas: {},
+                styles: { c1: { valign: "bottom" } },
+              },
+            ],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    // valign=bottom 셀은 세로 flex로 내려 justify-end로 정렬한다.
+    expect((await screen.findByText("92")).className).toContain("justify-end");
+    // valign 없는 셀은 기본(truncate) 그대로.
+    expect(screen.getByText("네트워크").className).toContain("truncate");
   });
 
   it("가로 병합 앵커는 colSpan으로 넓게, 덮인 셀은 렌더하지 않는다", async () => {
@@ -1716,7 +1805,7 @@ describe("DatasetGrid", () => {
     // 선택 셀 하나를 일괄 엔드포인트로 보낸다(정렬은 기존값 없음 → null).
     await waitFor(() =>
       expect(sentCells).toEqual([
-        { rowIndex: 0, colKey: "c1", bg: "green", align: null },
+        { rowIndex: 0, colKey: "c1", bg: "green", align: null, valign: null },
       ]),
     );
   });
