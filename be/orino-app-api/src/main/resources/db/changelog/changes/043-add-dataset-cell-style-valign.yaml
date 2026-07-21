@@ -1,0 +1,24 @@
+databaseChangeLog:
+  # 셀 세로 정렬(top/middle/bottom). 없으면 null(기본=위). 세로 병합 셀 등에서 쓴다.
+  # 가로 정렬(align)과 같은 방식으로 문자열로 저장한다.
+  - changeSet:
+      id: 043-add-dataset-cell-style-valign
+      author: wcorn
+      comment: dataset_cell_style.valign 추가 — 셀 세로 정렬(top/middle/bottom).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: dataset_cell_style
+                columnName: valign
+      changes:
+        - addColumn:
+            tableName: dataset_cell_style
+            columns:
+              - column:
+                  name: valign
+                  type: VARCHAR(16)
+      rollback:
+        - dropColumn:
+            tableName: dataset_cell_style
+            columnName: valign

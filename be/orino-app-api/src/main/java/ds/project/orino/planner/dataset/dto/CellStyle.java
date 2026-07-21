@@ -12,12 +12,16 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record CellStyle(
         String bg,
-        String align
+        String align,
+        String valign
 ) {
     /** 허용 배경색 토큰. 디자인 시스템의 셀 하이라이트 팔레트와 맞춘다. */
     public static final java.util.Set<String> ALLOWED_BG =
             java.util.Set.of("red", "orange", "yellow", "green", "blue", "purple");
-    /** 허용 정렬 값. */
+    /** 허용 가로 정렬 값. */
     public static final java.util.Set<String> ALLOWED_ALIGN =
             java.util.Set.of("left", "center", "right");
+    /** 허용 세로 정렬 값. */
+    public static final java.util.Set<String> ALLOWED_VALIGN =
+            java.util.Set.of("top", "middle", "bottom");
 }

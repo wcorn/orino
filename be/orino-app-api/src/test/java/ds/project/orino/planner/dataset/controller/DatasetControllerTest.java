@@ -1422,6 +1422,31 @@ class DatasetControllerTest extends ApiTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"align\":\"justify\"}"))
                 .andExpect(status().isBadRequest());
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c1/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"valign\":\"baseline\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("PUT cells/{col}/style - 세로 정렬(valign)을 저장하고 행 조회 시 온다")
+    void set_cell_valign() throws Exception {
+        long id = createDataset();
+        bulk(id, "[[\"네트워크\",\"92\"]]");
+
+        mockMvc.perform(put("/api/datasets/{id}/rows/0/cells/c1/style", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"align\":\"center\",\"valign\":\"middle\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.styles.c1.align").value("center"))
+                .andExpect(jsonPath("$.data.styles.c1.valign").value("middle"));
+
+        mockMvc.perform(get("/api/datasets/{id}/rows", id)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows[0].styles.c1.valign").value("middle"));
     }
 
     @Test

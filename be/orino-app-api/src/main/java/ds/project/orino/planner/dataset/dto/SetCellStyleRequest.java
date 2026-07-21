@@ -12,6 +12,8 @@ public record SetCellStyleRequest(
         @Pattern(regexp = "red|orange|yellow|green|blue|purple", message = "허용되지 않은 배경색입니다.")
         String bg,
         @Pattern(regexp = "left|center|right", message = "허용되지 않은 정렬입니다.")
-        String align
+        String align,
+        @Pattern(regexp = "top|middle|bottom", message = "허용되지 않은 세로 정렬입니다.")
+        String valign
 ) {
 }

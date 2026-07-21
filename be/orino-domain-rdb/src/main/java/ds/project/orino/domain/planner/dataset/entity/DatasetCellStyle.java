@@ -50,6 +50,10 @@ public class DatasetCellStyle {
     @Column(length = 16)
     private String align;
 
+    /** 세로 정렬 top/middle/bottom. 없으면 null(기본=위). 세로 병합 셀 등에서 쓴다. */
+    @Column(length = 16)
+    private String valign;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
@@ -61,23 +65,26 @@ public class DatasetCellStyle {
     protected DatasetCellStyle() {
     }
 
-    public DatasetCellStyle(Long datasetId, Long rowId, String colKey, String bg, String align) {
+    public DatasetCellStyle(
+            Long datasetId, Long rowId, String colKey, String bg, String align, String valign) {
         this.datasetId = datasetId;
         this.rowId = rowId;
         this.colKey = colKey;
         this.bg = bg;
         this.align = align;
+        this.valign = valign;
     }
 
-    /** 서식을 덮어쓴다. 둘 다 null이면 서식 없는 셀 — 호출부가 이 행을 지운다. */
-    public void update(String bg, String align) {
+    /** 서식을 덮어쓴다. 전부 null이면 서식 없는 셀 — 호출부가 이 행을 지운다. */
+    public void update(String bg, String align, String valign) {
         this.bg = bg;
         this.align = align;
+        this.valign = valign;
     }
 
     /** 지정된 서식이 하나도 없으면 true. 이 상태면 행을 남길 이유가 없다. */
     public boolean isEmpty() {
-        return bg == null && align == null;
+        return bg == null && align == null && valign == null;
     }
 
     public Long getId() {
@@ -102,5 +109,9 @@ public class DatasetCellStyle {
 
     public String getAlign() {
         return align;
+    }
+
+    public String getValign() {
+        return valign;
     }
 }

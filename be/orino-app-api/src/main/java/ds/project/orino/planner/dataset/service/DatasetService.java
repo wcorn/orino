@@ -487,7 +487,8 @@ public class DatasetService {
         DatasetRow row = rowRepository.findByDatasetIdAndRowIndex(datasetId, rowIndex)
                 .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND));
 
-        styleService.setStyle(datasetId, row.getId(), colKey, request.bg(), request.align());
+        styleService.setStyle(
+                datasetId, row.getId(), colKey, request.bg(), request.align(), request.valign());
         return buildRowView(datasetId, row, rowIndex, columns);
     }
 
@@ -509,7 +510,8 @@ public class DatasetService {
             DatasetRow row = rowByIndex.computeIfAbsent(t.rowIndex(), idx ->
                     rowRepository.findByDatasetIdAndRowIndex(datasetId, idx)
                             .orElseThrow(() -> new CustomException(ErrorCode.RESOURCE_NOT_FOUND)));
-            styleService.setStyle(datasetId, row.getId(), t.colKey(), t.bg(), t.align());
+            styleService.setStyle(
+                    datasetId, row.getId(), t.colKey(), t.bg(), t.align(), t.valign());
         }
         return rowByIndex.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
