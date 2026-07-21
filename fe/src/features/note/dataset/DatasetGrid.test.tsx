@@ -2053,6 +2053,110 @@ describe("DatasetGrid", () => {
     expect(within(menu).getByText("2열")).toBeInTheDocument();
   });
 
+  // ---------- 채우기 핸들(fill) ----------
+
+  it("채우기 핸들을 아래로 끌면 소스 셀을 대상 행에 채우고 응답으로 화면을 맞춘다", async () => {
+    mockDataset([
+      ["a", "1"],
+      ["b", "2"],
+      ["c", "3"],
+    ]);
+    let filled: unknown = null;
+    server.use(
+      http.post(`${API_BASE}/datasets/1/cells/fill`, async ({ request }) => {
+        filled = await request.json();
+        return HttpResponse.json({
+          code: "OK",
+          data: [
+            { id: 101, rowIndex: 1, cells: ["a", "2"] },
+            { id: 102, rowIndex: 2, cells: ["a", "3"] },
+          ],
+        });
+      }),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const src = (await screen.findByText("a")).parentElement as HTMLElement; // (0,0)
+    fireEvent.pointerDown(src, { button: 0 }); // 선택
+
+    const handle = await screen.findByLabelText("채우기 핸들");
+    fireEvent.pointerDown(handle);
+    // 3행(rowIndex 2)까지 끈다.
+    fireEvent.pointerEnter(screen.getByText("c").parentElement as HTMLElement);
+    fireEvent.pointerUp(window);
+
+    await waitFor(() =>
+      expect(filled).toEqual({
+        cols: ["c0"],
+        srcR0: 0,
+        srcR1: 0,
+        dstR0: 1,
+        dstR1: 2,
+      }),
+    );
+    // 응답 행들이 반영돼 c0가 세 행 모두 "a"가 된다("b"·"c"는 사라진다).
+    await waitFor(() =>
+      expect(screen.getAllByText("a").length).toBeGreaterThanOrEqual(3),
+    );
+    expect(screen.queryByText("b")).not.toBeInTheDocument();
+    expect(screen.queryByText("c")).not.toBeInTheDocument();
+  });
+
+  it("채우기 핸들을 위로도 끌 수 있다", async () => {
+    mockDataset([
+      ["a", "1"],
+      ["b", "2"],
+      ["c", "3"],
+    ]);
+    let filled: unknown = null;
+    server.use(
+      http.post(`${API_BASE}/datasets/1/cells/fill`, async ({ request }) => {
+        filled = await request.json();
+        return HttpResponse.json({ code: "OK", data: [] });
+      }),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const src = (await screen.findByText("c")).parentElement as HTMLElement; // (2,0)
+    fireEvent.pointerDown(src, { button: 0 });
+
+    const handle = await screen.findByLabelText("채우기 핸들");
+    fireEvent.pointerDown(handle);
+    fireEvent.pointerEnter(screen.getByText("a").parentElement as HTMLElement); // 위로 1행
+    fireEvent.pointerUp(window);
+
+    await waitFor(() =>
+      expect(filled).toEqual({
+        cols: ["c0"],
+        srcR0: 2,
+        srcR1: 2,
+        dstR0: 0,
+        dstR1: 1,
+      }),
+    );
+  });
+
+  it("채우기 핸들을 소스 안에서 놓으면(대상 없음) 채우지 않는다", async () => {
+    mockDataset([
+      ["a", "1"],
+      ["b", "2"],
+    ]);
+    let called = false;
+    server.use(
+      http.post(`${API_BASE}/datasets/1/cells/fill`, () => {
+        called = true;
+        return HttpResponse.json({ code: "OK", data: [] });
+      }),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const src = (await screen.findByText("a")).parentElement as HTMLElement;
+    fireEvent.pointerDown(src, { button: 0 });
+    const handle = await screen.findByLabelText("채우기 핸들");
+    fireEvent.pointerDown(handle);
+    fireEvent.pointerUp(window); // 대상 행으로 안 끌고 바로 놓음
+
+    await new Promise((r) => setTimeout(r, 30));
+    expect(called).toBe(false);
+  });
+
   it("우클릭 메뉴에서 배경색을 고르면 선택한 셀에 일괄 PUT한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let sentCells: unknown = null;

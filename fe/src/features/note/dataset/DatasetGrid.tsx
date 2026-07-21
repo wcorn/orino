@@ -33,6 +33,7 @@ import {
   deleteCellMerge,
   deleteDatasetColumn,
   deleteDatasetRow,
+  fillCells,
   insertDatasetRow,
   MAX_COLUMN_WIDTH,
   type MergeSpan,
@@ -134,6 +135,11 @@ export function DatasetGrid({
   const [sel, setSel] = useState<Sel>(null);
   // 드래그 선택 중인 축(셀/행/열). 눌러서 끌 때만 값이 있고 window pointerup에서 해제한다.
   const selDrag = useRef<null | "cells" | "rows" | "cols">(null);
+  // 채우기 핸들 드래그 중인 대상 행(세로). null이면 채우기 중 아님. window pointerup에서 확정한다.
+  const [fillTo, setFillTo] = useState<number | null>(null);
+  const fillDragging = useRef(false);
+  // 최신 commitFill을 담아 둔다 — window pointerup(한 번만 등록)이 stale 클로저 없이 부른다.
+  const commitFillRef = useRef<() => void>(() => {});
 
   const colCount = meta?.columns.length ?? 0;
   const rowCount = meta?.rowCount ?? 0;
@@ -314,6 +320,8 @@ export function DatasetGrid({
   useEffect(() => {
     const up = () => {
       selDrag.current = null;
+      // 채우기 핸들 드래그였다면 확정한다(대상 없으면 조용히 끝냄).
+      if (fillDragging.current) commitFillRef.current();
     };
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -862,6 +870,78 @@ export function DatasetGrid({
     return false;
   };
 
+  /**
+   * 채우기 대상 행 범위(세로). 핸들을 소스 아래로 끌면 소스 다음 행부터, 위로 끌면 소스 앞
+   * 행까지. 소스 안이면 null(채울 게 없음).
+   */
+  const fillTargetRows = ((): { from: number; to: number } | null => {
+    if (fillTo === null || !selRect) return null;
+    if (fillTo > selRect.r1) return { from: selRect.r1 + 1, to: fillTo };
+    if (fillTo < selRect.r0) return { from: fillTo, to: selRect.r0 - 1 };
+    return null;
+  })();
+
+  /** 채우기 프리뷰(드래그로 정해진 대상)에 든 셀인지 — 소스 열 범위 안이고 대상 행 범위 안. */
+  const inFillTarget = (row: number, col: number): boolean =>
+    !!fillTargetRows &&
+    !!selRect &&
+    row >= fillTargetRows.from &&
+    row <= fillTargetRows.to &&
+    col >= selRect.c0 &&
+    col <= selRect.c1;
+
+  /** 채우기 핸들을 눌렀다 — 셀 위로 포인터가 지나가면 {@link updateFill}이 대상 행을 정한다. */
+  const startFill = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    fillDragging.current = true;
+    setFillTo(null);
+  };
+
+  /** 채우기 드래그 중 포인터가 지나간 행을 대상으로 잡는다. */
+  const updateFill = (row: number) => {
+    if (fillDragging.current) setFillTo(row);
+  };
+
+  /**
+   * 채우기 확정(핸들 놓음) — 소스 블록을 대상 행들에 채우고, 응답 행들로 캐시를 맞춘다.
+   * 채운 뒤 소스+대상을 감싸는 범위를 선택으로 남긴다(엑셀식). 대상이 없으면 조용히 끝낸다.
+   */
+  const commitFill = () => {
+    const target = fillTargetRows;
+    fillDragging.current = false;
+    setFillTo(null);
+    if (!selRect || !target) return;
+    const cols: string[] = [];
+    for (let c = selRect.c0; c <= selRect.c1; c++)
+      cols.push(meta.columns[c].key);
+    const { r0, c0, c1 } = selRect;
+    fillCells(datasetId, {
+      cols,
+      srcR0: r0,
+      srcR1: selRect.r1,
+      dstR0: target.from,
+      dstR1: target.to,
+    })
+      .then((rows) => {
+        for (const row of rows) {
+          setRowLocal(row.rowIndex, row.cells);
+          setFormulasLocal(row.rowIndex, row.formulas ?? {});
+        }
+        setSel({
+          kind: "cells",
+          a: [Math.min(r0, target.from), c0],
+          b: [Math.max(selRect.r1, target.to), c1],
+        });
+      })
+      .catch((e) => {
+        const message = serverMessage(e);
+        if (message) toast(message, "error");
+      });
+  };
+  // window pointerup이 최신 commitFill을 부르도록 매 렌더 동기화한다.
+  commitFillRef.current = commitFill;
+
   /** 선택 범위의 셀 값을 모두 비운다(Delete/Backspace). 수식·값은 지우고 서식은 둔다. */
   const clearSelValues = () => {
     if (!selRect) return;
@@ -1325,7 +1405,11 @@ export function DatasetGrid({
                           if (e.button === 0)
                             startCellSelect(vi.index, c, e.shiftKey);
                         }}
-                        onPointerEnter={() => extendCellSelect(vi.index, c)}
+                        onPointerEnter={() => {
+                          // 채우기 드래그 중이면 이 행을 대상으로, 아니면 셀 범위 확장.
+                          if (fillDragging.current) updateFill(vi.index);
+                          else extendCellSelect(vi.index, c);
+                        }}
                         onDoubleClick={() => startEdit(vi.index, c)}
                         onContextMenu={(e) => openContextMenu(e, vi.index, c)}
                       >
@@ -1334,6 +1418,24 @@ export function DatasetGrid({
                         {inSel(vi.index, c) && (
                           <div className="bg-primary/15 pointer-events-none absolute inset-0 z-[5]" />
                         )}
+                        {/* 채우기 프리뷰 — 드래그로 정해진 대상 셀에 점선 테두리. */}
+                        {inFillTarget(vi.index, c) && (
+                          <div className="border-primary pointer-events-none absolute inset-0 z-[5] border border-dashed" />
+                        )}
+                        {/* 채우기 핸들 — 셀 선택의 우하단 모서리에 작은 사각. 세로로 끌어 채운다. */}
+                        {sel?.kind === "cells" &&
+                          !editing &&
+                          selRect &&
+                          vi.index === selRect.r1 &&
+                          c === selRect.c1 && (
+                            <div
+                              role="button"
+                              aria-label="채우기 핸들"
+                              title="드래그해 값·수식을 아래로 채우기"
+                              onPointerDown={startFill}
+                              className="border-card bg-primary absolute -right-[3px] -bottom-[3px] z-[7] size-1.5 cursor-crosshair touch-none border"
+                            />
+                          )}
                         {/* 열 너비 조절 — 셀 오른쪽 경계 드래그(제목 행이 없어 셀로 옮겼다).
                           셀 호버 시 나타난다. 가로 병합 앵커엔 경계가 모호해 달지 않는다. */}
                         {!anchor && (

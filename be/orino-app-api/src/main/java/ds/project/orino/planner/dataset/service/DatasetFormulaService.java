@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -357,6 +358,59 @@ public class DatasetFormulaService {
             propagateFrom(datasetId, row.getId(), colKey, seen, budget);
         }
         return filled;
+    }
+
+    /**
+     * 소스 블록을 대상 행들에 <b>세로로 타일링</b>해 채운다(엑셀 채우기 핸들). 소스 셀이 수식이면
+     * 저장형을 글자 그대로 옮긴다(D9: 같은 행 참조는 행마다 상대, 절대 참조는 핀 고정). 리터럴이면
+     * 값을 옮기고 대상의 기존 수식은 지운다.
+     *
+     * <p><b>전부 쓴 뒤 한 번만 전파한다</b>({@link #fillDownColumn}과 같은 이유) — 채우는 도중
+     * 열 집계가 반쯤 채워진 상태로 재계산돼 틀린 값이 나오지 않게.
+     *
+     * @param srcR0   소스 첫 행의 rowIndex(타일링 기준점)
+     * @param srcRows rowIndex 오름차순 소스 행들(선택 블록의 행)
+     * @param dstRows 채울 대상 행들(소스 위/아래로 인접, 소스와 겹치지 않음)
+     * @return 값이 바뀐(대상 + 전파) 행 id들
+     */
+    Set<Long> fillRange(Long datasetId, List<String> cols, int srcR0, List<DatasetRow> srcRows,
+                        List<DatasetRow> dstRows, List<DatasetColumn> columns) {
+        int h = srcRows.size();
+        // 1단계 — 전부 쓴다(아직 전파하지 않는다).
+        for (DatasetRow dst : dstRows) {
+            int offset = Math.floorMod(dst.getRowIndex() - srcR0, h);
+            DatasetRow src = srcRows.get(offset);
+            Map<String, String> srcCells = DatasetCells.parse(src.getCells());
+            for (String col : cols) {
+                DatasetFormula srcFormula =
+                        formulaRepository.findByRowIdAndColKey(src.getId(), col).orElse(null);
+                if (srcFormula != null) {
+                    writeFormula(datasetId, dst, col, srcFormula.getRaw(), columns);
+                } else {
+                    Map<String, String> cells = DatasetCells.parse(dst.getCells());
+                    cells.put(col, srcCells.getOrDefault(col, ""));
+                    dst.updateCells(DatasetCells.serialize(cells));
+                    removeIfAny(dst.getId(), col);
+                }
+            }
+        }
+        // 2단계 — 값이 다 확정된 뒤 한 번 전파한다. seen을 공유해 열 집계는 최종 값으로 한 번만.
+        Set<String> seen = new HashSet<>();
+        int budget = dstRows.size() * cols.size() + MAX_PROPAGATION;
+        for (DatasetRow dst : dstRows) {
+            for (String col : cols) {
+                propagateFrom(datasetId, dst.getId(), col, seen, budget);
+            }
+        }
+        // 영향 행 = 대상 + 전파로 바뀐 행.
+        Set<Long> affected = new LinkedHashSet<>();
+        for (DatasetRow dst : dstRows) {
+            affected.add(dst.getId());
+        }
+        for (String cell : seen) {
+            affected.add(rowIdOf(cell));
+        }
+        return affected;
     }
 
     /**
