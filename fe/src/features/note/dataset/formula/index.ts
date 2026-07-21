@@ -4,7 +4,7 @@
  */
 export type { FormulaContext, ValueSource } from "./context";
 export { FormulaSyntaxError } from "./context";
-export { evaluate, evaluateToCell } from "./evaluator";
+export { aggregate, evaluate, evaluateToCell } from "./evaluator";
 export { collectRefs, parseInput, parseStored } from "./parser";
 export type { FormulaValue } from "./value";
 export { asCell } from "./value";

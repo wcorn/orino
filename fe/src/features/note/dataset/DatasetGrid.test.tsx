@@ -2309,6 +2309,62 @@ describe("DatasetGrid", () => {
     );
   });
 
+  // ---------- 선택 범위 요약(표시 전용, #911) ----------
+
+  it("셀 범위를 선택하면 요약 바에 합계·평균·개수가 뜬다", async () => {
+    mockDataset([
+      ["10", "20"],
+      ["30", "40"],
+    ]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const a = (await screen.findByText("10")).parentElement as HTMLElement;
+    fireEvent.pointerDown(a, { button: 0 });
+    const b = screen.getByText("40").parentElement as HTMLElement;
+    fireEvent.pointerDown(b, { button: 0, shiftKey: true }); // (0,0)~(1,1)
+
+    const bar = await screen.findByLabelText("선택 요약");
+    expect(within(bar).getByText("합계 100")).toBeInTheDocument(); // 10+20+30+40
+    expect(within(bar).getByText("평균 25")).toBeInTheDocument();
+    expect(within(bar).getByText("개수 4")).toBeInTheDocument();
+  });
+
+  it("텍스트가 섞이면 숫자만 집계한다", async () => {
+    mockDataset([
+      ["10", "x"],
+      ["30", "20"],
+    ]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const a = (await screen.findByText("10")).parentElement as HTMLElement;
+    fireEvent.pointerDown(a, { button: 0 });
+    const b = screen.getByText("20").parentElement as HTMLElement;
+    fireEvent.pointerDown(b, { button: 0, shiftKey: true });
+
+    const bar = await screen.findByLabelText("선택 요약");
+    expect(within(bar).getByText("개수 3")).toBeInTheDocument(); // 10,30,20
+    expect(within(bar).getByText("합계 60")).toBeInTheDocument();
+  });
+
+  it("단일 셀 선택이면 요약 바가 안 뜬다", async () => {
+    mockDataset([["10", "20"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const a = (await screen.findByText("10")).parentElement as HTMLElement;
+    fireEvent.pointerDown(a, { button: 0 });
+    expect(screen.queryByLabelText("선택 요약")).not.toBeInTheDocument();
+  });
+
+  it("숫자가 없는 범위면 요약 바가 안 뜬다", async () => {
+    mockDataset([
+      ["a", "b"],
+      ["c", "d"],
+    ]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const a = (await screen.findByText("a")).parentElement as HTMLElement;
+    fireEvent.pointerDown(a, { button: 0 });
+    const b = screen.getByText("d").parentElement as HTMLElement;
+    fireEvent.pointerDown(b, { button: 0, shiftKey: true });
+    expect(screen.queryByLabelText("선택 요약")).not.toBeInTheDocument();
+  });
+
   it("우클릭 메뉴에서 배경색을 고르면 선택한 셀에 일괄 PUT한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let sentCells: unknown = null;

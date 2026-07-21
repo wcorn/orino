@@ -242,6 +242,28 @@ function ref(
 }
 
 /** 집계. 숫자가 아닌 칸·빈 칸은 무시. 열이 없으면 #REF!, 셀이 에러면 번진다. */
+/**
+ * 값 목록의 집계(SUM/AVERAGE/COUNT/MIN/MAX). 선택 범위 요약(표시 전용) 같은 데서 쓴다.
+ *
+ * <p><b>새 집계 구현이 아니라</b> 수식 평가와 같은 {@link agg}를 그대로 태운다 — 숫자만 세고,
+ * 에러는 전파하고, 빈·텍스트는 스킵하는 규칙이 `conformance.test.ts`로 BE와 교차검증된 그것과
+ * 정확히 같다. 덕분에 "SUM이 무엇인가"가 한 곳에만 산다(이중화 없음). AVERAGE는 엔진 AVG로 맞춘다.
+ */
+export function aggregate(
+  func: "SUM" | "AVERAGE" | "COUNT" | "MIN" | "MAX",
+  values: string[],
+): FormulaValue {
+  const source: ValueSource = {
+    sameRow: () => undefined,
+    absolute: () => undefined,
+    column: () => values,
+  };
+  return agg(
+    { type: "agg", func: func === "AVERAGE" ? "AVG" : func, colKeys: ["_"] },
+    source,
+  );
+}
+
 function agg(
   node: Extract<FormulaNode, { type: "agg" }>,
   src: ValueSource,
