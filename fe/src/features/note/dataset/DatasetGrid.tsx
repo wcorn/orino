@@ -49,6 +49,7 @@ import {
   updateDatasetRow,
 } from "./api/datasets";
 import { DATASET_CELLS_MIME } from "./cellClipboard";
+import { CrossRefPicker } from "./CrossRefPicker";
 import type { FormulaContext, ValueSource } from "./formula";
 import { aggregate, asCell, evaluateFormula } from "./formula";
 import { useDatasetMerges } from "./hooks/useDatasetMerges";
@@ -76,6 +77,11 @@ interface Props {
   onDeleteBlock?: () => void;
   /** 에디터에서 표 블록이 선택된 상태(NodeSelection)인지. 첫 셀 자동 선택 트리거. */
   blockSelected?: boolean;
+  /**
+   * 같은 노트의 다른 표들(자기 제외). 표간 참조 피커가 대상 표·열을 고르고, 저장 시 표 이름→id
+   * 맵(tableRefs)을 만드는 데 쓴다. 이름 없는 표는 참조할 수 없다(피커에서 제외).
+   */
+  siblingTables?: DatasetMeta[];
 }
 
 /**
@@ -87,6 +93,7 @@ export function DatasetGrid({
   datasetId,
   onDeleteBlock,
   blockSelected,
+  siblingTables,
 }: Props) {
   const queryClient = useQueryClient();
   const { data: meta, isLoading, isError, refetch } = useDatasetMeta(datasetId);
@@ -141,6 +148,8 @@ export function DatasetGrid({
   // 채우기 핸들 드래그 중인 대상 행(세로). null이면 채우기 중 아님. window pointerup에서 확정한다.
   const [fillTo, setFillTo] = useState<number | null>(null);
   const fillDragging = useRef(false);
+  // 표간 참조 피커 열림 여부(활성 셀 편집 중).
+  const [crossPickerOpen, setCrossPickerOpen] = useState(false);
   // 최신 commitFill을 담아 둔다 — window pointerup(한 번만 등록)이 stale 클로저 없이 부른다.
   const commitFillRef = useRef<() => void>(() => {});
 
@@ -155,6 +164,13 @@ export function DatasetGrid({
   const refreshSummaries = () => {
     if (summariesActive) void invalidateMeta();
   };
+  // 이름 있는 형제 표만 표간 참조 대상. 저장 땐 이름→id 맵을 함께 보내 BE가 {표!열}을 푼다.
+  const namedSiblings = (siblingTables ?? []).filter(
+    (t): t is DatasetMeta & { name: string } => !!t.name,
+  );
+  const tableRefs: Record<string, number> = Object.fromEntries(
+    namedSiblings.map((t) => [t.name, t.id]),
+  );
   // 행/열 구조가 바뀌면 병합의 행 번호가 밀리거나(행 삽입·삭제) 병합이 해제될 수 있어(열 삭제·순서변경)
   // 병합을 다시 받는다.
   const invalidateMerges = () =>
@@ -188,7 +204,12 @@ export function DatasetGrid({
   ) => {
     const version = (rowVersion.current.get(index) ?? 0) + 1;
     rowVersion.current.set(index, version);
-    updateDatasetRow(datasetId, index, cells)
+    updateDatasetRow(
+      datasetId,
+      index,
+      cells,
+      Object.keys(tableRefs).length ? tableRefs : undefined,
+    )
       .then((res) => {
         if (rowVersion.current.get(index) !== version) return;
         // 편집 행 + 전파로 값이 바뀐 교차 행(집계 등)을 서버 확정값으로 맞춘다. affected 행은
@@ -644,6 +665,24 @@ export function DatasetGrid({
     flushPendingEdit(false);
     pendingEdit.current = null;
     setEditing(null);
+  };
+
+  /**
+   * 표간 참조 토큰({표!열}행)을 활성 셀 편집값 끝에 붙인다(피커에서 호출). 편집을 살려 두고
+   * (blur는 피커로 향할 때 안 닫힌다) 이어서 타이핑할 수 있게 입력창에 포커스를 돌려준다.
+   */
+  const insertCrossRef = (token: string) => {
+    // 편집 중이면 그 셀, 아니면 활성 셀. 편집이 우선(피커는 편집 중에만 뜬다).
+    const cell =
+      editing ?? (activeCell && { row: activeCell[0], col: activeCell[1] });
+    if (!cell) return;
+    const { row, col } = cell;
+    const next = draft + token;
+    setEditing({ row, col });
+    setDraft(next);
+    pendingEdit.current = { row, col, value: next };
+    setCrossPickerOpen(false);
+    requestAnimationFrame(() => activeInputRef.current?.focus());
   };
 
   /** (row,col)이 앵커인 병합. 없으면 undefined. */
@@ -1316,7 +1355,13 @@ export function DatasetGrid({
                 500,
               );
             }}
-            onBlur={() => commitEdit()}
+            onBlur={(e) => {
+              // 피커로 포커스가 넘어갈 땐 편집을 닫지 않는다 — 피커를 쓰는 동안 편집이 살아
+              // 있어야 참조 토큰을 삽입할 수 있다.
+              const rt = e.relatedTarget as HTMLElement | null;
+              if (rt?.closest("[data-cross-picker]")) return;
+              commitEdit();
+            }}
             onKeyDown={(e) => onCellInputKeyDown(e, rowIndex, c)}
             // 편집 상태에서만 편집용 라벨을 붙인다(선택-만-한 상태는 편집이 아니므로 구분).
             aria-label={
@@ -1337,6 +1382,29 @@ export function DatasetGrid({
                 : undefined
             }
           />
+        )}
+        {/* 표간 참조 — 이름 있는 형제 표가 있을 때만. mousedown preventDefault로 입력창 blur(=커밋)
+          없이 피커만 연다. */}
+        {isActive && namedSiblings.length > 0 && (
+          <>
+            <button
+              type="button"
+              aria-label="다른 표 참조"
+              title="다른 표의 셀 참조"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setCrossPickerOpen(true)}
+              className="text-muted-foreground hover:text-foreground bg-card absolute top-0 right-0 z-[8] rounded-bl px-1 text-xs leading-5"
+            >
+              ↗
+            </button>
+            {crossPickerOpen && (
+              <CrossRefPicker
+                tables={namedSiblings}
+                onInsert={insertCrossRef}
+                onClose={() => setCrossPickerOpen(false)}
+              />
+            )}
+          </>
         )}
       </>
     );

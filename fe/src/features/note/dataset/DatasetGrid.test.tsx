@@ -2425,6 +2425,83 @@ describe("DatasetGrid", () => {
     await waitFor(() => expect(patched).toEqual({ name: "도쿄" }));
   });
 
+  // ---------- 표간 참조 피커(#918) ----------
+
+  const summarySibling = {
+    id: 2,
+    name: "요약",
+    columns: [{ key: "c0", label: "환율" }],
+    rowCount: 1,
+  };
+
+  it("피커로 다른 표 셀 참조를 삽입하고 저장 시 tableRefs를 함께 보낸다", async () => {
+    mockDataset([["a", "b"]]);
+    let body: unknown = null;
+    server.use(
+      http.patch(`${API_BASE}/datasets/1/rows/:i`, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            edited: { id: 100, rowIndex: 0, cells: ["1300", "b"] },
+            affected: [],
+          },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(
+      <DatasetGrid datasetId={1} siblingTables={[summarySibling]} />,
+    );
+
+    await user.dblClick(await screen.findByText("a"));
+    const input = await screen.findByLabelText("셀 1행 1열");
+    fireEvent.change(input, { target: { value: "=" } });
+
+    // 피커 열기 → 기본값(요약·환율·1행) 그대로 삽입.
+    fireEvent.click(screen.getByLabelText("다른 표 참조"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "표간 참조 삽입",
+    });
+    fireEvent.click(within(dialog).getByText("삽입"));
+
+    expect(screen.getByLabelText("셀 1행 1열")).toHaveValue("={요약!환율}1");
+
+    fireEvent.keyDown(screen.getByLabelText("셀 1행 1열"), { key: "Enter" });
+    await waitFor(() =>
+      expect(body).toEqual({
+        cells: ["={요약!환율}1", "b"],
+        tableRefs: { 요약: 2 },
+      }),
+    );
+  });
+
+  it("이름 있는 형제 표가 없으면 표간 참조 버튼이 안 뜬다", async () => {
+    mockDataset([["a", "b"]]);
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await user.dblClick(await screen.findByText("a"));
+    await screen.findByLabelText("셀 1행 1열");
+    expect(screen.queryByLabelText("다른 표 참조")).not.toBeInTheDocument();
+  });
+
+  it("이름 없는 형제 표는 참조 대상에서 제외된다", async () => {
+    mockDataset([["a", "b"]]);
+    const user = userEvent.setup();
+    renderWithRouter(
+      <DatasetGrid
+        datasetId={1}
+        siblingTables={[
+          { id: 2, columns: [{ key: "c0", label: "환율" }], rowCount: 1 },
+        ]}
+      />,
+    );
+    await user.dblClick(await screen.findByText("a"));
+    await screen.findByLabelText("셀 1행 1열");
+    // 무명 표뿐이라 참조 버튼이 없다.
+    expect(screen.queryByLabelText("다른 표 참조")).not.toBeInTheDocument();
+  });
+
   it("우클릭 메뉴에서 배경색을 고르면 선택한 셀에 일괄 PUT한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let sentCells: unknown = null;

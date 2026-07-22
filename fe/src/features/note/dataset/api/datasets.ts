@@ -272,10 +272,12 @@ export async function updateDatasetRow(
   datasetId: number,
   rowIndex: number,
   cells: string[],
+  // 표간 참조({표!열}) 이름 해석 맵: 표 이름 → 대상 datasetId. 노트 안 표는 FE만 알아서 보낸다.
+  tableRefs?: Record<string, number>,
 ): Promise<UpdateRowResult> {
   const { data } = await client.patch<ApiEnvelope<UpdateRowResult>>(
     `/datasets/${datasetId}/rows/${rowIndex}`,
-    { cells },
+    { cells, tableRefs },
   );
   return data.data;
 }
