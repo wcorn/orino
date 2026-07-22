@@ -641,6 +641,7 @@ describe("DatasetGrid", () => {
 
     // 헤더가 없어 열 삭제는 셀 우클릭 메뉴로 한다 — c1(점수) 값 "92" 셀을 우클릭.
     fireEvent.contextMenu(screen.getByText("92"));
+    await user.click(await screen.findByRole("menuitem", { name: "삭제" }));
     await user.click(await screen.findByRole("menuitem", { name: "열 삭제" }));
     // 확인 전엔 요청이 나가지 않는다.
     expect(deletedKey).toBeNull();
@@ -1162,6 +1163,7 @@ describe("DatasetGrid", () => {
     await screen.findByText("네트워크");
     // 인라인 삭제 버튼을 없앴으므로 행 삭제는 셀 우클릭 메뉴로 한다.
     fireEvent.contextMenu(screen.getByText("네트워크"));
+    await user.click(await screen.findByRole("menuitem", { name: "삭제" }));
     await user.click(await screen.findByRole("menuitem", { name: "행 삭제" }));
 
     await waitFor(() => expect(deleted).toBe(0));
@@ -1176,6 +1178,7 @@ describe("DatasetGrid", () => {
     );
 
     fireEvent.contextMenu(await screen.findByText("네트워크"));
+    await user.click(await screen.findByRole("menuitem", { name: "삭제" }));
     await user.click(await screen.findByRole("menuitem", { name: "표 삭제" }));
 
     // 표 삭제는 키보드 단축키 대신 이 메뉴로만 — 블록 제거 콜백(노드 삭제)을 부른다.
@@ -1184,9 +1187,10 @@ describe("DatasetGrid", () => {
 
   it("onDeleteBlock이 없으면 '표 삭제' 항목을 보이지 않는다", async () => {
     mockDataset([["네트워크", "92"]]);
+    const user = userEvent.setup();
     renderWithRouter(<DatasetGrid datasetId={1} />);
     fireEvent.contextMenu(await screen.findByText("네트워크"));
-    await screen.findByRole("menu", { name: "셀 메뉴" });
+    await user.click(await screen.findByRole("menuitem", { name: "삭제" }));
     expect(
       screen.queryByRole("menuitem", { name: "표 삭제" }),
     ).not.toBeInTheDocument();
@@ -1532,7 +1536,8 @@ describe("DatasetGrid", () => {
 
     fireEvent.contextMenu(cell);
     const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
-    await user.click(within(menu).getByLabelText("정렬 가운데"));
+    await user.click(within(menu).getByRole("menuitem", { name: "서식" }));
+    await user.click(await screen.findByLabelText("정렬 가운데"));
 
     // 배경색(green)은 보존하고 정렬만 얹어 일괄 엔드포인트로 보낸다.
     await waitFor(() =>
@@ -1586,7 +1591,8 @@ describe("DatasetGrid", () => {
 
     fireEvent.contextMenu(cell);
     const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
-    await user.click(within(menu).getByLabelText("세로 정렬 가운데"));
+    await user.click(within(menu).getByRole("menuitem", { name: "서식" }));
+    await user.click(await screen.findByLabelText("세로 정렬 가운데"));
 
     // 배경색(green)·가로 정렬(right)은 보존하고 세로 정렬만 얹어 보낸다.
     await waitFor(() =>
@@ -1839,6 +1845,7 @@ describe("DatasetGrid", () => {
     await screen.findByText("네트워크");
 
     fireEvent.contextMenu(screen.getByText("네트워크")); // 0행
+    await user.click(await screen.findByRole("menuitem", { name: "삽입" }));
     await user.click(screen.getByRole("menuitem", { name: "아래에 행 삽입" }));
 
     // 0행 아래 = atIndex 1.
@@ -1870,6 +1877,7 @@ describe("DatasetGrid", () => {
     await screen.findByText("네트워크");
 
     fireEvent.contextMenu(screen.getByText("네트워크")); // c0
+    await user.click(await screen.findByRole("menuitem", { name: "삽입" }));
     await user.click(
       screen.getByRole("menuitem", { name: "오른쪽에 열 삽입" }),
     );
@@ -1922,11 +1930,12 @@ describe("DatasetGrid", () => {
     fireEvent.contextMenu(screen.getByText("네트워크"));
     const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
     expect(within(menu).getByText("1행")).toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "삽입" }));
     expect(
-      within(menu).getByRole("menuitem", { name: "위에 행 삽입" }),
+      await screen.findByRole("menuitem", { name: "위에 행 삽입" }),
     ).toBeInTheDocument();
     expect(
-      within(menu).getByRole("menuitem", { name: "아래에 행 삽입" }),
+      screen.getByRole("menuitem", { name: "아래에 행 삽입" }),
     ).toBeInTheDocument();
   });
 
@@ -1939,8 +1948,9 @@ describe("DatasetGrid", () => {
     fireEvent.contextMenu(screen.getByText("네트워크"));
     const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
     expect(within(menu).getByText("1열")).toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "삽입" }));
     expect(
-      within(menu).getByRole("menuitem", { name: "왼쪽에 열 삽입" }),
+      await screen.findByRole("menuitem", { name: "왼쪽에 열 삽입" }),
     ).toBeInTheDocument();
   });
 
@@ -1953,6 +1963,29 @@ describe("DatasetGrid", () => {
     fireEvent.contextMenu(screen.getByText("네트워크"));
     const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
     expect(within(menu).getByText("표 전체")).toBeInTheDocument();
+  });
+
+  it("우클릭 메뉴가 하위 메뉴로 정리된다 — 펼쳐야 하위 항목이 나온다", async () => {
+    mockDataset([["a", "b"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const cell = (await screen.findByText("a")).parentElement as HTMLElement;
+    fireEvent.pointerDown(cell, { button: 0 });
+    fireEvent.contextMenu(cell);
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+
+    // 최상위엔 하위 메뉴 부모(서식·삽입·삭제)가 있고, 펼치기 전엔 하위 항목이 숨어 있다.
+    expect(within(menu).getByRole("menuitem", { name: "서식" })).toBeVisible();
+    expect(within(menu).getByRole("menuitem", { name: "삽입" })).toBeVisible();
+    expect(within(menu).getByRole("menuitem", { name: "삭제" })).toBeVisible();
+    expect(
+      screen.queryByRole("menuitem", { name: "행 삭제" }),
+    ).not.toBeInTheDocument();
+
+    // 삭제를 펼치면 하위 항목이 나온다.
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "삭제" }));
+    expect(
+      await screen.findByRole("menuitem", { name: "행 삭제" }),
+    ).toBeInTheDocument();
   });
 
   it("방향키로 활성 셀을 상하좌우로 옮긴다", async () => {
@@ -2241,7 +2274,8 @@ describe("DatasetGrid", () => {
     fireEvent.pointerDown(cell, { button: 0 });
     fireEvent.contextMenu(cell);
     const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "요약 합계" }));
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "열" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "요약 합계" }));
 
     await waitFor(() =>
       expect(patched).toEqual({ key: "c1", body: { summary: "SUM" } }),
@@ -2551,7 +2585,8 @@ describe("DatasetGrid", () => {
     fireEvent.pointerDown(cell, { button: 0 });
     fireEvent.contextMenu(cell);
     const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "서식 KRW" }));
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "열" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "서식 KRW" }));
 
     await waitFor(() =>
       expect(patched).toEqual({ key: "c0", body: { format: "KRW" } }),
@@ -2611,8 +2646,9 @@ describe("DatasetGrid", () => {
     fireEvent.pointerDown(cell, { button: 0 });
     fireEvent.contextMenu(cell);
     const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "열" }));
     fireEvent.click(
-      within(menu).getByRole("menuitem", { name: "허용값 목록…" }),
+      await screen.findByRole("menuitem", { name: "허용값 목록…" }),
     );
 
     const dialog = await screen.findByRole("dialog", {
@@ -2655,7 +2691,8 @@ describe("DatasetGrid", () => {
 
     fireEvent.contextMenu(cell);
     const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
-    await user.click(within(menu).getByLabelText("배경색 green"));
+    await user.click(within(menu).getByRole("menuitem", { name: "서식" }));
+    await user.click(await screen.findByLabelText("배경색 green"));
 
     // 선택 셀 하나를 일괄 엔드포인트로 보낸다(정렬은 기존값 없음 → null).
     await waitFor(() =>
@@ -2689,7 +2726,8 @@ describe("DatasetGrid", () => {
 
     fireEvent.contextMenu(a);
     const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
-    await user.click(within(menu).getByLabelText("배경색 blue"));
+    await user.click(within(menu).getByRole("menuitem", { name: "서식" }));
+    await user.click(await screen.findByLabelText("배경색 blue"));
 
     // 4칸(2×2)을 한 요청으로 보낸다.
     await waitFor(() => expect(requestCount).toBe(1));

@@ -7,7 +7,10 @@ import {
   AlignVerticalJustifyCenter,
   AlignVerticalJustifyEnd,
   AlignVerticalJustifyStart,
+  ChevronRight,
+  Columns3,
   Eraser,
+  Paintbrush,
   Plus,
   TableCellsMerge,
   TableCellsSplit,
@@ -146,6 +149,8 @@ export function DatasetGrid({
     row: number;
     col: number;
   } | null>(null);
+  // 지금 펼쳐진 우클릭 하위 메뉴(라벨). 한 번에 하나만 — 메뉴가 열릴 때 초기화한다.
+  const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
   // 선택 범위(셀/행/열/표). 클릭·드래그·핸들로 정하고, 선택 위 플로팅 툴바가 이걸 본다.
   const [sel, setSel] = useState<Sel>(null);
   // 드래그 선택 중인 축(셀/행/열). 눌러서 끌 때만 값이 있고 window pointerup에서 해제한다.
@@ -776,6 +781,7 @@ export function DatasetGrid({
       selDrag.current = null;
       setSel({ kind: "cells", a: [row, col], b: [row, col] });
     }
+    setOpenSubmenu(null);
     setCtxMenu({ x: event.clientX, y: event.clientY, row, col });
   };
 
@@ -1893,171 +1899,186 @@ export function DatasetGrid({
                   <div className="text-muted-foreground px-2 py-1 text-xs">
                     {scopeLabel}
                   </div>
-                  {/* 배경색 — 스와치 + 지우기 */}
-                  <div className="flex items-center gap-1 px-2 py-1">
-                    {CELL_BG_TOKENS.map((token) => (
+                  <SubMenu
+                    label="서식"
+                    icon={<Paintbrush className="size-3.5" />}
+                    open={openSubmenu === "서식"}
+                    onOpen={() => setOpenSubmenu("서식")}
+                  >
+                    {/* 배경색 — 스와치 + 지우기 */}
+                    <div className="flex items-center gap-1 px-2 py-1">
+                      {CELL_BG_TOKENS.map((token) => (
+                        <button
+                          key={token}
+                          type="button"
+                          aria-label={`배경색 ${token}`}
+                          onClick={run(() => applyBgSel(token))}
+                          className="border-border size-5 rounded-full border"
+                          style={{ background: `var(--cell-bg-${token})` }}
+                        />
+                      ))}
                       <button
-                        key={token}
                         type="button"
-                        aria-label={`배경색 ${token}`}
-                        onClick={run(() => applyBgSel(token))}
-                        className="border-border size-5 rounded-full border"
-                        style={{ background: `var(--cell-bg-${token})` }}
-                      />
-                    ))}
-                    <button
-                      type="button"
-                      aria-label="배경색 지우기"
-                      onClick={run(() => applyBgSel(null))}
-                      className="text-muted-foreground hover:text-foreground border-border flex size-5 items-center justify-center rounded-full border"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </div>
-                  {/* 정렬 + 서식 지우기 */}
-                  <div className="flex items-center gap-1 px-2 py-1">
-                    {ALIGN_ORDER.map((value) => {
-                      const Icon = ALIGN_ICONS[value];
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          aria-label={`정렬 ${ALIGN_LABELS[value]}`}
-                          onClick={run(() => applyAlignSel(value))}
-                          className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-6 items-center justify-center rounded"
-                        >
-                          <Icon className="size-4" />
-                        </button>
-                      );
-                    })}
-                    <span className="bg-border mx-0.5 h-4 w-px" />
-                    {VALIGN_ORDER.map((value) => {
-                      const Icon = VALIGN_ICONS[value];
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          aria-label={`세로 정렬 ${VALIGN_LABELS[value]}`}
-                          onClick={run(() => applyValignSel(value))}
-                          className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-6 items-center justify-center rounded"
-                        >
-                          <Icon className="size-4" />
-                        </button>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      aria-label="서식 지우기"
-                      title="배경·정렬·세로정렬 초기화"
-                      onClick={run(clearFormatSel)}
-                      className="text-muted-foreground hover:bg-accent hover:text-foreground ml-auto flex size-6 items-center justify-center rounded"
-                    >
-                      <Eraser className="size-4" />
-                    </button>
-                  </div>
-                  {divider}
-                  {/* 열 요약 — 한 열만 걸쳤을 때. 그 열 푸터에 SUM/AVG/… 를 걸거나 지운다. */}
-                  {rect.c0 === rect.c1 && (
-                    <>
-                      <div className="text-muted-foreground px-2 pt-1 text-xs">
-                        열 요약
-                      </div>
-                      <div className="flex items-center gap-1 px-2 py-1">
-                        {SUMMARY_FNS.map((fn) => (
+                        aria-label="배경색 지우기"
+                        onClick={run(() => applyBgSel(null))}
+                        className="text-muted-foreground hover:text-foreground border-border flex size-5 items-center justify-center rounded-full border"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </div>
+                    {/* 정렬 + 서식 지우기 */}
+                    <div className="flex items-center gap-1 px-2 py-1">
+                      {ALIGN_ORDER.map((value) => {
+                        const Icon = ALIGN_ICONS[value];
+                        return (
                           <button
-                            key={fn}
+                            key={value}
                             type="button"
-                            role="menuitem"
-                            aria-label={`요약 ${SUMMARY_LABELS[fn]}`}
-                            onClick={run(() =>
-                              summaryMut.mutate({
-                                key: meta.columns[rect.c0].key,
-                                fn,
-                              }),
-                            )}
-                            className={cn(
-                              "hover:bg-accent rounded px-1.5 py-1 text-xs",
-                              meta.columns[rect.c0].summary === fn &&
-                                "bg-accent text-foreground",
-                            )}
+                            aria-label={`정렬 ${ALIGN_LABELS[value]}`}
+                            onClick={run(() => applyAlignSel(value))}
+                            className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-6 items-center justify-center rounded"
                           >
-                            {SUMMARY_LABELS[fn]}
+                            <Icon className="size-4" />
                           </button>
-                        ))}
-                        <button
-                          type="button"
-                          aria-label="요약 지우기"
-                          onClick={run(() =>
-                            summaryMut.mutate({
-                              key: meta.columns[rect.c0].key,
-                              fn: null,
-                            }),
-                          )}
-                          className="text-muted-foreground hover:text-foreground flex size-6 items-center justify-center rounded"
-                        >
-                          <X className="size-3" />
-                        </button>
-                      </div>
-                      {divider}
-                    </>
-                  )}
-                  {/* 숫자 서식 — 한 열만 걸쳤을 때. 표시 전용(값·수식은 raw 그대로). */}
-                  {rect.c0 === rect.c1 && (
-                    <>
-                      <div className="text-muted-foreground px-2 pt-1 text-xs">
-                        숫자 서식
-                      </div>
-                      <div className="flex items-center gap-1 px-2 py-1">
-                        {NUMBER_FORMATS.map((fmt) => (
+                        );
+                      })}
+                      <span className="bg-border mx-0.5 h-4 w-px" />
+                      {VALIGN_ORDER.map((value) => {
+                        const Icon = VALIGN_ICONS[value];
+                        return (
                           <button
-                            key={fmt}
+                            key={value}
                             type="button"
-                            role="menuitem"
-                            aria-label={`서식 ${fmt}`}
-                            onClick={run(() =>
-                              formatMut.mutate({
-                                key: meta.columns[rect.c0].key,
-                                format: fmt,
-                              }),
-                            )}
-                            className={cn(
-                              "hover:bg-accent rounded px-1.5 py-1 text-xs",
-                              meta.columns[rect.c0].format === fmt &&
-                                "bg-accent text-foreground",
-                            )}
+                            aria-label={`세로 정렬 ${VALIGN_LABELS[value]}`}
+                            onClick={run(() => applyValignSel(value))}
+                            className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-6 items-center justify-center rounded"
                           >
-                            {FORMAT_LABELS[fmt]}
+                            <Icon className="size-4" />
                           </button>
-                        ))}
-                        <button
-                          type="button"
-                          aria-label="서식 지우기"
-                          onClick={run(() =>
-                            formatMut.mutate({
-                              key: meta.columns[rect.c0].key,
-                              format: null,
-                            }),
-                          )}
-                          className="text-muted-foreground hover:text-foreground flex size-6 items-center justify-center rounded"
-                        >
-                          <X className="size-3" />
-                        </button>
-                      </div>
-                      {divider}
-                    </>
-                  )}
-                  {/* 허용값 목록(enum) — 한 열만 걸쳤을 때. 셀 편집 드롭다운 제안(느슨). */}
+                        );
+                      })}
+                      <button
+                        type="button"
+                        aria-label="서식 지우기"
+                        title="배경·정렬·세로정렬 초기화"
+                        onClick={run(clearFormatSel)}
+                        className="text-muted-foreground hover:bg-accent hover:text-foreground ml-auto flex size-6 items-center justify-center rounded"
+                      >
+                        <Eraser className="size-4" />
+                      </button>
+                    </div>
+                  </SubMenu>
                   {rect.c0 === rect.c1 && (
-                    <>
-                      {item("허용값 목록…", () =>
-                        setOptionsEditor({
-                          key: meta.columns[rect.c0].key,
-                          initial: meta.columns[rect.c0].options ?? [],
-                        }),
+                    <SubMenu
+                      label="열"
+                      icon={<Columns3 className="size-3.5" />}
+                      open={openSubmenu === "열"}
+                      onOpen={() => setOpenSubmenu("열")}
+                    >
+                      {/* 열 요약 — 한 열만 걸쳤을 때. 그 열 푸터에 SUM/AVG/… 를 걸거나 지운다. */}
+                      {rect.c0 === rect.c1 && (
+                        <>
+                          <div className="text-muted-foreground px-2 pt-1 text-xs">
+                            열 요약
+                          </div>
+                          <div className="flex items-center gap-1 px-2 py-1">
+                            {SUMMARY_FNS.map((fn) => (
+                              <button
+                                key={fn}
+                                type="button"
+                                role="menuitem"
+                                aria-label={`요약 ${SUMMARY_LABELS[fn]}`}
+                                onClick={run(() =>
+                                  summaryMut.mutate({
+                                    key: meta.columns[rect.c0].key,
+                                    fn,
+                                  }),
+                                )}
+                                className={cn(
+                                  "hover:bg-accent rounded px-1.5 py-1 text-xs",
+                                  meta.columns[rect.c0].summary === fn &&
+                                    "bg-accent text-foreground",
+                                )}
+                              >
+                                {SUMMARY_LABELS[fn]}
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              aria-label="요약 지우기"
+                              onClick={run(() =>
+                                summaryMut.mutate({
+                                  key: meta.columns[rect.c0].key,
+                                  fn: null,
+                                }),
+                              )}
+                              className="text-muted-foreground hover:text-foreground flex size-6 items-center justify-center rounded"
+                            >
+                              <X className="size-3" />
+                            </button>
+                          </div>
+                          {divider}
+                        </>
                       )}
-                      {divider}
-                    </>
+                      {/* 숫자 서식 — 한 열만 걸쳤을 때. 표시 전용(값·수식은 raw 그대로). */}
+                      {rect.c0 === rect.c1 && (
+                        <>
+                          <div className="text-muted-foreground px-2 pt-1 text-xs">
+                            숫자 서식
+                          </div>
+                          <div className="flex items-center gap-1 px-2 py-1">
+                            {NUMBER_FORMATS.map((fmt) => (
+                              <button
+                                key={fmt}
+                                type="button"
+                                role="menuitem"
+                                aria-label={`서식 ${fmt}`}
+                                onClick={run(() =>
+                                  formatMut.mutate({
+                                    key: meta.columns[rect.c0].key,
+                                    format: fmt,
+                                  }),
+                                )}
+                                className={cn(
+                                  "hover:bg-accent rounded px-1.5 py-1 text-xs",
+                                  meta.columns[rect.c0].format === fmt &&
+                                    "bg-accent text-foreground",
+                                )}
+                              >
+                                {FORMAT_LABELS[fmt]}
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              aria-label="서식 지우기"
+                              onClick={run(() =>
+                                formatMut.mutate({
+                                  key: meta.columns[rect.c0].key,
+                                  format: null,
+                                }),
+                              )}
+                              className="text-muted-foreground hover:text-foreground flex size-6 items-center justify-center rounded"
+                            >
+                              <X className="size-3" />
+                            </button>
+                          </div>
+                          {divider}
+                        </>
+                      )}
+                      {/* 허용값 목록(enum) — 한 열만 걸쳤을 때. 셀 편집 드롭다운 제안(느슨). */}
+                      {rect.c0 === rect.c1 && (
+                        <>
+                          {item("허용값 목록…", () =>
+                            setOptionsEditor({
+                              key: meta.columns[rect.c0].key,
+                              initial: meta.columns[rect.c0].options ?? [],
+                            }),
+                          )}
+                        </>
+                      )}
+                    </SubMenu>
                   )}
+                  {divider}
                   {/* 병합 — 셀 범위(2칸+)는 통합 병합, 단일 셀은 방향 병합·해제 */}
                   {kind === "cells" &&
                     area > 1 &&
@@ -2080,52 +2101,67 @@ export function DatasetGrid({
                       icon: <TableCellsSplit className="size-3.5" />,
                     })}
                   {showMergeSection && divider}
-                  {/* 행/열 삽입 + 너비 초기화 */}
-                  {item("위에 행 삽입", () => addRow(rect.r0), {
-                    icon: <Plus className="size-3.5" />,
-                  })}
-                  {item("아래에 행 삽입", () => addRow(rect.r1 + 1), {
-                    icon: <Plus className="size-3.5" />,
-                  })}
-                  {item("왼쪽에 열 삽입", () => addColumn(rect.c0), {
-                    icon: <Plus className="size-3.5" />,
-                  })}
-                  {item("오른쪽에 열 삽입", () => addColumn(rect.c1 + 1), {
-                    icon: <Plus className="size-3.5" />,
-                  })}
-                  {item("열 너비 초기화", () => {
-                    for (let c = rect.c0; c <= rect.c1; c++)
-                      resetColWidthMut.mutate(meta.columns[c].key);
-                  })}
+                  <SubMenu
+                    label="삽입"
+                    icon={<Plus className="size-3.5" />}
+                    open={openSubmenu === "삽입"}
+                    onOpen={() => setOpenSubmenu("삽입")}
+                  >
+                    {/* 행/열 삽입 + 너비 초기화 */}
+                    {item("위에 행 삽입", () => addRow(rect.r0), {
+                      icon: <Plus className="size-3.5" />,
+                    })}
+                    {item("아래에 행 삽입", () => addRow(rect.r1 + 1), {
+                      icon: <Plus className="size-3.5" />,
+                    })}
+                    {item("왼쪽에 열 삽입", () => addColumn(rect.c0), {
+                      icon: <Plus className="size-3.5" />,
+                    })}
+                    {item("오른쪽에 열 삽입", () => addColumn(rect.c1 + 1), {
+                      icon: <Plus className="size-3.5" />,
+                    })}
+                    {item("열 너비 초기화", () => {
+                      for (let c = rect.c0; c <= rect.c1; c++)
+                        resetColWidthMut.mutate(meta.columns[c].key);
+                    })}
+                  </SubMenu>
                   {divider}
                   {/* 내용 지우기(값만) */}
                   {item("내용 지우기", clearSelValues, {
                     icon: <Eraser className="size-3.5" />,
                   })}
                   {divider}
-                  {/* 삭제 */}
-                  {item("행 삭제", () => void deleteRowsSel(), {
-                    icon: <Trash2 className="size-3.5" />,
-                    destructive: true,
-                  })}
-                  {colCount > 1 &&
-                    item(
-                      "열 삭제",
-                      () => {
-                        // 한 열이면 데이터 손실 확인 다이얼로그, 여러 열이면 바로 지운다.
-                        if (colN === 1)
-                          setPendingColDelete(meta.columns[rect.c0].key);
-                        else void deleteColsSel();
-                      },
-                      { icon: <X className="size-3.5" />, destructive: true },
-                    )}
-                  {/* 표 전체 삭제 — 키보드 단축키를 없앤 대신 유일한 표 삭제 경로.
-                    블록을 제거하면 노트가 dataset 정리 확인 다이얼로그를 띄운다. */}
-                  {onDeleteBlock &&
-                    item("표 삭제", () => onDeleteBlock(), {
+                  <SubMenu
+                    label="삭제"
+                    icon={<Trash2 className="size-3.5" />}
+                    destructive
+                    open={openSubmenu === "삭제"}
+                    onOpen={() => setOpenSubmenu("삭제")}
+                  >
+                    {/* 삭제 */}
+                    {item("행 삭제", () => void deleteRowsSel(), {
                       icon: <Trash2 className="size-3.5" />,
                       destructive: true,
                     })}
+                    {colCount > 1 &&
+                      item(
+                        "열 삭제",
+                        () => {
+                          // 한 열이면 데이터 손실 확인 다이얼로그, 여러 열이면 바로 지운다.
+                          if (colN === 1)
+                            setPendingColDelete(meta.columns[rect.c0].key);
+                          else void deleteColsSel();
+                        },
+                        { icon: <X className="size-3.5" />, destructive: true },
+                      )}
+                    {/* 표 전체 삭제 — 키보드 단축키를 없앤 대신 유일한 표 삭제 경로.
+                    블록을 제거하면 노트가 dataset 정리 확인 다이얼로그를 띄운다. */}
+                    {onDeleteBlock &&
+                      item("표 삭제", () => onDeleteBlock(), {
+                        icon: <Trash2 className="size-3.5" />,
+                        destructive: true,
+                      })}
+                  </SubMenu>
                 </div>
               </>
             );
@@ -2154,6 +2190,57 @@ export function DatasetGrid({
       >
         <Plus className="size-3.5" />
       </button>
+    </div>
+  );
+}
+
+/**
+ * 우클릭 메뉴의 하위 메뉴(flyout). 호버하면 오른쪽으로 펼쳐진다 — 항목이 많아진 메뉴의 깊이를
+ * 늘려 최상위를 짧게 유지한다. 자식 항목을 누르면 run()이 전체 메뉴를 닫는다.
+ */
+function SubMenu({
+  label,
+  icon,
+  destructive,
+  open,
+  onOpen,
+  children,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  destructive?: boolean;
+  open: boolean;
+  onOpen: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative" onMouseEnter={onOpen}>
+      <button
+        type="button"
+        role="menuitem"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        // 호버·클릭으로 연다(데스크톱·터치·테스트). 한 번에 하나만 열리고(부모가 관리), 자식을
+        // 누르면 run()이 전체 메뉴를 닫는다. 떠날 때 자동으로 닫진 않는다(포인터 이동에 안 흔들림).
+        onClick={onOpen}
+        className={cn(
+          "hover:bg-accent flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm",
+          destructive && "text-destructive",
+        )}
+      >
+        {icon}
+        <span className="flex-1">{label}</span>
+        <ChevronRight className="text-muted-foreground size-3.5" />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          aria-label={label}
+          className="border-border bg-popover absolute top-0 left-full z-50 ml-1 min-w-40 rounded-md border p-1 shadow-md"
+        >
+          {children}
+        </div>
+      )}
     </div>
   );
 }
