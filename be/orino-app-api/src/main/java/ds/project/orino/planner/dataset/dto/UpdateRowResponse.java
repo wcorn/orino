@@ -12,9 +12,14 @@ import java.util.List;
  *
  * <p>{@code affected}는 행 번호 오름차순이며, 로드 범위 밖 행도 포함될 수 있다(클라가 로드한
  * 범위만 골라 반영하면 된다). 번진 곳이 없으면 빈 리스트다.
+ *
+ * <p>{@code affectedDatasets}는 표간 참조로 전파가 <b>다른 표</b>에 번졌을 때 그 표 id들이다
+ * (R9 #915b). 이 응답은 이 표 스코프라 다른 표 행을 실을 수 없으니, 클라는 이 표들의 행을
+ * 다시 받아 갱신한다. 표간 전파가 없으면 빈 리스트다.
  */
 public record UpdateRowResponse(
         RowView edited,
-        List<RowView> affected
+        List<RowView> affected,
+        List<Long> affectedDatasets
 ) {
 }

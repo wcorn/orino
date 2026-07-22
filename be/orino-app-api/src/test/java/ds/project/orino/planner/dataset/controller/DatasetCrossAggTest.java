@@ -14,6 +14,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -128,17 +129,33 @@ class DatasetCrossAggTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("표간 자동 재계산은 밖 — 도시 값이 바뀌어도 재저장 전엔 옛 합계(#915b)")
-    void noCrossPropagationYet() throws Exception {
+    @DisplayName("도시 값이 바뀌면 요약 합계가 자동 갱신된다(표간 전파, #915b)")
+    void crossPropagation() throws Exception {
         patchSummary("=SUM({도시!금액})").andExpect(jsonPath("$.data.edited.cells[0]").value("600"));
 
-        // 도시 1행 100 → 900. 합계는 900+200+300 = 1400이 되어야 하지만 전파가 없다.
+        // 도시 1행 100 → 900. 합계 900+200+300 = 1400. 응답 affectedDatasets에 요약이 실린다.
         mockMvc.perform(patch("/api/datasets/{id}/rows/{i}", cityId, 0)
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"cells\":[\"900\"]}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.affectedDatasets", hasItem((int) summaryId)));
 
-        summaryRows().andExpect(jsonPath("$.data.rows[0].cells[0]").value("600"));
+        summaryRows().andExpect(jsonPath("$.data.rows[0].cells[0]").value("1400"));
+    }
+
+    @Test
+    @DisplayName("도시에 행을 추가해도 요약 합계가 따라 커진다")
+    void crossPropagationOnRowInsert() throws Exception {
+        patchSummary("=SUM({도시!금액})").andExpect(jsonPath("$.data.edited.cells[0]").value("600"));
+
+        // 도시에 400짜리 행 추가 → 합계 1000.
+        mockMvc.perform(post("/api/datasets/{id}/rows", cityId)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":[\"400\"]}"))
+                .andExpect(status().isCreated());
+
+        summaryRows().andExpect(jsonPath("$.data.rows[0].cells[0]").value("1000"));
     }
 }

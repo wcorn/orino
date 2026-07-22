@@ -21,7 +21,8 @@ public interface DatasetFormulaRefRepository extends JpaRepository<DatasetFormul
      * </ul>
      */
     @Query("SELECT r.formulaId FROM DatasetFormulaRef r, DatasetFormula f "
-            + "WHERE r.formulaId = f.id AND r.datasetId = :datasetId AND r.toColKey = :colKey "
+            + "WHERE r.formulaId = f.id "
+            + "AND COALESCE(r.toDatasetId, r.datasetId) = :datasetId AND r.toColKey = :colKey "
             + "AND ("
             + "  (r.toKind = ds.project.orino.domain.planner.dataset.entity.FormulaRefKind.SAME_ROW"
             + "     AND f.rowId = :rowId)"
@@ -33,15 +34,18 @@ public interface DatasetFormulaRefRepository extends JpaRepository<DatasetFormul
                                        @Param("rowId") Long rowId,
                                        @Param("colKey") String colKey);
 
-    /** 열이 통째로 바뀔 때(삭제 등) 그 열을 참조하는 수식 — 종류 불문. */
+    /**
+     * 열이 통째로 바뀔 때(삭제 등) 그 열을 참조하는 수식 — 종류 불문. 표간 참조도 잡도록 대상
+     * 표 기준(COALESCE)으로 조회한다 — 다른 표가 이 열을 참조하면 그것도 무효화 대상이다.
+     */
     @Query("SELECT DISTINCT r.formulaId FROM DatasetFormulaRef r "
-            + "WHERE r.datasetId = :datasetId AND r.toColKey = :colKey")
+            + "WHERE COALESCE(r.toDatasetId, r.datasetId) = :datasetId AND r.toColKey = :colKey")
     List<Long> findFormulaIdsReferencingColumn(@Param("datasetId") Long datasetId,
                                                @Param("colKey") String colKey);
 
-    /** 행이 지워질 때 그 행을 콕 집어 참조하던 수식 — #REF! 대상. */
+    /** 행이 지워질 때 그 행을 콕 집어 참조하던 수식 — #REF! 대상(표간 포함, 대상 표 기준). */
     @Query("SELECT DISTINCT r.formulaId FROM DatasetFormulaRef r "
-            + "WHERE r.datasetId = :datasetId AND r.toRowId = :rowId "
+            + "WHERE COALESCE(r.toDatasetId, r.datasetId) = :datasetId AND r.toRowId = :rowId "
             + "AND r.toKind = ds.project.orino.domain.planner.dataset.entity.FormulaRefKind.ABSOLUTE")
     List<Long> findFormulaIdsReferencingRow(@Param("datasetId") Long datasetId,
                                             @Param("rowId") Long rowId);
