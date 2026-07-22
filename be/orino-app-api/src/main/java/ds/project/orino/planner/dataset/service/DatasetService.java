@@ -398,6 +398,53 @@ public class DatasetService {
         return metaResponse(dataset, updated);
     }
 
+    /** 허용값 목록 상한. 드롭다운 편의용이라 과도한 목록은 막는다. */
+    static final int MAX_OPTIONS = 200;
+
+    /**
+     * 열 허용값 목록(enum)을 설정/해제한다(멱등 교체). 빈 목록·null이면 해제(자유 입력). 값은
+     * <b>강제하지 않고</b>(느슨) 목록만 정규화해 저장한다 — 공백 정리·중복 제거·순서 보존.
+     */
+    @Transactional
+    public DatasetResponse setColumnOptions(Long memberId, Long datasetId, String key,
+                                            List<String> options) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        int at = indexOfColumn(columns, key);
+        if (at < 0) {
+            throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+        List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
+        updated.set(at, columns.get(at).withOptions(normalizeOptions(options)));
+        dataset.updateColumns(serialize(updated));
+        return metaResponse(dataset, updated);
+    }
+
+    /** 공백 정리·빈값/중복 제거(순서 보존). 비면 null(해제). 상한을 넘으면 거부. */
+    private List<String> normalizeOptions(List<String> options) {
+        if (options == null) {
+            return null;
+        }
+        java.util.LinkedHashSet<String> set = new java.util.LinkedHashSet<>();
+        for (String o : options) {
+            if (o == null) {
+                continue;
+            }
+            String trimmed = o.trim();
+            if (!trimmed.isEmpty()) {
+                set.add(trimmed);
+            }
+        }
+        if (set.isEmpty()) {
+            return null;
+        }
+        if (set.size() > MAX_OPTIONS) {
+            throw new CustomException(ErrorCode.INVALID_REQUEST,
+                    "허용값은 " + MAX_OPTIONS + "개를 넘을 수 없습니다");
+        }
+        return List.copyOf(set);
+    }
+
     /**
      * 표 이름을 설정/해제한다(멱등). 빈 값(공백·null)이면 무명으로 되돌린다. 유일성은 강제하지
      * 않는다 — BE는 표가 어느 노트에 있는지 모르므로, 이름 해석은 #915에서 노트 단위(FE)로 한다.
