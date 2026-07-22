@@ -19,6 +19,7 @@ import ds.project.orino.planner.dataset.dto.SetCellMergeRequest;
 import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.SetColumnAlignRequest;
 import ds.project.orino.planner.dataset.dto.SetColumnSummaryRequest;
+import ds.project.orino.planner.dataset.dto.SetDatasetNameRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowResponse;
 import ds.project.orino.planner.dataset.service.DatasetService;
@@ -101,6 +102,15 @@ public class DatasetController {
             @PathVariable Long id,
             @Valid @RequestBody ReorderColumnsRequest request) {
         return ApiResponse.success(datasetService.reorderColumns(memberId, id, request));
+    }
+
+    /** 표 이름 설정/해제(멱등). 빈 값이면 무명으로. R9 표간 참조가 이름으로 표를 지목한다. */
+    @PatchMapping("/{id}/name")
+    public ApiResponse<DatasetResponse> setName(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @Valid @RequestBody SetDatasetNameRequest request) {
+        return ApiResponse.success(datasetService.setName(memberId, id, request.name()));
     }
 
     /** 한 셀의 수식을 그 열 전체에 채운다(계산 열 만들기). */

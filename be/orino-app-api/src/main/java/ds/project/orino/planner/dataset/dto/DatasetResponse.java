@@ -18,12 +18,14 @@ import java.util.Map;
  */
 public record DatasetResponse(
         Long id,
+        String name,
         List<DatasetColumn> columns,
         int rowCount,
         Map<String, String> summaries
 ) {
     public static DatasetResponse of(Dataset dataset, List<DatasetColumn> columns,
                                      Map<String, String> summaries) {
-        return new DatasetResponse(dataset.getId(), columns, dataset.getRowCount(), summaries);
+        return new DatasetResponse(dataset.getId(), dataset.getName(), columns,
+                dataset.getRowCount(), summaries);
     }
 }

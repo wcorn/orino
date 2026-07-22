@@ -2365,6 +2365,66 @@ describe("DatasetGrid", () => {
     expect(screen.queryByLabelText("선택 요약")).not.toBeInTheDocument();
   });
 
+  // ---------- 표 이름(#916) ----------
+
+  it("무명 표는 이름 자리에 placeholder를 보여준다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const input = await screen.findByLabelText("표 이름");
+    expect(input).toHaveValue("");
+    expect(input).toHaveAttribute("placeholder", "표 이름");
+  });
+
+  it("meta.name이 있으면 이름 칸에 그 값이 뜬다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            name: "요약",
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수" },
+            ],
+            rowCount: 1,
+          },
+        }),
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    expect(await screen.findByLabelText("표 이름")).toHaveValue("요약");
+  });
+
+  it("이름을 입력하고 벗어나면 PATCH로 저장한다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let patched: unknown = null;
+    server.use(
+      http.patch(`${API_BASE}/datasets/1/name`, async ({ request }) => {
+        patched = await request.json();
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            name: "도쿄",
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수" },
+            ],
+            rowCount: 1,
+            summaries: {},
+          },
+        });
+      }),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const input = await screen.findByLabelText("표 이름");
+    fireEvent.change(input, { target: { value: "도쿄" } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(patched).toEqual({ name: "도쿄" }));
+  });
+
   it("우클릭 메뉴에서 배경색을 고르면 선택한 셀에 일괄 PUT한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let sentCells: unknown = null;

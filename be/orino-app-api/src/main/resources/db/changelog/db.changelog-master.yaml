@@ -85,3 +85,5 @@ databaseChangeLog:
       file: db/changelog/changes/042-create-dataset-merge.yaml
   - include:
       file: db/changelog/changes/043-add-dataset-cell-style-valign.yaml
+  - include:
+      file: db/changelog/changes/044-add-dataset-name.yaml

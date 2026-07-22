@@ -379,6 +379,18 @@ public class DatasetService {
         return metaResponse(dataset, updated);
     }
 
+    /**
+     * 표 이름을 설정/해제한다(멱등). 빈 값(공백·null)이면 무명으로 되돌린다. 유일성은 강제하지
+     * 않는다 — BE는 표가 어느 노트에 있는지 모르므로, 이름 해석은 #915에서 노트 단위(FE)로 한다.
+     */
+    @Transactional
+    public DatasetResponse setName(Long memberId, Long datasetId, String name) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        String trimmed = name == null || name.isBlank() ? null : name.trim();
+        dataset.updateName(trimmed);
+        return metaResponse(dataset, parseColumns(dataset.getColumns()));
+    }
+
     /** 메타 응답을 조립한다 — 요약 값(집계)을 계산해 함께 싣는다(#908). */
     private DatasetResponse metaResponse(Dataset dataset, List<DatasetColumn> columns) {
         return DatasetResponse.of(dataset, columns,
