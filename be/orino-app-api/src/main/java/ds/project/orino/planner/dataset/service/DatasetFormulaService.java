@@ -116,7 +116,7 @@ public class DatasetFormulaService {
         }
 
         // 참조를 저장한 뒤에 본다 — 자기 참조를 그래프에서 따라갈 수 있어야 한다.
-        assertNoCycle(datasetId, row.getId(), colKey, node, columns);
+        assertNoCycle(datasetId, row.getId(), colKey, node);
 
         FormulaValue value = FormulaEvaluator.evaluate(node, new DbValues(datasetId, row, rowCells));
         if (value instanceof FormulaValue.Err e) {
@@ -155,9 +155,11 @@ public class DatasetFormulaService {
                 throw new CustomException(ErrorCode.FORMULA_PROPAGATION_TOO_WIDE,
                         "다시 계산할 수식이 " + budget + "개를 넘습니다");
             }
-            recompute(datasetId, formula);
+            // 의존 수식은 다른 표에 있을 수 있다(표간 참조). 재계산·다음 전파는 그 수식의 표 기준.
+            Long formulaDs = formula.getDatasetId();
+            recompute(formulaDs, formula);
             // 이 수식의 셀도 값이 바뀌었으니 그걸 참조하던 것들로 계속 번진다.
-            propagateFrom(datasetId, formula.getRowId(), formula.getColKey(), seen, budget);
+            propagateFrom(formulaDs, formula.getRowId(), formula.getColKey(), seen, budget);
         }
     }
 
@@ -195,33 +197,36 @@ public class DatasetFormulaService {
      * <p>참조를 따라 <b>앞으로</b> 걷는다 — 이 수식이 무엇을 참조하고, 그것들이 또 무엇을
      * 참조하는지. 도중에 자기 셀을 만나면 순환이다.
      */
-    private void assertNoCycle(Long datasetId, Long rowId, String colKey, FormulaNode node,
-                               List<DatasetColumn> columns) {
+    private void assertNoCycle(Long datasetId, Long rowId, String colKey, FormulaNode node) {
         Set<Long> visited = new HashSet<>();
         for (FormulaNode.Ref ref : FormulaParser.collectRefs(node)) {
             for (DatasetFormula target : targetsOf(datasetId, rowId, ref)) {
-                walk(datasetId, rowId, colKey, target, visited, columns);
+                walk(rowId, colKey, target, visited);
             }
         }
     }
 
-    private void walk(Long datasetId, Long selfRow, String selfCol, DatasetFormula formula,
-                      Set<Long> visited, List<DatasetColumn> columns) {
+    /**
+     * 참조 그래프를 앞으로 걸으며 자기 셀에 닿는지 본다. 표간 참조가 있어 각 수식은 <b>자기 표</b>
+     * 기준으로 파싱·추적한다(rowId는 전역 유일이라 표가 달라도 self 셀 판정이 정확하다).
+     */
+    private void walk(Long selfRow, String selfCol, DatasetFormula formula, Set<Long> visited) {
         if (formula.getRowId().equals(selfRow) && formula.getColKey().equals(selfCol)) {
             throw new CustomException(ErrorCode.FORMULA_CIRCULAR_REFERENCE);
         }
         if (!visited.add(formula.getId())) {
             return;
         }
+        Long ds = formula.getDatasetId();
         FormulaNode node;
         try {
-            node = FormulaParser.parseStored(formula.getRaw(), new DbContext(datasetId, columns));
+            node = FormulaParser.parseStored(formula.getRaw(), new DbContext(ds, columnsOf(ds)));
         } catch (CustomException e) {
             return; // 이미 깨진 수식은 순환 판정에 쓰지 않는다.
         }
         for (FormulaNode.Ref ref : FormulaParser.collectRefs(node)) {
-            for (DatasetFormula next : targetsOf(datasetId, formula.getRowId(), ref)) {
-                walk(datasetId, selfRow, selfCol, next, visited, columns);
+            for (DatasetFormula next : targetsOf(ds, formula.getRowId(), ref)) {
+                walk(selfRow, selfCol, next, visited);
             }
         }
     }

@@ -218,6 +218,12 @@ export function DatasetGrid({
           setRowLocal(row.rowIndex, row.cells);
           setFormulasLocal(row.rowIndex, row.formulas ?? {});
         }
+        // 표간 참조로 다른 표에 번졌으면 그 표들의 행을 무효화 — 각 표 그리드가 다시 받아 갱신한다.
+        for (const ds of res.affectedDatasets ?? []) {
+          void queryClient.invalidateQueries({
+            queryKey: ["datasets", ds, "rows"],
+          });
+        }
         // 최종 커밋(자동저장 아님)이면 열 요약 값도 갱신한다.
         if (!silent) refreshSummaries();
       })

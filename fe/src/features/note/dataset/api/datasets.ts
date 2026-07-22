@@ -110,6 +110,11 @@ export interface RowsPage {
 export interface UpdateRowResult {
   edited: DatasetRow;
   affected: DatasetRow[];
+  /**
+   * 표간 참조로 전파가 다른 표에 번졌을 때 그 표 id들(R9 #915b). 이 응답엔 다른 표 행이 없으니,
+   * 클라는 이 표들의 행 캐시를 무효화해 각 표 그리드가 다시 받게 한다. 없으면 빈 배열.
+   */
+  affectedDatasets: number[];
 }
 
 interface ApiEnvelope<T> {

@@ -14,6 +14,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -128,19 +129,41 @@ class DatasetCrossRefTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("표간 자동 재계산은 이 슬라이스 밖 — 대상이 바뀌어도 재저장 전엔 옛 값(#915b)")
-    void noCrossPropagationYet() throws Exception {
+    @DisplayName("대상 표가 바뀌면 참조하는 표가 자동 갱신된다(표간 전파, #915b)")
+    void crossPropagation() throws Exception {
         patchCity("[\"100\",\"={요약!환율}1\"]", "{\"요약\":" + summaryId + "}")
                 .andExpect(jsonPath("$.data.edited.cells[1]").value("1300"));
 
-        // 요약 표의 환율을 1300 → 1400으로 바꾼다.
+        // 요약 표의 환율을 1300 → 1400으로 바꾼다. 응답의 affectedDatasets에 도시가 실린다.
         mockMvc.perform(patch("/api/datasets/{id}/rows/{i}", summaryId, 0)
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"cells\":[\"1400\"]}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.affectedDatasets", hasItem((int) cityId)));
 
-        // 표간 전파가 없으니 도시 표는 아직 1300(재저장하면 1400). #915b에서 자동 갱신된다.
-        cityRows().andExpect(jsonPath("$.data.rows[0].cells[1]").value("1300"));
+        // 도시 표의 원화가 재저장 없이 자동으로 1400이 됐다.
+        cityRows().andExpect(jsonPath("$.data.rows[0].cells[1]").value("1400"));
+    }
+
+    @Test
+    @DisplayName("표간 순환 참조는 409 — A가 B를, B가 A의 같은 셀을 도로 가리키면")
+    void crossCycleRejected() throws Exception {
+        // 도시 원화 = 요약!환율.
+        patchCity("[\"100\",\"={요약!환율}1\"]", "{\"요약\":" + summaryId + "}")
+                .andExpect(status().isOk());
+        // 도시 표에도 이름을 붙여 요약이 도시를 가리킬 수 있게 한다.
+        mockMvc.perform(patch("/api/datasets/{id}/name", cityId)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"도시\"}"))
+                .andExpect(status().isOk());
+        // 요약 환율 = 도시!원화 → 요약→도시→요약 순환.
+        mockMvc.perform(patch("/api/datasets/{id}/rows/{i}", summaryId, 0)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cells\":[\"={도시!원화}1\"],\"tableRefs\":{\"도시\":"
+                                + cityId + "}}"))
+                .andExpect(status().isConflict());
     }
 }

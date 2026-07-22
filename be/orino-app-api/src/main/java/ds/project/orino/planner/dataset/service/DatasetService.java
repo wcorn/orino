@@ -558,17 +558,29 @@ public class DatasetService {
             }
         }
 
-        // 전파로 값이 바뀐 교차 행(집계 SUMIF 등)을 함께 돌려준다 — 클라가 다른 행의 재계산도
-        // 즉시 반영하도록. recomputed는 "rowId:colKey"들이라 행 id만 추리고, 편집 행은 뺀다.
+        // 전파로 값이 바뀐 행들. recomputed는 "rowId:colKey"라 행 id만 추리고, 편집 행은 뺀다.
         Set<Long> affectedRowIds = new LinkedHashSet<>();
         for (String cell : recomputed) {
             affectedRowIds.add(DatasetFormulaService.rowIdOf(cell));
         }
         affectedRowIds.remove(row.getId());
 
+        // 전파는 표간으로도 번진다(표간 참조). 이 표 행은 값으로 돌려주고, 다른 표는 id만 알려
+        // FE가 그 표 그리드를 다시 받게 한다 — 이 응답은 이 표 스코프라 다른 표 행을 못 싣는다.
+        Set<Long> sameDsRowIds = new LinkedHashSet<>();
+        Set<Long> otherDatasets = new LinkedHashSet<>();
+        for (DatasetRow r : rowRepository.findAllById(affectedRowIds)) {
+            if (r.getDatasetId().equals(datasetId)) {
+                sameDsRowIds.add(r.getId());
+            } else {
+                otherDatasets.add(r.getDatasetId());
+            }
+        }
+
         // 편집 행: 전파가 이 행의 다른 셀도 고쳤을 수 있어 다시 읽는다.
         RowView edited = buildRowView(datasetId, row, rowIndex, columns);
-        return new UpdateRowResponse(edited, buildRowViews(datasetId, affectedRowIds, columns));
+        return new UpdateRowResponse(edited, buildRowViews(datasetId, sameDsRowIds, columns),
+                List.copyOf(otherDatasets));
     }
 
     /**
