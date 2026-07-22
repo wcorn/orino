@@ -23,4 +23,26 @@ public interface FormulaContext {
 
     /** 행 id → 현재 행 번호(1-base). 표시할 때. 지워진 행이면 empty. */
     Optional<Integer> rowNumberById(long rowId);
+
+    /**
+     * 표 이름 → 대상 표 id. 표간 참조({@code {요약!환율}1})의 표 이름을 해석한다. 이름은 노트
+     * 안에서만 유일하므로 FE가 준 {@code tableRefs} 맵으로 푼다. 없거나 접근 불가면 empty.
+     * 표간 참조를 지원하지 않는 컨텍스트(테스트 등)는 기본 empty.
+     */
+    default Optional<Long> tableIdByName(String name) {
+        return Optional.empty();
+    }
+
+    /** 대상 표 id → 이름. 표간 참조 표시용. 지워졌거나 무명이면 empty. */
+    default Optional<String> tableNameById(long datasetId) {
+        return Optional.empty();
+    }
+
+    /**
+     * 대상 표의 열·행을 보는 컨텍스트. 표간 참조는 열 label·행 번호를 <b>대상 표</b> 기준으로
+     * 해석해야 한다. 기본은 자기 자신(표간 미지원 컨텍스트는 같은 표로 본다).
+     */
+    default FormulaContext forDataset(long datasetId) {
+        return this;
+    }
 }

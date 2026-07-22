@@ -543,7 +543,8 @@ public class DatasetService {
         // 그 재계산은 전파(#813)가 맡는다.
         for (Map.Entry<String, String> entry : formulas.entrySet()) {
             cells.put(entry.getKey(), formulaService.saveAndEvaluate(
-                    datasetId, row, entry.getKey(), entry.getValue(), columns, cells));
+                    datasetId, row, entry.getKey(), entry.getValue(), columns, cells,
+                    request.tableRefs(), memberId));
         }
 
         Map<String, String> before = DatasetCells.parse(row.getCells());
