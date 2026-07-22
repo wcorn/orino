@@ -66,6 +66,14 @@ public sealed interface FormulaNode {
     }
 
     /**
+     * 표간 집계({@code =SUM({도쿄!금액})}) — <b>다른 표</b>의 한 열 전체를 집계한다(#915a-2).
+     * 같은 표 집계({@link Agg})와 달리 대상 표({@code datasetId})가 다르고, 표간엔 열 하나만
+     * 지원한다(범위·나열은 후속). {@code colKey}는 대상 표 기준.
+     */
+    record CrossAgg(String func, Long datasetId, String colKey) implements FormulaNode {
+    }
+
+    /**
      * 스칼라 함수 호출. 집계({@link Agg})와 달리 인자가 <b>열 참조가 아니라 식</b>이다 —
      * {@code ABS({점수} - 10)}처럼 셀·산술을 품는다. 각 인자는 셀 단위로 평가된다.
      *

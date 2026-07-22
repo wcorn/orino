@@ -88,6 +88,13 @@ public class DatasetFormulaRef {
                 toColKey, toDatasetId);
     }
 
+    /** 표간 열 집계 참조({@code =SUM({도쿄!금액})}). 대상 표({@code toDatasetId})의 열 전체. */
+    public static DatasetFormulaRef crossColumnAll(Long formulaId, Long datasetId, Long toDatasetId,
+                                                   String toColKey) {
+        return new DatasetFormulaRef(formulaId, datasetId, FormulaRefKind.COLUMN_ALL, null,
+                toColKey, toDatasetId);
+    }
+
     public Long getId() {
         return id;
     }
