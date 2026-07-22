@@ -2502,6 +2502,62 @@ describe("DatasetGrid", () => {
     expect(screen.queryByLabelText("다른 표 참조")).not.toBeInTheDocument();
   });
 
+  // ---------- 열 숫자 서식(R2 #913) ----------
+
+  it("서식이 걸린 열은 셀 값을 포맷해 보여준다(값은 raw 유지)", async () => {
+    mockDataset([["93000"]]);
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [{ key: "c0", label: "금액", format: "KRW" }],
+            rowCount: 1,
+          },
+        }),
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    expect(await screen.findByText("₩93,000")).toBeInTheDocument();
+    expect(screen.queryByText("93000")).not.toBeInTheDocument();
+  });
+
+  it("우클릭에서 숫자 서식을 고르면 그 열에 PATCH한다", async () => {
+    mockDataset([["93000", "b"]]);
+    let patched: unknown = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/columns/:key/format`,
+        async ({ params, request }) => {
+          patched = { key: params.key, body: await request.json() };
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              id: 1,
+              columns: [
+                { key: "c0", label: "과목", format: "KRW" },
+                { key: "c1", label: "점수" },
+              ],
+              rowCount: 1,
+            },
+          });
+        },
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const cell = (await screen.findByText("93000"))
+      .parentElement as HTMLElement;
+    fireEvent.pointerDown(cell, { button: 0 });
+    fireEvent.contextMenu(cell);
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "서식 KRW" }));
+
+    await waitFor(() =>
+      expect(patched).toEqual({ key: "c0", body: { format: "KRW" } }),
+    );
+  });
+
   it("우클릭 메뉴에서 배경색을 고르면 선택한 셀에 일괄 PUT한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let sentCells: unknown = null;

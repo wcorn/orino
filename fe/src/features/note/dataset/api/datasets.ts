@@ -3,6 +3,15 @@ import { client } from "@/shared/api";
 /** 열 푸터 요약 함수. 서버의 DatasetColumn.ALLOWED_SUMMARY와 같아야 한다. */
 export type SummaryFn = "SUM" | "AVERAGE" | "COUNT" | "MIN" | "MAX";
 
+/** 열 숫자 서식(표시 전용). 서버의 DatasetColumn.ALLOWED_FORMAT와 같아야 한다. */
+export type NumberFormat =
+  | "KRW"
+  | "USD"
+  | "JPY"
+  | "THOUSANDS"
+  | "DECIMAL1"
+  | "DECIMAL2";
+
 export interface DatasetColumn {
   key: string;
   label: string;
@@ -12,6 +21,8 @@ export interface DatasetColumn {
   align?: CellAlign;
   /** 열 푸터 요약 함수. 없으면 이 열엔 푸터 요약이 없다. 계산된 값은 DatasetMeta.summaries로 온다. */
   summary?: SummaryFn;
+  /** 열 숫자 서식(표시 전용). 값·수식은 raw, 화면에만 이 서식으로 포맷한다. 없으면 그대로. */
+  format?: NumberFormat;
 }
 
 /** 셀·열 정렬 값. 서버의 ALLOWED_ALIGN과 같아야 한다. */
@@ -283,6 +294,21 @@ export async function updateDatasetRow(
   const { data } = await client.patch<ApiEnvelope<UpdateRowResult>>(
     `/datasets/${datasetId}/rows/${rowIndex}`,
     { cells, tableRefs },
+  );
+  return data.data;
+}
+
+/**
+ * 열 숫자 서식 설정/해제(멱등, 표시 전용). null이면 해제. 갱신된 메타를 돌려준다.
+ */
+export async function setColumnFormat(
+  datasetId: number,
+  key: string,
+  format: NumberFormat | null,
+): Promise<DatasetMeta> {
+  const { data } = await client.patch<ApiEnvelope<DatasetMeta>>(
+    `/datasets/${datasetId}/columns/${key}/format`,
+    { format },
   );
   return data.data;
 }
