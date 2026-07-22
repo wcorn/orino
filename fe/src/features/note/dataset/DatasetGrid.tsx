@@ -44,6 +44,7 @@ import {
   setCellMerge,
   setCellStylesBulk,
   setColumnSummary,
+  setDatasetName,
   type SummaryFn,
   updateDatasetRow,
 } from "./api/datasets";
@@ -276,6 +277,16 @@ export function DatasetGrid({
     onSuccess: (next: DatasetMeta) =>
       queryClient.setQueryData(datasetKeys.meta(datasetId), next),
     onError: () => void invalidateMeta(),
+  });
+  // 표 이름 설정/해제. 응답 메타로 캐시를 맞춰 이름이 즉시 반영된다.
+  const nameMut = useMutation({
+    mutationFn: (name: string) => setDatasetName(datasetId, name),
+    onSuccess: (next: DatasetMeta) =>
+      queryClient.setQueryData(datasetKeys.meta(datasetId), next),
+    onError: (e) => {
+      const message = serverMessage(e);
+      if (message) toast(message, "error");
+    },
   });
   // 열 푸터 요약 설정/해제. 응답 메타엔 계산된 summaries가 실려 있어 푸터가 즉시 맞는다.
   const summaryMut = useMutation({
@@ -1335,6 +1346,22 @@ export function DatasetGrid({
     // 바깥 래퍼: 표 아래·오른쪽에 얇은 여백(gutter)을 확보해 행/열 추가 바를 표 "밖"에 둔다.
     // → 추가 바가 가장자리 셀을 가리지 않고, 그 자리(아래/오른쪽)에 호버할 때만 각각 나타난다.
     <div className="relative my-2 pr-5 pb-5">
+      {/* 표 이름 — 노트 안 표를 구별하고, 표간 참조(#915)가 이름으로 지목한다. 무명이면
+        placeholder. 편집을 닫으면(Enter·blur) 바뀐 값만 저장한다. meta.name 변경 시 key로 리셋. */}
+      <input
+        key={meta.name ?? ""}
+        aria-label="표 이름"
+        defaultValue={meta.name ?? ""}
+        placeholder="표 이름"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+        onBlur={(e) => {
+          const value = e.currentTarget.value.trim();
+          if (value !== (meta.name ?? "")) nameMut.mutate(value);
+        }}
+        className="text-foreground placeholder:text-muted-foreground/50 mb-1 w-full border-0 bg-transparent px-0.5 text-sm font-medium outline-none"
+      />
       <div
         ref={gridBoxRef}
         // 셀 선택 시 이 컨테이너로 포커스가 와 키 입력을 직접 받는다(에디터로 새지 않게).

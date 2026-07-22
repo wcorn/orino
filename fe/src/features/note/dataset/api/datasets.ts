@@ -65,6 +65,8 @@ export interface MergeView {
 
 export interface DatasetMeta {
   id: number;
+  /** 표 사용자용 이름. 없으면 무명. 노트 안 표 구별·표간 참조(#915)가 이름으로 지목한다. */
+  name?: string;
   columns: DatasetColumn[];
   rowCount: number;
   /**
@@ -274,6 +276,20 @@ export async function updateDatasetRow(
   const { data } = await client.patch<ApiEnvelope<UpdateRowResult>>(
     `/datasets/${datasetId}/rows/${rowIndex}`,
     { cells },
+  );
+  return data.data;
+}
+
+/**
+ * 표 이름 설정/해제(멱등). 빈 값이면 무명으로. 갱신된 메타를 돌려준다 — 캐시에 바로 반영.
+ */
+export async function setDatasetName(
+  datasetId: number,
+  name: string,
+): Promise<DatasetMeta> {
+  const { data } = await client.patch<ApiEnvelope<DatasetMeta>>(
+    `/datasets/${datasetId}/name`,
+    { name },
   );
   return data.data;
 }

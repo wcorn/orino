@@ -29,6 +29,10 @@ public class Dataset {
     @Column(name = "member_id", nullable = false)
     private Long memberId;
 
+    /** 표 사용자용 이름(nullable). 노트 안 표 구별·표간 참조(#915)가 이름으로 지목한다. */
+    @Column(name = "name")
+    private String name;
+
     /** 열 메타 JSON 문자열: {@code [{"key","label"}, ...]}. */
     @Column(name = "columns_json", columnDefinition = "JSON", nullable = false)
     private String columns;
@@ -66,6 +70,11 @@ public class Dataset {
         this.columns = columns;
     }
 
+    /** 표 이름을 바꾼다. 빈 값(null)이면 무명으로 돌린다. */
+    public void updateName(String name) {
+        this.name = name;
+    }
+
     /** 열 key 하나를 발급하고 카운터를 올린다. */
     public int issueColumnSeq() {
         return nextColumnSeq++;
@@ -81,6 +90,10 @@ public class Dataset {
 
     public Long getMemberId() {
         return memberId;
+    }
+
+    public String getName() {
+        return name;
     }
 
     public String getColumns() {
