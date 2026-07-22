@@ -43,8 +43,18 @@ public sealed interface FormulaNode {
      *   <li>{@link FormulaRefKind#SAME_ROW} — {@code rowId}는 null. 각 행이 자기 행을 가리킨다
      *   <li>{@link FormulaRefKind#ABSOLUTE} — {@code rowId}에 값
      * </ul>
+     *
+     * <p>{@code datasetId}는 <b>표간 참조</b>({@code ={요약!환율}1})의 대상 표다. null이면 같은
+     * 표(대부분). 표간은 대상 셀이 다른 표에 있어 ABSOLUTE(특정 행)만 의미가 있다 — 같은 표가
+     * 아니면 "같은 행"이 정의되지 않는다. {@code colKey}·{@code rowId}는 <b>대상 표 기준</b>이다.
      */
-    record Ref(FormulaRefKind kind, String colKey, Long rowId) implements FormulaNode {
+    record Ref(FormulaRefKind kind, String colKey, Long rowId, Long datasetId)
+            implements FormulaNode {
+
+        /** 같은 표 참조(대부분) — datasetId 없이. */
+        public Ref(FormulaRefKind kind, String colKey, Long rowId) {
+            this(kind, colKey, rowId, null);
+        }
     }
 
     /**

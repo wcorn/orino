@@ -91,12 +91,34 @@ public final class FormulaWriter {
                 sb.append(')');
             }
             case FormulaNode.Ref r -> {
-                sb.append('{').append(name(r.colKey(), ctx)).append('}');
-                if (r.kind() == FormulaRefKind.ABSOLUTE) {
-                    sb.append(rowToken(r.rowId(), ctx));
+                if (r.datasetId() != null) {
+                    writeCrossRef(r, sb, ctx);
+                } else {
+                    sb.append('{').append(name(r.colKey(), ctx)).append('}');
+                    if (r.kind() == FormulaRefKind.ABSOLUTE) {
+                        sb.append(rowToken(r.rowId(), ctx));
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * 표간 절대셀 참조. 저장형 {@code {datasetId!colKey}@rowId}, 표시형 {@code {표이름!열}행번호}.
+     * 표시형은 대상 표 기준으로 이름·label·행번호를 해석한다({@link FormulaContext#forDataset}).
+     */
+    private static void writeCrossRef(FormulaNode.Ref r, StringBuilder sb, FormulaContext ctx) {
+        long dsId = r.datasetId();
+        if (ctx == null) {
+            sb.append('{').append(dsId).append('!').append(r.colKey()).append('}')
+                    .append('@').append(r.rowId());
+            return;
+        }
+        FormulaContext target = ctx.forDataset(dsId);
+        String table = ctx.tableNameById(dsId).orElse("#REF!");
+        String col = target.labelByKey(r.colKey()).orElse("#REF!");
+        String row = target.rowNumberById(r.rowId()).map(String::valueOf).orElse("#REF!");
+        sb.append('{').append(table).append('!').append(col).append('}').append(row);
     }
 
     private static String name(String key, FormulaContext ctx) {

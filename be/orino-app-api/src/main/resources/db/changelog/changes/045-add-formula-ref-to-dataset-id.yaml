@@ -1,0 +1,31 @@
+databaseChangeLog:
+  # 표간 참조(R9 #918) — 수식 참조의 대상 표.
+  #
+  # 지금 참조는 formula가 사는 그 표 안으로만 향한다(dataset_id는 formula의 표, 역방향 조회를
+  # 좁히는 비정규화). 표간 절대셀 참조({요약!환율}1)는 대상 셀이 <b>다른 표</b>에 있다.
+  # to_dataset_id에 대상 표를 담는다 — nullable, null이면 같은 표(기존 동작 그대로, 마이그레이션
+  # 불필요). to_row_id처럼 FK를 두지 않는다: 대상 표가 지워져도 참조가 끊긴 채 남아 #REF!의
+  # 근거가 되게 한다.
+  - changeSet:
+      id: 045-add-formula-ref-to-dataset-id
+      author: wcorn
+      comment: dataset_formula_ref.to_dataset_id 추가 — 표간 참조의 대상 표(nullable).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: dataset_formula_ref
+                columnName: to_dataset_id
+      changes:
+        - addColumn:
+            tableName: dataset_formula_ref
+            columns:
+              - column:
+                  name: to_dataset_id
+                  type: BIGINT
+                  constraints:
+                    nullable: true
+      rollback:
+        - dropColumn:
+            tableName: dataset_formula_ref
+            columnName: to_dataset_id

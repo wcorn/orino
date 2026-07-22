@@ -357,16 +357,23 @@ public final class FormulaParser {
         if (close < 0) {
             throw syntaxError("열 이름을 닫는 '}'가 없습니다");
         }
-        String name = src.substring(pos, close);
+        String content = src.substring(pos, close);
         pos = close + 1;
-        if (name.isBlank()) {
+        if (content.isBlank()) {
             throw syntaxError("열 이름이 비었습니다");
         }
 
-        String key = resolveKey(name);
-        Long rowId = rowSuffix();
+        // 표간 참조 {표!열}행 — '!' 앞은 표(입력형 이름·저장형 id), 뒤는 대상 표의 열.
+        int bang = content.indexOf('!');
+        if (bang >= 0) {
+            return crossRef(content.substring(0, bang).trim(),
+                    content.substring(bang + 1).trim(), columnOnly);
+        }
+
+        String key = resolveKey(ctx, content);
+        Long rowId = rowSuffix(ctx);
         if (rowId != null && columnOnly) {
-            throw syntaxError("집계 함수 안에서는 행을 지정할 수 없습니다: {" + name + "}");
+            throw syntaxError("집계 함수 안에서는 행을 지정할 수 없습니다: {" + content + "}");
         }
         if (columnOnly) {
             return new FormulaNode.Ref(FormulaRefKind.COLUMN_ALL, key, null);
@@ -376,19 +383,51 @@ public final class FormulaParser {
                 : new FormulaNode.Ref(FormulaRefKind.ABSOLUTE, key, rowId);
     }
 
-    private String resolveKey(String name) {
+    /**
+     * 표간 절대셀 참조 {@code {표!열}행}(#918). 대상 표를 해석하고 열·행을 <b>대상 표 기준</b>으로
+     * 푼다. 다른 표엔 "같은 행"이 없으므로 행 번호가 반드시 있어야 한다(ABSOLUTE).
+     */
+    private FormulaNode crossRef(String tablePart, String colPart, boolean columnOnly) {
+        if (columnOnly) {
+            // 표간 집계(=SUM({표!열}))는 다음 슬라이스(#915a-2)에서 다룬다.
+            throw syntaxError("표간 집계는 아직 지원하지 않습니다: {" + tablePart + "!" + colPart + "}");
+        }
+        long targetId = resolveTable(tablePart);
+        FormulaContext target = ctx.forDataset(targetId);
+        String key = resolveKey(target, colPart);
+        Long rowId = rowSuffix(target);
+        if (rowId == null) {
+            throw syntaxError("표간 셀 참조는 행 번호가 필요합니다: {" + tablePart + "!" + colPart + "}");
+        }
+        return new FormulaNode.Ref(FormulaRefKind.ABSOLUTE, key, rowId, targetId);
+    }
+
+    /** 표 부분 → 대상 표 id. 저장형은 datasetId 숫자, 입력형은 표 이름(FE tableRefs로 해석). */
+    private long resolveTable(String tablePart) {
         if (stored) {
-            if (!ctx.columnKeys().contains(name)) {
+            try {
+                return Long.parseLong(tablePart);
+            } catch (NumberFormatException e) {
+                throw syntaxError("잘못된 표 id: " + tablePart);
+            }
+        }
+        return ctx.tableIdByName(tablePart)
+                .orElseThrow(() -> syntaxError("없는 표: " + tablePart));
+    }
+
+    private String resolveKey(FormulaContext c, String name) {
+        if (stored) {
+            if (!c.columnKeys().contains(name)) {
                 throw syntaxError("없는 열: " + name);
             }
             return name;
         }
-        return ctx.keyByLabel(name)
+        return c.keyByLabel(name)
                 .orElseThrow(() -> syntaxError("없는 열: " + name));
     }
 
-    /** 행 지정을 읽는다. 없으면 null. 저장형은 {@code @id}, 입력형은 화면 행 번호. */
-    private Long rowSuffix() {
+    /** 행 지정을 읽는다. 없으면 null. 저장형은 {@code @id}, 입력형은 화면 행 번호(그 표 기준). */
+    private Long rowSuffix(FormulaContext c) {
         if (stored) {
             if (peek() != '@') {
                 return null;
@@ -401,7 +440,7 @@ public final class FormulaParser {
         }
         long number = digits("행 번호");
         // 화면 번호 → 행 id. 파싱 시점에 한 번만 해석하므로 이후 행이 밀려도 안 깨진다.
-        return ctx.rowIdByNumber((int) number)
+        return c.rowIdByNumber((int) number)
                 .orElseThrow(() -> syntaxError("없는 행: " + number));
     }
 

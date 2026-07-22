@@ -97,8 +97,10 @@ public class DatasetFormulaService {
      *                 같은 요청에서 바뀐 값을 즉시 반영하기 위함이다.
      */
     String saveAndEvaluate(Long datasetId, DatasetRow row, String colKey, String input,
-                           List<DatasetColumn> columns, Map<String, String> rowCells) {
-        FormulaContext ctx = new DbContext(datasetId, columns);
+                           List<DatasetColumn> columns, Map<String, String> rowCells,
+                           Map<String, Long> tableRefs, Long memberId) {
+        // 표간 참조 이름 해석·소유권 검증에 tableRefs·memberId가 필요하다(입력 파싱 한정).
+        FormulaContext ctx = new DbContext(datasetId, columns, tableRefs, memberId);
         FormulaNode node = FormulaParser.parseInput(input, ctx);
 
         DatasetFormula formula = formulaRepository.findByRowIdAndColKey(row.getId(), colKey)
@@ -474,8 +476,10 @@ public class DatasetFormulaService {
     private DatasetFormulaRef toEntity(Long formulaId, Long datasetId, FormulaNode.Ref ref) {
         return switch (ref.kind()) {
             case SAME_ROW -> DatasetFormulaRef.sameRow(formulaId, datasetId, ref.colKey());
-            case ABSOLUTE -> DatasetFormulaRef.absolute(formulaId, datasetId, ref.rowId(),
-                    ref.colKey());
+            case ABSOLUTE -> ref.datasetId() == null
+                    ? DatasetFormulaRef.absolute(formulaId, datasetId, ref.rowId(), ref.colKey())
+                    : DatasetFormulaRef.crossAbsolute(formulaId, datasetId, ref.datasetId(),
+                            ref.rowId(), ref.colKey());
             case COLUMN_ALL -> DatasetFormulaRef.columnAll(formulaId, datasetId, ref.colKey());
         };
     }
@@ -484,10 +488,21 @@ public class DatasetFormulaService {
     private final class DbContext implements FormulaContext {
         private final Long datasetId;
         private final List<DatasetColumn> columns;
+        // 표간 참조 이름 해석용(입력 파싱). 이름→대상 표 id. null이면 표간 이름 해석 불가(recompute).
+        private final Map<String, Long> tableRefs;
+        // 표간 대상 소유권 검증용. null이면 검증 없이(recompute — 저장 때 이미 검증됨).
+        private final Long memberId;
 
         private DbContext(Long datasetId, List<DatasetColumn> columns) {
+            this(datasetId, columns, null, null);
+        }
+
+        private DbContext(Long datasetId, List<DatasetColumn> columns,
+                          Map<String, Long> tableRefs, Long memberId) {
             this.datasetId = datasetId;
             this.columns = columns;
+            this.tableRefs = tableRefs;
+            this.memberId = memberId;
         }
 
         @Override
@@ -523,6 +538,37 @@ public class DatasetFormulaService {
             return rowRepository.findById(rowId)
                     .filter(r -> r.getDatasetId().equals(datasetId))
                     .map(r -> r.getRowIndex() + 1);
+        }
+
+        @Override
+        public Optional<Long> tableIdByName(String name) {
+            if (tableRefs == null) {
+                return Optional.empty();
+            }
+            Long id = tableRefs.get(name);
+            if (id == null) {
+                return Optional.empty();
+            }
+            // 남의 표 참조 차단 — 대상이 같은 회원 것일 때만 해석된다(없으면 "없는 표").
+            boolean owned = memberId != null
+                    && datasetRepository.findByIdAndMemberId(id, memberId).isPresent();
+            return owned ? Optional.of(id) : Optional.empty();
+        }
+
+        @Override
+        public Optional<String> tableNameById(long targetId) {
+            return datasetRepository.findById(targetId)
+                    .map(d -> d.getName())
+                    .filter(n -> n != null && !n.isBlank());
+        }
+
+        @Override
+        public FormulaContext forDataset(long targetId) {
+            // 대상 표의 열로 새 컨텍스트. 지워졌으면 빈 열 → 열·행 해석이 empty → #REF!.
+            List<DatasetColumn> targetColumns = datasetRepository.findById(targetId)
+                    .map(d -> DatasetColumns.parse(d.getColumns()))
+                    .orElseGet(List::of);
+            return new DbContext(targetId, targetColumns, tableRefs, memberId);
         }
     }
 
@@ -611,6 +657,15 @@ public class DatasetFormulaService {
             }
             return rowRepository.findById(rowId)
                     .filter(r -> r.getDatasetId().equals(datasetId))
+                    .map(r -> DatasetCells.parse(r.getCells()).getOrDefault(colKey, ""));
+        }
+
+        /** 표간 절대셀 — 대상 표의 그 행·열 값. 행이 없거나 대상 표가 다르면 empty → #REF!. */
+        @Override
+        public Optional<String> crossAbsolute(long targetDatasetId, long targetRowId,
+                                              String colKey) {
+            return rowRepository.findById(targetRowId)
+                    .filter(r -> r.getDatasetId().equals(targetDatasetId))
                     .map(r -> DatasetCells.parse(r.getCells()).getOrDefault(colKey, ""));
         }
 

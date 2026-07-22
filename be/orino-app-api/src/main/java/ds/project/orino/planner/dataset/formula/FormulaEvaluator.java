@@ -32,6 +32,14 @@ public final class FormulaEvaluator {
 
         /** 열 전체 값. 열이 없으면 empty. */
         Optional<List<String>> column(String colKey);
+
+        /**
+         * 표간 절대셀({@code {요약!환율}1})의 <b>대상 표</b> 셀. 표간 참조를 지원하지 않는
+         * 소스(테스트 등)는 기본 empty → {@code #REF!}.
+         */
+        default Optional<String> crossAbsolute(long datasetId, long rowId, String colKey) {
+            return Optional.empty();
+        }
     }
 
     private FormulaEvaluator() {
@@ -207,9 +215,15 @@ public final class FormulaEvaluator {
 
     /** 참조 → 셀 내용을 타입으로. 빈 칸은 0(엑셀식), 숫자는 Num, 에러 문자열은 번지고, 그 외는 Text. */
     private static FormulaValue ref(FormulaNode.Ref r, ValueSource src) {
-        Optional<String> raw = r.kind() == FormulaRefKind.ABSOLUTE
-                ? src.absolute(r.rowId(), r.colKey())
-                : src.sameRow(r.colKey());
+        Optional<String> raw;
+        if (r.kind() == FormulaRefKind.ABSOLUTE) {
+            // 표간 참조(datasetId 있음)는 대상 표의 셀을, 아니면 이 표의 셀을 읽는다.
+            raw = r.datasetId() == null
+                    ? src.absolute(r.rowId(), r.colKey())
+                    : src.crossAbsolute(r.datasetId(), r.rowId(), r.colKey());
+        } else {
+            raw = src.sameRow(r.colKey());
+        }
         if (raw.isEmpty()) {
             return new FormulaValue.Err(FormulaValue.Err.REF);
         }
