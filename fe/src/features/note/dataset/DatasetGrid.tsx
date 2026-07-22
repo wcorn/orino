@@ -45,12 +45,14 @@ import {
   setCellMerge,
   setCellStylesBulk,
   setColumnFormat,
+  setColumnOptions,
   setColumnSummary,
   setDatasetName,
   type SummaryFn,
   updateDatasetRow,
 } from "./api/datasets";
 import { DATASET_CELLS_MIME } from "./cellClipboard";
+import { ColumnOptionsEditor } from "./ColumnOptionsEditor";
 import { CrossRefPicker } from "./CrossRefPicker";
 import type { FormulaContext, ValueSource } from "./formula";
 import { aggregate, asCell, evaluateFormula } from "./formula";
@@ -153,6 +155,11 @@ export function DatasetGrid({
   const fillDragging = useRef(false);
   // 표간 참조 피커 열림 여부(활성 셀 편집 중).
   const [crossPickerOpen, setCrossPickerOpen] = useState(false);
+  // 허용값 목록 편집기(우클릭 "허용값 목록…"에서 연다). 대상 열 key + 현재 값.
+  const [optionsEditor, setOptionsEditor] = useState<{
+    key: string;
+    initial: string[];
+  } | null>(null);
   // 최신 commitFill을 담아 둔다 — window pointerup(한 번만 등록)이 stale 클로저 없이 부른다.
   const commitFillRef = useRef<() => void>(() => {});
 
@@ -311,6 +318,17 @@ export function DatasetGrid({
   // 표 이름 설정/해제. 응답 메타로 캐시를 맞춰 이름이 즉시 반영된다.
   const nameMut = useMutation({
     mutationFn: (name: string) => setDatasetName(datasetId, name),
+    onSuccess: (next: DatasetMeta) =>
+      queryClient.setQueryData(datasetKeys.meta(datasetId), next),
+    onError: (e) => {
+      const message = serverMessage(e);
+      if (message) toast(message, "error");
+    },
+  });
+  // 열 허용값 목록 설정/해제. 응답 메타로 캐시를 맞춘다.
+  const optionsMut = useMutation({
+    mutationFn: (v: { key: string; options: string[] }) =>
+      setColumnOptions(datasetId, v.key, v.options),
     onSuccess: (next: DatasetMeta) =>
       queryClient.setQueryData(datasetKeys.meta(datasetId), next),
     onError: (e) => {
@@ -1358,6 +1376,12 @@ export function DatasetGrid({
             ref={activeInputRef}
             autoFocus
             value={draft}
+            // 허용값(enum) 열이면 드롭다운 제안(datalist). 느슨 — 목록 밖도 타이핑 가능.
+            list={
+              meta.columns[c].options
+                ? `opts-${meta.columns[c].key}`
+                : undefined
+            }
             // 선택만 한 상태(편집 전)에선 값을 통째로 선택해 둔다 — 글자를 치면 덮어써지고,
             // 한글도 첫 자모부터 이 입력창에서 조합된다(엘리먼트 교체가 없어 조합이 안 끊긴다).
             onFocus={(e) => {
@@ -1404,6 +1428,13 @@ export function DatasetGrid({
                 : undefined
             }
           />
+        )}
+        {isActive && meta.columns[c].options && (
+          <datalist id={`opts-${meta.columns[c].key}`}>
+            {meta.columns[c].options!.map((o) => (
+              <option key={o} value={o} />
+            ))}
+          </datalist>
         )}
         {/* 표간 참조 — 이름 있는 형제 표가 있을 때만. mousedown preventDefault로 입력창 blur(=커밋)
           없이 피커만 연다. */}
@@ -1773,6 +1804,18 @@ export function DatasetGrid({
           pending={deleteColMut.isPending}
         />
 
+        {/* 허용값 목록 편집기 — 우클릭 "허용값 목록…"에서 연다. 저장 시 그 열 options 교체. */}
+        {optionsEditor && (
+          <ColumnOptionsEditor
+            initial={optionsEditor.initial}
+            onSave={(options) => {
+              optionsMut.mutate({ key: optionsEditor.key, options });
+              setOptionsEditor(null);
+            }}
+            onClose={() => setOptionsEditor(null)}
+          />
+        )}
+
         {/* 우클릭 컨텍스트 메뉴 — 선택 범위에 맞춰 서식·병합·행/열 옵션을 한 곳에 모은다.
           (별도 플로팅 툴바 없이 우클릭 하나로 통일한다.) */}
         {ctxMenu &&
@@ -2000,6 +2043,18 @@ export function DatasetGrid({
                           <X className="size-3" />
                         </button>
                       </div>
+                      {divider}
+                    </>
+                  )}
+                  {/* 허용값 목록(enum) — 한 열만 걸쳤을 때. 셀 편집 드롭다운 제안(느슨). */}
+                  {rect.c0 === rect.c1 && (
+                    <>
+                      {item("허용값 목록…", () =>
+                        setOptionsEditor({
+                          key: meta.columns[rect.c0].key,
+                          initial: meta.columns[rect.c0].options ?? [],
+                        }),
+                      )}
                       {divider}
                     </>
                   )}

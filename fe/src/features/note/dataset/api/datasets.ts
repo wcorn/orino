@@ -23,6 +23,8 @@ export interface DatasetColumn {
   summary?: SummaryFn;
   /** 열 숫자 서식(표시 전용). 값·수식은 raw, 화면에만 이 서식으로 포맷한다. 없으면 그대로. */
   format?: NumberFormat;
+  /** 허용값 목록(enum). 있으면 셀 편집에 드롭다운 제안(느슨 — 강제 아님). 없으면 자유 입력. */
+  options?: string[];
 }
 
 /** 셀·열 정렬 값. 서버의 ALLOWED_ALIGN과 같아야 한다. */
@@ -294,6 +296,21 @@ export async function updateDatasetRow(
   const { data } = await client.patch<ApiEnvelope<UpdateRowResult>>(
     `/datasets/${datasetId}/rows/${rowIndex}`,
     { cells, tableRefs },
+  );
+  return data.data;
+}
+
+/**
+ * 열 허용값 목록(enum) 설정/해제(멱등, 느슨). 빈 배열이면 해제. 서버가 정규화한 메타를 돌려준다.
+ */
+export async function setColumnOptions(
+  datasetId: number,
+  key: string,
+  options: string[],
+): Promise<DatasetMeta> {
+  const { data } = await client.patch<ApiEnvelope<DatasetMeta>>(
+    `/datasets/${datasetId}/columns/${key}/options`,
+    { options },
   );
   return data.data;
 }

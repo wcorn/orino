@@ -6,6 +6,8 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 
+import java.util.List;
+
 /**
  * 데이터셋 열 메타. key는 안정 식별자, label은 표시명.
  *
@@ -35,7 +37,9 @@ public record DatasetColumn(
         @Pattern(regexp = ALLOWED_SUMMARY, message = "허용되지 않은 요약 함수입니다.")
         String summary,
         @Pattern(regexp = ALLOWED_FORMAT, message = "허용되지 않은 숫자 서식입니다.")
-        String format
+        String format,
+        // 허용값 목록(enum). null이면 자유 입력. FE 드롭다운 편의용 — 서버는 값을 강제하지 않는다(느슨).
+        List<String> options
 ) {
     /** 열 너비 하한(px). 이보다 좁으면 값이 사실상 안 보인다. */
     public static final int MIN_WIDTH = 60;
@@ -51,31 +55,36 @@ public record DatasetColumn(
 
     /** 너비·정렬·요약·서식 없이 만든다(기본 폭·기본 정렬). */
     public DatasetColumn(String key, String label) {
-        this(key, label, null, null, null, null);
+        this(key, label, null, null, null, null, null);
     }
 
     /** label만 바꾼 새 열 메타(나머지 보존). */
     public DatasetColumn withLabel(String label) {
-        return new DatasetColumn(key, label, width, align, summary, format);
+        return new DatasetColumn(key, label, width, align, summary, format, options);
     }
 
     /** width만 바꾼 새 열 메타(나머지 보존). */
     public DatasetColumn withWidth(Integer width) {
-        return new DatasetColumn(key, label, width, align, summary, format);
+        return new DatasetColumn(key, label, width, align, summary, format, options);
     }
 
     /** align만 바꾼 새 열 메타(나머지 보존). */
     public DatasetColumn withAlign(String align) {
-        return new DatasetColumn(key, label, width, align, summary, format);
+        return new DatasetColumn(key, label, width, align, summary, format, options);
     }
 
     /** summary만 바꾼 새 열 메타(나머지 보존). */
     public DatasetColumn withSummary(String summary) {
-        return new DatasetColumn(key, label, width, align, summary, format);
+        return new DatasetColumn(key, label, width, align, summary, format, options);
     }
 
     /** format만 바꾼 새 열 메타(나머지 보존). */
     public DatasetColumn withFormat(String format) {
-        return new DatasetColumn(key, label, width, align, summary, format);
+        return new DatasetColumn(key, label, width, align, summary, format, options);
+    }
+
+    /** options만 바꾼 새 열 메타(나머지 보존). */
+    public DatasetColumn withOptions(List<String> options) {
+        return new DatasetColumn(key, label, width, align, summary, format, options);
     }
 }

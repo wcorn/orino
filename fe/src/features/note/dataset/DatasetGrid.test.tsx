@@ -2558,6 +2558,76 @@ describe("DatasetGrid", () => {
     );
   });
 
+  // ---------- 열 허용값 목록(enum, R3 #914) ----------
+
+  it("허용값 열은 셀 편집에 드롭다운 제안(datalist)을 붙인다", async () => {
+    mockDataset([["원"]]);
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [{ key: "c0", label: "통화", options: ["원", "엔"] }],
+            rowCount: 1,
+          },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await user.dblClick(await screen.findByText("원"));
+    const input = await screen.findByLabelText("셀 1행 1열");
+    expect(input).toHaveAttribute("list", "opts-c0");
+    expect(
+      document.getElementById("opts-c0")?.querySelectorAll("option"),
+    ).toHaveLength(2);
+  });
+
+  it("우클릭 허용값 목록 편집기에서 저장하면 그 열에 PATCH한다", async () => {
+    mockDataset([["a", "b"]]);
+    let patched: unknown = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/columns/:key/options`,
+        async ({ params, request }) => {
+          patched = { key: params.key, body: await request.json() };
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              id: 1,
+              columns: [
+                { key: "c0", label: "과목", options: ["원", "엔"] },
+                { key: "c1", label: "점수" },
+              ],
+              rowCount: 1,
+            },
+          });
+        },
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const cell = (await screen.findByText("a")).parentElement as HTMLElement;
+    fireEvent.pointerDown(cell, { button: 0 });
+    fireEvent.contextMenu(cell);
+    const menu = await screen.findByRole("menu", { name: "셀 메뉴" });
+    fireEvent.click(
+      within(menu).getByRole("menuitem", { name: "허용값 목록…" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "허용값 목록 편집",
+    });
+    fireEvent.change(within(dialog).getByLabelText("허용값"), {
+      target: { value: "원\n엔" },
+    });
+    fireEvent.click(within(dialog).getByText("저장"));
+
+    await waitFor(() =>
+      expect(patched).toEqual({ key: "c0", body: { options: ["원", "엔"] } }),
+    );
+  });
+
   it("우클릭 메뉴에서 배경색을 고르면 선택한 셀에 일괄 PUT한다", async () => {
     mockDataset([["네트워크", "92"]]);
     let sentCells: unknown = null;

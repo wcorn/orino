@@ -19,6 +19,7 @@ import ds.project.orino.planner.dataset.dto.SetCellMergeRequest;
 import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.SetColumnAlignRequest;
 import ds.project.orino.planner.dataset.dto.SetColumnFormatRequest;
+import ds.project.orino.planner.dataset.dto.SetColumnOptionsRequest;
 import ds.project.orino.planner.dataset.dto.SetColumnSummaryRequest;
 import ds.project.orino.planner.dataset.dto.SetDatasetNameRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
@@ -189,6 +190,17 @@ public class DatasetController {
             @Valid @RequestBody SetColumnFormatRequest request) {
         return ApiResponse.success(
                 datasetService.setColumnFormat(memberId, id, key, request.format()));
+    }
+
+    /** 열 허용값 목록(enum) 설정/해제(멱등, 느슨). 빈 목록이면 해제. R3 드롭다운 편의. */
+    @PatchMapping("/{id}/columns/{key}/options")
+    public ApiResponse<DatasetResponse> setColumnOptions(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable String key,
+            @Valid @RequestBody SetColumnOptionsRequest request) {
+        return ApiResponse.success(
+                datasetService.setColumnOptions(memberId, id, key, request.options()));
     }
 
     /** 열 기본 정렬 초기화 — 기본 정렬(left)로 되돌린다. */
