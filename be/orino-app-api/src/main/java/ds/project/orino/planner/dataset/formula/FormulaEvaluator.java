@@ -40,6 +40,14 @@ public final class FormulaEvaluator {
         default Optional<String> crossAbsolute(long datasetId, long rowId, String colKey) {
             return Optional.empty();
         }
+
+        /**
+         * 표간 집계({@code =SUM({도쿄!금액})})의 <b>대상 표</b> 열 전체. 표간을 지원하지 않는
+         * 소스는 기본 empty → {@code #REF!}.
+         */
+        default Optional<List<String>> crossColumn(long datasetId, String colKey) {
+            return Optional.empty();
+        }
     }
 
     private FormulaEvaluator() {
@@ -54,6 +62,7 @@ public final class FormulaEvaluator {
             case FormulaNode.Compare c -> compare(c, src);
             case FormulaNode.Ref r -> ref(r, src);
             case FormulaNode.Agg a -> agg(a, src);
+            case FormulaNode.CrossAgg a -> crossAgg(a, src);
             case FormulaNode.AggIf a -> aggIf(a, src);
             case FormulaNode.Call c -> call(c, src);
         };
@@ -247,20 +256,45 @@ public final class FormulaEvaluator {
     private static FormulaValue agg(FormulaNode.Agg a, ValueSource src) {
         List<BigDecimal> nums = new ArrayList<>();
         for (String key : a.colKeys()) {
-            Optional<List<String>> col = src.column(key);
-            if (col.isEmpty()) {
-                return new FormulaValue.Err(FormulaValue.Err.REF);
-            }
-            for (String cell : col.get()) {
-                String s = cell == null ? "" : cell.trim();
-                if (s.startsWith("#")) {
-                    return new FormulaValue.Err(s);
-                }
-                number(s).ifPresent(nums::add);
+            FormulaValue err = collectNums(src.column(key), nums);
+            if (err != null) {
+                return err;
             }
         }
+        return reduceNums(a.func(), nums);
+    }
 
-        return switch (a.func()) {
+    /** 표간 집계 — 대상 표의 한 열을 같은 규칙으로 집계한다(#915a-2). */
+    private static FormulaValue crossAgg(FormulaNode.CrossAgg a, ValueSource src) {
+        List<BigDecimal> nums = new ArrayList<>();
+        FormulaValue err = collectNums(src.crossColumn(a.datasetId(), a.colKey()), nums);
+        if (err != null) {
+            return err;
+        }
+        return reduceNums(a.func(), nums);
+    }
+
+    /**
+     * 열 값들에서 숫자만 골라 {@code nums}에 담는다. 열이 없으면 {@code #REF!}, 셀이 에러면 그
+     * 에러를 <b>반환</b>한다(그 경우 호출부가 즉시 그 에러를 낸다). 정상이면 null.
+     */
+    private static FormulaValue collectNums(Optional<List<String>> col, List<BigDecimal> nums) {
+        if (col.isEmpty()) {
+            return new FormulaValue.Err(FormulaValue.Err.REF);
+        }
+        for (String cell : col.get()) {
+            String s = cell == null ? "" : cell.trim();
+            if (s.startsWith("#")) {
+                return new FormulaValue.Err(s);
+            }
+            number(s).ifPresent(nums::add);
+        }
+        return null;
+    }
+
+    /** 모은 숫자에 집계 함수를 적용한다. agg·crossAgg 공용(규칙 한 곳). */
+    private static FormulaValue reduceNums(String func, List<BigDecimal> nums) {
+        return switch (func) {
             // 숫자만 센다. 비어있지 않은 걸 세는 COUNTA는 D8 범위 밖.
             case "COUNT" -> new FormulaValue.Num(BigDecimal.valueOf(nums.size()));
             case "SUM" -> new FormulaValue.Num(

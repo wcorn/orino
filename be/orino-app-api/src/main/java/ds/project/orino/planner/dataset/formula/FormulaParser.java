@@ -87,6 +87,8 @@ public final class FormulaParser {
             case FormulaNode.Ref r -> out.add(r);
             case FormulaNode.Agg a -> a.colKeys()
                     .forEach(k -> out.add(new FormulaNode.Ref(FormulaRefKind.COLUMN_ALL, k, null)));
+            case FormulaNode.CrossAgg a -> out.add(
+                    new FormulaNode.Ref(FormulaRefKind.COLUMN_ALL, a.colKey(), null, a.datasetId()));
             case FormulaNode.AggIf a -> {
                 out.add(new FormulaNode.Ref(FormulaRefKind.COLUMN_ALL, a.critCol(), null));
                 if (a.sumCol() != null) {
@@ -316,6 +318,15 @@ public final class FormulaParser {
         List<String> keys = new ArrayList<>();
         FormulaNode.Ref first = (FormulaNode.Ref) ref(true);
         skipSpace();
+        // 표간 집계 — 다른 표의 열 하나만(v1). 범위·나열은 후속(#915a-2 범위 밖).
+        if (first.datasetId() != null) {
+            if (peek() == ':' || peek() == ',') {
+                throw syntaxError("표간 집계는 열 하나만 지원합니다");
+            }
+            skipSpace();
+            expect(')');
+            return new FormulaNode.CrossAgg(name, first.datasetId(), first.colKey());
+        }
         if (peek() == ':') {
             // 범위 — 지금 그 사이에 있는 열들로 펼쳐 집합으로 굳힌다(D7).
             pos++;
@@ -388,13 +399,13 @@ public final class FormulaParser {
      * 푼다. 다른 표엔 "같은 행"이 없으므로 행 번호가 반드시 있어야 한다(ABSOLUTE).
      */
     private FormulaNode crossRef(String tablePart, String colPart, boolean columnOnly) {
-        if (columnOnly) {
-            // 표간 집계(=SUM({표!열}))는 다음 슬라이스(#915a-2)에서 다룬다.
-            throw syntaxError("표간 집계는 아직 지원하지 않습니다: {" + tablePart + "!" + colPart + "}");
-        }
         long targetId = resolveTable(tablePart);
         FormulaContext target = ctx.forDataset(targetId);
         String key = resolveKey(target, colPart);
+        if (columnOnly) {
+            // 표간 집계 인자 — 대상 표의 열 전체(행 없음). CrossAgg 조립은 aggregate()가 한다.
+            return new FormulaNode.Ref(FormulaRefKind.COLUMN_ALL, key, null, targetId);
+        }
         Long rowId = rowSuffix(target);
         if (rowId == null) {
             throw syntaxError("표간 셀 참조는 행 번호가 필요합니다: {" + tablePart + "!" + colPart + "}");

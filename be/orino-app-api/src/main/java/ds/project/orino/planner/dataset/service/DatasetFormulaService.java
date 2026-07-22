@@ -233,8 +233,10 @@ public class DatasetFormulaService {
                     .map(List::of).orElseGet(List::of);
             case ABSOLUTE -> formulaRepository.findByRowIdAndColKey(ref.rowId(), ref.colKey())
                     .map(List::of).orElseGet(List::of);
-            // 집계는 그 열의 모든 수식에 닿는다.
-            case COLUMN_ALL -> formulaRepository.findByDatasetIdAndColKey(datasetId, ref.colKey());
+            // 집계는 그 열의 모든 수식에 닿는다. 표간 집계면 대상 표의 열이다(같은 colKey가
+            // 이 표에도 있어 자기 자신으로 오인하지 않게 — #915a-2).
+            case COLUMN_ALL -> formulaRepository.findByDatasetIdAndColKey(
+                    ref.datasetId() == null ? datasetId : ref.datasetId(), ref.colKey());
         };
     }
 
@@ -480,7 +482,10 @@ public class DatasetFormulaService {
                     ? DatasetFormulaRef.absolute(formulaId, datasetId, ref.rowId(), ref.colKey())
                     : DatasetFormulaRef.crossAbsolute(formulaId, datasetId, ref.datasetId(),
                             ref.rowId(), ref.colKey());
-            case COLUMN_ALL -> DatasetFormulaRef.columnAll(formulaId, datasetId, ref.colKey());
+            case COLUMN_ALL -> ref.datasetId() == null
+                    ? DatasetFormulaRef.columnAll(formulaId, datasetId, ref.colKey())
+                    : DatasetFormulaRef.crossColumnAll(formulaId, datasetId, ref.datasetId(),
+                            ref.colKey());
         };
     }
 
@@ -667,6 +672,16 @@ public class DatasetFormulaService {
             return rowRepository.findById(targetRowId)
                     .filter(r -> r.getDatasetId().equals(targetDatasetId))
                     .map(r -> DatasetCells.parse(r.getCells()).getOrDefault(colKey, ""));
+        }
+
+        /** 표간 열 집계 — 대상 표의 그 열 전체 값(행 순서). */
+        @Override
+        public Optional<List<String>> crossColumn(long targetDatasetId, String colKey) {
+            List<String> values = rowRepository
+                    .findByDatasetIdOrderByRowIndexAsc(targetDatasetId).stream()
+                    .map(r -> DatasetCells.parse(r.getCells()).getOrDefault(colKey, ""))
+                    .toList();
+            return Optional.of(values);
         }
 
         /** 열이 실재하는지는 파서가 저장 시점에 이미 검증했다. 지워진 열은 #814가 다룬다. */

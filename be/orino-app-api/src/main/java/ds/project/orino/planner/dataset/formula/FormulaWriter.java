@@ -71,6 +71,19 @@ public final class FormulaWriter {
                             .map(k -> "{" + name(k, ctx) + "}")
                             .collect(Collectors.joining(", ")))
                     .append(')');
+            case FormulaNode.CrossAgg a -> {
+                // 표시 SUM({도쿄!금액}) / 저장 SUM({42!c0}).
+                sb.append(a.func()).append("({");
+                if (ctx == null) {
+                    sb.append(a.datasetId()).append('!').append(a.colKey());
+                } else {
+                    String table = ctx.tableNameById(a.datasetId()).orElse("#REF!");
+                    String col = ctx.forDataset(a.datasetId()).labelByKey(a.colKey())
+                            .orElse("#REF!");
+                    sb.append(table).append('!').append(col);
+                }
+                sb.append("})");
+            }
             case FormulaNode.AggIf a -> {
                 sb.append(a.func()).append("({").append(name(a.critCol(), ctx)).append("}, ");
                 write(a.criteria(), sb, ctx);
