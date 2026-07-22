@@ -39,10 +39,12 @@ import {
   type MergeSpan,
   type MergeView,
   MIN_COLUMN_WIDTH,
+  type NumberFormat,
   resetDatasetColumnWidth,
   resizeDatasetColumn,
   setCellMerge,
   setCellStylesBulk,
+  setColumnFormat,
   setColumnSummary,
   setDatasetName,
   type SummaryFn,
@@ -55,6 +57,7 @@ import { aggregate, asCell, evaluateFormula } from "./formula";
 import { useDatasetMerges } from "./hooks/useDatasetMerges";
 import { useDatasetMeta } from "./hooks/useDatasetMeta";
 import { useDatasetRows } from "./hooks/useDatasetRows";
+import { FORMAT_LABELS, formatCellValue, NUMBER_FORMATS } from "./numberFormat";
 import { datasetKeys } from "./queryKeys";
 
 /** 행 높이(px) — 고정. 좌우(열 너비)만 조절 가능하고 위아래는 조절하지 않는다. */
@@ -308,6 +311,17 @@ export function DatasetGrid({
   // 표 이름 설정/해제. 응답 메타로 캐시를 맞춰 이름이 즉시 반영된다.
   const nameMut = useMutation({
     mutationFn: (name: string) => setDatasetName(datasetId, name),
+    onSuccess: (next: DatasetMeta) =>
+      queryClient.setQueryData(datasetKeys.meta(datasetId), next),
+    onError: (e) => {
+      const message = serverMessage(e);
+      if (message) toast(message, "error");
+    },
+  });
+  // 열 숫자 서식 설정/해제(표시 전용). 응답 메타로 캐시를 맞춰 즉시 반영.
+  const formatMut = useMutation({
+    mutationFn: (v: { key: string; format: NumberFormat | null }) =>
+      setColumnFormat(datasetId, v.key, v.format),
     onSuccess: (next: DatasetMeta) =>
       queryClient.setQueryData(datasetKeys.meta(datasetId), next),
     onError: (e) => {
@@ -1335,7 +1349,9 @@ export function DatasetGrid({
           )}
           title={formula}
         >
-          {cells === undefined ? "…" : (cells[c] ?? "")}
+          {cells === undefined
+            ? "…"
+            : formatCellValue(cells[c] ?? "", meta.columns[c].format)}
         </div>
         {isActive && (
           <input
@@ -1932,6 +1948,51 @@ export function DatasetGrid({
                             summaryMut.mutate({
                               key: meta.columns[rect.c0].key,
                               fn: null,
+                            }),
+                          )}
+                          className="text-muted-foreground hover:text-foreground flex size-6 items-center justify-center rounded"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                      {divider}
+                    </>
+                  )}
+                  {/* 숫자 서식 — 한 열만 걸쳤을 때. 표시 전용(값·수식은 raw 그대로). */}
+                  {rect.c0 === rect.c1 && (
+                    <>
+                      <div className="text-muted-foreground px-2 pt-1 text-xs">
+                        숫자 서식
+                      </div>
+                      <div className="flex items-center gap-1 px-2 py-1">
+                        {NUMBER_FORMATS.map((fmt) => (
+                          <button
+                            key={fmt}
+                            type="button"
+                            role="menuitem"
+                            aria-label={`서식 ${fmt}`}
+                            onClick={run(() =>
+                              formatMut.mutate({
+                                key: meta.columns[rect.c0].key,
+                                format: fmt,
+                              }),
+                            )}
+                            className={cn(
+                              "hover:bg-accent rounded px-1.5 py-1 text-xs",
+                              meta.columns[rect.c0].format === fmt &&
+                                "bg-accent text-foreground",
+                            )}
+                          >
+                            {FORMAT_LABELS[fmt]}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          aria-label="서식 지우기"
+                          onClick={run(() =>
+                            formatMut.mutate({
+                              key: meta.columns[rect.c0].key,
+                              format: null,
                             }),
                           )}
                           className="text-muted-foreground hover:text-foreground flex size-6 items-center justify-center rounded"

@@ -33,7 +33,9 @@ public record DatasetColumn(
         @Pattern(regexp = "left|center|right", message = "허용되지 않은 정렬입니다.")
         String align,
         @Pattern(regexp = ALLOWED_SUMMARY, message = "허용되지 않은 요약 함수입니다.")
-        String summary
+        String summary,
+        @Pattern(regexp = ALLOWED_FORMAT, message = "허용되지 않은 숫자 서식입니다.")
+        String format
 ) {
     /** 열 너비 하한(px). 이보다 좁으면 값이 사실상 안 보인다. */
     public static final int MIN_WIDTH = 60;
@@ -41,29 +43,39 @@ public record DatasetColumn(
     public static final int MAX_WIDTH = 800;
     /** 허용 요약 함수. FE의 SUMMARY_FNS와 같아야 한다. */
     public static final String ALLOWED_SUMMARY = "SUM|AVERAGE|COUNT|MIN|MAX";
+    /**
+     * 허용 숫자 서식 토큰. FE의 NUMBER_FORMATS와 같아야 한다. <b>표시 전용</b> — 값·수식은 raw를
+     * 쓰고, 화면에만 이 서식으로 포맷한다(FE). BE는 토큰만 저장·검증한다.
+     */
+    public static final String ALLOWED_FORMAT = "KRW|USD|JPY|THOUSANDS|DECIMAL1|DECIMAL2";
 
-    /** 너비·정렬·요약 없이 만든다(기본 폭·기본 정렬). */
+    /** 너비·정렬·요약·서식 없이 만든다(기본 폭·기본 정렬). */
     public DatasetColumn(String key, String label) {
-        this(key, label, null, null, null);
+        this(key, label, null, null, null, null);
     }
 
-    /** key/width/align/summary는 두고 label만 바꾼 새 열 메타. */
+    /** label만 바꾼 새 열 메타(나머지 보존). */
     public DatasetColumn withLabel(String label) {
-        return new DatasetColumn(key, label, width, align, summary);
+        return new DatasetColumn(key, label, width, align, summary, format);
     }
 
-    /** key/label/align/summary는 두고 width만 바꾼 새 열 메타. */
+    /** width만 바꾼 새 열 메타(나머지 보존). */
     public DatasetColumn withWidth(Integer width) {
-        return new DatasetColumn(key, label, width, align, summary);
+        return new DatasetColumn(key, label, width, align, summary, format);
     }
 
-    /** key/label/width/summary는 두고 align만 바꾼 새 열 메타. */
+    /** align만 바꾼 새 열 메타(나머지 보존). */
     public DatasetColumn withAlign(String align) {
-        return new DatasetColumn(key, label, width, align, summary);
+        return new DatasetColumn(key, label, width, align, summary, format);
     }
 
-    /** key/label/width/align은 두고 summary만 바꾼 새 열 메타. */
+    /** summary만 바꾼 새 열 메타(나머지 보존). */
     public DatasetColumn withSummary(String summary) {
-        return new DatasetColumn(key, label, width, align, summary);
+        return new DatasetColumn(key, label, width, align, summary, format);
+    }
+
+    /** format만 바꾼 새 열 메타(나머지 보존). */
+    public DatasetColumn withFormat(String format) {
+        return new DatasetColumn(key, label, width, align, summary, format);
     }
 }

@@ -18,6 +18,7 @@ import ds.project.orino.planner.dataset.dto.RowsResponse;
 import ds.project.orino.planner.dataset.dto.SetCellMergeRequest;
 import ds.project.orino.planner.dataset.dto.SetCellStyleRequest;
 import ds.project.orino.planner.dataset.dto.SetColumnAlignRequest;
+import ds.project.orino.planner.dataset.dto.SetColumnFormatRequest;
 import ds.project.orino.planner.dataset.dto.SetColumnSummaryRequest;
 import ds.project.orino.planner.dataset.dto.SetDatasetNameRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
@@ -177,6 +178,17 @@ public class DatasetController {
             @Valid @RequestBody SetColumnSummaryRequest request) {
         return ApiResponse.success(
                 datasetService.setColumnSummary(memberId, id, key, request.summary()));
+    }
+
+    /** 열 숫자 서식 설정/해제(멱등 교체, 표시 전용). null이면 해제. R2 값/표시 분리. */
+    @PatchMapping("/{id}/columns/{key}/format")
+    public ApiResponse<DatasetResponse> setColumnFormat(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @PathVariable String key,
+            @Valid @RequestBody SetColumnFormatRequest request) {
+        return ApiResponse.success(
+                datasetService.setColumnFormat(memberId, id, key, request.format()));
     }
 
     /** 열 기본 정렬 초기화 — 기본 정렬(left)로 되돌린다. */

@@ -380,6 +380,25 @@ public class DatasetService {
     }
 
     /**
+     * 열 숫자 서식을 설정/해제한다(멱등 교체). null이면 지운다. <b>표시 전용</b> — 값·수식은 안
+     * 건드리고 토큰만 columns_json에 담는다. 포맷은 FE가 화면에만 적용한다.
+     */
+    @Transactional
+    public DatasetResponse setColumnFormat(Long memberId, Long datasetId, String key,
+                                           String format) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        int at = indexOfColumn(columns, key);
+        if (at < 0) {
+            throw new CustomException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+        List<DatasetColumn> updated = new java.util.ArrayList<>(columns);
+        updated.set(at, columns.get(at).withFormat(format));
+        dataset.updateColumns(serialize(updated));
+        return metaResponse(dataset, updated);
+    }
+
+    /**
      * 표 이름을 설정/해제한다(멱등). 빈 값(공백·null)이면 무명으로 되돌린다. 유일성은 강제하지
      * 않는다 — BE는 표가 어느 노트에 있는지 모르므로, 이름 해석은 #915에서 노트 단위(FE)로 한다.
      */
