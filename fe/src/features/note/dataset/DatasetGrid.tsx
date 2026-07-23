@@ -79,12 +79,18 @@ const isUndoRedoKey = (e: React.KeyboardEvent): boolean =>
   (((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z")) ||
     (e.ctrlKey && (e.key === "y" || e.key === "Y")));
 
-/** 값을 만드는 키인가 — 글자 한 자 또는 한글 등 IME 조합키. 수정키 조합은 제외. */
+/**
+ * 값을 만드는 '일반' 글자 키인가(수정키 조합 제외). IME 조합키(Process·조합 중)는 제외한다 —
+ * 조합 도중 입력창을 전체선택하면 조합이 깨져 글자가 사라진다. IME 덮어쓰기는 조합 시작
+ * (onCompositionStart) 시점에 따로 처리한다.
+ */
 const isContentKey = (e: React.KeyboardEvent): boolean =>
   !e.ctrlKey &&
   !e.metaKey &&
   !e.altKey &&
-  (e.key === "Process" || e.nativeEvent.isComposing || e.key.length === 1);
+  e.key !== "Process" &&
+  !e.nativeEvent.isComposing &&
+  e.key.length === 1;
 
 /**
  * 선택 범위 — 셀 사각 범위(a=앵커, b=포커스) / 행 묶음 / 열 묶음 / 표 전체.
@@ -1704,8 +1710,12 @@ export function DatasetGrid({
                 ? `opts-${meta.columns[c].key}`
                 : undefined
             }
-            // 클릭 선택 땐 값을 전체선택하지 않는다(커서만 끝에) — 하이라이트 없이 선택만. 덮어쓰기는
-            // 첫 글자/IME를 누르는 순간 onCellInputKeyDown이 그때만 전체선택해 처리한다.
+            // 클릭 선택 땐 값을 전체선택하지 않는다(커서만 끝에) — 하이라이트 없이 선택만.
+            // 덮어쓰기: 일반 글자는 그 키다운 순간(onCellInputKeyDown), IME(한글)는 조합 시작 시점에
+            // 전체선택한다. 조합 '도중' 전체선택하면 조합이 깨져 글자가 사라지므로 시작에만 한다.
+            onCompositionStart={(e) => {
+              if (!isEditing) e.currentTarget.select();
+            }}
             onChange={(e) => {
               const value = e.target.value;
               setDraft(value);
