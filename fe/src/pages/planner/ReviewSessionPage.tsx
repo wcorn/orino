@@ -9,6 +9,7 @@ import { EmptyTodayState } from "@/features/review/components/EmptyTodayState";
 import { ReviewCard } from "@/features/review/components/ReviewCard";
 import { useCompleteReview } from "@/features/review/hooks/useCompleteReview";
 import { useTodayReviews } from "@/features/review/hooks/useTodayReviews";
+import { shuffleDeck } from "@/features/review/ordering";
 import { toast } from "@/shared/lib/toast";
 
 /**
@@ -36,7 +37,8 @@ export function ReviewSessionPage() {
         }
         return true;
       });
-      setQueue(filtered);
+      // 세션 진입마다 순서를 섞는다(순서 암기 방지). 큐는 한 번만 만들어 렌더 중 재셔플되지 않는다.
+      setQueue(shuffleDeck(filtered));
     }
   }, [data, queue, scope, materialId]);
 

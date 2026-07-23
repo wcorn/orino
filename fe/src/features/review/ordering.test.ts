@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { OrderingItem } from "@/features/flashcard/api/flashcards";
 
-import { fisherYates, reorder, sameOrder, shuffleForReview } from "./ordering";
+import {
+  fisherYates,
+  reorder,
+  sameOrder,
+  shuffleDeck,
+  shuffleForReview,
+} from "./ordering";
 
 const items: OrderingItem[] = [
   { id: "a", text: "1" },
@@ -58,6 +64,26 @@ describe("shuffleForReview", () => {
   it("항목이 2개 미만이면 그대로 둔다", () => {
     const one = [{ id: "x", text: "only" }];
     expect(shuffleForReview(one, () => 0)).toEqual(one);
+  });
+});
+
+describe("shuffleDeck", () => {
+  it("원소 집합을 보존한다(비파괴, 임의 타입)", () => {
+    const deck = [10, 20, 30, 40];
+    const copy = [...deck];
+    const out = shuffleDeck(deck, seq([0.1, 0.9, 0.5]));
+    expect(deck).toEqual(copy); // 원본 불변
+    expect([...out].sort((a, b) => a - b)).toEqual([10, 20, 30, 40]);
+  });
+
+  it("rng를 주면 결정적으로 섞는다", () => {
+    // rng=0이면 각 i에서 j=0 → 2장 덱이 뒤집힌다.
+    expect(shuffleDeck([1, 2], () => 0)).toEqual([2, 1]);
+  });
+
+  it("작은 덱이 원본과 같아도 강제로 바꾸지 않는다(정답 셔플과 다른 목적)", () => {
+    // rng=0.99면 항등 순열 → 그대로 둔다.
+    expect(shuffleDeck([1, 2, 3], () => 0.99)).toEqual([1, 2, 3]);
   });
 });
 

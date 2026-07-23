@@ -9,16 +9,25 @@ export function sameOrder(a: OrderingItem[], b: OrderingItem[]): boolean {
 }
 
 /** Fisher–Yates 셔플(비파괴). rng는 [0,1) 난수. */
-export function fisherYates(
-  items: OrderingItem[],
-  rng: () => number,
-): OrderingItem[] {
+export function fisherYates<T>(items: T[], rng: () => number): T[] {
   const a = [...items];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+/**
+ * 복습 덱(카드 목록) 셔플. 세션 진입 시 큐를 만들 때 1회만 호출한다(렌더마다 재셔플 금지).
+ * 순서 암기를 막으려는 것이라 원본과 같은 배열이 나와도(작은 덱에서 가끔) 강제로 바꾸지 않는다 —
+ * ORDERING 카드의 정답 셔플({@link shuffleForReview})과 목적이 다르다.
+ */
+export function shuffleDeck<T>(
+  items: T[],
+  rng: () => number = Math.random,
+): T[] {
+  return fisherYates(items, rng);
 }
 
 /**
