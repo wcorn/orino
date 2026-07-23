@@ -547,6 +547,39 @@ describe("DatasetGrid", () => {
     expect(input.className).toContain("ring-primary");
   });
 
+  it("셀을 클릭만 하면 값을 전체선택하지 않고(커서만 끝), 글자를 누르는 순간 전체선택해 덮어쓴다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.click(await screen.findByText("92"));
+    const input = screen.getByLabelText(
+      "1행 2열 셀 (입력하면 편집)",
+    ) as HTMLInputElement;
+    const selectSpy = vi.spyOn(input, "select");
+
+    // 클릭만으론 전체선택하지 않는다(하이라이트 없음).
+    expect(selectSpy).not.toHaveBeenCalled();
+
+    // 글자를 누르면 그 순간 전체선택 → native 입력이 대체(덮어쓰기).
+    fireEvent.keyDown(input, { key: "a" });
+    expect(selectSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("편집 중에는 글자를 눌러도 전체선택하지 않는다(커서 위치에 이어서 입력)", async () => {
+    mockDataset([["네트워크", "92"]]);
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    // 더블클릭 → 편집(커서 끝). 이 상태에서 글자를 눌러도 전체선택하지 않는다.
+    await user.dblClick(await screen.findByText("92"));
+    const input = screen.getByLabelText("셀 1행 2열") as HTMLInputElement;
+    const selectSpy = vi.spyOn(input, "select");
+
+    fireEvent.keyDown(input, { key: "5" });
+    expect(selectSpy).not.toHaveBeenCalled();
+  });
+
   it("셀 선택 후 한글을 조합해 입력하면 같은 입력창에서 편집돼 저장된다", async () => {
     mockDataset([["네트워크", "92"]]);
     let patched: { index: number; cells: string[] } | null = null;
