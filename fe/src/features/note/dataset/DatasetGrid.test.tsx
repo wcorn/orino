@@ -580,6 +580,38 @@ describe("DatasetGrid", () => {
     expect(selectSpy).not.toHaveBeenCalled();
   });
 
+  it("IME 조합 키(Process)는 키다운에서 전체선택하지 않는다(조합 깨짐 방지)", async () => {
+    // 조합 도중 select()를 부르면 한글이 계속 지워진다 → Process/조합 중 키는 제외.
+    mockDataset([["네트워크", "92"]]);
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.click(await screen.findByText("92"));
+    const input = screen.getByLabelText(
+      "1행 2열 셀 (입력하면 편집)",
+    ) as HTMLInputElement;
+    const selectSpy = vi.spyOn(input, "select");
+
+    fireEvent.keyDown(input, { key: "Process" });
+    expect(selectSpy).not.toHaveBeenCalled();
+  });
+
+  it("IME 덮어쓰기는 조합 시작(compositionStart) 시점에 전체선택한다(선택 상태에서만)", async () => {
+    mockDataset([["네트워크", "92"]]);
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.click(await screen.findByText("92"));
+    const input = screen.getByLabelText(
+      "1행 2열 셀 (입력하면 편집)",
+    ) as HTMLInputElement;
+    const selectSpy = vi.spyOn(input, "select");
+
+    // 조합 시작 시(선택-만-한 상태) 전체선택 → 조합이 기존 값을 덮어쓴다.
+    fireEvent.compositionStart(input);
+    expect(selectSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("셀 선택 후 한글을 조합해 입력하면 같은 입력창에서 편집돼 저장된다", async () => {
     mockDataset([["네트워크", "92"]]);
     let patched: { index: number; cells: string[] } | null = null;
