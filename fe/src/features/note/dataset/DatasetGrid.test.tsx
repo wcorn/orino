@@ -530,16 +530,18 @@ describe("DatasetGrid", () => {
     expect(await screen.findByLabelText("셀 1행 2열")).toHaveValue("d");
   });
 
-  it("셀을 한 번 클릭하면 값이 든 입력창이 떠 바로 덮어쓸 수 있다(편집 라벨은 아직 없음)", async () => {
+  it("셀을 한 번 클릭하면 값은 그대로 보이고, 활성 입력창은 비어(덮어쓰기 대기) 있다", async () => {
     mockDataset([["네트워크", "92"]]);
     const user = userEvent.setup();
     renderWithRouter(<DatasetGrid datasetId={1} />);
 
     await user.click(await screen.findByText("92"));
 
-    // 선택-만-한 활성 입력창: 값이 들어 있고 곧바로 타이핑하면 덮어써진다.
+    // 값("92")은 표시칸에 그대로 보인다.
+    expect(screen.getByText("92")).toBeInTheDocument();
+    // 선택-만-한 활성 입력창은 비어 있다 — 첫 글자를 치면 빈 칸에 들어가 그대로 덮어써진다.
     const input = screen.getByLabelText("1행 2열 셀 (입력하면 편집)");
-    expect(input).toHaveValue("92");
+    expect(input).toHaveValue("");
     // 아직 편집이 아니므로 편집용 라벨(셀 N행 M열)은 없다.
     expect(screen.queryByLabelText("셀 1행 2열")).not.toBeInTheDocument();
     // 어느 칸이 선택됐는지 보이도록 얇은 안쪽 테두리로 강조한다.
@@ -547,69 +549,39 @@ describe("DatasetGrid", () => {
     expect(input.className).toContain("ring-primary");
   });
 
-  it("셀을 클릭만 하면 값을 전체선택하지 않고(커서만 끝), 글자를 누르는 순간 전체선택해 덮어쓴다", async () => {
+  it("셀을 클릭하고 글자를 입력하면 기존 값을 덮어쓴다(전체선택 없이 빈 칸 방식)", async () => {
     mockDataset([["네트워크", "92"]]);
+    let patched: { index: number; cells: string[] } | null = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/rows/:i`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { cells: string[] };
+          patched = { index: Number(params.i), cells: body.cells };
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
+          });
+        },
+      ),
+    );
     const user = userEvent.setup();
     renderWithRouter(<DatasetGrid datasetId={1} />);
 
     await user.click(await screen.findByText("92"));
-    const input = screen.getByLabelText(
-      "1행 2열 셀 (입력하면 편집)",
-    ) as HTMLInputElement;
-    const selectSpy = vi.spyOn(input, "select");
+    await user.keyboard("7{Enter}");
 
-    // 클릭만으론 전체선택하지 않는다(하이라이트 없음).
-    expect(selectSpy).not.toHaveBeenCalled();
-
-    // 글자를 누르면 그 순간 전체선택 → native 입력이 대체(덮어쓰기).
-    fireEvent.keyDown(input, { key: "a" });
-    expect(selectSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it("편집 중에는 글자를 눌러도 전체선택하지 않는다(커서 위치에 이어서 입력)", async () => {
-    mockDataset([["네트워크", "92"]]);
-    const user = userEvent.setup();
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-
-    // 더블클릭 → 편집(커서 끝). 이 상태에서 글자를 눌러도 전체선택하지 않는다.
-    await user.dblClick(await screen.findByText("92"));
-    const input = screen.getByLabelText("셀 1행 2열") as HTMLInputElement;
-    const selectSpy = vi.spyOn(input, "select");
-
-    fireEvent.keyDown(input, { key: "5" });
-    expect(selectSpy).not.toHaveBeenCalled();
-  });
-
-  it("IME 조합 키(Process)는 키다운에서 전체선택하지 않는다(조합 깨짐 방지)", async () => {
-    // 조합 도중 select()를 부르면 한글이 계속 지워진다 → Process/조합 중 키는 제외.
-    mockDataset([["네트워크", "92"]]);
-    const user = userEvent.setup();
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-
-    await user.click(await screen.findByText("92"));
-    const input = screen.getByLabelText(
-      "1행 2열 셀 (입력하면 편집)",
-    ) as HTMLInputElement;
-    const selectSpy = vi.spyOn(input, "select");
-
-    fireEvent.keyDown(input, { key: "Process" });
-    expect(selectSpy).not.toHaveBeenCalled();
-  });
-
-  it("IME 덮어쓰기는 조합 시작(compositionStart) 시점에 전체선택한다(선택 상태에서만)", async () => {
-    mockDataset([["네트워크", "92"]]);
-    const user = userEvent.setup();
-    renderWithRouter(<DatasetGrid datasetId={1} />);
-
-    await user.click(await screen.findByText("92"));
-    const input = screen.getByLabelText(
-      "1행 2열 셀 (입력하면 편집)",
-    ) as HTMLInputElement;
-    const selectSpy = vi.spyOn(input, "select");
-
-    // 조합 시작 시(선택-만-한 상태) 전체선택 → 조합이 기존 값을 덮어쓴다.
-    fireEvent.compositionStart(input);
-    expect(selectSpy).toHaveBeenCalledTimes(1);
+    // "92"가 "7"로 덮어써져 저장된다(빈 입력창에 들어가 그대로 대체).
+    await waitFor(() => {
+      expect(patched).toEqual({ index: 0, cells: ["네트워크", "7"] });
+    });
   });
 
   it("셀 선택 후 한글을 조합해 입력하면 같은 입력창에서 편집돼 저장된다", async () => {
@@ -1329,9 +1301,11 @@ describe("DatasetGrid", () => {
     renderWithRouter(<DatasetGrid datasetId={1} blockSelected={true} />);
 
     // 데이터가 로드되면 첫 셀(1행 1열)이 활성 입력창으로 잡힌다 — 이어서 키를 누르면 바로 편집.
+    // 선택-만-한 상태라 입력창은 비어 있고(값은 표시칸), 첫 글자를 치면 덮어써진다.
     expect(
       await screen.findByLabelText("1행 1열 셀 (입력하면 편집)"),
-    ).toHaveValue("네트워크");
+    ).toHaveValue("");
+    expect(screen.getByText("네트워크")).toBeInTheDocument();
   });
 
   it("blockSelected여도 특정 셀을 클릭하면 그 셀이 선택된다(첫 셀로 안 튐)", async () => {
@@ -1343,9 +1317,10 @@ describe("DatasetGrid", () => {
     // 원하는 셀("92" = 1행 2열)을 정확히 클릭 → 그 셀이 활성화(첫 셀로 되돌아가지 않음).
     const cell = (await screen.findByText("92")).parentElement as HTMLElement;
     fireEvent.pointerDown(cell, { button: 0 });
+    // 그 셀의 활성 입력창이 뜬다(선택-만-한 상태라 비어 있음).
     expect(
       await screen.findByLabelText("1행 2열 셀 (입력하면 편집)"),
-    ).toHaveValue("92");
+    ).toHaveValue("");
   });
 
   // ---------- 열 너비(resize) ----------

@@ -80,19 +80,6 @@ const isUndoRedoKey = (e: React.KeyboardEvent): boolean =>
     (e.ctrlKey && (e.key === "y" || e.key === "Y")));
 
 /**
- * 값을 만드는 '일반' 글자 키인가(수정키 조합 제외). IME 조합키(Process·조합 중)는 제외한다 —
- * 조합 도중 입력창을 전체선택하면 조합이 깨져 글자가 사라진다. IME 덮어쓰기는 조합 시작
- * (onCompositionStart) 시점에 따로 처리한다.
- */
-const isContentKey = (e: React.KeyboardEvent): boolean =>
-  !e.ctrlKey &&
-  !e.metaKey &&
-  !e.altKey &&
-  e.key !== "Process" &&
-  !e.nativeEvent.isComposing &&
-  e.key.length === 1;
-
-/**
  * 선택 범위 — 셀 사각 범위(a=앵커, b=포커스) / 행 묶음 / 열 묶음 / 표 전체.
  * null이면 선택 없음. 선택 위 플로팅 툴바가 이 종류를 보고 옵션을 바꾼다.
  */
@@ -1041,8 +1028,8 @@ export function DatasetGrid({
   /**
    * 활성 셀 입력창의 키 처리. 선택만 한 상태에서 Enter/F2는 기존 값을 이어 편집,
    * Backspace는 편집으로 들어가 끝 글자 하나만 지우고(전체 삭제가 아니라 한 글자씩), Delete는
-   * 셀을 통째로 비운다. 글자/IME를 처음 누르면 그 순간 전체선택해 값을 덮어쓴다(클릭만으론
-   * 전체선택하지 않아 하이라이트가 없다). 어떤 키든 상위 에디터로 전파를 막는다.
+   * 셀을 통째로 비운다. 일반 글자/IME는 그대로 흘려보낸다 — 선택-만-한 입력창은 비어 있어 첫
+   * 글자가 곧 덮어쓰기가 된다. 어떤 키든 상위 에디터로 전파를 막는다.
    */
   const onCellInputKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement>,
@@ -1096,7 +1083,7 @@ export function DatasetGrid({
       // 타이핑과 같은 경로로 자동저장 예약(엔터·blur로도 커밋된다).
       cancelAutoSave();
       autoSaveTimer.current = setTimeout(() => flushPendingEdit(true), 500);
-      // 전체선택을 풀고 커서를 끝으로 — 다음 Backspace가 또 전체를 지우지 않게 한다.
+      // 커서를 끝에 둬 다음 Backspace부터는 native로 한 자씩 지워지게 한다.
       requestAnimationFrame(() => {
         const el = activeInputRef.current;
         if (el) el.setSelectionRange(el.value.length, el.value.length);
@@ -1108,14 +1095,9 @@ export function DatasetGrid({
       e.preventDefault();
       clearSelValues();
       setDraft("");
-      return;
     }
-    if (!editing && isContentKey(e)) {
-      // 선택-만-한 상태에서 글자/IME를 처음 누르면 값을 덮어쓴다. 클릭 시엔 전체선택을 하지
-      // 않아(하이라이트 없음) 커서가 끝에 있지만, 이 순간에만 전체선택해 native 입력이 그 선택을
-      // 대체하게 한다 — 한 번에 덮어써지고 한글 IME 조합도 처음부터 시작된다. (편집 중이면 안 함)
-      e.currentTarget.select();
-    }
+    // 일반 글자/IME 입력은 그대로 흘려보낸다 — 선택-만-한 상태의 입력창은 비어 있어(값은 뒤
+    // 표시칸에 보인다) 첫 글자가 그대로 덮어쓰기가 된다. select()를 쓰지 않아 한글 조합이 안 깨진다.
   };
   const extendCellSelect = (row: number, col: number) => {
     if (selDrag.current !== "cells") return;
@@ -1657,8 +1639,8 @@ export function DatasetGrid({
     const colKey = meta.columns[c].key;
     const isEditing = editing?.row === rowIndex && editing.col === c;
     // 단일 셀만 선택된 상태(범위/행/열/표 아님)이고 이 셀이 그 셀이면 "활성"이다.
-    // 활성 셀엔 편집 전에도 입력창을 띄워 두고(전체선택은 안 함 — 커서만 끝에), 글자를 치면
-    // 그때 전체선택 후 덮어쓰며 편집으로 넘어간다 — 같은 <input>이라 IME 조합이 끊기지 않는다.
+    // 활성 셀엔 편집 전에도 입력창을 띄워 두되 비워 둔다(값은 뒤 표시칸이 보여줌). 글자를 치면
+    // 빈 칸에 들어가 그대로 덮어쓰기가 되고 편집으로 넘어간다 — 같은 <input>이라 IME도 안 끊긴다.
     const isSelectActive =
       !editing &&
       sel?.kind === "cells" &&
@@ -1703,19 +1685,15 @@ export function DatasetGrid({
           <input
             ref={activeInputRef}
             autoFocus
-            value={draft}
+            // 선택-만-한 상태(편집 아님)에선 입력창을 비워 둔다 — 값은 뒤 표시칸에 그대로 보이고,
+            // 첫 글자를 치면 빈 칸에 들어가 그대로 덮어쓰기가 된다(select() 없이도, 한글 IME 안전).
+            value={isEditing ? draft : ""}
             // 허용값(enum) 열이면 드롭다운 제안(datalist). 느슨 — 목록 밖도 타이핑 가능.
             list={
               meta.columns[c].options
                 ? `opts-${meta.columns[c].key}`
                 : undefined
             }
-            // 클릭 선택 땐 값을 전체선택하지 않는다(커서만 끝에) — 하이라이트 없이 선택만.
-            // 덮어쓰기: 일반 글자는 그 키다운 순간(onCellInputKeyDown), IME(한글)는 조합 시작 시점에
-            // 전체선택한다. 조합 '도중' 전체선택하면 조합이 깨져 글자가 사라지므로 시작에만 한다.
-            onCompositionStart={(e) => {
-              if (!isEditing) e.currentTarget.select();
-            }}
             onChange={(e) => {
               const value = e.target.value;
               setDraft(value);
@@ -1751,11 +1729,12 @@ export function DatasetGrid({
               // 활성(선택/편집) 셀은 얇은 안쪽 테두리로 강조해 어느 칸이 선택됐는지 보이게 한다.
               "ring-primary absolute inset-0 z-[6] h-full w-full px-2 py-1.5 ring-1 outline-none ring-inset",
               ALIGN_CLASS[align],
-              // 뒤 표시값을 가리도록 셀 배경색(없으면 카드색)으로 불투명하게 덮는다.
-              !style?.bg && "bg-card",
+              // 편집 중일 때만 뒤 표시값을 셀 배경(없으면 카드색)으로 불투명하게 덮는다. 선택-만-한
+              // 상태에선 입력창이 비어 투명이라, 뒤 표시칸의 값·배경이 그대로 보인다.
+              isEditing && !style?.bg && "bg-card",
             )}
             style={
-              style?.bg
+              isEditing && style?.bg
                 ? { background: `var(--cell-bg-${style.bg})` }
                 : undefined
             }
