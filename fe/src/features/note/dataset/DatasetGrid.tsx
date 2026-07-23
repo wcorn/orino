@@ -79,6 +79,13 @@ const isUndoRedoKey = (e: React.KeyboardEvent): boolean =>
   (((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z")) ||
     (e.ctrlKey && (e.key === "y" || e.key === "Y")));
 
+/** 값을 만드는 키인가 — 글자 한 자 또는 한글 등 IME 조합키. 수정키 조합은 제외. */
+const isContentKey = (e: React.KeyboardEvent): boolean =>
+  !e.ctrlKey &&
+  !e.metaKey &&
+  !e.altKey &&
+  (e.key === "Process" || e.nativeEvent.isComposing || e.key.length === 1);
+
 /**
  * 선택 범위 — 셀 사각 범위(a=앵커, b=포커스) / 행 묶음 / 열 묶음 / 표 전체.
  * null이면 선택 없음. 선택 위 플로팅 툴바가 이 종류를 보고 옵션을 바꾼다.
@@ -1028,8 +1035,8 @@ export function DatasetGrid({
   /**
    * 활성 셀 입력창의 키 처리. 선택만 한 상태에서 Enter/F2는 기존 값을 이어 편집,
    * Backspace는 편집으로 들어가 끝 글자 하나만 지우고(전체 삭제가 아니라 한 글자씩), Delete는
-   * 셀을 통째로 비운다. 글자/IME는 input 기본 동작(전체선택 덮어쓰기·조합)에 맡긴다.
-   * 어떤 키든 상위 에디터로 전파를 막아 단축키(표 삭제 등)가 튀지 않게 한다.
+   * 셀을 통째로 비운다. 글자/IME를 처음 누르면 그 순간 전체선택해 값을 덮어쓴다(클릭만으론
+   * 전체선택하지 않아 하이라이트가 없다). 어떤 키든 상위 에디터로 전파를 막는다.
    */
   const onCellInputKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement>,
@@ -1071,8 +1078,8 @@ export function DatasetGrid({
       return;
     }
     if (!editing && e.key === "Backspace") {
-      // 선택-만-한 상태에선 값이 전체 선택돼 있어 그대로 두면 한 번에 다 지워진다.
-      // 편집으로 전환해 끝 글자 하나만 지우고, 커서를 끝에 둬 다음 Backspace부턴 native로 한 자씩.
+      // 선택-만-한 상태의 Backspace는 편집으로 전환해 끝 글자 하나만 지운다(전체가 아니라 한 자씩).
+      // 편집·자동저장·되돌리기 캡처를 함께 걸고, 커서를 끝에 둔다.
       e.preventDefault();
       const raw = getFormulas(r)[meta.columns[c].key] ?? getRow(r)?.[c] ?? "";
       const next = raw.slice(0, -1);
@@ -1095,6 +1102,13 @@ export function DatasetGrid({
       e.preventDefault();
       clearSelValues();
       setDraft("");
+      return;
+    }
+    if (!editing && isContentKey(e)) {
+      // 선택-만-한 상태에서 글자/IME를 처음 누르면 값을 덮어쓴다. 클릭 시엔 전체선택을 하지
+      // 않아(하이라이트 없음) 커서가 끝에 있지만, 이 순간에만 전체선택해 native 입력이 그 선택을
+      // 대체하게 한다 — 한 번에 덮어써지고 한글 IME 조합도 처음부터 시작된다. (편집 중이면 안 함)
+      e.currentTarget.select();
     }
   };
   const extendCellSelect = (row: number, col: number) => {
@@ -1637,8 +1651,8 @@ export function DatasetGrid({
     const colKey = meta.columns[c].key;
     const isEditing = editing?.row === rowIndex && editing.col === c;
     // 단일 셀만 선택된 상태(범위/행/열/표 아님)이고 이 셀이 그 셀이면 "활성"이다.
-    // 활성 셀엔 편집 전에도 입력창을 띄워 두고(값 전체선택), 글자를 치면 그대로 편집으로
-    // 넘어간다 — 같은 <input>이라 IME 조합이 끊기지 않는다.
+    // 활성 셀엔 편집 전에도 입력창을 띄워 두고(전체선택은 안 함 — 커서만 끝에), 글자를 치면
+    // 그때 전체선택 후 덮어쓰며 편집으로 넘어간다 — 같은 <input>이라 IME 조합이 끊기지 않는다.
     const isSelectActive =
       !editing &&
       sel?.kind === "cells" &&
@@ -1690,11 +1704,8 @@ export function DatasetGrid({
                 ? `opts-${meta.columns[c].key}`
                 : undefined
             }
-            // 선택만 한 상태(편집 전)에선 값을 통째로 선택해 둔다 — 글자를 치면 덮어써지고,
-            // 한글도 첫 자모부터 이 입력창에서 조합된다(엘리먼트 교체가 없어 조합이 안 끊긴다).
-            onFocus={(e) => {
-              if (!isEditing) e.currentTarget.select();
-            }}
+            // 클릭 선택 땐 값을 전체선택하지 않는다(커서만 끝에) — 하이라이트 없이 선택만. 덮어쓰기는
+            // 첫 글자/IME를 누르는 순간 onCellInputKeyDown이 그때만 전체선택해 처리한다.
             onChange={(e) => {
               const value = e.target.value;
               setDraft(value);
