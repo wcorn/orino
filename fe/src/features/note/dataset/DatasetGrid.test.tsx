@@ -347,6 +347,44 @@ describe("DatasetGrid", () => {
     });
   });
 
+  it("값이 있는 셀을 선택하고 Backspace를 누르면 전체가 아니라 끝 글자 하나만 지운다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    let patched: { index: number; cells: string[] } | null = null;
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/rows/:i`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { cells: string[] };
+          patched = { index: Number(params.i), cells: body.cells };
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.click(await screen.findByText("네트워크"));
+    await user.keyboard("{Backspace}");
+
+    // 통째로 비우지 않고 편집으로 들어가 끝 글자 하나만 지운다.
+    const input = await screen.findByLabelText("셀 1행 1열");
+    expect((input as HTMLInputElement).value).toBe("네트워");
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => {
+      expect(patched).toEqual({ index: 0, cells: ["네트워", "92"] });
+    });
+  });
+
   it("셀에서 드래그를 시작해도 글자가 끌려나가지 않는다(네이티브 드래그 차단)", async () => {
     mockDataset([["네트워크", "92"]]);
     renderWithRouter(<DatasetGrid datasetId={1} />);
