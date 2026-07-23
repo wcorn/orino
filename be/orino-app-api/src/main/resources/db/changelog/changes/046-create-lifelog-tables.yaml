@@ -1,0 +1,340 @@
+databaseChangeLog:
+  # 일상기록(Lifelog) 모듈 스키마 (#950, Epic #949).
+  #
+  # Moment(순간 기록) + Flow(수동 컬렉션, N:M). 노트/메모 트리를 재사용하지 않는 독립 도메인.
+  # 사진은 self-hosted MinIO에 저장하고 여기엔 object key만 담는다. 위치(lat/lng)·장소명(place_name)은
+  # 조회마다 재계산하지 않도록 denormalize 저장한다. 단일 사용자지만 기존 컨벤션(Note·Dataset)대로
+  # member_id로 스코프한다.
+
+  - changeSet:
+      id: 046-create-moment
+      author: wcorn
+      comment: 순간 기록. 사진·본문·발생시각·위치·기분을 담는 리치 카드의 본체.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: moment
+      changes:
+        - createTable:
+            tableName: moment
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # 그 순간이 실제로 일어난 시각(정렬 키). 사진 EXIF 촬영시각 우선 → 없으면 작성시각.
+              - column:
+                  name: occurred_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: body
+                  type: TEXT
+              # 기분 키(HAPPY/CALM/EXCITED/TIRED/SAD). @Enumerated(STRING).
+              - column:
+                  name: mood
+                  type: VARCHAR(20)
+              - column:
+                  name: lat
+                  type: DECIMAL(10, 7)
+              - column:
+                  name: lng
+                  type: DECIMAL(10, 7)
+              # 역지오코딩 결과. 저장 시 1회 확정(denormalize).
+              - column:
+                  name: place_name
+                  type: VARCHAR(255)
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        # 피드 커서 페이지네이션: 역시간순(occurred_at DESC, id DESC), 멤버 스코프.
+        - createIndex:
+            tableName: moment
+            indexName: idx_moment_member_occurred
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: occurred_at
+                  descending: true
+              - column:
+                  name: id
+                  descending: true
+
+  - changeSet:
+      id: 046-create-moment-photo
+      author: wcorn
+      comment: 기록에 붙은 사진(0..N). MinIO object key와 EXIF 원본만 담는다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: moment_photo
+      changes:
+        - createTable:
+            tableName: moment_photo
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: moment_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_moment_photo_moment
+                    references: moment(id)
+                    deleteCascade: true
+              # MinIO 원본 key (lifelog/moments/...). 공개 URL은 base(img.orino.dev)+key로 조립.
+              - column:
+                  name: object_key
+                  type: VARCHAR(512)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: thumb_key
+                  type: VARCHAR(512)
+              - column:
+                  name: width
+                  type: INT
+              - column:
+                  name: height
+                  type: INT
+              # EXIF 원본 보존(발생시각·위치 자동채움의 근거).
+              - column:
+                  name: exif_taken_at
+                  type: DATETIME(6)
+              - column:
+                  name: exif_lat
+                  type: DECIMAL(10, 7)
+              - column:
+                  name: exif_lng
+                  type: DECIMAL(10, 7)
+              - column:
+                  name: sort_order
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: moment_photo
+            indexName: idx_moment_photo_moment
+            columns:
+              - column:
+                  name: moment_id
+              - column:
+                  name: sort_order
+
+  - changeSet:
+      id: 046-create-moment-tag
+      author: wcorn
+      comment: 기록 태그(0..N). 정규화하지 않고 이름을 그대로 담는다. name 인덱스로 자동완성.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: moment_tag
+      changes:
+        - createTable:
+            tableName: moment_tag
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: moment_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_moment_tag_moment
+                    references: moment(id)
+                    deleteCascade: true
+              - column:
+                  name: name
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+        # 한 기록에 같은 태그 하나. 조회 키이자 중복 방지.
+        - createIndex:
+            tableName: moment_tag
+            indexName: uq_moment_tag
+            unique: true
+            columns:
+              - column:
+                  name: moment_id
+              - column:
+                  name: name
+        # 태그 자동완성(SELECT DISTINCT name WHERE name LIKE ?).
+        - createIndex:
+            tableName: moment_tag
+            indexName: idx_moment_tag_name
+            columns:
+              - column:
+                  name: name
+
+  - changeSet:
+      id: 046-create-flow
+      author: wcorn
+      comment: 흐름(수동 컬렉션). 담긴 기록을 시간순 서사·지도로 본다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: flow
+      changes:
+        - createTable:
+            tableName: flow
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: title
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: TEXT
+              # 커버 이미지 key. 비우면 담긴 첫 사진으로 대체 표시(조회 시 결정).
+              - column:
+                  name: cover_object_key
+                  type: VARCHAR(512)
+              # 기간. 수동 또는 담긴 기록 min/max occurred_at으로 유도.
+              - column:
+                  name: started_at
+                  type: DATETIME(6)
+              - column:
+                  name: ended_at
+                  type: DATETIME(6)
+              # ACTIVE / ARCHIVED. @Enumerated(STRING). 불리언 회피(Hibernate validate 호환).
+              - column:
+                  name: status
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: flow
+            indexName: idx_flow_member_status_started
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: status
+              - column:
+                  name: started_at
+                  descending: true
+
+  - changeSet:
+      id: 046-create-flow-moment
+      author: wcorn
+      comment: 흐름↔기록 N:M 조인. 흐름 내 수동 정렬(sort_order). 자연키는 유니크로 보장.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: flow_moment
+      changes:
+        - createTable:
+            tableName: flow_moment
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: flow_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_flow_moment_flow
+                    references: flow(id)
+                    deleteCascade: true
+              # 기록이 지워지면 소속도 사라진다. 반대로 흐름 삭제는 소속만 지우고 기록은 남는다.
+              - column:
+                  name: moment_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_flow_moment_moment
+                    references: moment(id)
+                    deleteCascade: true
+              # 흐름 내 정렬. 기본은 occurred_at 순, 사용자가 조정하면 이 값 우선.
+              - column:
+                  name: sort_order
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: added_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        # 한 흐름에 같은 기록은 한 번만(멱등 담기). 역조회 인덱스도 겸한다.
+        - createIndex:
+            tableName: flow_moment
+            indexName: uq_flow_moment
+            unique: true
+            columns:
+              - column:
+                  name: flow_id
+              - column:
+                  name: moment_id
+        # "이 기록이 담긴 흐름" 역조회.
+        - createIndex:
+            tableName: flow_moment
+            indexName: idx_flow_moment_moment
+            columns:
+              - column:
+                  name: moment_id
