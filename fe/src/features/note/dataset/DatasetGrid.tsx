@@ -1732,6 +1732,9 @@ export function DatasetGrid({
               // 편집 중일 때만 뒤 표시값을 셀 배경(없으면 카드색)으로 불투명하게 덮는다. 선택-만-한
               // 상태에선 입력창이 비어 투명이라, 뒤 표시칸의 값·배경이 그대로 보인다.
               isEditing && !style?.bg && "bg-card",
+              // 선택-만-한 상태의 입력창은 비어 있어 커서가 맨 앞에서 깜빡인다 — 값은 뒤 표시칸이
+              // 보여주므로 여기선 커서를 숨긴다(엑셀식 선택 셀엔 텍스트 커서 없음). 편집 시 보인다.
+              !isEditing && "caret-transparent",
             )}
             style={
               isEditing && style?.bg
@@ -1799,6 +1802,9 @@ export function DatasetGrid({
         aria-label="표 이름"
         defaultValue={meta.name ?? ""}
         placeholder="표 이름"
+        // 표 이름 입력창도 표(노드뷰) 안이라, 클릭하면 ProseMirror가 포커스를 도로 가져가 입력이
+        // 안 됐다. 셀과 같은 방식으로 클릭 뒤(mouseup 이후) 포커스를 다시 잡아 이긴다.
+        onClick={(e) => e.currentTarget.focus({ preventScroll: true })}
         onKeyDown={(e) => {
           if (e.key === "Enter") e.currentTarget.blur();
         }}

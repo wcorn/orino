@@ -547,6 +547,18 @@ describe("DatasetGrid", () => {
     // 어느 칸이 선택됐는지 보이도록 얇은 안쪽 테두리로 강조한다.
     expect(input.className).toContain("ring-1");
     expect(input.className).toContain("ring-primary");
+    // 빈 입력창의 커서가 맨 앞에서 깜빡이지 않도록 선택-만-한 상태에선 커서를 숨긴다.
+    expect(input.className).toContain("caret-transparent");
+  });
+
+  it("편집에 들어가면 커서를 다시 보이게 한다(caret-transparent 해제)", async () => {
+    mockDataset([["네트워크", "92"]]);
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    await user.dblClick(await screen.findByText("92"));
+    const input = screen.getByLabelText("셀 1행 2열");
+    expect(input.className).not.toContain("caret-transparent");
   });
 
   it("셀을 클릭하고 글자를 입력하면 기존 값을 덮어쓴다(전체선택 없이 빈 칸 방식)", async () => {
