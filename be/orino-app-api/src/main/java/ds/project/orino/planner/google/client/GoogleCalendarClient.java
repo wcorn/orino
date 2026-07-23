@@ -439,6 +439,7 @@ public class GoogleCalendarClient {
                 startValue,
                 endValue,
                 item.location(),
+                item.description(),
                 item.recurringEventId() != null,
                 "google",
                 toRoutineMeta(item));

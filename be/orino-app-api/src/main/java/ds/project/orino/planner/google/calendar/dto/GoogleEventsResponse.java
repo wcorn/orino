@@ -13,6 +13,7 @@ public record GoogleEventsResponse(List<GoogleEventItem> items) {
             String id,
             String summary,
             String location,
+            String description,
             String recurringEventId,
             GoogleEventDateTime start,
             GoogleEventDateTime end,

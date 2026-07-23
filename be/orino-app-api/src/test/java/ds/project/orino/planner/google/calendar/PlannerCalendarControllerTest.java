@@ -85,7 +85,7 @@ class PlannerCalendarControllerTest extends ApiTestSupport {
     void setUp() throws Exception {
         responseStatus = 200;
         responseBody = """
-                {"items":[{"id":"e1","summary":"회의",
+                {"items":[{"id":"e1","summary":"회의","description":"안건: 로드맵 리뷰",
                  "start":{"dateTime":"2026-06-10T05:00:00Z"},"end":{"dateTime":"2026-06-10T06:00:00Z"}}]}""";
         tasksBody = EMPTY_ITEMS;
         dbCleaner.clean();
@@ -124,6 +124,8 @@ class PlannerCalendarControllerTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.data.partial").value(false))
                 .andExpect(jsonPath("$.data.events.length()").value(1))
                 .andExpect(jsonPath("$.data.events[0].title").value("회의"))
+                // 메모(description)가 읽기 피드에 실려 돌아온다(회귀 방지: #940)
+                .andExpect(jsonPath("$.data.events[0].description").value("안건: 로드맵 리뷰"))
                 .andExpect(jsonPath("$.data.reviews.length()").value(1))
                 .andExpect(jsonPath("$.data.reviews[0].readOnly").value(true))
                 .andExpect(jsonPath("$.data.reviews[0].source").value("review"))
