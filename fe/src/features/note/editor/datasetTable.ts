@@ -9,6 +9,17 @@ export interface DatasetTableAttrs {
   datasetId: number;
 }
 
+/**
+ * 그리드(셀) 안에서 일어난 클립보드 이벤트인가. 이런 이벤트는 에디터(ProseMirror)가 처리하지
+ * 않게 한다({@link Node.addNodeView}의 stopEvent) — 안 그러면 셀 붙여넣기가 에디터의
+ * handlePaste까지 버블링돼 노트에 표가 하나 더 생긴다(그리드는 자체 핸들러로 붙여넣는다).
+ */
+export function isGridClipboardEvent(event: Event): boolean {
+  return (
+    event.type === "paste" || event.type === "copy" || event.type === "cut"
+  );
+}
+
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     datasetTable: {
@@ -59,7 +70,11 @@ export const DatasetTable = Node.create({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(DatasetTableView);
+    return ReactNodeViewRenderer(DatasetTableView, {
+      // 셀 안 클립보드 이벤트는 에디터가 손대지 않는다(그리드가 직접 처리) — 셀 붙여넣기가
+      // handlePaste까지 닿아 노트에 표가 하나 더 생기던 문제를 막는다.
+      stopEvent: ({ event }) => isGridClipboardEvent(event),
+    });
   },
 
   addCommands() {
