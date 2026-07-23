@@ -3,7 +3,11 @@ import { NodeSelection } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
 import { describe, expect, it } from "vitest";
 
-import { collectDatasetIds, DatasetTable } from "./datasetTable";
+import {
+  collectDatasetIds,
+  DatasetTable,
+  isGridClipboardEvent,
+} from "./datasetTable";
 
 describe("collectDatasetIds", () => {
   it("중첩 doc에서 모든 datasetTable datasetId를 수집한다", () => {
@@ -41,6 +45,20 @@ describe("collectDatasetIds", () => {
       content: [{ type: "datasetTable", attrs: {} }],
     };
     expect(collectDatasetIds(doc).size).toBe(0);
+  });
+});
+
+describe("isGridClipboardEvent (셀 안 클립보드 이벤트는 에디터가 무시)", () => {
+  it("paste·copy·cut이면 true(에디터 handlePaste로 새지 않게 stopEvent)", () => {
+    expect(isGridClipboardEvent(new Event("paste"))).toBe(true);
+    expect(isGridClipboardEvent(new Event("copy"))).toBe(true);
+    expect(isGridClipboardEvent(new Event("cut"))).toBe(true);
+  });
+
+  it("그 외 이벤트는 false(키·마우스 등은 평소대로)", () => {
+    expect(isGridClipboardEvent(new Event("keydown"))).toBe(false);
+    expect(isGridClipboardEvent(new Event("mousedown"))).toBe(false);
+    expect(isGridClipboardEvent(new Event("input"))).toBe(false);
   });
 });
 
