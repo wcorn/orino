@@ -15,6 +15,7 @@ export interface PlannerEvent {
   start: string;
   end: string | null;
   location: string | null;
+  description?: string | null;
   recurring: boolean;
   source: "google";
   routine?: RoutineMeta | null;

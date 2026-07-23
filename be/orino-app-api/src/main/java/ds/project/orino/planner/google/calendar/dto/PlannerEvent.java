@@ -7,11 +7,12 @@ package ds.project.orino.planner.google.calendar.dto;
  * @param title     제목(summary, null 가능)
  * @param allDay    종일 일정 여부
  * @param start     종일이면 날짜("2026-06-10"), 시간 일정이면 사용자 TZ 로컬 datetime("2026-06-10T14:00:00")
- * @param end       종료(종일은 포함 마지막 날짜로 보정)
- * @param location  장소(null 가능)
- * @param recurring 반복 일정의 인스턴스 여부
- * @param source    항상 "google"
- * @param routine   루틴 인스턴스면 주석(type/recurringEventId/done), 아니면 null
+ * @param end         종료(종일은 포함 마지막 날짜로 보정)
+ * @param location    장소(null 가능)
+ * @param description 메모(null 가능)
+ * @param recurring   반복 일정의 인스턴스 여부
+ * @param source      항상 "google"
+ * @param routine     루틴 인스턴스면 주석(type/recurringEventId/done), 아니면 null
  */
 public record PlannerEvent(
         String id,
@@ -20,6 +21,7 @@ public record PlannerEvent(
         String start,
         String end,
         String location,
+        String description,
         boolean recurring,
         String source,
         RoutineMeta routine
@@ -27,7 +29,7 @@ public record PlannerEvent(
 
     /** 루틴 주석 없는 일반 일정. */
     public PlannerEvent(String id, String title, boolean allDay, String start, String end,
-                        String location, boolean recurring, String source) {
-        this(id, title, allDay, start, end, location, recurring, source, null);
+                        String location, String description, boolean recurring, String source) {
+        this(id, title, allDay, start, end, location, description, recurring, source, null);
     }
 }

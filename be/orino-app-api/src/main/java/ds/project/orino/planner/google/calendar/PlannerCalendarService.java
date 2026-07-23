@@ -133,7 +133,8 @@ public class PlannerCalendarService {
         RoutineMeta updated = new RoutineMeta(
                 event.routine().type(), event.routine().recurringEventId(), done);
         return new PlannerEvent(event.id(), event.title(), event.allDay(), event.start(),
-                event.end(), event.location(), event.recurring(), event.source(), updated);
+                event.end(), event.location(), event.description(), event.recurring(),
+                event.source(), updated);
     }
 
     private static String checkKey(String recurringEventId, String instanceDate) {

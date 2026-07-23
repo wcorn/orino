@@ -59,7 +59,7 @@ function initialState(
       endDate: (event.end ?? event.start).slice(0, 10),
       endTime: allDay ? "10:00" : (event.end ?? "").slice(11, 16) || "10:00",
       location: event.location ?? "",
-      description: "",
+      description: event.description ?? "",
     };
   }
   return {
