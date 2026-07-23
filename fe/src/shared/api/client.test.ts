@@ -48,6 +48,39 @@ describe("Axios interceptor", () => {
     expect(useAuthStore.getState().accessToken).toBe("new-access-token");
   });
 
+  it("401이지만 그 사이 토큰이 이미 갱신됐으면 재발급 없이 새 토큰으로 재시도한다", async () => {
+    let reissueCalls = 0;
+    let protectedCalls = 0;
+    useAuthStore.setState({ accessToken: "stale-token" });
+
+    server.use(
+      http.get(`${API_BASE}/protected`, ({ request }) => {
+        protectedCalls++;
+        if (protectedCalls === 1) {
+          // 첫 요청이 401되기 직전, 다른 탭이 토큰을 갱신했다고 가정(브로드캐스트로 스토어 반영).
+          useAuthStore.setState({ accessToken: "fresh-token" });
+          return HttpResponse.json(null, { status: 401 });
+        }
+        return HttpResponse.json({
+          auth: request.headers.get("Authorization"),
+        });
+      }),
+      http.post(`${API_BASE}/auth/reissue`, () => {
+        reissueCalls++;
+        return HttpResponse.json({
+          code: "OK",
+          data: { accessToken: "reissued-token" },
+        });
+      }),
+    );
+
+    const { data } = await client.get("/protected");
+
+    // 재발급 없이 최신 토큰으로 재시도한다.
+    expect(data.auth).toBe("Bearer fresh-token");
+    expect(reissueCalls).toBe(0);
+  });
+
   it("reissue 실패 시 토큰을 제거한다", async () => {
     server.use(
       http.get(`${API_BASE}/protected`, () => {

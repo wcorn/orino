@@ -1,12 +1,10 @@
 import axios from "axios";
 
-import {
-  getAccessToken,
-  setAccessToken,
-} from "../../features/auth/store/authStore";
+import { refreshAccessToken } from "../../features/auth/refreshCoordinator";
+import { getAccessToken } from "../../features/auth/store/authStore";
+import { API_BASE_URL } from "./config";
 
-export const API_BASE_URL =
-  import.meta.env.VITE_API_URL ?? "https://api.orino.dev/api";
+export { API_BASE_URL };
 
 const client = axios.create({
   baseURL: API_BASE_URL,
@@ -28,42 +26,42 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
-let isRefreshing = false;
-let pendingRequests: Array<() => void> = [];
+/** "Bearer xxx" → "xxx". 그 외엔 undefined. */
+function bearerToken(auth: unknown): string | undefined {
+  return typeof auth === "string" && auth.startsWith("Bearer ")
+    ? auth.slice(7)
+    : undefined;
+}
 
 client.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status !== 401 || originalRequest._retry) {
+    if (
+      error.response?.status !== 401 ||
+      !originalRequest ||
+      originalRequest._retry
+    ) {
       return Promise.reject(error);
     }
-
-    if (isRefreshing) {
-      return new Promise((resolve) => {
-        pendingRequests.push(() => resolve(client(originalRequest)));
-      });
-    }
-
     originalRequest._retry = true;
-    isRefreshing = true;
 
-    try {
-      const { data } = await axios.post(`${API_BASE_URL}/auth/reissue`, null, {
-        withCredentials: true,
-      });
-      setAccessToken(data.data.accessToken);
-      pendingRequests.forEach((cb) => cb());
+    // 다른 탭·다른 요청이 이미 토큰을 갱신했으면(스토어 토큰이 이 요청에 쓴 것과 다름) 재발급 없이
+    // 최신 토큰으로 바로 재시도한다 — 불필요한 재발급(=회전)을 아낀다.
+    const usedToken = bearerToken(originalRequest.headers?.Authorization);
+    const current = getAccessToken();
+    if (current && current !== usedToken) {
       return client(originalRequest);
-    } catch {
-      setAccessToken(null);
-      window.location.href = "/login";
-      return Promise.reject(error);
-    } finally {
-      isRefreshing = false;
-      pendingRequests = [];
     }
+
+    // 재발급은 코디네이터가 탭 내 단일 비행 + 탭 간 Web Lock으로 직렬화한다.
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      return client(originalRequest);
+    }
+    window.location.href = "/login";
+    return Promise.reject(error);
   },
 );
 
