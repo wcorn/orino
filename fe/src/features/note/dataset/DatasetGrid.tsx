@@ -1027,8 +1027,9 @@ export function DatasetGrid({
 
   /**
    * 활성 셀 입력창의 키 처리. 선택만 한 상태에서 Enter/F2는 기존 값을 이어 편집,
-   * Delete/Backspace는 셀을 즉시 비운다. 글자/IME는 input 기본 동작(전체선택 덮어쓰기·조합)에
-   * 맡긴다. 어떤 키든 상위 에디터로 전파를 막아 단축키(표 삭제 등)가 튀지 않게 한다.
+   * Backspace는 편집으로 들어가 끝 글자 하나만 지우고(전체 삭제가 아니라 한 글자씩), Delete는
+   * 셀을 통째로 비운다. 글자/IME는 input 기본 동작(전체선택 덮어쓰기·조합)에 맡긴다.
+   * 어떤 키든 상위 에디터로 전파를 막아 단축키(표 삭제 등)가 튀지 않게 한다.
    */
   const onCellInputKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement>,
@@ -1069,7 +1070,28 @@ export function DatasetGrid({
       setDraft(getFormulas(r)[meta.columns[c].key] ?? getRow(r)?.[c] ?? "");
       return;
     }
-    if (!editing && (e.key === "Delete" || e.key === "Backspace")) {
+    if (!editing && e.key === "Backspace") {
+      // 선택-만-한 상태에선 값이 전체 선택돼 있어 그대로 두면 한 번에 다 지워진다.
+      // 편집으로 전환해 끝 글자 하나만 지우고, 커서를 끝에 둬 다음 Backspace부턴 native로 한 자씩.
+      e.preventDefault();
+      const raw = getFormulas(r)[meta.columns[c].key] ?? getRow(r)?.[c] ?? "";
+      const next = raw.slice(0, -1);
+      beginEditCapture(r, c); // 되돌리기용: 편집 전 행 내용 캡처
+      setEditing({ row: r, col: c });
+      setDraft(next);
+      pendingEdit.current = { row: r, col: c, value: next };
+      // 타이핑과 같은 경로로 자동저장 예약(엔터·blur로도 커밋된다).
+      cancelAutoSave();
+      autoSaveTimer.current = setTimeout(() => flushPendingEdit(true), 500);
+      // 전체선택을 풀고 커서를 끝으로 — 다음 Backspace가 또 전체를 지우지 않게 한다.
+      requestAnimationFrame(() => {
+        const el = activeInputRef.current;
+        if (el) el.setSelectionRange(el.value.length, el.value.length);
+      });
+      return;
+    }
+    if (!editing && e.key === "Delete") {
+      // Delete는 셀을 통째로 비운다(스프레드시트식 '내용 지우기').
       e.preventDefault();
       clearSelValues();
       setDraft("");
