@@ -6,6 +6,7 @@ import { LoadingText } from "@/components/ui/loading-text";
 
 import { PrivateRoute } from "../features/auth/components/PrivateRoute";
 import { PublicRoute } from "../features/auth/components/PublicRoute";
+import { PlannerLayout } from "../features/planner/components/PlannerLayout";
 import { LandingPage } from "../pages/LandingPage";
 import { LoginPage } from "../pages/LoginPage";
 import { PlannerCallbackRedirect } from "../pages/planner/PlannerCallbackRedirect";
@@ -99,30 +100,33 @@ export function AppRouter() {
             path="/planner/reviews/today"
             element={<Navigate to="/planner/reviews" replace />}
           />
-          <Route
-            path="/planner/calendar"
-            element={
-              <Suspense fallback={<RouteFallback />}>
-                <PlannerCalendarPage />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/planner/routines"
-            element={
-              <Suspense fallback={<RouteFallback />}>
-                <RoutinesPage />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/planner/plan"
-            element={
-              <Suspense fallback={<RouteFallback />}>
-                <WeeklyPlanPage />
-              </Suspense>
-            }
-          />
+          {/* 플래너 통합: 캘린더·주간 계획표·루틴을 상단 하위 탭으로 묶는다 */}
+          <Route element={<PlannerLayout />}>
+            <Route
+              path="/planner/calendar"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <PlannerCalendarPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/planner/routines"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <RoutinesPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/planner/plan"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <WeeklyPlanPage />
+                </Suspense>
+              }
+            />
+          </Route>
           <Route
             path="/planner/settings"
             element={

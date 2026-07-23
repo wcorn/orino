@@ -1,14 +1,12 @@
 import {
   BookOpen,
-  Calendar,
-  CalendarRange,
+  CalendarDays,
   CheckSquare,
   FileText,
   Home,
-  Repeat,
   Settings,
 } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 
 import { useReviewSummary } from "@/features/review/hooks/useReviewSummary";
 import { cn } from "@/lib/utils";
@@ -17,6 +15,11 @@ interface NavItem {
   to: string;
   label: string;
   icon: typeof Home;
+  /**
+   * 항목을 활성으로 볼 추가 경로. 지정하면 NavLink 기본 매칭 대신 이 경로들로 판정한다.
+   * (「플래너」처럼 상위 1탭이 여러 하위 라우트를 대표하는 경우)
+   */
+  activePaths?: string[];
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -24,11 +27,19 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/planner/materials", label: "학습 자료", icon: BookOpen },
   { to: "/notes", label: "노트", icon: FileText },
   { to: "/planner/reviews", label: "복습", icon: CheckSquare },
-  { to: "/planner/calendar", label: "캘린더", icon: Calendar },
-  { to: "/planner/plan", label: "주간 계획표", icon: CalendarRange },
-  { to: "/planner/routines", label: "루틴", icon: Repeat },
+  {
+    to: "/planner/calendar",
+    label: "플래너",
+    icon: CalendarDays,
+    activePaths: ["/planner/calendar", "/planner/plan", "/planner/routines"],
+  },
   { to: "/planner/settings", label: "연동 설정", icon: Settings },
 ];
+
+/** activePaths가 지정된 항목의 활성 여부 — 해당 경로이거나 그 하위 경로면 활성. */
+function matchesActivePaths(pathname: string, paths: string[]): boolean {
+  return paths.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
 
 interface SidebarProps {
   open: boolean;
@@ -38,6 +49,7 @@ interface SidebarProps {
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { data } = useReviewSummary();
   const reviewCount = data?.counts.now ?? 0;
+  const { pathname } = useLocation();
 
   return (
     <>
@@ -67,14 +79,17 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 <NavLink
                   to={item.to}
                   end={item.to === "/home"}
-                  className={({ isActive }) =>
-                    cn(
+                  className={({ isActive }) => {
+                    const active = item.activePaths
+                      ? matchesActivePaths(pathname, item.activePaths)
+                      : isActive;
+                    return cn(
                       "flex h-9 items-center justify-between rounded-md px-3 text-sm font-medium transition-colors",
-                      isActive
+                      active
                         ? "bg-primary/10 text-primary"
                         : "text-foreground/70 hover:bg-muted hover:text-foreground",
-                    )
-                  }
+                    );
+                  }}
                 >
                   <span className="flex items-center gap-2">
                     <Icon className="size-4" />
