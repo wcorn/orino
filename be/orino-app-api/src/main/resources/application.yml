@@ -66,6 +66,19 @@ holiday:
   connect-timeout: ${HOLIDAY_CONNECT_TIMEOUT:5s}
   read-timeout: ${HOLIDAY_READ_TIMEOUT:10s}
 
+geocoding:
+  nominatim:
+    base-url: ${NOMINATIM_BASE_URL:https://nominatim.openstreetmap.org}
+    # Nominatim 정책상 식별 가능한 User-Agent 필수.
+    user-agent: ${NOMINATIM_USER_AGENT:orino-lifelog/1.0 (https://orino.dev)}
+    accept-language: ${NOMINATIM_ACCEPT_LANGUAGE:ko}
+    # 초당 1회 이하(정책). 단일 사용자라 여유 있게.
+    min-interval: ${NOMINATIM_MIN_INTERVAL:1s}
+    reverse-ttl: ${NOMINATIM_REVERSE_TTL:30d}
+    search-ttl: ${NOMINATIM_SEARCH_TTL:7d}
+    connect-timeout: ${NOMINATIM_CONNECT_TIMEOUT:5s}
+    read-timeout: ${NOMINATIM_READ_TIMEOUT:10s}
+
 management:
   tracing:
     sampling:
