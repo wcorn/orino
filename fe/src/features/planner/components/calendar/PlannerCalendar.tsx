@@ -29,7 +29,6 @@ import {
   useUpdateTask,
 } from "../../hooks/useTaskMutations";
 import { weekDays } from "../../weekLayout";
-import { TodayRoutines } from "../routine/TodayRoutines";
 import { EventFormDialog } from "./EventFormDialog";
 import { MonthlyGoalInline } from "./MonthlyGoalInline";
 import { PlannerCalendarCell } from "./PlannerCalendarCell";
@@ -205,8 +204,6 @@ export function PlannerCalendar() {
       </div>
 
       <PlannerConnectionBanner feed={data} />
-
-      <TodayRoutines />
 
       <PlannerCalendarLegend />
 
