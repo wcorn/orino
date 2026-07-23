@@ -2855,4 +2855,113 @@ describe("DatasetGrid", () => {
       expect(patched[1]).toEqual(["", ""]);
     });
   });
+
+  it("행을 삭제한 뒤 Cmd+Z를 누르면 그 자리에 값·수식까지 되살린다(#932)", async () => {
+    mockDataset([["네트워크", "92"]]);
+    const deleted: number[] = [];
+    let inserted: { atIndex: number; cells: string[] } | null = null;
+    let restored: { index: number; cells: string[] } | null = null;
+    server.use(
+      http.delete(`${API_BASE}/datasets/1/rows/:i`, ({ params }) => {
+        deleted.push(Number(params.i));
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.post(`${API_BASE}/datasets/1/rows`, async ({ request }) => {
+        const body = (await request.json()) as {
+          atIndex: number;
+          cells: string[];
+        };
+        inserted = body;
+        return HttpResponse.json({
+          code: "OK",
+          data: { rowIndex: body.atIndex },
+        });
+      }),
+      http.patch(
+        `${API_BASE}/datasets/1/rows/:i`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { cells: string[] };
+          restored = { index: Number(params.i), cells: body.cells };
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    fireEvent.contextMenu(await screen.findByText("네트워크"));
+    await user.click(await screen.findByRole("menuitem", { name: "삭제" }));
+    await user.click(await screen.findByRole("menuitem", { name: "행 삭제" }));
+    await waitFor(() => expect(deleted).toEqual([0]));
+
+    // 되돌리기: 표 컨테이너에 Cmd+Z. 삭제 직후 표는 포커스가 살아 키를 직접 받는다.
+    fireEvent.keyDown(screen.getByTestId("dataset-grid"), {
+      key: "z",
+      metaKey: true,
+    });
+
+    // 0번 자리에 슬롯을 다시 만들고(POST atIndex 0), 원래 값·수식을 되살린다(PATCH).
+    await waitFor(() =>
+      expect(inserted).toEqual({ atIndex: 0, cells: ["", ""] }),
+    );
+    await waitFor(() =>
+      expect(restored).toEqual({ index: 0, cells: ["네트워크", "92"] }),
+    );
+  });
+
+  it("셀 편집을 Cmd+Z로 되돌리고 Cmd+Shift+Z로 다시 실행한다(#932)", async () => {
+    mockDataset([["네트워크", "92"]]);
+    const patched: string[][] = [];
+    server.use(
+      http.patch(
+        `${API_BASE}/datasets/1/rows/:i`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { cells: string[] };
+          patched.push(body.cells);
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              edited: {
+                id: 100,
+                rowIndex: Number(params.i),
+                cells: body.cells,
+              },
+              affected: [],
+            },
+          });
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    const has = (cells: string[]) =>
+      patched.filter((c) => c[0] === cells[0] && c[1] === cells[1]).length;
+
+    // 편집: (0,0) 셀을 "라우터"로 바꾸고 커밋.
+    await user.dblClick(await screen.findByText("네트워크"));
+    const input = await screen.findByLabelText("셀 1행 1열");
+    fireEvent.change(input, { target: { value: "라우터" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(has(["라우터", "92"])).toBe(1));
+
+    const grid = screen.getByTestId("dataset-grid");
+    // 되돌리기 → 편집 전 값으로 재저장.
+    fireEvent.keyDown(grid, { key: "z", metaKey: true });
+    await waitFor(() => expect(has(["네트워크", "92"])).toBe(1));
+
+    // 다시 실행 → 편집 후 값으로 재저장(라우터가 다시 저장돼 2회가 된다).
+    fireEvent.keyDown(grid, { key: "z", metaKey: true, shiftKey: true });
+    await waitFor(() => expect(has(["라우터", "92"])).toBe(2));
+  });
 });
