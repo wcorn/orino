@@ -117,10 +117,14 @@ describe("ReviewSessionPage", () => {
     useToastStore.setState({ toasts: [] });
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(2026, 4, 18, 9, 0, 0));
+    // 큐 셔플(Fisher–Yates)을 결정적으로 만든다 — rng=0.99면 항상 항등 순열이라 서버 순서가
+    // 그대로 유지돼 순서 의존 검증이 안정적이다. 셔플이 실제로 적용되는지는 별도 테스트에서 확인.
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("0건이면 빈 상태와 [홈으로] 버튼을 표시한다", async () => {
@@ -147,6 +151,19 @@ describe("ReviewSessionPage", () => {
     expect(
       screen.queryByRole("button", { name: /Again/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("세션 진입 시 카드 순서를 섞는다(서버 순서와 다르게 나올 수 있다)", async () => {
+    // rng=0이면 2장 덱 [1,2]가 [2,1]로 뒤집힌다 — 서버가 준 순서를 그대로 쓰지 않음을 확인.
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    mockToday([{ id: 1 }, { id: 2 }]);
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("질문 2")).toBeInTheDocument();
+    });
+    expect(screen.getByText("1 / 2")).toBeInTheDocument();
+    expect(screen.queryByText("질문 1")).not.toBeInTheDocument();
   });
 
   it("Space로 답이 공개되고 1/2/3/4 키로 평가가 전송된다", async () => {
