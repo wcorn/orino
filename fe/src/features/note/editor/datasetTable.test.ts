@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   collectDatasetIds,
   DatasetTable,
-  isGridClipboardEvent,
+  isGridSelfHandledEvent,
 } from "./datasetTable";
 
 describe("collectDatasetIds", () => {
@@ -48,17 +48,30 @@ describe("collectDatasetIds", () => {
   });
 });
 
-describe("isGridClipboardEvent (셀 안 클립보드 이벤트는 에디터가 무시)", () => {
-  it("paste·copy·cut이면 true(에디터 handlePaste로 새지 않게 stopEvent)", () => {
-    expect(isGridClipboardEvent(new Event("paste"))).toBe(true);
-    expect(isGridClipboardEvent(new Event("copy"))).toBe(true);
-    expect(isGridClipboardEvent(new Event("cut"))).toBe(true);
+describe("isGridSelfHandledEvent (셀 안 이벤트는 에디터가 무시)", () => {
+  it("키보드·입력·조합·클립보드 이벤트면 true(PM이 가로채지 못하게 stopEvent)", () => {
+    // keypress/beforeinput을 막지 않으면 PM이 preventDefault해 영어 입력이 안 된다.
+    for (const t of [
+      "keydown",
+      "keypress",
+      "keyup",
+      "beforeinput",
+      "input",
+      "compositionstart",
+      "compositionupdate",
+      "compositionend",
+      "paste",
+      "copy",
+      "cut",
+    ]) {
+      expect(isGridSelfHandledEvent(new Event(t))).toBe(true);
+    }
   });
 
-  it("그 외 이벤트는 false(키·마우스 등은 평소대로)", () => {
-    expect(isGridClipboardEvent(new Event("keydown"))).toBe(false);
-    expect(isGridClipboardEvent(new Event("mousedown"))).toBe(false);
-    expect(isGridClipboardEvent(new Event("input"))).toBe(false);
+  it("마우스·포커스 등은 false(PM에 맡긴다 — 포커스 이동에 필요)", () => {
+    expect(isGridSelfHandledEvent(new Event("mousedown"))).toBe(false);
+    expect(isGridSelfHandledEvent(new Event("focus"))).toBe(false);
+    expect(isGridSelfHandledEvent(new Event("click"))).toBe(false);
   });
 });
 

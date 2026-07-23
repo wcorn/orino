@@ -10,14 +10,35 @@ export interface DatasetTableAttrs {
 }
 
 /**
- * 그리드(셀) 안에서 일어난 클립보드 이벤트인가. 이런 이벤트는 에디터(ProseMirror)가 처리하지
- * 않게 한다({@link Node.addNodeView}의 stopEvent) — 안 그러면 셀 붙여넣기가 에디터의
- * handlePaste까지 버블링돼 노트에 표가 하나 더 생긴다(그리드는 자체 핸들러로 붙여넣는다).
+ * 그리드(셀) 안에서 일어난, 그리드가 스스로 처리하는 이벤트인가. 이런 이벤트는 에디터
+ * (ProseMirror)가 건드리지 않게 한다({@link Node.addNodeView}의 stopEvent).
+ *
+ * <p>그리드는 contentEditable=false NodeView 안의 진짜 {@code <input>}으로 편집을 처리한다.
+ * stopEvent로 막지 않으면 PM의 편집 핸들러가 셀의 이벤트까지 가로챈다:
+ * <ul>
+ *   <li><b>keypress/beforeinput</b>: PM이 preventDefault → 셀에 글자가 안 들어간다(영어 입력 불가).
+ *   <li><b>composition*</b>: 노드가 선택된 상태면 PM이 조합 텍스트로 노드를 대체 → 한글 치면 표 삭제.
+ *   <li><b>clipboard(paste/copy/cut)</b>: PM의 handlePaste가 표 조각을 새 표로 삽입(왔다갔다).
+ * </ul>
+ * 마우스·포커스 등은 PM에 맡긴다(그리드가 포커스 이동에 그 동작이 필요하다).
  */
-export function isGridClipboardEvent(event: Event): boolean {
-  return (
-    event.type === "paste" || event.type === "copy" || event.type === "cut"
-  );
+export function isGridSelfHandledEvent(event: Event): boolean {
+  switch (event.type) {
+    case "keydown":
+    case "keypress":
+    case "keyup":
+    case "beforeinput":
+    case "input":
+    case "compositionstart":
+    case "compositionupdate":
+    case "compositionend":
+    case "paste":
+    case "copy":
+    case "cut":
+      return true;
+    default:
+      return false;
+  }
 }
 
 declare module "@tiptap/core" {
@@ -71,9 +92,10 @@ export const DatasetTable = Node.create({
 
   addNodeView() {
     return ReactNodeViewRenderer(DatasetTableView, {
-      // 셀 안 클립보드 이벤트는 에디터가 손대지 않는다(그리드가 직접 처리) — 셀 붙여넣기가
-      // handlePaste까지 닿아 노트에 표가 하나 더 생기던 문제를 막는다.
-      stopEvent: ({ event }) => isGridClipboardEvent(event),
+      // 셀 안의 키보드·입력·조합·클립보드 이벤트는 에디터가 손대지 않는다(그리드가 직접 처리).
+      // 안 막으면 PM이 keypress를 preventDefault(영어 입력 불가)하거나 조합으로 노드를 대체
+      // (한글 치면 표 삭제)하고, 붙여넣기는 새 표를 만든다.
+      stopEvent: ({ event }) => isGridSelfHandledEvent(event),
     });
   },
 
