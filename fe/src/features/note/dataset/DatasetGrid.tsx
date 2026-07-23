@@ -56,6 +56,7 @@ import { ColumnOptionsEditor } from "./ColumnOptionsEditor";
 import { CrossRefPicker } from "./CrossRefPicker";
 import type { FormulaContext, ValueSource } from "./formula";
 import { aggregate, asCell, evaluateFormula } from "./formula";
+import { FormulaHelp } from "./FormulaHelp";
 import { useDatasetMerges } from "./hooks/useDatasetMerges";
 import { useDatasetMeta } from "./hooks/useDatasetMeta";
 import { useDatasetRows } from "./hooks/useDatasetRows";
@@ -155,6 +156,8 @@ export function DatasetGrid({
   const fillDragging = useRef(false);
   // 표간 참조 피커 열림 여부(활성 셀 편집 중).
   const [crossPickerOpen, setCrossPickerOpen] = useState(false);
+  // 수식 도움말 패널 열림 여부.
+  const [showFormulaHelp, setShowFormulaHelp] = useState(false);
   // 허용값 목록 편집기(우클릭 "허용값 목록…"에서 연다). 대상 열 key + 현재 값.
   const [optionsEditor, setOptionsEditor] = useState<{
     key: string;
@@ -1459,6 +1462,20 @@ export function DatasetGrid({
             )}
           </>
         )}
+        {/* 수식 도움말 — 수식(=로 시작)을 편집하는 중에만 뜬다. mousedown preventDefault로
+          입력창 blur(=커밋) 없이 도움말만 연다. */}
+        {isEditing && draft.trimStart().startsWith("=") && (
+          <button
+            type="button"
+            aria-label="수식 도움말"
+            title="수식 사용법"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setShowFormulaHelp(true)}
+            className="text-muted-foreground hover:text-foreground bg-card absolute bottom-0 left-0 z-[8] rounded-tr px-1 text-xs leading-5"
+          >
+            ?
+          </button>
+        )}
       </>
     );
   };
@@ -1814,6 +1831,11 @@ export function DatasetGrid({
             }}
             onClose={() => setOptionsEditor(null)}
           />
+        )}
+
+        {/* 수식 도움말 패널 — 편집 중 "?" 버튼에서 연다. */}
+        {showFormulaHelp && (
+          <FormulaHelp onClose={() => setShowFormulaHelp(false)} />
         )}
 
         {/* 우클릭 컨텍스트 메뉴 — 선택 범위에 맞춰 서식·병합·행/열 옵션을 한 곳에 모은다.
