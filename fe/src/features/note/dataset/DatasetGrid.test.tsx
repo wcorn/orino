@@ -2536,6 +2536,27 @@ describe("DatasetGrid", () => {
     expect(screen.queryByLabelText("다른 표 참조")).not.toBeInTheDocument();
   });
 
+  // ---------- 수식 도움말(#928) ----------
+
+  it("수식(=)을 편집하면 '?' 도움말 버튼이 뜨고, 누르면 도움말이 열린다", async () => {
+    mockDataset([["a", "b"]]);
+    const user = userEvent.setup();
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await user.dblClick(await screen.findByText("a"));
+    const input = await screen.findByLabelText("셀 1행 1열");
+
+    // 일반 값이면 도움말 버튼이 없다.
+    expect(screen.queryByLabelText("수식 도움말")).not.toBeInTheDocument();
+
+    // = 를 치면 도움말 버튼이 뜬다.
+    fireEvent.change(input, { target: { value: "=" } });
+    fireEvent.click(await screen.findByLabelText("수식 도움말"));
+
+    const dialog = await screen.findByRole("dialog", { name: "수식 도움말" });
+    expect(within(dialog).getByText("셀 참조")).toBeInTheDocument();
+    expect(within(dialog).getByText("= SUM({금액})")).toBeInTheDocument();
+  });
+
   // ---------- 열 숫자 서식(R2 #913) ----------
 
   it("서식이 걸린 열은 셀 값을 포맷해 보여준다(값은 raw 유지)", async () => {
