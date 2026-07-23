@@ -79,15 +79,28 @@ public class AuthService {
         String stored = refreshTokenRepository.findByMemberId(memberId)
                 .orElseThrow(() -> new CustomException(ErrorCode.INVALID_TOKEN));
 
-        if (!stored.equals(refreshToken)) {
-            throw new CustomException(ErrorCode.INVALID_TOKEN);
+        if (stored.equals(refreshToken)) {
+            // 정상 회전. 직전 토큰(stored)을 짧은 유예로 남겨, 거의 동시에 온 형제 요청(다중 탭 등)이
+            // 그 토큰으로도 통과되게 한다 — 단일 사용 회전이 서로를 무효화하며 로그아웃시키는 걸 막는다.
+            String newRefreshToken = jwtTokenProvider.createRefreshToken(memberId);
+            refreshTokenRepository.saveGrace(memberId, stored);
+            refreshTokenRepository.save(memberId, newRefreshToken);
+            return new LoginResult(
+                    new TokenResponse(jwtTokenProvider.createAccessToken(memberId)), newRefreshToken);
         }
 
-        String newAccessToken = jwtTokenProvider.createAccessToken(memberId);
-        String newRefreshToken = jwtTokenProvider.createRefreshToken(memberId);
-        refreshTokenRepository.save(memberId, newRefreshToken);
+        // 현재 토큰과 다르면, 방금 회전된 직전 토큰(유예 창 안)인지 본다.
+        boolean inGrace = refreshTokenRepository.findGraceByMemberId(memberId)
+                .map(refreshToken::equals)
+                .orElse(false);
+        if (inGrace) {
+            // 다른 요청이 이미 회전시킴 → 재회전하지 않고 현재 토큰으로 수렴시킨다(양쪽이 같은 RT를 갖게).
+            return new LoginResult(
+                    new TokenResponse(jwtTokenProvider.createAccessToken(memberId)), stored);
+        }
 
-        return new LoginResult(new TokenResponse(newAccessToken), newRefreshToken);
+        // 유효한 서명이지만 현재도 유예도 아님 → 이미 폐기됐거나 재사용(유예 창 밖). 거부.
+        throw new CustomException(ErrorCode.INVALID_TOKEN);
     }
 
     public void logout(String refreshToken) {

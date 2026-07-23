@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -106,6 +107,39 @@ class AuthServiceTest {
         assertThat(result.tokenResponse().accessToken()).isEqualTo("new-at");
         assertThat(result.refreshToken()).isEqualTo("new-rt");
         verify(refreshTokenRepository).save(1L, "new-rt");
+        // 회전 시 직전 토큰을 유예로 남긴다(동시 요청 흡수용).
+        verify(refreshTokenRepository).saveGrace(1L, "old-rt");
+    }
+
+    @Test
+    @DisplayName("현재 토큰과 다르지만 유예 창의 직전 토큰이면 재회전 없이 현재 토큰으로 수렴한다")
+    void reissue_graceWindow_convergesToCurrent() {
+        given(jwtTokenProvider.validate("old-rt")).willReturn(true);
+        given(jwtTokenProvider.getMemberId("old-rt")).willReturn(1L);
+        given(refreshTokenRepository.findByMemberId(1L)).willReturn(Optional.of("current-rt"));
+        given(refreshTokenRepository.findGraceByMemberId(1L)).willReturn(Optional.of("old-rt"));
+        given(jwtTokenProvider.createAccessToken(1L)).willReturn("fresh-at");
+
+        AuthService.LoginResult result = authService.reissue("old-rt");
+
+        assertThat(result.tokenResponse().accessToken()).isEqualTo("fresh-at");
+        // 새 토큰을 또 만들지 않고 현재 토큰으로 수렴 → 동시 탭이 같은 RT를 갖게 된다.
+        assertThat(result.refreshToken()).isEqualTo("current-rt");
+        verify(refreshTokenRepository, never()).save(eq(1L), any());
+        verify(jwtTokenProvider, never()).createRefreshToken(any());
+    }
+
+    @Test
+    @DisplayName("현재 토큰과 다르고 유예도 아니면 예외를 던진다(재사용/폐기)")
+    void reissue_notCurrentNotGrace_throws() {
+        given(jwtTokenProvider.validate("stale-rt")).willReturn(true);
+        given(jwtTokenProvider.getMemberId("stale-rt")).willReturn(1L);
+        given(refreshTokenRepository.findByMemberId(1L)).willReturn(Optional.of("current-rt"));
+        given(refreshTokenRepository.findGraceByMemberId(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.reissue("stale-rt"))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode()).isEqualTo(ErrorCode.INVALID_TOKEN));
     }
 
     @Test
