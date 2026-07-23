@@ -65,9 +65,19 @@ import { useDatasetMeta } from "./hooks/useDatasetMeta";
 import { useDatasetRows } from "./hooks/useDatasetRows";
 import { FORMAT_LABELS, formatCellValue, NUMBER_FORMATS } from "./numberFormat";
 import { datasetKeys } from "./queryKeys";
+import { useUndoStack } from "./undoStack";
 
 /** 행 높이(px) — 고정. 좌우(열 너비)만 조절 가능하고 위아래는 조절하지 않는다. */
 const ROW_HEIGHT = 36;
+
+/**
+ * 되돌리기·다시실행 단축키인가. Cmd/Ctrl+Z = 되돌리기, +Shift 또는 Ctrl+Y = 다시실행.
+ * (mac의 Cmd+Y는 되돌리기로 오해되지 않게 제외 — Y 다시실행은 Ctrl 조합만.)
+ */
+const isUndoRedoKey = (e: React.KeyboardEvent): boolean =>
+  !e.altKey &&
+  (((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z")) ||
+    (e.ctrlKey && (e.key === "y" || e.key === "Y")));
 
 /**
  * 선택 범위 — 셀 사각 범위(a=앵커, b=포커스) / 행 묶음 / 열 묶음 / 표 전체.
@@ -118,6 +128,11 @@ export function DatasetGrid({
   } = useDatasetRows(datasetId);
   // 병합은 dataset 단위로 통째 받는다 — 세로 병합은 앵커가 화면 밖이어도 덮인 행을 그려야 한다.
   const { data: merges = [] } = useDatasetMerges(datasetId);
+  // 표 전용 되돌리기 스택(#932). 표 변경은 REST라 에디터 undo에 안 잡혀 여기서 따로 쌓는다.
+  const { push: pushUndo, undo: undoAction, redo: redoAction } = useUndoStack();
+  // 스택에 쌓인 undo/redo 썽크는 나중에 실행돼 캡처 당시의 낡은 캐시 클로저를 읽으면 안 된다.
+  // 매 렌더 최신 리더를 이 ref에 담아 두고, 지연 실행되는 스냅샷은 여기서 읽는다(값 갱신은 하단).
+  const liveRead = useRef({ getRow, getFormulas, getStyles });
   // 가상화 목록(본문)의 문서 최상단으로부터의 오프셋. 윈도우 스크롤 기준 가상화에 쓴다.
   const listRef = useRef<HTMLDivElement>(null);
   // 표 컨테이너 — 셀을 한 번 클릭하면 여기로 포커스를 옮겨(ProseMirror 대신) 키 입력을 직접 받는다.
@@ -205,6 +220,14 @@ export function DatasetGrid({
     row: number;
     col: number;
     value: string;
+  } | null>(null);
+  // 편집 시작 직전의 그 행 내용(값·수식) — 편집 세션 한 번을 통째로 되돌리기 위해 캡처한다.
+  // 자동저장이 중간값을 서버에 계속 밀어도, 되돌리기는 편집 시작 상태로 한 번에 돌아간다.
+  const editOrigin = useRef<{
+    row: number;
+    col: number;
+    cells: string[];
+    formulas: Record<string, string>;
   } | null>(null);
   /**
    * 편집 저장 — 낙관적 반영은 호출 전에 하고, 여기선 백그라운드로 PATCH만 보낸다.
@@ -582,6 +605,7 @@ export function DatasetGrid({
   const startEdit = (row: number, col: number, initial?: string) => {
     const cells = getRow(row);
     if (!cells) return;
+    beginEditCapture(row, col); // 되돌리기용: 편집 전 행 내용 캡처
     // 편집에 들어가면 선택·툴바는 접는다(더블클릭이 선택→편집 순으로 오므로).
     setSel(null);
     setEditing({ row, col });
@@ -708,9 +732,139 @@ export function DatasetGrid({
   /** 편집 확정(Enter·blur) — 최신 값을 즉시 저장하고 편집을 닫는다. */
   const commitEdit = () => {
     cancelAutoSave();
+    const changed = pendingEdit.current != null;
+    const origin = editOrigin.current;
     flushPendingEdit(false);
     pendingEdit.current = null;
+    editOrigin.current = null;
     setEditing(null);
+    // 실제로 값을 고쳤을 때만 되돌리기 한 단계를 쌓는다(선택만 하고 나간 건 제외).
+    if (changed && origin) pushRowContentUndo([rowSnapFrom(origin)]);
+  };
+
+  // ---------- 되돌리기(undo) 헬퍼 ----------
+  // liveRead ref는 최상단에 둔다(조기 return 뒤에 두면 훅 순서가 깨진다). 여기선 값만 갱신.
+  liveRead.current = { getRow, getFormulas, getStyles };
+
+  /** 한 행의 저장형(원본 수식 포함) 셀 배열 — 재저장·재삽입에 쓴다. */
+  const rawRow = (cells: string[], formulas: Record<string, string>) =>
+    meta.columns.map((col, c) => formulas[col.key] ?? cells[c] ?? "");
+
+  interface RowContent {
+    index: number;
+    cells: string[];
+    formulas: Record<string, string>;
+  }
+  const rowSnapFrom = (o: {
+    row: number;
+    cells: string[];
+    formulas: Record<string, string>;
+  }): RowContent => ({ index: o.row, cells: o.cells, formulas: o.formulas });
+
+  /** 로드된 행들의 내용(값·수식)을 캡처한다. 로드 안 된 행은 담지 않는다(캡처 불가). */
+  const snapRowContent = (r0: number, r1: number): RowContent[] => {
+    const out: RowContent[] = [];
+    for (let r = r0; r <= r1; r++) {
+      const cells = liveRead.current.getRow(r);
+      if (!cells) continue;
+      out.push({
+        index: r,
+        cells: [...cells],
+        formulas: { ...liveRead.current.getFormulas(r) },
+      });
+    }
+    return out;
+  };
+
+  /** 캡처한 행 내용을 서버·캐시에 되돌린다(수식 원본까지 그대로). */
+  const restoreRowContent = (rows: RowContent[]) => {
+    for (const row of rows) {
+      const raw = rawRow(row.cells, row.formulas);
+      setRowLocal(row.index, row.cells);
+      setFormulasLocal(row.index, row.formulas);
+      saveRow(row.index, raw, { cells: row.cells, formulas: row.formulas });
+    }
+    refreshSummaries();
+  };
+
+  /**
+   * 행 내용 변경(편집·지우기·붙여넣기·채우기)에 대한 되돌리기 한 단계를 쌓는다.
+   * before는 변경 전 캡처. redo 시점의 상태(after)는 처음 undo할 때 현재 캐시에서 잡아 둔다 —
+   * 변경 후 수식이 서버에서 재계산되는 것까지 그대로 복원하기 위해서다.
+   */
+  const pushRowContentUndo = (before: RowContent[]) => {
+    if (!before.length) return;
+    const range = {
+      r0: Math.min(...before.map((r) => r.index)),
+      r1: Math.max(...before.map((r) => r.index)),
+    };
+    let after: RowContent[] | null = null;
+    pushUndo({
+      undo: () => {
+        after = snapRowContent(range.r0, range.r1);
+        restoreRowContent(before);
+      },
+      redo: () => {
+        if (after) restoreRowContent(after);
+      },
+    });
+  };
+
+  /** 변경 전 범위를 캡처하고 apply를 실행한 뒤 되돌리기를 쌓는다(지우기·붙여넣기·채우기용). */
+  const withRowContentUndo = (r0: number, r1: number, apply: () => void) => {
+    const before = snapRowContent(r0, r1);
+    apply();
+    pushRowContentUndo(before);
+  };
+
+  /** 편집 시작 직전의 그 행 내용을 캡처한다(같은 셀을 다시 잡으면 유지). */
+  const beginEditCapture = (row: number, col: number) => {
+    if (
+      editOrigin.current &&
+      editOrigin.current.row === row &&
+      editOrigin.current.col === col
+    )
+      return;
+    const cells = getRow(row);
+    if (!cells) return;
+    editOrigin.current = {
+      row,
+      col,
+      cells: [...cells],
+      formulas: { ...getFormulas(row) },
+    };
+  };
+
+  type StyleCell = { rowIndex: number; colKey: string; style: CellStyle };
+  /** 셀 서식 스냅샷(되돌리기용) — 각 셀의 현재 서식을 통째로 담는다. */
+  const snapCellStyles = (
+    refs: Array<{ row: number; colKey: string }>,
+  ): StyleCell[] =>
+    refs.map(({ row, colKey }) => ({
+      rowIndex: row,
+      colKey,
+      style: { ...(liveRead.current.getStyles(row)[colKey] ?? {}) },
+    }));
+
+  /** 서식 변경(배경·정렬·서식지우기)에 대한 되돌리기 한 단계를 쌓는다. */
+  const pushStyleUndo = (before: StyleCell[]) => {
+    if (!before.length) return;
+    let after: StyleCell[] | null = null;
+    pushUndo({
+      undo: () => {
+        after = before.map((c) => ({
+          rowIndex: c.rowIndex,
+          colKey: c.colKey,
+          style: {
+            ...(liveRead.current.getStyles(c.rowIndex)[c.colKey] ?? {}),
+          },
+        }));
+        bulkStyleMut.mutate(before);
+      },
+      redo: () => {
+        if (after) bulkStyleMut.mutate(after);
+      },
+    });
   };
 
   /**
@@ -790,8 +944,25 @@ export function DatasetGrid({
 
   const emptyRow = () => Array.from({ length: colCount }, () => "");
   // atIndex를 주면 그 위치에 삽입(위/아래), 없으면 끝에 추가.
-  const addRow = (atIndex?: number) =>
+  const addRow = (atIndex?: number) => {
+    const at = atIndex ?? rowCount; // 끝에 추가면 landing 인덱스는 현재 행 수.
     insertMut.mutate({ cells: emptyRow(), atIndex });
+    // 되돌리기: 방금 넣은 행을 지운다 / 다시 넣는다.
+    pushUndo({
+      undo: async () => {
+        await deleteDatasetRow(datasetId, at);
+        reset();
+        void invalidateMeta();
+        void invalidateMerges();
+      },
+      redo: async () => {
+        await insertDatasetRow(datasetId, emptyRow(), at);
+        reset();
+        void invalidateMeta();
+        void invalidateMerges();
+      },
+    });
+  };
 
   // 이름은 서버가 붙인다 — 열 개수로 지으면 삭제 후 중복된다.
   const addColumn = (atIndex?: number) => addColMut.mutate({ atIndex });
@@ -865,6 +1036,15 @@ export function DatasetGrid({
     c: number,
   ) => {
     e.stopPropagation();
+    // 선택만 한 상태(편집 아님)에선 Cmd/Ctrl+Z가 표 되돌리기. 편집 중엔 입력창의 텍스트
+    // native undo를 그대로 둔다(글자 단위 되돌리기).
+    if (!editing && isUndoRedoKey(e)) {
+      e.preventDefault();
+      if (e.shiftKey || (e.ctrlKey && (e.key === "y" || e.key === "Y")))
+        void redoAction();
+      else void undoAction();
+      return;
+    }
     // 선택-만-한 상태에선 방향키가 셀 이동, Cmd/Ctrl+A가 표 전체 선택이다(편집 중엔 입력창
     // 기본 동작 유지 — 커서 이동·텍스트 전체선택).
     if (!editing && handleNavKey(e)) return;
@@ -884,6 +1064,7 @@ export function DatasetGrid({
         return;
       }
       // 선택만 한 상태 → 덮어쓰기가 아니라 기존 값/수식을 이어 편집한다.
+      beginEditCapture(r, c); // 되돌리기용: 편집 전 행 내용 캡처
       setEditing({ row: r, col: c });
       setDraft(getFormulas(r)[meta.columns[c].key] ?? getRow(r)?.[c] ?? "");
       return;
@@ -1068,6 +1249,8 @@ export function DatasetGrid({
     for (let c = selRect.c0; c <= selRect.c1; c++)
       cols.push(meta.columns[c].key);
     const { r0, c0, c1 } = selRect;
+    // 채우기로 값이 바뀌는 대상 행들을 미리 캡처(되돌리기용). 성공 시에만 스택에 쌓는다.
+    const before = snapRowContent(target.from, target.to);
     fillCells(datasetId, {
       cols,
       srcR0: r0,
@@ -1086,6 +1269,7 @@ export function DatasetGrid({
           b: [Math.max(selRect.r1, target.to), c1],
         });
         refreshSummaries();
+        pushRowContentUndo(before);
       })
       .catch((e) => {
         const message = serverMessage(e);
@@ -1098,22 +1282,25 @@ export function DatasetGrid({
   /** 선택 범위의 셀 값을 모두 비운다(Delete/Backspace). 수식·값은 지우고 서식은 둔다. */
   const clearSelValues = () => {
     if (!selRect) return;
-    for (let r = selRect.r0; r <= selRect.r1; r++) {
-      const cells = getRow(r);
-      if (!cells) continue;
-      const rowFormulas = getFormulas(r);
-      const inCol = (c: number) => c >= selRect.c0 && c <= selRect.c1;
-      const sent = Array.from({ length: colCount }, (_, c) =>
-        inCol(c) ? "" : (rowFormulas[meta.columns[c].key] ?? cells[c] ?? ""),
-      );
-      const shown = Array.from({ length: colCount }, (_, c) =>
-        inCol(c) ? "" : (cells[c] ?? ""),
-      );
-      // 이미 빈 행이면 헛요청을 보내지 않는다.
-      if (shown.every((v, c) => v === (cells[c] ?? ""))) continue;
-      setRowLocal(r, shown);
-      saveRow(r, sent, { cells, formulas: rowFormulas });
-    }
+    const { r0, r1, c0, c1 } = selRect;
+    withRowContentUndo(r0, r1, () => {
+      for (let r = r0; r <= r1; r++) {
+        const cells = getRow(r);
+        if (!cells) continue;
+        const rowFormulas = getFormulas(r);
+        const inCol = (c: number) => c >= c0 && c <= c1;
+        const sent = Array.from({ length: colCount }, (_, c) =>
+          inCol(c) ? "" : (rowFormulas[meta.columns[c].key] ?? cells[c] ?? ""),
+        );
+        const shown = Array.from({ length: colCount }, (_, c) =>
+          inCol(c) ? "" : (cells[c] ?? ""),
+        );
+        // 이미 빈 행이면 헛요청을 보내지 않는다.
+        if (shown.every((v, c) => v === (cells[c] ?? ""))) continue;
+        setRowLocal(r, shown);
+        saveRow(r, sent, { cells, formulas: rowFormulas });
+      }
+    });
   };
 
   /** 선택 범위를 TSV(탭 구분·줄바꿈)로 만든다 — 엑셀·구글시트와 호환되는 클립보드 형식. */
@@ -1168,6 +1355,10 @@ export function DatasetGrid({
     const baseC = selRect.c0;
     let lastR = baseR;
     let lastC = baseC;
+    const before = snapRowContent(
+      baseR,
+      Math.min(rowCount - 1, baseR + grid.length - 1),
+    );
     for (let i = 0; i < grid.length; i++) {
       const r = baseR + i;
       if (r >= rowCount) break; // 표 아래로 넘치면 자른다.
@@ -1187,6 +1378,7 @@ export function DatasetGrid({
       setRowLocal(r, next);
       saveRow(r, next, { cells, formulas: rowFormulas });
     }
+    pushRowContentUndo(before);
     // 붙여넣은 범위를 선택으로 표시한다(엑셀식). 1칸이면 활성 입력창 값도 맞춘다.
     setEditing(null);
     setDraft(grid[0]?.[0] ?? "");
@@ -1200,6 +1392,15 @@ export function DatasetGrid({
    */
   const onGridKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (editing) return; // 편집 중엔 입력창이 처리한다.
+    // Cmd/Ctrl+Z(되돌리기) / +Shift 또는 Ctrl+Y(다시 실행). 스택이 비면 아무 일도 안 한다.
+    if (isUndoRedoKey(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.shiftKey || (e.ctrlKey && (e.key === "y" || e.key === "Y")))
+        void redoAction();
+      else void undoAction();
+      return;
+    }
     // 방향키 이동·Cmd/Ctrl+A(표 전체)를 먼저 처리한다.
     if (handleNavKey(e)) {
       e.stopPropagation();
@@ -1249,7 +1450,9 @@ export function DatasetGrid({
   // 서식 적용은 선택 전체를 한 요청으로 보낸다(표 전체도 1회). 각 셀은 통째 교체라
   // 바꾸지 않는 속성(정렬/배경)은 그 셀의 현재값을 채워 보존한다.
   const applyBgSel = (bg: CellBgToken | null) => {
-    const cells = selCellRefs().map(({ row, colKey }) => {
+    const refs = selCellRefs();
+    const before = snapCellStyles(refs);
+    const cells = refs.map(({ row, colKey }) => {
       const cur = getStyles(row)[colKey];
       return {
         rowIndex: row,
@@ -1258,9 +1461,12 @@ export function DatasetGrid({
       };
     });
     if (cells.length) bulkStyleMut.mutate(cells);
+    pushStyleUndo(before);
   };
   const applyAlignSel = (align: CellAlign | null) => {
-    const cells = selCellRefs().map(({ row, colKey }) => {
+    const refs = selCellRefs();
+    const before = snapCellStyles(refs);
+    const cells = refs.map(({ row, colKey }) => {
       const cur = getStyles(row)[colKey];
       return {
         rowIndex: row,
@@ -1269,9 +1475,12 @@ export function DatasetGrid({
       };
     });
     if (cells.length) bulkStyleMut.mutate(cells);
+    pushStyleUndo(before);
   };
   const applyValignSel = (valign: CellValign | null) => {
-    const cells = selCellRefs().map(({ row, colKey }) => {
+    const refs = selCellRefs();
+    const before = snapCellStyles(refs);
+    const cells = refs.map(({ row, colKey }) => {
       const cur = getStyles(row)[colKey];
       return {
         rowIndex: row,
@@ -1280,14 +1489,18 @@ export function DatasetGrid({
       };
     });
     if (cells.length) bulkStyleMut.mutate(cells);
+    pushStyleUndo(before);
   };
   const clearFormatSel = () => {
-    const cells = selCellRefs().map(({ row, colKey }) => ({
+    const refs = selCellRefs();
+    const before = snapCellStyles(refs);
+    const cells = refs.map(({ row, colKey }) => ({
       rowIndex: row,
       colKey,
       style: {} as CellStyle,
     }));
     if (cells.length) bulkStyleMut.mutate(cells);
+    pushStyleUndo(before);
   };
   /** 셀 사각 범위를 하나의 병합으로(2칸 이상일 때만). */
   const mergeSel = () => {
@@ -1304,13 +1517,77 @@ export function DatasetGrid({
   /** 선택이 걸친 행들을 뒤 인덱스부터 순서대로 지운다(인덱스가 밀리지 않게). */
   const deleteRowsSel = async () => {
     if (!selRect) return;
-    for (let r = selRect.r1; r >= selRect.r0; r--) {
+    const { r0, r1 } = selRect;
+    // 되돌리기용 캡처: 지워질 각 행의 내용(값·수식)·서식·앵커 병합을 삭제 전에 담는다.
+    // 로드 안 된 행이 섞이면 완전 복원이 불가하므로 되돌리기를 제공하지 않는다(오복원 방지).
+    const captured: Array<{
+      index: number;
+      raw: string[];
+      styles: StyleCell[];
+      merges: Array<{ colKey: string; rowSpan: number; colSpan: number }>;
+    }> = [];
+    let complete = true;
+    for (let r = r0; r <= r1; r++) {
+      const cells = getRow(r);
+      if (!cells) {
+        complete = false;
+        continue;
+      }
+      const styles: StyleCell[] = Object.entries(getStyles(r)).map(
+        ([colKey, style]) => ({ rowIndex: r, colKey, style: { ...style } }),
+      );
+      const rowMerges = merges
+        .filter((m) => m.rowIndex === r)
+        .map((m) => ({
+          colKey: m.colKey,
+          rowSpan: m.rowSpan,
+          colSpan: m.colSpan,
+        }));
+      captured.push({
+        index: r,
+        raw: rawRow(cells, getFormulas(r)),
+        styles,
+        merges: rowMerges,
+      });
+    }
+    for (let r = r1; r >= r0; r--) {
       await deleteDatasetRow(datasetId, r);
     }
     reset();
     void invalidateMeta();
     void invalidateMerges();
     setSel(null);
+    // 삭제 직후 표에 포커스를 남겨 바로 Cmd+Z가 먹게 한다.
+    requestAnimationFrame(() => gridBoxRef.current?.focus());
+    if (!complete || !captured.length) return;
+    const refs = Object.keys(tableRefs).length ? tableRefs : undefined;
+    pushUndo({
+      undo: async () => {
+        // 오름차순으로 원위치에 슬롯을 만들고, 값·수식·서식·병합을 되살린다.
+        for (const row of captured)
+          await insertDatasetRow(datasetId, emptyRow(), row.index);
+        for (const row of captured)
+          await updateDatasetRow(datasetId, row.index, row.raw, refs);
+        const styleCells = captured.flatMap((r) => r.styles);
+        if (styleCells.length) await setCellStylesBulk(datasetId, styleCells);
+        for (const row of captured)
+          for (const m of row.merges)
+            await setCellMerge(datasetId, row.index, m.colKey, {
+              rowSpan: m.rowSpan,
+              colSpan: m.colSpan,
+            });
+        reset();
+        void invalidateMeta();
+        void invalidateMerges();
+      },
+      redo: async () => {
+        for (let i = captured.length - 1; i >= 0; i--)
+          await deleteDatasetRow(datasetId, captured[i].index);
+        reset();
+        void invalidateMeta();
+        void invalidateMerges();
+      },
+    });
   };
   /** 선택이 걸친 열들을 지운다(key 기준이라 순서 무관). 최소 한 열은 남긴다. */
   const deleteColsSel = async () => {
@@ -1400,7 +1677,10 @@ export function DatasetGrid({
               const value = e.target.value;
               setDraft(value);
               // 첫 입력이 들어오면 편집 상태로 전환(같은 input이라 IME 조합 유지).
-              if (!isEditing) setEditing({ row: rowIndex, col: c });
+              if (!isEditing) {
+                beginEditCapture(rowIndex, c); // 되돌리기용: 편집 전 행 내용 캡처
+                setEditing({ row: rowIndex, col: c });
+              }
               // 최신 편집값을 ref에 동기로 기록 — blur/Enter/자동저장이 이걸 저장한다.
               pendingEdit.current = { row: rowIndex, col: c, value };
               // 엔터/blur 없이도 타이핑이 잠깐 멎으면 자동저장한다(계속 저장).
