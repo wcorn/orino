@@ -24,9 +24,9 @@ export const importPlannerCalendar = () =>
   import("../pages/planner/PlannerCalendarPage").then((m) => ({
     default: m.PlannerCalendarPage,
   }));
-export const importPlannerSettings = () =>
-  import("../pages/planner/PlannerSettingsPage").then((m) => ({
-    default: m.PlannerSettingsPage,
+export const importIntegrations = () =>
+  import("../pages/integrations/IntegrationsPage").then((m) => ({
+    default: m.IntegrationsPage,
   }));
 export const importRoutines = () =>
   import("../pages/planner/RoutinesPage").then((m) => ({

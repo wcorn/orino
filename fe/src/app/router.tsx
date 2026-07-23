@@ -9,15 +9,14 @@ import { PublicRoute } from "../features/auth/components/PublicRoute";
 import { PlannerLayout } from "../features/planner/components/PlannerLayout";
 import { LandingPage } from "../pages/LandingPage";
 import { LoginPage } from "../pages/LoginPage";
-import { PlannerCallbackRedirect } from "../pages/planner/PlannerCallbackRedirect";
 import { AppLayout } from "./layout/AppLayout";
 import {
   importHome,
+  importIntegrations,
   importMaterialDetail,
   importMaterialList,
   importNotes,
   importPlannerCalendar,
-  importPlannerSettings,
   importReviewHub,
   importReviewSession,
   importRoutines,
@@ -32,7 +31,7 @@ const MaterialDetailPage = lazy(importMaterialDetail);
 const ReviewHubPage = lazy(importReviewHub);
 const ReviewSessionPage = lazy(importReviewSession);
 const PlannerCalendarPage = lazy(importPlannerCalendar);
-const PlannerSettingsPage = lazy(importPlannerSettings);
+const IntegrationsPage = lazy(importIntegrations);
 const RoutinesPage = lazy(importRoutines);
 const WeeklyPlanPage = lazy(importWeeklyPlan);
 const NotesPage = lazy(importNotes);
@@ -127,11 +126,12 @@ export function AppRouter() {
               }
             />
           </Route>
+          {/* 연동 설정(공용) — Google 연결. OAuth 콜백 복귀 지점(/integrations?google=)이기도 하다 */}
           <Route
-            path="/planner/settings"
+            path="/integrations"
             element={
               <Suspense fallback={<RouteFallback />}>
-                <PlannerSettingsPage />
+                <IntegrationsPage />
               </Suspense>
             }
           />
@@ -143,8 +143,6 @@ export function AppRouter() {
               </Suspense>
             }
           />
-          {/* OAuth 콜백 복귀 지점: 토스트 후 캘린더로 */}
-          <Route path="/planner" element={<PlannerCallbackRedirect />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

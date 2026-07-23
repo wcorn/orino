@@ -34,7 +34,7 @@ describe("GoogleConnectButton", () => {
   it("클릭하면 인증 URL을 받아 그 주소로 리다이렉트한다", async () => {
     const authUrl = "https://accounts.google.com/o/oauth2/v2/auth?client_id=x";
     server.use(
-      http.get(`${API_BASE}/planner/google/oauth/url`, () =>
+      http.get(`${API_BASE}/integrations/google/oauth/url`, () =>
         HttpResponse.json({
           code: "OK",
           data: { authorizationUrl: authUrl },

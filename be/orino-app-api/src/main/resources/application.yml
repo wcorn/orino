@@ -37,7 +37,7 @@ planner:
   google:
     client-id: ${GOOGLE_CLIENT_ID:}
     client-secret: ${GOOGLE_CLIENT_SECRET:}
-    redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:8080/api/planner/google/oauth/callback}
+    redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:8080/api/integrations/google/oauth/callback}
     # refresh_token 컬럼 암호화 대칭키(env 주입). 운영에서 변경하면 기존 토큰 복호화 불가 → 안정 유지.
     refresh-token-key: ${GOOGLE_REFRESH_TOKEN_KEY:default-dev-refresh-token-key-change-me}
     scopes:

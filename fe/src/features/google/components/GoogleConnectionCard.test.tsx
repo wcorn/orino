@@ -20,7 +20,7 @@ function mockStatus(data: {
   reviewMirrorEnabled: boolean;
 }) {
   server.use(
-    http.get(`${API_BASE}/planner/google/status`, () =>
+    http.get(`${API_BASE}/integrations/google/status`, () =>
       HttpResponse.json({ code: "OK", data }),
     ),
   );
@@ -91,7 +91,7 @@ describe("GoogleConnectionCard", () => {
   it("토글을 켜면 PUT 호출 후 켜진 상태와 성공 토스트를 반영한다", async () => {
     let enabled = false;
     server.use(
-      http.get(`${API_BASE}/planner/google/status`, () =>
+      http.get(`${API_BASE}/integrations/google/status`, () =>
         HttpResponse.json({
           code: "OK",
           data: {
@@ -135,7 +135,7 @@ describe("GoogleConnectionCard", () => {
 
   it("토글 PUT이 실패하면 에러 토스트를 띄우고 상태는 그대로다", async () => {
     server.use(
-      http.get(`${API_BASE}/planner/google/status`, () =>
+      http.get(`${API_BASE}/integrations/google/status`, () =>
         HttpResponse.json({
           code: "OK",
           data: {
@@ -178,7 +178,7 @@ describe("GoogleConnectionCard", () => {
   it("연결 해제를 누르면 disconnect 후 미연동 상태로 바뀌고 토스트를 띄운다", async () => {
     let connected = true;
     server.use(
-      http.get(`${API_BASE}/planner/google/status`, () =>
+      http.get(`${API_BASE}/integrations/google/status`, () =>
         HttpResponse.json({
           code: "OK",
           data: connected
@@ -198,7 +198,7 @@ describe("GoogleConnectionCard", () => {
               },
         }),
       ),
-      http.post(`${API_BASE}/planner/google/disconnect`, () => {
+      http.post(`${API_BASE}/integrations/google/disconnect`, () => {
         connected = false;
         return HttpResponse.json({ code: "OK", data: null });
       }),

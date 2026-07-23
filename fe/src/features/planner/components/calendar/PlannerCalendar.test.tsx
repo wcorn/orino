@@ -49,7 +49,7 @@ function mockFeed(
 
 function mockGoogleConnected(connected: boolean) {
   server.use(
-    http.get(`${API_BASE}/planner/google/status`, () =>
+    http.get(`${API_BASE}/integrations/google/status`, () =>
       HttpResponse.json({
         code: "OK",
         data: {

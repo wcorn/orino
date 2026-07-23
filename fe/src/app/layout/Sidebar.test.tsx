@@ -69,8 +69,8 @@ describe("Sidebar", () => {
     },
   );
 
-  it("/planner/settings 에서는 플래너가 아니라 연동 설정이 활성화된다", async () => {
-    renderSidebar("/planner/settings");
+  it("/integrations 에서는 플래너가 아니라 연동 설정이 활성화된다", async () => {
+    renderSidebar("/integrations");
     const planner = await screen.findByRole("link", { name: /플래너/ });
     expect(planner.className).not.toContain("text-primary");
     expect(screen.getByRole("link", { name: /연동 설정/ }).className).toContain(

@@ -46,7 +46,7 @@ class GoogleApiConfigTest {
                     .withPropertyValues(
                             "planner.google.client-id=test-client-id",
                             "planner.google.client-secret=test-client-secret",
-                            "planner.google.redirect-uri=https://api.orino.dev/api/planner/google/oauth/callback",
+                            "planner.google.redirect-uri=https://api.orino.dev/api/integrations/google/oauth/callback",
                             "planner.google.scopes[0]=https://www.googleapis.com/auth/calendar",
                             "planner.google.scopes[1]=https://www.googleapis.com/auth/tasks",
                             "planner.google.connect-timeout=3s",
@@ -59,7 +59,7 @@ class GoogleApiConfigTest {
                         assertThat(props.clientId()).isEqualTo("test-client-id");
                         assertThat(props.clientSecret()).isEqualTo("test-client-secret");
                         assertThat(props.redirectUri())
-                                .isEqualTo("https://api.orino.dev/api/planner/google/oauth/callback");
+                                .isEqualTo("https://api.orino.dev/api/integrations/google/oauth/callback");
                         assertThat(props.scopes()).containsExactly(
                                 "https://www.googleapis.com/auth/calendar",
                                 "https://www.googleapis.com/auth/tasks");
