@@ -161,6 +161,9 @@ describe("FlowDetailPage", () => {
 
     await userEvent.click(screen.getByRole("tab", { name: "지도" }));
 
-    expect(screen.getByText(/지도 뷰는 곧 제공됩니다/)).toBeInTheDocument();
+    // 좌표가 없는 기록뿐이므로 지도 대신 안내를 보여준다(지도 렌더는 브라우저 전용).
+    expect(
+      screen.getByText(/위치 정보가 있는 기록이 없어요/),
+    ).toBeInTheDocument();
   });
 });
