@@ -205,7 +205,7 @@ public class GoogleOAuthService {
 
     private String redirect(String result) {
         return UriComponentsBuilder.fromUriString(oauthProperties.frontendUrl())
-                .path("/planner")
+                .path("/integrations")
                 .queryParam("google", result)
                 .build()
                 .toUriString();

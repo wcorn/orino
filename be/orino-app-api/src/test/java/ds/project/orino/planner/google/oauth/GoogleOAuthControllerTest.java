@@ -58,7 +58,7 @@ class GoogleOAuthControllerTest extends ApiTestSupport {
         registry.add("planner.google.client-id", () -> "test-client-id");
         registry.add("planner.google.client-secret", () -> "test-client-secret");
         registry.add("planner.google.redirect-uri",
-                () -> "http://localhost:8080/api/planner/google/oauth/callback");
+                () -> "http://localhost:8080/api/integrations/google/oauth/callback");
         registry.add("planner.google.oauth.token-uri", () -> base + "/token");
         registry.add("planner.google.oauth.revoke-uri", () -> base + "/revoke");
         registry.add("planner.google.oauth.calendar-api-base-url", () -> base);
@@ -80,7 +80,7 @@ class GoogleOAuthControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("GET /oauth/url - 인증 URL을 발급하고 state를 Redis에 저장한다")
     void authorizationUrl() throws Exception {
-        String url = mockMvc.perform(get("/api/planner/google/oauth/url")
+        String url = mockMvc.perform(get("/api/integrations/google/oauth/url")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.authorizationUrl").exists())
@@ -102,7 +102,7 @@ class GoogleOAuthControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("GET /oauth/url - 인증 없이 호출하면 401")
     void authorizationUrl_requiresAuth() throws Exception {
-        mockMvc.perform(get("/api/planner/google/oauth/url"))
+        mockMvc.perform(get("/api/integrations/google/oauth/url"))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -111,11 +111,11 @@ class GoogleOAuthControllerTest extends ApiTestSupport {
     void callback_validState() throws Exception {
         oauthStateRepository.save("state-ok", memberId);
 
-        mockMvc.perform(get("/api/planner/google/oauth/callback")
+        mockMvc.perform(get("/api/integrations/google/oauth/callback")
                         .param("code", "auth-code")
                         .param("state", "state-ok"))
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrl("http://localhost:3000/planner?google=connected"));
+                .andExpect(redirectedUrl("http://localhost:3000/integrations?google=connected"));
 
         GoogleAccount account = accountRepository.findByMemberId(memberId).orElseThrow();
         assertThat(account.getRefreshToken()).isEqualTo("stub-refresh");
@@ -130,11 +130,11 @@ class GoogleOAuthControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("GET /oauth/callback - 유효하지 않은 state면 error로 리다이렉트한다")
     void callback_invalidState() throws Exception {
-        mockMvc.perform(get("/api/planner/google/oauth/callback")
+        mockMvc.perform(get("/api/integrations/google/oauth/callback")
                         .param("code", "auth-code")
                         .param("state", "unknown-state"))
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrl("http://localhost:3000/planner?google=error"));
+                .andExpect(redirectedUrl("http://localhost:3000/integrations?google=error"));
 
         assertThat(accountRepository.findByMemberId(memberId)).isEmpty();
     }
@@ -144,11 +144,11 @@ class GoogleOAuthControllerTest extends ApiTestSupport {
     void callback_tokenExchangeFails() throws Exception {
         oauthStateRepository.save("state-bad", memberId);
 
-        mockMvc.perform(get("/api/planner/google/oauth/callback")
+        mockMvc.perform(get("/api/integrations/google/oauth/callback")
                         .param("code", "bad-code")
                         .param("state", "state-bad"))
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrl("http://localhost:3000/planner?google=error"));
+                .andExpect(redirectedUrl("http://localhost:3000/integrations?google=error"));
 
         assertThat(accountRepository.findByMemberId(memberId)).isEmpty();
     }
@@ -160,7 +160,7 @@ class GoogleOAuthControllerTest extends ApiTestSupport {
                 memberId, "refresh", "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/tasks",
                 "me@gmail.com", "primary", "@default"));
 
-        mockMvc.perform(get("/api/planner/google/status")
+        mockMvc.perform(get("/api/integrations/google/status")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.connected").value(true))
@@ -178,7 +178,7 @@ class GoogleOAuthControllerTest extends ApiTestSupport {
         account.enableReviewMirror("c_review@group.calendar.google.com");
         accountRepository.save(account);
 
-        mockMvc.perform(get("/api/planner/google/status")
+        mockMvc.perform(get("/api/integrations/google/status")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.connected").value(true))
@@ -188,7 +188,7 @@ class GoogleOAuthControllerTest extends ApiTestSupport {
     @Test
     @DisplayName("GET /status - 미연동이면 connected=false")
     void status_notConnected() throws Exception {
-        mockMvc.perform(get("/api/planner/google/status")
+        mockMvc.perform(get("/api/integrations/google/status")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.connected").value(false))
@@ -201,7 +201,7 @@ class GoogleOAuthControllerTest extends ApiTestSupport {
         accountRepository.save(new GoogleAccount(memberId, "refresh", "scope", "me@gmail.com", "primary", "@default"));
         accessTokenRepository.save(memberId, "cached-access", java.time.Duration.ofMinutes(30));
 
-        mockMvc.perform(post("/api/planner/google/disconnect")
+        mockMvc.perform(post("/api/integrations/google/disconnect")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("요청에 성공하였습니다."));

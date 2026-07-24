@@ -37,7 +37,7 @@ export const handlers = [
   }),
 
   // 기본값: Google 미연동. 연동 상태를 검증하는 테스트는 server.use로 덮어쓴다.
-  http.get(`${API_BASE}/planner/google/status`, () => {
+  http.get(`${API_BASE}/integrations/google/status`, () => {
     return HttpResponse.json({
       code: "OK",
       data: {

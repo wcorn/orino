@@ -19,7 +19,7 @@ import java.net.URI;
  * 나머지는 JWT 인증.
  */
 @RestController
-@RequestMapping("/api/planner/google")
+@RequestMapping("/api/integrations/google")
 public class GoogleOAuthController {
 
     private final GoogleOAuthService googleOAuthService;

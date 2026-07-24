@@ -33,7 +33,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: CalendarDays,
     activePaths: ["/planner/calendar", "/planner/plan", "/planner/routines"],
   },
-  { to: "/planner/settings", label: "연동 설정", icon: Settings },
+  { to: "/integrations", label: "연동 설정", icon: Settings },
 ];
 
 /** activePaths가 지정된 항목의 활성 여부 — 해당 경로이거나 그 하위 경로면 활성. */
