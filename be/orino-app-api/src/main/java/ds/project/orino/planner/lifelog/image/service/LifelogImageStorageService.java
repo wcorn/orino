@@ -71,10 +71,19 @@ public class LifelogImageStorageService {
                 .build();
 
         String uploadUrl = presigner.presignPutObject(presignRequest).url().toString();
-        String publicUrl = "%s/%s/%s".formatted(
-                stripTrailingSlash(props.endpoint()), props.bucket(), key);
 
-        return new LifelogImageUploadUrlResponse(uploadUrl, publicUrl, key);
+        return new LifelogImageUploadUrlResponse(uploadUrl, toPublicUrl(key), key);
+    }
+
+    /**
+     * object key를 공개 URL로 조립한다(base + bucket + key). 호스트를 하드코딩하지 않고 설정에서 받아
+     * 환경별로 갈린다. null/blank 키는 그대로 반환한다.
+     */
+    public String toPublicUrl(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) {
+            return objectKey;
+        }
+        return "%s/%s/%s".formatted(stripTrailingSlash(props.endpoint()), props.bucket(), objectKey);
     }
 
     /**
