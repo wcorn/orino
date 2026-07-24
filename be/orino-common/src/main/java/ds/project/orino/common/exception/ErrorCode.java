@@ -30,7 +30,8 @@ public enum ErrorCode {
     LIFELOG_GEOCODING_FAILED("LIFELOG-ERR-001", "장소 정보를 가져오지 못했습니다.", 502),
     LIFELOG_MOMENT_NOT_FOUND("LIFELOG-ERR-002", "존재하지 않는 기록입니다.", 404),
     LIFELOG_EMPTY_MOMENT("LIFELOG-ERR-003", "본문이나 사진 중 하나는 있어야 합니다.", 400),
-    LIFELOG_INVALID_COORDINATE("LIFELOG-ERR-004", "위도와 경도는 함께 지정해야 합니다.", 400);
+    LIFELOG_INVALID_COORDINATE("LIFELOG-ERR-004", "위도와 경도는 함께 지정해야 합니다.", 400),
+    LIFELOG_FLOW_NOT_FOUND("LIFELOG-ERR-005", "존재하지 않는 흐름입니다.", 404);
 
     private final String code;
     private final String message;
