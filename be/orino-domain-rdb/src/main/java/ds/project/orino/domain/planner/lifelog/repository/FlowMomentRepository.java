@@ -20,6 +20,9 @@ public interface FlowMomentRepository extends JpaRepository<FlowMoment, Long> {
     /** 피드 배치 로딩: 여러 기록의 소속 흐름을 한 번에. */
     List<FlowMoment> findAllByMomentIdIn(Collection<Long> momentIds);
 
+    /** 흐름 목록 배치 로딩: 여러 흐름의 소속 기록을 한 번에(카운트·커버·기간 계산용). */
+    List<FlowMoment> findAllByFlowIdIn(Collection<Long> flowIds);
+
     boolean existsByFlowIdAndMomentId(Long flowId, Long momentId);
 
     Optional<FlowMoment> findByFlowIdAndMomentId(Long flowId, Long momentId);
