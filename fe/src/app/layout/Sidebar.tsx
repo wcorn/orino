@@ -1,6 +1,7 @@
 import {
   BookOpen,
   CalendarDays,
+  Camera,
   CheckSquare,
   FileText,
   Home,
@@ -26,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/home", label: "홈", icon: Home },
   { to: "/planner/materials", label: "학습 자료", icon: BookOpen },
   { to: "/notes", label: "노트", icon: FileText },
+  { to: "/lifelog", label: "일상기록", icon: Camera },
   { to: "/planner/reviews", label: "복습", icon: CheckSquare },
   {
     to: "/planner/calendar",

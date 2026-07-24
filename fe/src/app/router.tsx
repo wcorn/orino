@@ -13,6 +13,7 @@ import { AppLayout } from "./layout/AppLayout";
 import {
   importHome,
   importIntegrations,
+  importLifelog,
   importMaterialDetail,
   importMaterialList,
   importNotes,
@@ -35,6 +36,7 @@ const IntegrationsPage = lazy(importIntegrations);
 const RoutinesPage = lazy(importRoutines);
 const WeeklyPlanPage = lazy(importWeeklyPlan);
 const NotesPage = lazy(importNotes);
+const LifelogPage = lazy(importLifelog);
 
 function RouteFallback() {
   return (
@@ -140,6 +142,14 @@ export function AppRouter() {
             element={
               <Suspense fallback={<RouteFallback />}>
                 <NotesPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/lifelog"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <LifelogPage />
               </Suspense>
             }
           />
