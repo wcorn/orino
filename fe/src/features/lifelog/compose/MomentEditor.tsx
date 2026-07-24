@@ -1,13 +1,16 @@
-import { MapPin } from "lucide-react";
+import { MapPin, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
 
 import type { MomentCard, Mood, PhotoRequest } from "../api/types";
+import { useReverseGeocode } from "../hooks/useGeocode";
 import { useCreateMoment, useUpdateMoment } from "../hooks/useMomentMutations";
 import { isoToLocalInput, localInputToIso } from "../lib/datetime";
 import { photoToRequest } from "../lib/photoKey";
+import { LocationPicker, LocationValue } from "./LocationPicker";
 import { MoodPicker } from "./MoodPicker";
 import { InitialPhoto, PhotoUploader } from "./PhotoUploader";
 import { TagInput } from "./TagInput";
@@ -19,7 +22,7 @@ interface MomentEditorProps {
   moment?: MomentCard;
 }
 
-/** 기록 작성/수정 모달. 사진(EXIF·썸네일 업로드)·본문·발생시각·기분·태그. */
+/** 기록 작성/수정 모달. 사진(EXIF·썸네일 업로드)·본문·발생시각·위치·기분·태그. */
 export function MomentEditor({
   open,
   onOpenChange,
@@ -37,9 +40,8 @@ export function MomentEditor({
   const [tags, setTags] = useState<string[]>([]);
   const [occurredAt, setOccurredAt] = useState("");
   const [occurredTouched, setOccurredTouched] = useState(false);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
-    null,
-  );
+  const [location, setLocation] = useState<LocationValue | null>(null);
+  const [locationOpen, setLocationOpen] = useState(false);
 
   // 열릴 때 초기화(수정 모드는 기존 값).
   useEffect(() => {
@@ -49,9 +51,9 @@ export function MomentEditor({
     setTags(moment?.tags ?? []);
     setOccurredAt(isoToLocalInput(moment?.occurredAt));
     setOccurredTouched(false);
-    setCoords(
+    setLocation(
       moment?.lat != null && moment?.lng != null
-        ? { lat: moment.lat, lng: moment.lng }
+        ? { lat: moment.lat, lng: moment.lng, placeName: moment.placeName }
         : null,
     );
     setPhotos([]);
@@ -65,11 +67,27 @@ export function MomentEditor({
     if (!occurredTouched && first.exifTakenAt) {
       setOccurredAt(isoToLocalInput(first.exifTakenAt));
     }
-    if (!coords && first.exifLat != null && first.exifLng != null) {
-      setCoords({ lat: first.exifLat, lng: first.exifLng });
+    if (!location && first.exifLat != null && first.exifLng != null) {
+      setLocation({ lat: first.exifLat, lng: first.exifLng, placeName: null });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photos]);
+
+  // 좌표만 있고 장소명이 없으면(EXIF 자동채움) 역지오코딩으로 장소명을 채운다.
+  const { data: autoReverse } = useReverseGeocode(
+    location && location.placeName == null
+      ? { lat: location.lat, lng: location.lng }
+      : null,
+  );
+  useEffect(() => {
+    if (autoReverse) {
+      setLocation((prev) =>
+        prev && prev.placeName == null
+          ? { ...prev, placeName: autoReverse.placeName }
+          : prev,
+      );
+    }
+  }, [autoReverse]);
 
   const initialPhotos: InitialPhoto[] = (moment?.photos ?? []).map((p) => ({
     previewUrl: p.thumbUrl ?? p.url,
@@ -86,9 +104,9 @@ export function MomentEditor({
       occurredAt: localInputToIso(occurredAt),
       body: body.trim() || null,
       mood,
-      lat: coords?.lat ?? null,
-      lng: coords?.lng ?? null,
-      placeName: moment?.placeName ?? null,
+      lat: location?.lat ?? null,
+      lng: location?.lng ?? null,
+      placeName: location?.placeName ?? null,
       tags,
       photos,
     };
@@ -137,12 +155,35 @@ export function MomentEditor({
           />
         </label>
 
-        {coords && (
-          <p className="text-muted-foreground flex items-center gap-1 text-xs">
-            <MapPin className="size-3.5" />
-            위치 포함됨 ({coords.lat.toFixed(4)}, {coords.lng.toFixed(4)})
-          </p>
-        )}
+        <div>
+          <span className="text-muted-foreground mb-1.5 block text-xs">
+            위치
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setLocationOpen(true)}
+            >
+              <MapPin />
+              {location
+                ? (location.placeName ??
+                  `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`)
+                : "위치 추가"}
+            </Button>
+            {location && (
+              <button
+                type="button"
+                aria-label="위치 지우기"
+                onClick={() => setLocation(null)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
+        </div>
 
         <div>
           <span className="text-muted-foreground mb-1.5 block text-xs">
@@ -165,6 +206,13 @@ export function MomentEditor({
         pending={pending}
         pendingLabel={isEdit ? "저장 중..." : "기록 중..."}
         submitDisabled={!canSubmit}
+      />
+
+      <LocationPicker
+        open={locationOpen}
+        onOpenChange={setLocationOpen}
+        value={location}
+        onConfirm={setLocation}
       />
     </Modal>
   );
