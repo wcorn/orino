@@ -9,4 +9,6 @@ export const lifelogKeys = {
     ["lifelog", "geocode", "reverse", lat, lng] as const,
   geocodeSearch: (query: string) =>
     ["lifelog", "geocode", "search", query] as const,
+  flows: (status?: string) => ["lifelog", "flows", status ?? "all"] as const,
+  flow: (id: number) => ["lifelog", "flow", id] as const,
 };

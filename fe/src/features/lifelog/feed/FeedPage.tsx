@@ -1,7 +1,8 @@
-import { Plus } from "lucide-react";
+import { Layers, Plus } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { LoadingText } from "@/components/ui/loading-text";
 import { Modal } from "@/components/ui/modal";
 
@@ -36,10 +37,19 @@ export function FeedPage() {
     <div className="mx-auto flex max-w-xl flex-col gap-4 p-4">
       <header className="flex items-center justify-between">
         <h1 className="text-heading font-semibold">일상기록</h1>
-        <Button onClick={openCreate}>
-          <Plus />
-          기록
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/lifelog/flows"
+            className={buttonVariants({ variant: "outline", size: "default" })}
+          >
+            <Layers />
+            흐름
+          </Link>
+          <Button onClick={openCreate}>
+            <Plus />
+            기록
+          </Button>
+        </div>
       </header>
 
       {isLoading ? (
