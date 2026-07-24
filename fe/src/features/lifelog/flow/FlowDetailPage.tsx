@@ -17,6 +17,7 @@ import { useFlow } from "../hooks/useFlows";
 import { formatFlowPeriod } from "../lib/datetime";
 import { AddMomentsModal } from "./AddMomentsModal";
 import { FlowEditModal } from "./FlowEditModal";
+import { FlowMap } from "./FlowMap";
 import { FlowTimeline } from "./FlowTimeline";
 
 type View = "timeline" | "map";
@@ -120,9 +121,7 @@ export function FlowDetailPage() {
           onReorder={(momentIds) => reorderMutation.mutate(momentIds)}
         />
       ) : (
-        <p className="text-muted-foreground py-12 text-center text-sm">
-          지도 뷰는 곧 제공됩니다.
-        </p>
+        <FlowMap moments={flow.moments} />
       )}
 
       <AddMomentsModal
