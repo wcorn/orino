@@ -14,6 +14,8 @@ import {
   importHome,
   importIntegrations,
   importLifelog,
+  importLifelogFlowDetail,
+  importLifelogFlows,
   importMaterialDetail,
   importMaterialList,
   importNotes,
@@ -37,6 +39,8 @@ const RoutinesPage = lazy(importRoutines);
 const WeeklyPlanPage = lazy(importWeeklyPlan);
 const NotesPage = lazy(importNotes);
 const LifelogPage = lazy(importLifelog);
+const LifelogFlowsPage = lazy(importLifelogFlows);
+const LifelogFlowDetailPage = lazy(importLifelogFlowDetail);
 
 function RouteFallback() {
   return (
@@ -150,6 +154,22 @@ export function AppRouter() {
             element={
               <Suspense fallback={<RouteFallback />}>
                 <LifelogPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/lifelog/flows"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <LifelogFlowsPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/lifelog/flows/:id"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <LifelogFlowDetailPage />
               </Suspense>
             }
           />

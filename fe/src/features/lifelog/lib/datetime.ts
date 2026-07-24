@@ -28,3 +28,31 @@ export function formatMomentTime(iso: string): string {
     minute: "2-digit",
   }).format(d);
 }
+
+/** 날짜만(예: "7월 20일"). */
+export function formatDay(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "long",
+    day: "numeric",
+  }).format(d);
+}
+
+/** 흐름 기간(예: "7월 20일 – 7월 22일"). 한쪽만 있으면 그것만, 없으면 빈 문자열. */
+export function formatFlowPeriod(
+  start: string | null,
+  end: string | null,
+): string {
+  const s = start ? formatDay(start) : "";
+  const e = end ? formatDay(end) : "";
+  if (s && e) return s === e ? s : `${s} – ${e}`;
+  return s || e;
+}
+
+/** 같은 로컬 날짜인지(타임라인 날짜 구분용). */
+export function localDateKey(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
