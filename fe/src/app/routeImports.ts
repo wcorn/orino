@@ -38,6 +38,8 @@ export const importWeeklyPlan = () =>
   }));
 export const importNotes = () =>
   import("../pages/NotesPage").then((m) => ({ default: m.NotesPage }));
+export const importLifelog = () =>
+  import("../pages/LifelogPage").then((m) => ({ default: m.LifelogPage }));
 
 /**
  * 로그인 후 idle 시간에 페이지 청크를 미리 받아둔다.
