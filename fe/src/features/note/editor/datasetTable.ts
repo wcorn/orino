@@ -23,7 +23,7 @@ export interface DatasetTableAttrs {
  *       무시하고 노드 DOM(표 래퍼)에 draggable=true를 심는다(NodeSelection 분기). 그 뒤 셀을 드래그해
  *       범위 선택하려 하면 드래그 소스가 표 래퍼가 되어(gridBox의 onDragStart는 자식이라 우회됨) PM의
  *       dragstart가 표 노드를 통째로 끌어낸다. stopEvent로 막아 PM이 이 드래그를 손대지 않게 한다
- *       (네이티브 드래그 취소는 NodeViewWrapper의 onDragStart preventDefault가 맡는다).
+ *       (네이티브 드래그 취소는 {@link DatasetTableView}의 NodeViewWrapper onDragStartCapture가 맡는다).
  * </ul>
  * 마우스·포커스 등은 PM에 맡긴다(그리드가 포커스 이동에 그 동작이 필요하다). drop/dragover는 막지 않는다
  * — 블록 이동 핸들(⣿)로 표 근처에 다른 블록을 드롭하는 동작이 PM 드롭 처리에 의존한다.
