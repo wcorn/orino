@@ -65,6 +65,11 @@ export function DatasetTableView({
       as="div"
       data-dataset-table={datasetId ?? ""}
       contentEditable={false}
+      // 표가 NodeSelection으로 선택되면 PM이 이 래퍼(nodeDOM)에 draggable=true를 심어(spec.draggable:false
+      // 여도 NodeSelection 분기로), 셀 드래그로 범위 선택하려 할 때 표가 통째로 끌려나온다. 드래그 소스가
+      // 이 래퍼라 그리드 안쪽 onDragStart는 우회되므로, 래퍼에서 네이티브 드래그를 취소한다. 블록 이동은
+      // 그리드 밖 드래그 핸들(⣿)이 자기 dragstart로 처리하므로 영향 없다. (PM 하이재킹은 stopEvent가 차단)
+      onDragStart={(e) => e.preventDefault()}
     >
       {datasetId != null && (
         <DatasetGrid

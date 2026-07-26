@@ -68,10 +68,19 @@ describe("isGridSelfHandledEvent (셀 안 이벤트는 에디터가 무시)", ()
     }
   });
 
-  it("마우스·포커스 등은 false(PM에 맡긴다 — 포커스 이동에 필요)", () => {
+  it("dragstart면 true — 표가 선택된 상태에서 셀을 드래그해도 표가 안 끌려나오게", () => {
+    // 표 NodeSelection 상태면 PM이 노드 DOM에 draggable=true를 심어(spec.draggable:false여도)
+    // 셀 드래그가 표 이동으로 새는데, dragstart를 stopEvent로 막아 PM이 손대지 못하게 한다.
+    expect(isGridSelfHandledEvent(new Event("dragstart"))).toBe(true);
+  });
+
+  it("마우스·포커스·드롭 등은 false(PM에 맡긴다)", () => {
     expect(isGridSelfHandledEvent(new Event("mousedown"))).toBe(false);
     expect(isGridSelfHandledEvent(new Event("focus"))).toBe(false);
     expect(isGridSelfHandledEvent(new Event("click"))).toBe(false);
+    // drop/dragover는 안 막는다 — 블록 이동 핸들로 표 근처에 블록을 드롭하는 게 PM에 의존.
+    expect(isGridSelfHandledEvent(new Event("drop"))).toBe(false);
+    expect(isGridSelfHandledEvent(new Event("dragover"))).toBe(false);
   });
 });
 
