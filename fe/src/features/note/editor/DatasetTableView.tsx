@@ -1,6 +1,7 @@
 import { useQueries } from "@tanstack/react-query";
 import type { Editor } from "@tiptap/react";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
+import { useEffect, useRef } from "react";
 
 import { type DatasetMeta, fetchDatasetMeta } from "../dataset/api/datasets";
 import { DatasetGrid } from "../dataset/DatasetGrid";
@@ -43,6 +44,22 @@ export function DatasetTableView({
   const { requestDeleteDataset } = useDatasetTableContext();
   const siblingTables = useSiblingTables(editor, datasetId ?? -1);
 
+  // 셀을 드래그해 범위 선택하려 할 때 표 블록이 통째로 끌려나오던 문제를 막는다.
+  // 표가 NodeSelection으로 선택되면(셀 클릭 시 blockSelected) PM의 MouseDown이 spec.draggable:false를
+  // 무시하고 노드의 바깥 DOM에 draggable=true를 심는다(NodeSelection 분기). 그 바깥 DOM은 TipTap이
+  // 만든 NodeView 컨테이너(.react-renderer = NodeViewWrapper의 부모)라, 드래그 소스가 그 부모가 된다.
+  // 소스가 NodeViewWrapper '위'라 NodeViewWrapper의 onDragStart* prop으로는 못 막는다(부모의 이벤트는
+  // 자식으로 전파되지 않음). 그래서 부모 nodeDOM에 직접 네이티브 리스너를 걸어 capture에서 취소한다.
+  // 블록 이동(⣿ 핸들)은 이 노드 바깥 요소가 소스라 영향 없다.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const nodeDom = wrapRef.current?.parentElement;
+    if (!nodeDom) return;
+    const cancelDrag = (e: DragEvent) => e.preventDefault();
+    nodeDom.addEventListener("dragstart", cancelDrag, true);
+    return () => nodeDom.removeEventListener("dragstart", cancelDrag, true);
+  }, []);
+
   // 표 삭제(우클릭 메뉴·불러오기 실패 시 블록 제거) → 확인 먼저, 확인 시 dataset 삭제 +
   // 블록 제거를 함께. 블록 제거는 되돌리기 불가(addToHistory:false)라, Cmd+Z로 블록만
   // 되살아나 dataset 없는 고아 표가 생기지 않는다.
@@ -62,16 +79,10 @@ export function DatasetTableView({
 
   return (
     <NodeViewWrapper
+      ref={wrapRef}
       as="div"
       data-dataset-table={datasetId ?? ""}
       contentEditable={false}
-      // 표가 NodeSelection으로 선택되면 PM이 이 래퍼(nodeDOM)에 draggable=true를 심어(spec.draggable:false
-      // 여도 NodeSelection 분기로), 셀 드래그로 범위 선택하려 할 때 표가 통째로 끌려나온다. 여기서 네이티브
-      // 드래그를 취소한다. 반드시 onDragStart가 아닌 onDragStartCapture로 건다 — NodeViewWrapper가 자기
-      // 컨텍스트의 onDragStart(우리 표엔 no-op)로 onDragStart prop을 덮어써 무효화하지만, capture 변형은
-      // 스프레드에서 살아남아 실제로 실행된다. 블록 이동은 그리드 밖 드래그 핸들(⣿)이 자기 dragstart로
-      // 처리하므로 영향 없다(핸들은 이 래퍼 밖이라 capture 경로에 안 걸린다).
-      onDragStartCapture={(e: React.DragEvent) => e.preventDefault()}
     >
       {datasetId != null && (
         <DatasetGrid

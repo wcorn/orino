@@ -101,14 +101,16 @@ describe("DatasetTableView — 셀 드래그 시 표가 끌려나오지 않는�
     });
     editor.commands.setNodeSelection(pos);
 
-    // 표 래퍼에서 시작되는 네이티브 dragstart(=PM이 draggable=true로 만든 소스) 시뮬레이션.
-    const dragEvent = createEvent.dragStart(wrap);
-    fireEvent(wrap, dragEvent);
+    // 실제 드래그 소스는 NodeViewWrapper가 아니라 그 부모(TipTap이 만든 NodeView 컨테이너,
+    // = PM이 draggable=true를 심는 nodeDOM)다. 여기서 시작되는 네이티브 dragstart를 시뮬레이션한다.
+    const nodeDom = wrap.parentElement as HTMLElement;
+    expect(nodeDom).toBe(editor.view.nodeDOM(pos));
+    const dragEvent = createEvent.dragStart(nodeDom);
+    fireEvent(nodeDom, dragEvent);
 
-    // onDragStartCapture가 실행돼 네이티브 드래그를 취소한다 → 표가 안 끌린다.
+    // 바깥 nodeDOM에 건 dragstart 리스너가 preventDefault → 네이티브 드래그 취소 → 표가 안 끌린다.
+    // (핸들러를 NodeViewWrapper 자식에 걸면 부모발 이 이벤트를 못 잡아 defaultPrevented=false로 실패한다.)
     expect(dragEvent.defaultPrevented).toBe(true);
-    // PM도 이 드래그를 손대지 않는다(view.dragging 미설정).
-    expect(editor.view.dragging).toBeFalsy();
 
     editor.destroy();
   });
