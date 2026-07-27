@@ -1,8 +1,8 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it } from "vitest";
+import { Route, Routes, useSearchParams } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { Providers } from "@/app/providers";
 import { useAuthStore } from "@/features/auth/store/authStore";
@@ -13,11 +13,26 @@ import { NoteWorkspace } from "./NoteWorkspace";
 
 const API_BASE = "https://api.orino.dev/api";
 
+// 현재 선택된 노트(URL ?note=)를 노출한다. jsdom은 CSS(md:hidden 등)를 적용하지 않아 "목록 vs
+// 에디터" 표시를 DOM 존재로 판별할 수 없으므로, 자동 선택 여부는 이 파라미터로 결정적으로 확인한다.
+function NoteParamProbe() {
+  const [sp] = useSearchParams();
+  return <div data-testid="note-param">{sp.get("note") ?? ""}</div>;
+}
+
 function renderWorkspace(initialEntries = ["/notes"]) {
   return renderWithRouter(
     <Providers>
       <Routes>
-        <Route path="/notes" element={<NoteWorkspace />} />
+        <Route
+          path="/notes"
+          element={
+            <>
+              <NoteWorkspace />
+              <NoteParamProbe />
+            </>
+          }
+        />
       </Routes>
     </Providers>,
     { initialEntries },
@@ -61,6 +76,20 @@ function mockNoteDetail(
       }),
     ),
   );
+}
+
+/** 좁은 화면(모바일, md 미만)으로 matchMedia를 목킹한다. */
+function setNarrowViewport() {
+  window.matchMedia = ((query: string) => ({
+    matches: query.includes("767"),
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
 }
 
 describe("NoteWorkspace (독립 노트)", () => {
@@ -292,6 +321,58 @@ describe("NoteWorkspace (독립 노트)", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("노트 제목")).toHaveValue("자식");
+    });
+  });
+
+  // 모바일(좁은 화면)은 노트 선택 시 트리를 숨기는 드릴다운 레이아웃. 자동 선택하면 목록을 볼 수 없다.
+  describe("모바일(좁은 화면)", () => {
+    const originalMatchMedia = window.matchMedia;
+    afterEach(() => {
+      window.matchMedia = originalMatchMedia;
+    });
+
+    it("첫 노트를 자동 선택하지 않고 목록을 보여준다", async () => {
+      setNarrowViewport();
+      mockTree([
+        { id: 1, title: "노트1", parentId: null, sortOrder: 0, children: [] },
+        { id: 2, title: "노트2", parentId: null, sortOrder: 1, children: [] },
+      ]);
+      mockNoteDetail(1, { type: "doc", content: [] }, "노트1");
+
+      renderWorkspace();
+
+      // 목록의 노트들이 보인다.
+      expect(
+        await screen.findByRole("button", { name: "노트1" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "노트2" })).toBeInTheDocument();
+      // 자동 선택되지 않는다 → ?note= 파라미터가 비어 있다(데스크탑이면 첫 노트로 채워진다).
+      expect(screen.getByTestId("note-param").textContent).toBe("");
+      expect(screen.queryByLabelText("노트 제목")).not.toBeInTheDocument();
+    });
+
+    it("노트를 열고 '노트 목록'으로 돌아오면 목록이 다시 보인다(자동 재선택 안 함)", async () => {
+      setNarrowViewport();
+      mockTree([
+        { id: 1, title: "노트1", parentId: null, sortOrder: 0, children: [] },
+      ]);
+      mockNoteDetail(1, { type: "doc", content: [] }, "노트1");
+
+      const user = userEvent.setup();
+      renderWorkspace();
+
+      await user.click(await screen.findByRole("button", { name: "노트1" }));
+      await waitFor(() => {
+        expect(screen.getByLabelText("노트 제목")).toHaveValue("노트1");
+      });
+
+      await user.click(screen.getByRole("button", { name: /노트 목록/ }));
+
+      // 목록으로 돌아오고, effect가 즉시 다시 선택하지 않는다.
+      await waitFor(() => {
+        expect(screen.queryByLabelText("노트 제목")).not.toBeInTheDocument();
+      });
+      expect(screen.getByRole("button", { name: "노트1" })).toBeInTheDocument();
     });
   });
 });

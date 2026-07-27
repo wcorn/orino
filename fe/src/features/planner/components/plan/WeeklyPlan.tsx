@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { LoadingText } from "@/components/ui/loading-text";
 import { cn } from "@/lib/utils";
+import { useIsNarrow } from "@/shared/lib/useIsNarrow";
 
 import { useSaveWeeklyPlan, useWeeklyPlan } from "../../hooks/useWeeklyPlan";
 import { PlanBlockCreate } from "./PlanBlockCreate";
@@ -19,24 +20,6 @@ import {
 import { WeeklyPlanGrid } from "./WeeklyPlanGrid";
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
-
-/** 화면 폭이 좁으면(모바일) 1일 뷰로 전환. matchMedia 미지원 환경(테스트)은 데스크탑으로 간주. */
-function useIsNarrow(): boolean {
-  const [narrow, setNarrow] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(max-width: 767px)").matches,
-  );
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const mq = window.matchMedia("(max-width: 767px)");
-    const handler = () => setNarrow(mq.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-  return narrow;
-}
 
 /** 주간 계획표 페이지 본체. 서버 주간 템플릿을 로드해 로컬 편집 후 전량 교체로 저장한다. */
 export function WeeklyPlan() {
