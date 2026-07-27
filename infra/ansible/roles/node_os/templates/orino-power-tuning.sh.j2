@@ -6,6 +6,7 @@ set -u
 
 PROFILE="{{ node_os_platform_profile }}"
 EPP="{{ node_os_energy_perf_preference }}"
+MAXFREQ="{{ node_os_scaling_max_freq_khz }}"   # kHz, 0=캡 해제
 
 # 1) ACPI platform_profile (팬 커브 완화)
 pp=/sys/firmware/acpi/platform_profile
@@ -28,6 +29,31 @@ if [ "$applied" -gt 0 ]; then
   echo "energy_performance_preference -> $EPP (${applied} cpus)"
 else
   echo "EPP: 쓰기 가능한 인터페이스 없음(active pstate 아님?) → 스킵"
+fi
+
+# 3) 전 코어 최대 주파수 캡 (부스트 차단 → 발열↓) — 0 이면 원복(cpuinfo_max 로 해제)
+capped=0
+for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq; do
+  [ -w "$f" ] || continue
+  d="$(dirname "$f")"
+  hw_max="$(cat "$d/cpuinfo_max_freq" 2>/dev/null)" || continue
+  if [ "$MAXFREQ" -gt 0 ] 2>/dev/null; then
+    # cpuinfo_max 초과 요청은 하드웨어 상한으로 클램프
+    target="$MAXFREQ"; [ "$target" -gt "$hw_max" ] && target="$hw_max"
+  else
+    target="$hw_max"   # 캡 해제 = 하드웨어 상한으로 복원
+  fi
+  # scaling_min 이 target 보다 크면 먼저 낮춰야 쓰기가 거부되지 않음
+  cur_min="$(cat "$d/scaling_min_freq" 2>/dev/null)"
+  if [ -n "$cur_min" ] && [ "$cur_min" -gt "$target" ]; then
+    echo "$(cat "$d/cpuinfo_min_freq")" > "$d/scaling_min_freq" 2>/dev/null
+  fi
+  echo "$target" > "$f" && capped=$((capped+1))
+done
+if [ "$capped" -gt 0 ]; then
+  echo "scaling_max_freq -> ${MAXFREQ} kHz 요청 (${capped} cpus, 하드웨어 상한으로 클램프)"
+else
+  echo "scaling_max_freq: 쓰기 가능한 인터페이스 없음 → 스킵"
 fi
 
 exit 0

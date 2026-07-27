@@ -14,3 +14,10 @@ node_os_sysctls:
 node_os_power_tuning_enabled: true
 node_os_platform_profile: quiet          # quiet | balanced | performance
 node_os_energy_perf_preference: power    # power | balance_power | balance_performance | performance | default
+
+# 최대 주파수 캡(#989 후속). EPP=power 만으론 idle 클럭이 여전히 ~3.3GHz까지 올라
+# 발열이 안 떨어졌음(팬 3200→2600rpm 에서 정체). Ryzen 7 5800H base 3.2GHz / boost 4.46GHz →
+# base 아래(2.2GHz)로 캡해 부스트를 사실상 차단하고 발열을 낮춘다.
+# 16스레드라 2.2GHz 캡도 대부분 idle 인 이 클러스터엔 성능 여유가 충분하다.
+# 0 이면 캡하지 않음(원복). cpuinfo_max 로 클램프되므로 값이 커도 안전.
+node_os_scaling_max_freq_khz: 2200000    # 2.2GHz. 0=캡 해제
