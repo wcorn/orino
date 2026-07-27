@@ -183,6 +183,15 @@
   margin-bottom: 0.1em;
 }
 
+/* 링크(note-link). primary 색 + 밑줄로 링크임을 드러낸다. openOnClick=false라 에디터 안에선
+   클릭해도 이동하지 않고(버블메뉴로 열기), 커서는 링크임을 알리도록 pointer. */
+.tiptap a.note-link {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
 .tiptap li > p {
   margin-top: 0;
   margin-bottom: 0;

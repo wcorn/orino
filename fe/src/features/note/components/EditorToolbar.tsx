@@ -8,6 +8,7 @@ import {
   Heading2,
   ImagePlus,
   Italic,
+  Link2,
   List,
   ListOrdered,
   Quote,
@@ -28,6 +29,8 @@ interface Props {
   editor: Editor | null;
   onInsertPage?: () => void;
   insertPagePending?: boolean;
+  /** 링크 편집 UI 열기(선택 텍스트에 링크 추가 또는 기존 링크 편집). */
+  onInsertLink?: () => void;
 }
 
 interface ToolbarButton {
@@ -41,6 +44,7 @@ export function EditorToolbar({
   editor,
   onInsertPage,
   insertPagePending,
+  onInsertLink,
 }: Props) {
   // selection 변화(마크 토글, 커서 이동 등)에 toolbar 활성 표시가 갱신되도록 구독한다.
   useEditorState({
@@ -147,6 +151,21 @@ export function EditorToolbar({
           </Button>
         );
       })}
+      {onInsertLink && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="링크"
+          aria-pressed={editor.isActive("link")}
+          className={cn(editor.isActive("link") && "bg-muted")}
+          // 선택된 텍스트가 있거나 커서가 링크 위에 있을 때만 활성.
+          disabled={editor.state.selection.empty && !editor.isActive("link")}
+          onClick={onInsertLink}
+        >
+          <Link2 className="size-4" />
+        </Button>
+      )}
       <Button
         type="button"
         variant="ghost"

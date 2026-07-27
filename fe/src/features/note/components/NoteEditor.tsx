@@ -20,12 +20,14 @@ import { ChildPageContext } from "../editor/childPageContext";
 import { collectDatasetIds, DatasetTable } from "../editor/datasetTable";
 import { DatasetTableContext } from "../editor/datasetTableContext";
 import { extractImageFiles, uploadAndInsertImage } from "../editor/imageUpload";
+import { LinkShortcut, noteLinkOptions } from "../editor/link";
 import { insertTableFromCells } from "../editor/pasteCellsAsTable";
 import { useAutoSaveNote } from "../hooks/useAutoSaveNote";
 import { useCreateNote, useDeleteNote } from "../hooks/useNoteMutations";
 import { useNoteTree } from "../hooks/useNoteTree";
 import { noteKeys } from "../queryKeys";
 import { EditorToolbar } from "./EditorToolbar";
+import { LinkMenu } from "./LinkMenu";
 import { SaveStatusIndicator } from "./SaveStatusIndicator";
 
 interface Props {
@@ -70,11 +72,13 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
   // editorProps 핸들러(handlePaste/handleDrop)는 생성 시점 클로저라 editor를
   // 직접 못 잡으므로 ref로 우회한다.
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
+  // 링크 편집 UI 열기 — LinkMenu가 채우고, 툴바 버튼·Cmd+K가 호출한다.
+  const openLinkEditorRef = useRef<() => void>(() => {});
 
   const editor = useEditor(
     {
       extensions: [
-        StarterKit,
+        StarterKit.configure({ link: noteLinkOptions }),
         TaskList,
         TaskItem.configure({ nested: true }),
         Image.configure({ inline: false }),
@@ -83,6 +87,9 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
         }),
         ChildPage,
         DatasetTable,
+        LinkShortcut.configure({
+          onTrigger: () => openLinkEditorRef.current(),
+        }),
       ],
       content: note.content as JSONContent,
       editorProps: {
@@ -253,7 +260,9 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
           editor={editor}
           onInsertPage={handleInsertPage}
           insertPagePending={createNote.isPending}
+          onInsertLink={() => openLinkEditorRef.current()}
         />
+        {editor && <LinkMenu editor={editor} openRef={openLinkEditorRef} />}
         {editor && (
           // nested: 리스트 항목 등 중첩 블록도 개별(한 줄) 드래그 타깃이 되게 한다.
           // edgeDetection "none": 기본값(left,top)은 항목 왼쪽 가장자리에서 부모(리스트)를
