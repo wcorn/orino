@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# 노드 팬 소음 저감(#989): idle 부스트 억제로 발열·팬속도를 낮춘다.
+# sysfs 쓰기는 재부팅 시 사라지므로 이 스크립트를 systemd oneshot 으로 부팅마다 재적용한다.
+set -u
+
+PROFILE="{{ node_os_platform_profile }}"
+EPP="{{ node_os_energy_perf_preference }}"
+
+# 1) ACPI platform_profile (팬 커브 완화)
+pp=/sys/firmware/acpi/platform_profile
+if [ -w "$pp" ] && grep -qw "$PROFILE" /sys/firmware/acpi/platform_profile_choices 2>/dev/null; then
+  echo "$PROFILE" > "$pp" && echo "platform_profile -> $PROFILE"
+else
+  echo "platform_profile: 인터페이스 없음 또는 미지원 값($PROFILE) → 스킵"
+fi
+
+# 2) 전 코어 EPP (idle 부스트 억제) — amd_pstate/intel_pstate active 모드 필요
+applied=0
+for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
+  [ -w "$f" ] || continue
+  avail_file="$(dirname "$f")/energy_performance_available_preferences"
+  if grep -qw "$EPP" "$avail_file" 2>/dev/null; then
+    echo "$EPP" > "$f" && applied=$((applied+1))
+  fi
+done
+if [ "$applied" -gt 0 ]; then
+  echo "energy_performance_preference -> $EPP (${applied} cpus)"
+else
+  echo "EPP: 쓰기 가능한 인터페이스 없음(active pstate 아님?) → 스킵"
+fi
+
+exit 0
