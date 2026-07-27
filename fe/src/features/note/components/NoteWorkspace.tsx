@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FieldError } from "@/components/ui/field-error";
 import { LoadingText } from "@/components/ui/loading-text";
+import { useIsNarrow } from "@/shared/lib/useIsNarrow";
 
 import type { NoteTreeNode } from "../api/notes";
 import { useNoteDetail } from "../hooks/useNoteDetail";
@@ -62,14 +63,17 @@ export function NoteWorkspace() {
   };
 
   const tree = treeQuery.data ?? [];
+  const isNarrow = useIsNarrow();
 
-  // 노트가 있는데 아무것도 선택 안 됐으면 첫 루트 자동 선택
+  // 노트가 있는데 아무것도 선택 안 됐으면 첫 루트 자동 선택 — 단, 데스크탑(2-pane, md+)에서만.
+  // 모바일은 노트 선택 시 트리를 숨기는 드릴다운이라, 자동 선택하면 목록을 볼 수 없고 '노트 목록'
+  // 뒤로가기를 눌러도(setActiveNote(null)) 이 effect가 즉시 다시 첫 노트를 선택해 목록으로 못 돌아간다.
   useEffect(() => {
-    if (activeNoteId == null && tree.length > 0) {
+    if (!isNarrow && activeNoteId == null && tree.length > 0) {
       setActiveNote(tree[0].id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeNoteId, tree]);
+  }, [isNarrow, activeNoteId, tree]);
 
   const handleAddRoot = () => {
     if (createNote.isPending) return;
