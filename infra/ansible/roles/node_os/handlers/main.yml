@@ -1,0 +1,7 @@
+---
+# 스크립트/유닛이 바뀌면 즉시 재적용(oneshot 재실행)한다.
+- name: Reexec power tuning
+  ansible.builtin.systemd:
+    name: orino-power-tuning.service
+    state: restarted
+    daemon_reload: true

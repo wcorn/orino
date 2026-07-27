@@ -10,3 +10,32 @@
   loop: "{{ node_os_sysctls | dict2items }}"
   loop_control:
     label: "{{ item.key }} = {{ item.value }}"
+
+# --- 팬 소음 저감(#989): idle 부스트 억제 ---
+- name: 전력/발열 튜닝 스크립트 배포
+  ansible.builtin.template:
+    src: orino-power-tuning.sh.j2
+    dest: /usr/local/sbin/orino-power-tuning.sh
+    owner: root
+    group: root
+    mode: "0755"
+  when: node_os_power_tuning_enabled | bool
+  notify: Reexec power tuning
+
+- name: 전력/발열 튜닝 systemd 유닛 배포
+  ansible.builtin.template:
+    src: orino-power-tuning.service.j2
+    dest: /etc/systemd/system/orino-power-tuning.service
+    owner: root
+    group: root
+    mode: "0644"
+  when: node_os_power_tuning_enabled | bool
+  notify: Reexec power tuning
+
+- name: 전력/발열 튜닝 유닛 활성화 (부팅 시 자동 재적용)
+  ansible.builtin.systemd:
+    name: orino-power-tuning.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: node_os_power_tuning_enabled | bool

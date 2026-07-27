@@ -5,3 +5,12 @@
 node_os_sysctls:
   fs.inotify.max_user_instances: "1024"   # 기본 128 → 1024
   fs.inotify.max_user_watches: "524288"   # 기본 ~119k → 524288
+
+# 노드 팬 소음 저감(#989).
+# ASUS+AMD 노트북 노드가 idle(CPU 98~99%)인데도 EPP=performance 로 상시 풀부스트 →
+# 발열(Tctl 61~70℃) → 펌웨어가 팬을 3200rpm 상시 가동해 소음이 큼.
+# platform_profile=quiet + 전 코어 EPP=power 로 idle 부스트를 억제한다.
+# amd_pstate(active) + acpi platform_profile 을 쓰는 노드 기준. 인터페이스가 없으면 스킵.
+node_os_power_tuning_enabled: true
+node_os_platform_profile: quiet          # quiet | balanced | performance
+node_os_energy_perf_preference: power    # power | balance_power | balance_performance | performance | default
