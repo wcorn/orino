@@ -20,11 +20,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -56,6 +62,8 @@ class FlashcardControllerTest extends ApiTestSupport {
 
     @Autowired
     private Clock clock;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private Member member;
     private Member otherMember;
@@ -570,5 +578,275 @@ class FlashcardControllerTest extends ApiTestSupport {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("SP-ERR-002"));
+    }
+
+    // ===== 목록 탐색: 검색 · 필터 · 정렬 · 커서 페이징 (#992) =====
+
+    @Test
+    @DisplayName("GET - q는 앞면/뒷면/순서항목(JSON)을 모두 검색하고 대소문자를 가리지 않는다")
+    void list_search_matches_front_back_and_items() throws Exception {
+        flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "Pod 란?", "최소 배포 단위"));
+        flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "노드란?", "pod 가 도는 곳"));
+        flashcardRepository.save(Flashcard.ordering(member.getId(), material.getId(), "배포 순서",
+                """
+                [{"id":"1","text":"POD 생성"},{"id":"2","text":"스케줄"},{"id":"3","text":"실행"}]
+                """));
+        flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "관계없는 카드", "무관"));
+
+        // 앞면(Pod) · 뒷면(pod) · items(POD) 3장 모두 매칭 — 대소문자 무관
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .param("q", "pod"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.flashcards", hasSize(3)))
+                .andExpect(jsonPath("$.data.totalCount").value(3));
+    }
+
+    @Test
+    @DisplayName("GET - q가 공백뿐이면 필터로 취급하지 않는다")
+    void list_blank_query_is_ignored() throws Exception {
+        flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "Q1", "A1"));
+        flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "Q2", "A2"));
+
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .param("q", "   "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.flashcards", hasSize(2)));
+    }
+
+    @Test
+    @DisplayName("GET - type 필터: basic(단방향)·pair(양방향 짝)·order")
+    void list_filter_by_type() throws Exception {
+        flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "단방향", "A"));
+        Flashcard pairA = flashcardRepository.save(
+                new Flashcard(member.getId(), material.getId(), "짝A", "짝B"));
+        // 트랜잭션 밖이라 save 반환 엔티티는 detached — 그룹 키 지정 후 다시 저장해야 반영된다
+        pairA.assignSiblingGroup(pairA.getId());
+        flashcardRepository.save(pairA);
+        Flashcard pairB = new Flashcard(member.getId(), material.getId(), "짝B", "짝A");
+        pairB.assignSiblingGroup(pairA.getId());
+        flashcardRepository.save(pairB);
+        flashcardRepository.save(Flashcard.ordering(member.getId(), material.getId(), "순서",
+                """
+                [{"id":"1","text":"하나"},{"id":"2","text":"둘"},{"id":"3","text":"셋"}]
+                """));
+
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .param("type", "basic"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.flashcards", hasSize(1)))
+                .andExpect(jsonPath("$.data.flashcards[0].front").value("단방향"));
+
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .param("type", "pair"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.flashcards", hasSize(2)))
+                .andExpect(jsonPath("$.data.totalCount").value(2));
+
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .param("type", "order"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.flashcards", hasSize(1)))
+                .andExpect(jsonPath("$.data.flashcards[0].front").value("순서"));
+    }
+
+    @Test
+    @DisplayName("GET - review 필터: overdue(어제)·today(오늘)·upcoming(내일 이후)")
+    void list_filter_by_review_status() throws Exception {
+        LocalDate today = testToday(clock);
+        Flashcard overdue = flashcardRepository.save(
+                new Flashcard(member.getId(), material.getId(), "밀림", "A"));
+        Flashcard dueToday = flashcardRepository.save(
+                new Flashcard(member.getId(), material.getId(), "오늘", "A"));
+        Flashcard future = flashcardRepository.save(
+                new Flashcard(member.getId(), material.getId(), "나중", "A"));
+        // 복습 스케줄이 아예 없는 카드 — 어떤 상태 필터에도 걸리지 않는다
+        flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "무일정", "A"));
+
+        reviewScheduleRepository.save(new ReviewSchedule(member.getId(), overdue.getId(), 1,
+                atTestZone(today.minusDays(1).atTime(4, 0)), 1, new BigDecimal("2.50")));
+        reviewScheduleRepository.save(new ReviewSchedule(member.getId(), dueToday.getId(), 1,
+                atTestZone(today.atTime(4, 0)), 1, new BigDecimal("2.50")));
+        reviewScheduleRepository.save(new ReviewSchedule(member.getId(), future.getId(), 1,
+                atTestZone(today.plusDays(3).atTime(4, 0)), 1, new BigDecimal("2.50")));
+
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .param("review", "overdue"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.flashcards", hasSize(1)))
+                .andExpect(jsonPath("$.data.flashcards[0].front").value("밀림"));
+
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .param("review", "today"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.flashcards", hasSize(1)))
+                .andExpect(jsonPath("$.data.flashcards[0].front").value("오늘"));
+
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .param("review", "upcoming"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.flashcards", hasSize(1)))
+                .andExpect(jsonPath("$.data.flashcards[0].front").value("나중"));
+    }
+
+    @Test
+    @DisplayName("GET - sort=created_desc면 최신순으로 뒤집힌다")
+    void list_sort_created_desc() throws Exception {
+        Flashcard first = flashcardRepository.save(
+                new Flashcard(member.getId(), material.getId(), "먼저", "A"));
+        Flashcard last = flashcardRepository.save(
+                new Flashcard(member.getId(), material.getId(), "나중", "A"));
+
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .param("sort", "created_desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.flashcards[0].id").value(last.getId()))
+                .andExpect(jsonPath("$.data.flashcards[1].id").value(first.getId()));
+    }
+
+    @Test
+    @DisplayName("GET - 커서 페이징이 오름차순 전체를 중복·누락 없이 훑는다")
+    void list_cursor_pagination_walks_all_ascending() throws Exception {
+        List<Long> expected = new ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            expected.add(flashcardRepository.save(
+                    new Flashcard(member.getId(), material.getId(), "Q" + i, "A" + i)).getId());
+        }
+
+        assertPagingWalksAll(expected, "created_asc");
+    }
+
+    @Test
+    @DisplayName("GET - 커서 페이징이 내림차순에서도 중복·누락 없이 훑는다")
+    void list_cursor_pagination_walks_all_descending() throws Exception {
+        List<Long> ids = new ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            ids.add(flashcardRepository.save(
+                    new Flashcard(member.getId(), material.getId(), "Q" + i, "A" + i)).getId());
+        }
+        List<Long> expected = new ArrayList<>(ids);
+        Collections.reverse(expected);
+
+        assertPagingWalksAll(expected, "created_desc");
+    }
+
+    /** size=2로 끝까지 페이징하며 수집한 id 순서가 {@code expected}와 정확히 같은지 검증한다. */
+    private void assertPagingWalksAll(List<Long> expected, String sort) throws Exception {
+        List<Long> collected = new ArrayList<>();
+        String cursor = null;
+        for (int page = 0; page < 10; page++) {
+            var request = get("/api/planner/materials/{id}/flashcards", material.getId())
+                    .header(HttpHeaders.AUTHORIZATION, authHeader)
+                    .param("sort", sort)
+                    .param("size", "2");
+            if (cursor != null) {
+                request = request.param("cursor", cursor);
+            }
+            String body = mockMvc.perform(request)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.totalCount").value(expected.size()))
+                    .andReturn().getResponse().getContentAsString();
+
+            JsonNode data = objectMapper.readTree(body).get("data");
+            data.get("flashcards").forEach(node -> collected.add(node.get("id").asLong()));
+            if (!data.get("hasNext").asBoolean()) {
+                cursor = null;
+                break;
+            }
+            cursor = data.get("nextCursor").asText();
+        }
+
+        assertThat(cursor).as("마지막 페이지에서 루프가 끝나야 한다").isNull();
+        assertThat(collected).containsExactlyElementsOf(expected);
+    }
+
+    @Test
+    @DisplayName("GET - totalCount는 페이지 길이가 아니라 필터 적용 총계다")
+    void list_total_count_is_filtered_total_not_page_size() throws Exception {
+        for (int i = 1; i <= 5; i++) {
+            flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "Q" + i, "찾을것"));
+        }
+        flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "제외", "무관"));
+
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .param("q", "찾을것")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.flashcards", hasSize(2)))
+                .andExpect(jsonPath("$.data.totalCount").value(5))
+                .andExpect(jsonPath("$.data.hasNext").value(true));
+    }
+
+    @Test
+    @DisplayName("GET - 마지막 페이지는 hasNext=false, nextCursor 생략")
+    void list_last_page_omits_cursor() throws Exception {
+        flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "Q", "A"));
+
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.hasNext").value(false))
+                .andExpect(jsonPath("$.data.nextCursor").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("GET - size는 최대치로 잘린다 (전량 요청 방지)")
+    void list_size_is_clamped_to_max() throws Exception {
+        for (int i = 0; i < 3; i++) {
+            flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "Q" + i, "A"));
+        }
+
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .param("size", "100000"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.flashcards", hasSize(3)));
+    }
+
+    @Test
+    @DisplayName("GET - 알 수 없는 type/review/sort 값이면 400")
+    void list_invalid_filter_returns_400() throws Exception {
+        for (String[] param : new String[][]{{"type", "weird"}, {"review", "weird"}, {"sort", "weird"}}) {
+            mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .param(param[0], param[1]))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("SP-ERR-002"));
+        }
+    }
+
+    @Test
+    @DisplayName("GET - 깨진 커서면 400")
+    void list_malformed_cursor_returns_400() throws Exception {
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .param("cursor", "not-a-cursor"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SP-ERR-002"));
+    }
+
+    @Test
+    @DisplayName("GET - 필터는 자료 경계를 넘지 않는다 (다른 자료의 같은 검색어 카드 제외)")
+    void list_filter_stays_within_material() throws Exception {
+        StudyMaterial another = studyMaterialRepository.save(
+                new StudyMaterial(member.getId(), "다른 자료", MaterialType.BOOK));
+        flashcardRepository.save(new Flashcard(member.getId(), material.getId(), "공통어", "A"));
+        flashcardRepository.save(new Flashcard(member.getId(), another.getId(), "공통어", "A"));
+
+        mockMvc.perform(get("/api/planner/materials/{id}/flashcards", material.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .param("q", "공통어"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.flashcards", hasSize(1)))
+                .andExpect(jsonPath("$.data.totalCount").value(1));
     }
 }
