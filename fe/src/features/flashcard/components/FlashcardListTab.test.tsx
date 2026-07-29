@@ -115,6 +115,11 @@ function recordListRequests(
   return requests;
 }
 
+/** 가장 최근 요청의 쿼리 파라미터. (`Array.prototype.at`은 tsc lib 타깃 밖) */
+function lastRequest(requests: URLSearchParams[]): URLSearchParams {
+  return requests[requests.length - 1];
+}
+
 describe("FlashcardListTab", () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: "mock-token" });
@@ -149,7 +154,8 @@ describe("FlashcardListTab", () => {
     await waitFor(() => {
       expect(screen.getByText("Q1")).toBeInTheDocument();
     });
-    expect(screen.getByText(/다음 복습: 5\/24/)).toBeInTheDocument();
+    // 접힌 행은 한 줄 — 복습일이 앞면과 같은 줄 우측에 붙는다(별도 줄 아님)
+    expect(screen.getByText(/^5\/24 \(/)).toBeInTheDocument();
     expect(screen.getByText("Q2")).toBeInTheDocument();
     expect(screen.getByText("총 2장")).toBeInTheDocument();
     // 접힌 상태에서는 뒷면이 렌더되지 않는다 — 행 높이를 낮추는 게 접기의 목적
@@ -640,7 +646,7 @@ describe("FlashcardListTab", () => {
     await user.type(screen.getByLabelText("카드 검색"), "pod");
 
     await waitFor(() => {
-      expect(requests.at(-1)?.get("q")).toBe("pod");
+      expect(lastRequest(requests).get("q")).toBe("pod");
     });
     await waitFor(() => {
       expect(screen.queryByText("관계없는 카드")).not.toBeInTheDocument();
@@ -658,7 +664,7 @@ describe("FlashcardListTab", () => {
     await user.type(screen.getByLabelText("카드 검색"), "kubernetes");
 
     await waitFor(() => {
-      expect(requests.at(-1)?.get("q")).toBe("kubernetes");
+      expect(lastRequest(requests).get("q")).toBe("kubernetes");
     });
     // 10글자를 쳤지만 최초 1회 + 디바운스된 소수의 요청만 나간다
     expect(requests.length).toBeLessThan(5);
@@ -729,7 +735,7 @@ describe("FlashcardListTab", () => {
     expect(await screen.findByText("두번째")).toBeInTheDocument();
     // 첫 페이지도 그대로 남아 누적된다
     expect(screen.getByText("첫번째")).toBeInTheDocument();
-    expect(requests.at(-1)?.get("cursor")).toBe("cursor-1");
+    expect(lastRequest(requests).get("cursor")).toBe("cursor-1");
   });
 
   it("페이지 경계에 걸린 양방향 짝은 다음 페이지가 오면 한 행으로 합쳐진다", async () => {

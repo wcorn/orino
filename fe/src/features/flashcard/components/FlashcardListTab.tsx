@@ -261,7 +261,8 @@ function FlashcardList({
 
   return (
     <div className="flex flex-col gap-2">
-      <ul className="flex flex-col gap-2">
+      {/* 행마다 Card로 감싸는 대신 컨테이너 하나 + divide-y — 여백이 내용보다 커지는 걸 막는다 */}
+      <ul className="divide-border bg-card ring-foreground/10 divide-y overflow-hidden rounded-xl ring-1">
         {rows.map((row) => (
           <li key={row.key}>
             <FlashcardItem row={row} onEdit={onEdit} />
