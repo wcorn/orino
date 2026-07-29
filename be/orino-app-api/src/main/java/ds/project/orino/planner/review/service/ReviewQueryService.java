@@ -11,6 +11,7 @@ import ds.project.orino.domain.planner.review.entity.ReviewStatus;
 import ds.project.orino.domain.planner.review.repository.ReviewScheduleRepository;
 import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
+import ds.project.orino.common.page.KeysetCursor;
 import ds.project.orino.planner.review.dto.CalendarReviewFlashcard;
 import ds.project.orino.planner.review.dto.CalendarReviewItem;
 import ds.project.orino.planner.review.dto.CalendarReviewMaterial;
@@ -275,7 +276,7 @@ public class ReviewQueryService {
 
         Instant upperBound = upperBound(scope, when, today, zone);
         TypeFilter typeFilter = typeFilter(type);
-        ReviewCursor c = cursor == null ? null : ReviewCursor.decode(cursor);
+        KeysetCursor c = cursor == null ? null : KeysetCursor.decode(cursor);
 
         List<ReviewSchedule> rows = reviewScheduleRepository.findUpcoming(
                 memberId, materialId, upperBound, typeFilter.cardType(), typeFilter.siblingRequired(),
@@ -304,7 +305,7 @@ public class ReviewQueryService {
         String nextCursor = null;
         if (hasNext) {
             ReviewSchedule last = page.get(page.size() - 1);
-            nextCursor = new ReviewCursor(last.getScheduledAt(), last.getId()).encode();
+            nextCursor = new KeysetCursor(last.getScheduledAt(), last.getId()).encode();
         }
         return new UpcomingReviewsResponse(today, items, nextCursor, hasNext);
     }
@@ -314,7 +315,7 @@ public class ReviewQueryService {
                                                   String cursor, Integer size) {
         int pageSize = clampSize(size);
         Rating rating = grade(grade);
-        ReviewCursor c = cursor == null ? null : ReviewCursor.decode(cursor);
+        KeysetCursor c = cursor == null ? null : KeysetCursor.decode(cursor);
 
         List<ReviewSchedule> rows = reviewScheduleRepository.findCompleted(
                 memberId, materialId, rating,
@@ -341,7 +342,7 @@ public class ReviewQueryService {
         String nextCursor = null;
         if (hasNext) {
             ReviewSchedule last = page.get(page.size() - 1);
-            nextCursor = new ReviewCursor(last.getCompletedAt(), last.getId()).encode();
+            nextCursor = new KeysetCursor(last.getCompletedAt(), last.getId()).encode();
         }
         return new CompletedReviewsResponse(items, nextCursor, hasNext);
     }

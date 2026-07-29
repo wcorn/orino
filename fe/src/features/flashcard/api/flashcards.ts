@@ -36,8 +36,36 @@ export interface Flashcard {
   createdAt: string;
 }
 
+/** 카드 종류 필터. `pair`는 BASIC + siblingGroupId 파생(복습 허브와 동일한 축). */
+export type CardTypeFilter = "all" | "basic" | "order" | "pair";
+/** 복습 상태 필터. PENDING 복습 시각이 어느 구간에 있는지. */
+export type ReviewStatusFilter = "all" | "overdue" | "today" | "upcoming";
+/** 정렬 축. 복습 임박순은 복습 허브가 담당하므로 여기선 생성순만. */
+export type FlashcardSort = "created_asc" | "created_desc";
+
+/**
+ * 목록 필터. **서버가 SSOT다** — 페이징이 걸려 있으므로 FE에서 다시 거르면
+ * 이미 로드된 페이지에만 적용되어 결과가 어긋난다.
+ */
+export interface FlashcardListFilters {
+  q?: string;
+  type?: CardTypeFilter;
+  review?: ReviewStatusFilter;
+  sort?: FlashcardSort;
+}
+
+export interface FlashcardListParams extends FlashcardListFilters {
+  cursor?: string;
+  size?: number;
+}
+
 export interface FlashcardListResponse {
   flashcards: Flashcard[];
+  /** 필터를 적용한 총 개수(페이지 길이가 아님). */
+  totalCount: number;
+  /** 다음 페이지 커서. 마지막 페이지면 생략(undefined). */
+  nextCursor?: string;
+  hasNext: boolean;
 }
 
 /**
@@ -72,11 +100,13 @@ interface ApiEnvelope<T> {
 
 export async function fetchFlashcards(
   materialId: number,
-): Promise<Flashcard[]> {
+  params: FlashcardListParams = {},
+): Promise<FlashcardListResponse> {
   const { data } = await client.get<ApiEnvelope<FlashcardListResponse>>(
     `/planner/materials/${materialId}/flashcards`,
+    { params },
   );
-  return data.data.flashcards;
+  return data.data;
 }
 
 export async function createFlashcard(

@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -30,12 +31,19 @@ public class FlashcardController {
         this.flashcardService = flashcardService;
     }
 
+    /** 자료의 카드 목록 — created_at 커서 keyset 페이징 + 검색(q)/종류/복습 상태/정렬 필터. */
     @GetMapping("/materials/{materialId}/flashcards")
     public ApiResponse<FlashcardListResponse> list(
             @AuthenticationPrincipal Long memberId,
-            @PathVariable Long materialId) {
-        return ApiResponse.success(new FlashcardListResponse(
-                flashcardService.findAllByMaterialId(memberId, materialId)));
+            @PathVariable Long materialId,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "all") String type,
+            @RequestParam(defaultValue = "all") String review,
+            @RequestParam(defaultValue = "created_asc") String sort,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) Integer size) {
+        return ApiResponse.success(flashcardService.findByMaterialId(
+                memberId, materialId, q, type, review, sort, cursor, size));
     }
 
     @PostMapping("/materials/{materialId}/flashcards")

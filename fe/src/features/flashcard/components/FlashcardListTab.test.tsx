@@ -7,6 +7,7 @@ import { Providers } from "@/app/providers";
 import { Toaster } from "@/components/Toaster";
 import { useAuthStore } from "@/features/auth/store/authStore";
 import { useToastStore } from "@/shared/lib/toast";
+import { triggerIntersection } from "@/test/io";
 import { server } from "@/test/mocks/server";
 import { renderWithRouter } from "@/test/render";
 
@@ -28,46 +29,95 @@ function renderTab() {
 function mockListEmpty() {
   server.use(
     http.get(`${API_BASE}/planner/materials/1/flashcards`, () => {
-      return HttpResponse.json({ code: "OK", data: { flashcards: [] } });
+      return HttpResponse.json({
+        code: "OK",
+        data: { flashcards: [], totalCount: 0, hasNext: false },
+      });
     }),
   );
 }
 
-function mockListWith(
-  flashcards: Array<{
-    id: number;
-    front: string;
-    back: string;
-    nextReview?: { sequence: number; scheduledAt: string } | null;
-  }>,
-) {
+interface MockCard {
+  id: number;
+  front: string;
+  back: string;
+  siblingGroupId?: number;
+  nextReview?: { sequence: number; scheduledAt: string } | null;
+}
+
+function toCard(f: MockCard) {
+  return {
+    id: f.id,
+    materialId: 1,
+    type: "BASIC",
+    front: f.front,
+    back: f.back,
+    items: null,
+    siblingGroupId: f.siblingGroupId ?? null,
+    nextReview:
+      f.nextReview === null
+        ? null
+        : {
+            id: 100,
+            sequence: f.nextReview?.sequence ?? 1,
+            scheduledAt: f.nextReview?.scheduledAt ?? "2026-05-20T04:00:00",
+            intervalDays: 1,
+            easeFactor: 2.5,
+          },
+    createdAt: "2026-05-18T00:00:00",
+  };
+}
+
+function mockListWith(flashcards: MockCard[]) {
   server.use(
     http.get(`${API_BASE}/planner/materials/1/flashcards`, () => {
       return HttpResponse.json({
         code: "OK",
         data: {
-          flashcards: flashcards.map((f) => ({
-            id: f.id,
-            materialId: 1,
-            front: f.front,
-            back: f.back,
-            nextReview:
-              f.nextReview === null
-                ? null
-                : {
-                    id: 100,
-                    sequence: f.nextReview?.sequence ?? 1,
-                    scheduledAt:
-                      f.nextReview?.scheduledAt ?? "2026-05-20T04:00:00",
-                    intervalDays: 1,
-                    easeFactor: 2.5,
-                  },
-            createdAt: "2026-05-18T00:00:00",
-          })),
+          flashcards: flashcards.map(toCard),
+          totalCount: flashcards.length,
+          hasNext: false,
         },
       });
     }),
   );
+}
+
+/**
+ * 서버가 필터·페이징의 SSOT임을 검증하기 위해, 매 요청의 쿼리 파라미터를 기록한다.
+ * 반환한 배열의 마지막 항목이 가장 최근 요청이다.
+ */
+function recordListRequests(
+  respond: (params: URLSearchParams) => {
+    flashcards: MockCard[];
+    totalCount?: number;
+    hasNext?: boolean;
+    nextCursor?: string;
+  },
+) {
+  const requests: URLSearchParams[] = [];
+  server.use(
+    http.get(`${API_BASE}/planner/materials/1/flashcards`, ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      requests.push(params);
+      const result = respond(params);
+      return HttpResponse.json({
+        code: "OK",
+        data: {
+          flashcards: result.flashcards.map(toCard),
+          totalCount: result.totalCount ?? result.flashcards.length,
+          hasNext: result.hasNext ?? false,
+          ...(result.nextCursor ? { nextCursor: result.nextCursor } : {}),
+        },
+      });
+    }),
+  );
+  return requests;
+}
+
+/** 가장 최근 요청의 쿼리 파라미터. (`Array.prototype.at`은 tsc lib 타깃 밖) */
+function lastRequest(requests: URLSearchParams[]): URLSearchParams {
+  return requests[requests.length - 1];
 }
 
 describe("FlashcardListTab", () => {
@@ -89,7 +139,7 @@ describe("FlashcardListTab", () => {
     ).toBeInTheDocument();
   });
 
-  it("카드 목록과 다음 복습 텍스트를 표시한다", async () => {
+  it("카드 목록은 앞면·다음 복습만 보이고 뒷면은 접혀 있다", async () => {
     mockListWith([
       {
         id: 1,
@@ -104,10 +154,60 @@ describe("FlashcardListTab", () => {
     await waitFor(() => {
       expect(screen.getByText("Q1")).toBeInTheDocument();
     });
-    expect(screen.getByText("뒤: A1")).toBeInTheDocument();
-    expect(screen.getByText(/다음 복습: 5\/24/)).toBeInTheDocument();
+    // 접힌 행은 한 줄 — 복습일이 앞면과 같은 줄 우측에 붙는다(별도 줄 아님)
+    expect(screen.getByText(/^5\/24 \(/)).toBeInTheDocument();
     expect(screen.getByText("Q2")).toBeInTheDocument();
     expect(screen.getByText("총 2장")).toBeInTheDocument();
+    // 접힌 상태에서는 뒷면이 렌더되지 않는다 — 행 높이를 낮추는 게 접기의 목적
+    expect(screen.queryByText("뒤: A1")).not.toBeInTheDocument();
+  });
+
+  it("행을 클릭하면 뒷면이 펼쳐지고, 다시 누르면 접힌다", async () => {
+    mockListWith([{ id: 1, front: "Q1", back: "A1", nextReview: null }]);
+    const user = userEvent.setup();
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Q1")).toBeInTheDocument();
+    });
+
+    const toggle = screen.getByRole("button", { expanded: false });
+    await user.click(toggle);
+    expect(await screen.findByText("뒤: A1")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { expanded: true }));
+    await waitFor(() => {
+      expect(screen.queryByText("뒤: A1")).not.toBeInTheDocument();
+    });
+  });
+
+  it("양방향 짝 2장은 ⇄ 배지가 붙은 한 행으로 묶인다", async () => {
+    mockListWith([
+      { id: 1, front: "정의", back: "설명", siblingGroupId: 1 },
+      { id: 2, front: "설명", back: "정의", siblingGroupId: 1 },
+      { id: 3, front: "단독", back: "혼자" },
+    ]);
+    const user = userEvent.setup();
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("단독")).toBeInTheDocument();
+    });
+
+    // 카드는 3장이지만 행은 2개(짝 1 + 단독 1)
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByText("⇄ 양방향")).toBeInTheDocument();
+
+    // 펼치면 두 방향이 각각 편집 가능하게 나온다
+    await user.click(screen.getAllByRole("button", { expanded: false })[0]);
+    expect(await screen.findByText("정의 → 설명")).toBeInTheDocument();
+    expect(screen.getByText("설명 → 정의")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "정의 카드 편집" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "설명 카드 편집" }),
+    ).toBeInTheDocument();
   });
 
   it("[카드 추가] 다이얼로그를 열어 카드 생성 후 토스트가 표시된다", async () => {
@@ -223,7 +323,7 @@ describe("FlashcardListTab", () => {
       expect(screen.getByText("Q")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /카드 1 편집/ }));
+    await user.click(screen.getByRole("button", { name: "Q 카드 편집" }));
     await user.click(await screen.findByRole("button", { name: "삭제" }));
     await user.click(await screen.findByRole("button", { name: "삭제" }));
 
@@ -384,16 +484,23 @@ describe("FlashcardListTab", () => {
                 createdAt: "2026-05-18T00:00:00",
               },
             ],
+            totalCount: 1,
+            hasNext: false,
           },
         });
       }),
     );
+    const user = userEvent.setup();
     renderTab();
 
     await waitFor(() => {
       expect(screen.getByText("kubectl 순서")).toBeInTheDocument();
     });
-    expect(screen.getByText("인증")).toBeInTheDocument();
+    expect(screen.getByText("순서")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { expanded: false }));
+
+    expect(await screen.findByText("인증")).toBeInTheDocument();
     expect(screen.getByText("저장")).toBeInTheDocument();
     expect(screen.getByText("생성")).toBeInTheDocument();
     // 기본 카드의 "뒤:" 프리픽스는 나타나지 않는다
@@ -514,5 +621,154 @@ describe("FlashcardListTab", () => {
     expect(
       screen.queryByRole("checkbox", { name: /양방향/ }),
     ).not.toBeInTheDocument();
+  });
+
+  // ===== 탐색: 검색 · 필터 · 무한 스크롤 (#992) =====
+
+  it("검색어는 q 파라미터로 서버에 전달된다 (FE 재필터링 아님)", async () => {
+    const requests = recordListRequests((params) =>
+      params.get("q") === "pod"
+        ? { flashcards: [{ id: 1, front: "Pod 란?", back: "최소 배포 단위" }] }
+        : {
+            flashcards: [
+              { id: 1, front: "Pod 란?", back: "최소 배포 단위" },
+              { id: 2, front: "관계없는 카드", back: "무관" },
+            ],
+          },
+    );
+    const user = userEvent.setup();
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("관계없는 카드")).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByLabelText("카드 검색"), "pod");
+
+    await waitFor(() => {
+      expect(lastRequest(requests).get("q")).toBe("pod");
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("관계없는 카드")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("1장 찾음")).toBeInTheDocument();
+  });
+
+  it("검색은 디바운스되어 타이핑마다 요청하지 않는다", async () => {
+    const requests = recordListRequests(() => ({ flashcards: [] }));
+    const user = userEvent.setup();
+    renderTab();
+
+    await waitFor(() => expect(requests).toHaveLength(1));
+
+    await user.type(screen.getByLabelText("카드 검색"), "kubernetes");
+
+    await waitFor(() => {
+      expect(lastRequest(requests).get("q")).toBe("kubernetes");
+    });
+    // 10글자를 쳤지만 최초 1회 + 디바운스된 소수의 요청만 나간다
+    expect(requests.length).toBeLessThan(5);
+  });
+
+  it("기본 요청에는 종류·복습·정렬 필터가 함께 실린다", async () => {
+    const requests = recordListRequests(() => ({ flashcards: [] }));
+    renderTab();
+
+    await waitFor(() => expect(requests).toHaveLength(1));
+    const params = requests[0];
+    expect(params.get("type")).toBe("all");
+    expect(params.get("review")).toBe("all");
+    expect(params.get("sort")).toBe("created_asc");
+    expect(params.get("q")).toBeNull();
+  });
+
+  it("검색 결과가 없으면 빈 상태 대신 [필터 초기화]를 제공한다", async () => {
+    recordListRequests((params) =>
+      params.get("q")
+        ? { flashcards: [] }
+        : { flashcards: [{ id: 1, front: "Q", back: "A" }] },
+    );
+    const user = userEvent.setup();
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Q")).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByLabelText("카드 검색"), "없는말");
+
+    expect(
+      await screen.findByText("조건에 맞는 카드가 없어요."),
+    ).toBeInTheDocument();
+    // 카드가 아예 없는 상황("아직 카드가 없습니다.")과 구분한다
+    expect(screen.queryByText("아직 카드가 없습니다.")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "필터 초기화" }));
+    expect(await screen.findByText("Q")).toBeInTheDocument();
+  });
+
+  it("sentinel이 보이면 커서로 다음 페이지를 이어 붙인다", async () => {
+    const requests = recordListRequests((params) =>
+      params.get("cursor") === "cursor-1"
+        ? {
+            flashcards: [{ id: 2, front: "두번째", back: "A2" }],
+            totalCount: 2,
+            hasNext: false,
+          }
+        : {
+            flashcards: [{ id: 1, front: "첫번째", back: "A1" }],
+            totalCount: 2,
+            hasNext: true,
+            nextCursor: "cursor-1",
+          },
+    );
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("첫번째")).toBeInTheDocument();
+    });
+    expect(screen.getByText("총 2장")).toBeInTheDocument();
+    expect(screen.queryByText("두번째")).not.toBeInTheDocument();
+
+    triggerIntersection();
+
+    expect(await screen.findByText("두번째")).toBeInTheDocument();
+    // 첫 페이지도 그대로 남아 누적된다
+    expect(screen.getByText("첫번째")).toBeInTheDocument();
+    expect(lastRequest(requests).get("cursor")).toBe("cursor-1");
+  });
+
+  it("페이지 경계에 걸린 양방향 짝은 다음 페이지가 오면 한 행으로 합쳐진다", async () => {
+    recordListRequests((params) =>
+      params.get("cursor") === "cursor-1"
+        ? {
+            flashcards: [
+              { id: 2, front: "설명", back: "정의", siblingGroupId: 1 },
+            ],
+            totalCount: 2,
+            hasNext: false,
+          }
+        : {
+            flashcards: [
+              { id: 1, front: "정의", back: "설명", siblingGroupId: 1 },
+            ],
+            totalCount: 2,
+            hasNext: true,
+            nextCursor: "cursor-1",
+          },
+    );
+    renderTab();
+
+    // 첫 페이지엔 짝의 절반만 있어 단독 행으로 보인다
+    await waitFor(() => {
+      expect(screen.getByText("정의")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("⇄ 양방향")).not.toBeInTheDocument();
+
+    triggerIntersection();
+
+    // 짝이 도착하면 두 행이 아니라 한 행으로 합쳐진다
+    expect(await screen.findByText("⇄ 양방향")).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
   });
 });

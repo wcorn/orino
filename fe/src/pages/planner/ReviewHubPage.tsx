@@ -30,9 +30,9 @@ import {
 } from "@/features/review/components/hub/ReviewRail";
 import { UpcomingReviewRow } from "@/features/review/components/hub/UpcomingReviewRow";
 import { useCompletedReviews } from "@/features/review/hooks/useCompletedReviews";
-import { useInfiniteScroll } from "@/features/review/hooks/useInfiniteScroll";
 import { useReviewSummary } from "@/features/review/hooks/useReviewSummary";
 import { useUpcomingReviews } from "@/features/review/hooks/useUpcomingReviews";
+import { useInfiniteScroll } from "@/shared/lib/useInfiniteScroll";
 
 type Tab = "upcoming" | "completed";
 
