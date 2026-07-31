@@ -171,6 +171,9 @@ export function DatasetGrid({
   const [sel, setSel] = useState<Sel>(null);
   // 드래그 선택 중인 축(셀/행/열). 눌러서 끌 때만 값이 있고 window pointerup에서 해제한다.
   const selDrag = useRef<null | "cells" | "rows" | "cols">(null);
+  // 지금 선택이 터치에서 왔는지. 터치면 활성 셀 입력창을 띄우지 않는다 — <input>에 포커스가
+  // 가는 순간 가상 키보드가 떠서 표를 좌우로 스크롤할 수 없다(#994). 마우스/펜은 영향 없다.
+  const [touchSelect, setTouchSelect] = useState(false);
   // 채우기 핸들 드래그 중인 대상 행(세로). null이면 채우기 중 아님. window pointerup에서 확정한다.
   const [fillTo, setFillTo] = useState<number | null>(null);
   const fillDragging = useRef(false);
@@ -1011,18 +1014,46 @@ export function DatasetGrid({
     col >= selRect.c0 &&
     col <= selRect.c1;
 
-  // 클릭=선택, 드래그=범위, shift+클릭=확장. (더블클릭은 편집으로 따로 간다)
-  const startCellSelect = (row: number, col: number, shift: boolean) => {
+  /** (row,col)만 단일 선택된 상태인가 — 터치로 같은 셀을 다시 탭했는지 판별에 쓴다. */
+  const isSingleSelected = (row: number, col: number) =>
+    sel?.kind === "cells" &&
+    sel.a[0] === sel.b[0] &&
+    sel.a[1] === sel.b[1] &&
+    sel.a[0] === row &&
+    sel.a[1] === col;
+
+  /**
+   * 클릭=선택, 드래그=범위, shift+클릭=확장. (더블클릭은 편집으로 따로 간다)
+   *
+   * 터치는 다르게 간다(#994). 첫 탭은 선택만 하고 입력창을 띄우지 않아 가상 키보드가 뜨지
+   * 않게 하고(그래야 표를 좌우로 스크롤할 수 있다), **이미 선택된 셀을 다시 탭**하면 편집으로
+   * 들어간다 — 더블탭은 브라우저 확대 제스처와 겹쳐 모바일에서 신뢰할 수 없다.
+   * 터치 드래그도 범위 선택으로 잡지 않는다. 같은 제스처를 스크롤과 나눠 쓸 수 없고,
+   * 열이 넘치는 표에선 스크롤이 우선이다.
+   */
+  const startCellSelect = (
+    row: number,
+    col: number,
+    shift: boolean,
+    pointerType?: string,
+  ) => {
+    const viaTouch = pointerType === "touch";
     setEditing(null);
     if (shift && sel?.kind === "cells") {
       setSel({ kind: "cells", a: sel.a, b: [row, col] });
-    } else {
-      selDrag.current = "cells";
-      setSel({ kind: "cells", a: [row, col], b: [row, col] });
-      // 단일 선택 즉시 타이핑 대비: 셀 표시값으로 draft를 채워 둔다(입력창이 값을 전체
-      // 선택한 채 뜨므로, 글자를 치면 덮어써지고 한글은 그 입력창에서 조합된다).
-      setDraft(getRow(row)?.[col] ?? "");
+      return;
     }
+    if (viaTouch && isSingleSelected(row, col)) {
+      startEdit(row, col);
+      return;
+    }
+    setTouchSelect(viaTouch);
+    // 터치 드래그는 스크롤에 양보한다(범위 선택으로 잡지 않는다).
+    selDrag.current = viaTouch ? null : "cells";
+    setSel({ kind: "cells", a: [row, col], b: [row, col] });
+    // 단일 선택 즉시 타이핑 대비: 셀 표시값으로 draft를 채워 둔다(입력창이 값을 전체
+    // 선택한 채 뜨므로, 글자를 치면 덮어써지고 한글은 그 입력창에서 조합된다).
+    setDraft(getRow(row)?.[col] ?? "");
   };
 
   /**
@@ -1416,6 +1447,9 @@ export function DatasetGrid({
    */
   const onGridKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (editing) return; // 편집 중엔 입력창이 처리한다.
+    // 물리 키보드를 쓰기 시작했다는 뜻 — 터치 모드를 풀어 활성 셀 입력창을 되살린다
+    // (터치로 고른 뒤 외장 키보드로 타이핑하는 태블릿 경우).
+    if (touchSelect) setTouchSelect(false);
     // Cmd/Ctrl+Z(되돌리기) / +Shift 또는 Ctrl+Y(다시 실행). 스택이 비면 아무 일도 안 한다.
     if (isUndoRedoKey(e)) {
       e.preventDefault();
@@ -1641,13 +1675,9 @@ export function DatasetGrid({
     // 단일 셀만 선택된 상태(범위/행/열/표 아님)이고 이 셀이 그 셀이면 "활성"이다.
     // 활성 셀엔 편집 전에도 입력창을 띄워 두되 비워 둔다(값은 뒤 표시칸이 보여줌). 글자를 치면
     // 빈 칸에 들어가 그대로 덮어쓰기가 되고 편집으로 넘어간다 — 같은 <input>이라 IME도 안 끊긴다.
+    // 단, 터치로 선택한 경우엔 띄우지 않는다 — 포커스가 곧 가상 키보드라 스크롤을 막는다(#994).
     const isSelectActive =
-      !editing &&
-      sel?.kind === "cells" &&
-      sel.a[0] === sel.b[0] &&
-      sel.a[1] === sel.b[1] &&
-      sel.a[0] === rowIndex &&
-      sel.a[1] === c;
+      !editing && !touchSelect && isSingleSelected(rowIndex, c);
     const isActive = isEditing || isSelectActive;
     const cells = getRow(rowIndex);
     const formula = getFormulas(rowIndex)[colKey];
@@ -1938,7 +1968,12 @@ export function DatasetGrid({
                         // 클릭=선택, 드래그=범위, shift+클릭=확장, 더블클릭=편집.
                         onPointerDown={(e) => {
                           if (e.button === 0)
-                            startCellSelect(vi.index, c, e.shiftKey);
+                            startCellSelect(
+                              vi.index,
+                              c,
+                              e.shiftKey,
+                              e.pointerType,
+                            );
                         }}
                         onPointerEnter={() => {
                           // 채우기 드래그 중이면 이 행을 대상으로, 아니면 셀 범위 확장.
@@ -2059,7 +2094,12 @@ export function DatasetGrid({
                         }}
                         onPointerDown={(e) => {
                           if (e.button === 0)
-                            startCellSelect(m.rowIndex, ai, e.shiftKey);
+                            startCellSelect(
+                              m.rowIndex,
+                              ai,
+                              e.shiftKey,
+                              e.pointerType,
+                            );
                         }}
                         onDoubleClick={() => startEdit(m.rowIndex, ai)}
                         onContextMenu={(e) =>
