@@ -3132,6 +3132,86 @@ describe("DatasetGrid", () => {
     expect(await screen.findByLabelText(ACTIVE_INPUT)).toHaveValue("");
   });
 
+  // ===== 가로 넘칠 때 줄이 끝까지 그려지는가 (#996) =====
+
+  it("본문 컨테이너에 열 최소 폭 합계를 min-width로 걸어 행이 표 전체 폭을 덮게 한다", async () => {
+    mockDataset([["네트워크", "92"]]); // 유연폭 2열
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    const list = document.querySelector(".overflow-x-auto")
+      ?.firstElementChild as HTMLElement;
+    // min-width가 없으면 행(w-full)이 "보이는 폭"에 갇혀 가로줄(border-b)이 중간에 끊긴다.
+    expect(list.style.minWidth).toBe("240px"); // 120 × 2
+  });
+
+  it("너비를 지정한 열은 지정값으로, 나머지는 유연폭 최소로 합산한다", async () => {
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목", width: 300 },
+              { key: "c1", label: "점수" },
+            ],
+            rowCount: 1,
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [{ id: 100, rowIndex: 0, cells: ["네트워크", "92"] }],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    const list = document.querySelector(".overflow-x-auto")
+      ?.firstElementChild as HTMLElement;
+    expect(list.style.minWidth).toBe("420px"); // 300 + 120
+  });
+
+  it("열 요약줄도 같은 최소 폭을 써서 윗줄이 중간에 끊기지 않는다", async () => {
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            id: 1,
+            columns: [
+              { key: "c0", label: "과목" },
+              { key: "c1", label: "점수", summary: "SUM" },
+            ],
+            rowCount: 1,
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/datasets/1/rows`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            rows: [{ id: 100, rowIndex: 0, cells: ["네트워크", "92"] }],
+            offset: 0,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    const summary = screen.getByLabelText("열 요약");
+    expect(summary.style.minWidth).toBe("240px");
+  });
+
   it("터치 선택 뒤 물리 키보드를 쓰면 활성 입력창이 되살아난다", async () => {
     mockDataset([["네트워크", "92"]]);
     renderWithRouter(<DatasetGrid datasetId={1} />);

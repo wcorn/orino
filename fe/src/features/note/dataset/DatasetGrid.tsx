@@ -71,6 +71,12 @@ import { useUndoStack } from "./undoStack";
 const ROW_HEIGHT = 36;
 
 /**
+ * 너비를 지정하지 않은(유연폭) 열이 줄어들 수 있는 최소 px. `minmax(이 값, 1fr)`의 하한이자,
+ * 표 전체 최소 폭 계산의 열당 몫이다. 드래그 리사이즈의 하한({@code MIN_COLUMN_WIDTH})과는 별개다.
+ */
+const FLEX_COLUMN_MIN_WIDTH = 120;
+
+/**
  * 되돌리기·다시실행 단축키인가. Cmd/Ctrl+Z = 되돌리기, +Shift 또는 Ctrl+Y = 다시실행.
  * (mac의 Cmd+Y는 되돌리기로 오해되지 않게 제외 — Y 다시실행은 Ctrl 조합만.)
  */
@@ -537,12 +543,28 @@ export function DatasetGrid({
 
   // 너비를 지정한 열은 고정 px, 안 한 열은 기존대로 남는 폭을 나눠 갖는다.
   // 드래그 중인 열은 아직 저장 전이므로 진행 중 너비로 그린다.
+  const colWidth = (col: (typeof meta.columns)[number]) =>
+    resizing?.key === col.key ? resizing.width : col.width;
   const gridTemplateColumns = meta.columns
     .map((col) => {
-      const width = resizing?.key === col.key ? resizing.width : col.width;
-      return width != null ? `${width}px` : "minmax(120px, 1fr)";
+      const width = colWidth(col);
+      return width != null
+        ? `${width}px`
+        : `minmax(${FLEX_COLUMN_MIN_WIDTH}px, 1fr)`;
     })
     .join(" ");
+
+  /**
+   * 열이 다 들어가는 최소 폭(px). 가로 스크롤 컨테이너 안의 블록 요소는 폭이 auto라 **보이는
+   * 폭**까지만 차지하고, 그 위의 `w-full` 행들도 같이 갇힌다. 그러면 행의 가로줄(border-b)이
+   * 처음 보이던 폭에서 끊겨, 오른쪽으로 스크롤하면 줄이 사라진다(#996).
+   * 이 값을 min-width로 주면 행·오버레이·요약줄이 모두 표 전체 폭으로 늘어난다.
+   * (컨테이너가 이보다 넓으면 min-width가 안 걸려 1fr 스트레치가 그대로 산다.)
+   */
+  const totalMinWidth = meta.columns.reduce(
+    (sum, col) => sum + (colWidth(col) ?? FLEX_COLUMN_MIN_WIDTH),
+    0,
+  );
 
   const colIndexByKey = new Map(meta.columns.map((c, i) => [c.key, i]));
   // 세로·블록 병합(rowSpan>1)은 오버레이로 그린다(가상화와 양립하려면 앵커 행 렌더에 의존하면 안 된다).
@@ -1874,7 +1896,12 @@ export function DatasetGrid({
           {/* 본문 (윈도우 가상화) */}
           <div
             ref={listRef}
-            style={{ height: virtualizer.getTotalSize(), position: "relative" }}
+            style={{
+              height: virtualizer.getTotalSize(),
+              position: "relative",
+              // 행·병합 오버레이·열 핸들이 모두 이 폭을 기준(w-full)으로 잡는다.
+              minWidth: totalMinWidth,
+            }}
           >
             {/* 열 선택 핸들 — 상단 얇은 바(열별). 표 호버 시 나타난다. 클릭=열 선택, 드래그=여러 열. */}
             <div
@@ -2122,7 +2149,8 @@ export function DatasetGrid({
           {meta.columns.some((col) => col.summary) && (
             <div
               className="border-border bg-muted/30 grid border-t text-sm"
-              style={{ gridTemplateColumns }}
+              // 본문과 같은 최소 폭 — 없으면 요약줄의 윗줄(border-t)도 보이는 폭에서 끊긴다.
+              style={{ gridTemplateColumns, minWidth: totalMinWidth }}
               aria-label="열 요약"
             >
               {meta.columns.map((col) => (
