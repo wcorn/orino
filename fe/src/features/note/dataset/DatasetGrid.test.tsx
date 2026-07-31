@@ -3054,4 +3054,95 @@ describe("DatasetGrid", () => {
     fireEvent.keyDown(grid, { key: "z", metaKey: true, shiftKey: true });
     await waitFor(() => expect(has(["라우터", "92"])).toBe(2));
   });
+
+  // ===== 터치(모바일) — 선택이 가상 키보드를 부르지 않게 (#994) =====
+
+  const ACTIVE_INPUT = "1행 2열 셀 (입력하면 편집)";
+
+  it("터치로 셀을 탭하면 선택만 되고 활성 입력창은 뜨지 않는다(가상 키보드 방지)", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const cell = (await screen.findByText("92")).parentElement as HTMLElement;
+
+    fireEvent.pointerDown(cell, { button: 0, pointerType: "touch" });
+
+    // 입력창이 아예 없어야 한다 — 있으면 포커스가 가고, 모바일에선 그게 곧 키보드다.
+    expect(screen.queryByLabelText(ACTIVE_INPUT)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("셀 1행 2열")).not.toBeInTheDocument();
+    // 값은 그대로 보인다(선택 자체는 됐다).
+    expect(screen.getByText("92")).toBeInTheDocument();
+  });
+
+  it("터치로 이미 선택된 셀을 다시 탭하면 편집으로 들어간다(더블탭 아님)", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const cell = (await screen.findByText("92")).parentElement as HTMLElement;
+
+    fireEvent.pointerDown(cell, { button: 0, pointerType: "touch" });
+    fireEvent.pointerDown(cell, { button: 0, pointerType: "touch" });
+
+    // 이때만 입력창이 뜬다 — 편집이므로 키보드가 올라오는 게 맞다.
+    const input = await screen.findByLabelText("셀 1행 2열");
+    expect(input).toHaveValue("92");
+  });
+
+  it("터치로 다른 셀을 탭하면 편집이 아니라 그 셀 선택으로 옮겨간다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const first = (await screen.findByText("네트워크"))
+      .parentElement as HTMLElement;
+    const second = screen.getByText("92").parentElement as HTMLElement;
+
+    fireEvent.pointerDown(first, { button: 0, pointerType: "touch" });
+    fireEvent.pointerDown(second, { button: 0, pointerType: "touch" });
+
+    expect(screen.queryByLabelText("셀 1행 2열")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(ACTIVE_INPUT)).not.toBeInTheDocument();
+  });
+
+  it("터치 드래그는 범위 선택으로 잡지 않는다(스크롤에 양보)", async () => {
+    mockDataset([
+      ["네트워크", "92"],
+      ["운영체제", "78"],
+    ]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const a = (await screen.findByText("네트워크"))
+      .parentElement as HTMLElement; // (0,0)
+    const b = screen.getByText("78").parentElement as HTMLElement; // (1,1)
+
+    fireEvent.pointerDown(a, { button: 0, pointerType: "touch" });
+    fireEvent.pointerEnter(b);
+
+    const setData = vi.fn();
+    fireEvent.copy(screen.getByTestId("dataset-grid"), {
+      clipboardData: { setData, getData: () => "" },
+    });
+
+    // 범위로 번지지 않고 처음 탭한 한 칸에 머문다.
+    expect(setData).toHaveBeenCalledWith("text/plain", "네트워크");
+  });
+
+  it("마우스 클릭은 그대로 활성 입력창을 띄운다(회귀)", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const cell = (await screen.findByText("92")).parentElement as HTMLElement;
+
+    fireEvent.pointerDown(cell, { button: 0, pointerType: "mouse" });
+
+    expect(await screen.findByLabelText(ACTIVE_INPUT)).toHaveValue("");
+  });
+
+  it("터치 선택 뒤 물리 키보드를 쓰면 활성 입력창이 되살아난다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    const cell = (await screen.findByText("92")).parentElement as HTMLElement;
+
+    fireEvent.pointerDown(cell, { button: 0, pointerType: "touch" });
+    expect(screen.queryByLabelText(ACTIVE_INPUT)).not.toBeInTheDocument();
+
+    // 외장 키보드가 달린 태블릿 — 키를 누르는 순간 타이핑을 받을 수 있어야 한다.
+    fireEvent.keyDown(screen.getByTestId("dataset-grid"), { key: "Shift" });
+
+    expect(await screen.findByLabelText(ACTIVE_INPUT)).toBeInTheDocument();
+  });
 });
