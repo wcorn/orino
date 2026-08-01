@@ -161,6 +161,44 @@ class ReviewCompletedControllerTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("GET completed - totalCount는 필터 기준 총 건수이며 첫 페이지에만 실린다")
+    void total_count_is_filtered_total_on_first_page() throws Exception {
+        Flashcard a = basicCard(materialA);
+        completed(a, 1, Rating.GOOD, TODAY.atTime(8, 0));
+        completed(a, 2, Rating.GOOD, TODAY.atTime(9, 0));
+        completed(a, 3, Rating.AGAIN, TODAY.atTime(10, 0));
+        completed(basicCard(materialB), 1, Rating.GOOD, TODAY.atTime(11, 0));
+
+        MvcResult first = mockMvc.perform(get("/api/planner/reviews/completed")
+                        .param("size", "2")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items", hasSize(2)))
+                .andExpect(jsonPath("$.data.totalCount").value(4))
+                .andReturn();
+        String cursor = JsonPath.read(first.getResponse().getContentAsString(), "$.data.nextCursor");
+
+        mockMvc.perform(get("/api/planner/reviews/completed")
+                        .param("size", "2")
+                        .param("cursor", cursor)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").doesNotExist());
+
+        mockMvc.perform(get("/api/planner/reviews/completed")
+                        .param("grade", "GOOD")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3));
+
+        mockMvc.perform(get("/api/planner/reviews/completed")
+                        .param("materialId", String.valueOf(materialB.getId()))
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1));
+    }
+
+    @Test
     @DisplayName("GET completed - PENDING/타인은 제외된다")
     void excludes_pending_and_others() throws Exception {
         Flashcard a = basicCard(materialA);

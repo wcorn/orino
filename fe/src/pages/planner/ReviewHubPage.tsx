@@ -67,6 +67,10 @@ export function ReviewHubPage() {
   const completedItems =
     completedQuery.data?.pages.flatMap((p) => p.items) ?? [];
 
+  // totalCount는 첫 페이지에만 실린다. 필터가 바뀌면 쿼리 키가 바뀌어 첫 페이지부터 다시 받는다.
+  const upcomingTotal = upcomingQuery.data?.pages[0]?.totalCount;
+  const completedTotal = completedQuery.data?.pages[0]?.totalCount;
+
   const upcomingSentinel = useInfiniteScroll(
     () => upcomingQuery.fetchNextPage(),
     Boolean(upcomingQuery.hasNextPage) && !upcomingQuery.isFetchingNextPage,
@@ -167,12 +171,9 @@ export function ReviewHubPage() {
         <main className="min-w-0 flex-1">
           <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
             <TabsList>
-              <TabsTrigger value="upcoming">
-                앞으로 {summary.counts.upcoming}
-              </TabsTrigger>
-              <TabsTrigger value="completed">
-                완료 {summary.counts.doneToday}
-              </TabsTrigger>
+              {/* 전체 총계는 좌측 레일에 있다. 여기 숫자는 필터 기준 총 개수(FilterCount). */}
+              <TabsTrigger value="upcoming">앞으로</TabsTrigger>
+              <TabsTrigger value="completed">완료</TabsTrigger>
             </TabsList>
 
             <TabsContent value="upcoming" className="flex flex-col gap-3">
@@ -209,6 +210,7 @@ export function ReviewHubPage() {
                     </button>
                   </Badge>
                 )}
+                <FilterCount total={upcomingTotal} />
               </div>
 
               <ReviewList
@@ -243,6 +245,7 @@ export function ReviewHubPage() {
                   onValueChange={setFGrade}
                   options={GRADE_OPTIONS}
                 />
+                <FilterCount total={completedTotal} />
               </div>
 
               <ReviewList
@@ -264,6 +267,18 @@ export function ReviewHubPage() {
         </main>
       </div>
     </div>
+  );
+}
+
+/** 필터 줄 오른쪽 끝의 "총 N개". 아직 못 받았으면 자리만 비워 둔다(레이아웃은 유지). */
+function FilterCount({ total }: { total?: number }) {
+  return (
+    <p
+      className="text-muted-foreground ml-auto text-sm tabular-nums"
+      aria-live="polite"
+    >
+      {total === undefined ? "" : `총 ${total.toLocaleString()}개`}
+    </p>
   );
 }
 

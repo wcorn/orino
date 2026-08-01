@@ -76,6 +76,25 @@ public interface ReviewScheduleRepository extends JpaRepository<ReviewSchedule, 
                                       @Param("cursorId") Long cursorId,
                                       Pageable pageable);
 
+    /** 앞으로의 복습 총 건수 — {@link #findUpcoming}과 동일한 필터에서 커서 조건만 뺀 COUNT. */
+    @Query("""
+            SELECT COUNT(r) FROM ReviewSchedule r, Flashcard f
+            WHERE r.flashcardId = f.id
+              AND r.memberId = :memberId
+              AND r.status = ds.project.orino.domain.planner.review.entity.ReviewStatus.PENDING
+              AND (:materialId IS NULL OR f.materialId = :materialId)
+              AND (:upperBound IS NULL OR r.scheduledAt < :upperBound)
+              AND (:cardType IS NULL OR f.type = :cardType)
+              AND (:siblingRequired IS NULL
+                   OR (:siblingRequired = TRUE AND f.siblingGroupId IS NOT NULL)
+                   OR (:siblingRequired = FALSE AND f.siblingGroupId IS NULL))
+            """)
+    long countUpcoming(@Param("memberId") Long memberId,
+                       @Param("materialId") Long materialId,
+                       @Param("upperBound") Instant upperBound,
+                       @Param("cardType") FlashcardType cardType,
+                       @Param("siblingRequired") Boolean siblingRequired);
+
     /**
      * 완료된 복습 — COMPLETED를 {@code completed_at DESC, id DESC}로 keyset 페이징한다.
      * {@code materialId}/{@code grade}는 필터(null이면 무시), {@code cursorAt}/{@code cursorId}는
@@ -99,4 +118,17 @@ public interface ReviewScheduleRepository extends JpaRepository<ReviewSchedule, 
                                        @Param("cursorAt") Instant cursorAt,
                                        @Param("cursorId") Long cursorId,
                                        Pageable pageable);
+
+    /** 완료된 복습 총 건수 — {@link #findCompleted}와 동일한 필터에서 커서 조건만 뺀 COUNT. */
+    @Query("""
+            SELECT COUNT(r) FROM ReviewSchedule r, Flashcard f
+            WHERE r.flashcardId = f.id
+              AND r.memberId = :memberId
+              AND r.status = ds.project.orino.domain.planner.review.entity.ReviewStatus.COMPLETED
+              AND (:materialId IS NULL OR f.materialId = :materialId)
+              AND (:grade IS NULL OR r.rating = :grade)
+            """)
+    long countCompleted(@Param("memberId") Long memberId,
+                        @Param("materialId") Long materialId,
+                        @Param("grade") Rating grade);
 }
