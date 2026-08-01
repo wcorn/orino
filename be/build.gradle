@@ -1,6 +1,6 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '4.0.6' apply false
+    id 'org.springframework.boot' version '4.0.7' apply false
     id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -19,11 +19,8 @@ subprojects {
         }
     }
 
-    ext['jackson-2-bom.version'] = '2.21.4'
-    ext['jackson-bom.version'] = '3.1.4'
+    // BOM보다 높은 버전이 필요한 것만 남긴다(CVE 대응). 나머지는 4.0.7 BOM이 이미 커버한다.
     ext['netty.version'] = '4.2.16.Final'
-    ext['spring-security.version'] = '7.0.5'
-    ext['tomcat.version'] = '11.0.22'
 
     repositories {
         mavenCentral()
@@ -31,7 +28,7 @@ subprojects {
 
     dependencyManagement {
         imports {
-            mavenBom "org.springframework.boot:spring-boot-dependencies:4.0.6"
+            mavenBom "org.springframework.boot:spring-boot-dependencies:4.0.7"
         }
     }
 

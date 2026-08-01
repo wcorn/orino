@@ -253,6 +253,74 @@ class ReviewUpcomingControllerTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("GET upcoming - totalCount는 페이지 크기와 무관한 필터 기준 총 건수")
+    void total_count_is_filtered_total() throws Exception {
+        Flashcard a = basicCard(materialA);
+        pending(a, TODAY.atTime(4, 0));
+        pending(a, TODAY.atTime(5, 0));
+        pending(a, TODAY.atTime(6, 0));
+        pending(basicCard(materialB), TODAY.atTime(4, 0));
+
+        mockMvc.perform(get("/api/planner/reviews/upcoming")
+                        .param("size", "2")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items", hasSize(2)))
+                .andExpect(jsonPath("$.data.totalCount").value(4));
+
+        mockMvc.perform(get("/api/planner/reviews/upcoming")
+                        .param("materialId", String.valueOf(materialB.getId()))
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1));
+    }
+
+    @Test
+    @DisplayName("GET upcoming - totalCount는 when/type 필터도 반영한다")
+    void total_count_reflects_when_and_type() throws Exception {
+        pending(basicCard(materialA), TODAY.atTime(4, 0));
+        pending(orderingCard(), TODAY.atTime(4, 0));
+        pending(pairCard(), TODAY.plusDays(5).atTime(4, 0));
+
+        mockMvc.perform(get("/api/planner/reviews/upcoming")
+                        .param("when", "today")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2));
+
+        mockMvc.perform(get("/api/planner/reviews/upcoming")
+                        .param("type", "pair")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1));
+    }
+
+    @Test
+    @DisplayName("GET upcoming - totalCount는 첫 페이지에만 실린다")
+    void total_count_only_on_first_page() throws Exception {
+        Flashcard a = basicCard(materialA);
+        pending(a, TODAY.atTime(4, 0));
+        pending(a, TODAY.atTime(5, 0));
+        pending(a, TODAY.atTime(6, 0));
+
+        MvcResult first = mockMvc.perform(get("/api/planner/reviews/upcoming")
+                        .param("size", "2")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3))
+                .andReturn();
+        String cursor = JsonPath.read(first.getResponse().getContentAsString(), "$.data.nextCursor");
+
+        mockMvc.perform(get("/api/planner/reviews/upcoming")
+                        .param("size", "2")
+                        .param("cursor", cursor)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items", hasSize(1)))
+                .andExpect(jsonPath("$.data.totalCount").doesNotExist());
+    }
+
+    @Test
     @DisplayName("GET upcoming - 잘못된 scope는 400")
     void invalid_scope_returns_400() throws Exception {
         mockMvc.perform(get("/api/planner/reviews/upcoming")

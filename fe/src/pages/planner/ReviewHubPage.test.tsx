@@ -282,6 +282,106 @@ describe("ReviewHubPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("필터 기준 총 개수를 표시하고, 필터가 바뀌면 갱신된다", async () => {
+    mockSummary();
+    server.use(
+      http.get(`${API_BASE}/planner/reviews/upcoming`, ({ request }) => {
+        const materialId = new URL(request.url).searchParams.get("materialId");
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            today: "2026-05-18",
+            items: [upcomingItem(1)],
+            hasNext: false,
+            totalCount: materialId ? 12 : 191,
+          },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderHub();
+
+    expect(await screen.findByText("총 191개")).toBeInTheDocument();
+    // 전체 총계(레일)와 달리 탭 라벨에는 숫자가 없다
+    expect(screen.getByRole("tab", { name: "앞으로" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /이펙티브 자바/ }));
+
+    expect(await screen.findByText("총 12개")).toBeInTheDocument();
+  });
+
+  it("다음 페이지를 이어붙여도 총 개수는 첫 페이지 값을 유지한다", async () => {
+    mockSummary();
+    server.use(
+      http.get(`${API_BASE}/planner/reviews/upcoming`, ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        if (!cursor) {
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              today: "2026-05-18",
+              items: [upcomingItem(1)],
+              nextCursor: "c2",
+              hasNext: true,
+              totalCount: 2,
+            },
+          });
+        }
+        // 이후 페이지엔 totalCount가 실리지 않는다
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            today: "2026-05-18",
+            items: [upcomingItem(2)],
+            hasNext: false,
+          },
+        });
+      }),
+    );
+    renderHub();
+
+    expect(await screen.findByText("총 2개")).toBeInTheDocument();
+
+    triggerIntersection();
+
+    expect(await screen.findByText("질문 2")).toBeInTheDocument();
+    expect(screen.getByText("총 2개")).toBeInTheDocument();
+  });
+
+  it("완료 탭도 필터 기준 총 개수를 표시한다", async () => {
+    mockSummary();
+    server.use(
+      http.get(`${API_BASE}/planner/reviews/upcoming`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            today: "2026-05-18",
+            items: [upcomingItem(1)],
+            hasNext: false,
+            totalCount: 191,
+          },
+        }),
+      ),
+      http.get(`${API_BASE}/planner/reviews/completed`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            items: [completedItem(5, "GOOD")],
+            hasNext: false,
+            totalCount: 42,
+          },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderHub();
+
+    await screen.findByText("총 191개");
+    await user.click(screen.getByRole("tab", { name: "완료" }));
+
+    expect(await screen.findByText("총 42개")).toBeInTheDocument();
+  });
+
   it("[전체 복습 시작]은 scope=all 세션으로 이동한다", async () => {
     mockSummary();
     server.use(

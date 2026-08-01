@@ -81,6 +81,8 @@ export interface UpcomingReviewsPage {
   /** 다음 페이지 커서. 마지막 페이지면 생략(undefined). */
   nextCursor?: string;
   hasNext: boolean;
+  /** 현재 필터에 걸리는 전체 건수. 첫 페이지에만 실린다. */
+  totalCount?: number;
 }
 
 export interface UpcomingReviewParams {
@@ -117,6 +119,8 @@ export interface CompletedReviewsPage {
   items: CompletedReviewItem[];
   nextCursor?: string;
   hasNext: boolean;
+  /** 현재 필터에 걸리는 전체 건수. 첫 페이지에만 실린다. */
+  totalCount?: number;
 }
 
 export interface CompletedReviewParams {

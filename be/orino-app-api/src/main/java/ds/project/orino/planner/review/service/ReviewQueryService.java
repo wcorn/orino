@@ -307,7 +307,15 @@ public class ReviewQueryService {
             ReviewSchedule last = page.get(page.size() - 1);
             nextCursor = new KeysetCursor(last.getScheduledAt(), last.getId()).encode();
         }
-        return new UpcomingReviewsResponse(today, items, nextCursor, hasNext);
+
+        // 첫 페이지에서만 COUNT — 이후 페이지는 필터가 같으므로 클라이언트가 첫 값을 유지한다.
+        Long totalCount = c == null
+                ? reviewScheduleRepository.countUpcoming(
+                        memberId, materialId, upperBound,
+                        typeFilter.cardType(), typeFilter.siblingRequired())
+                : null;
+
+        return new UpcomingReviewsResponse(today, items, nextCursor, hasNext, totalCount);
     }
 
     /** 완료된 복습 목록 — COMPLETED, completed_at DESC, 커서 keyset 페이징 + 자료/평가 필터. */
@@ -344,7 +352,13 @@ public class ReviewQueryService {
             ReviewSchedule last = page.get(page.size() - 1);
             nextCursor = new KeysetCursor(last.getCompletedAt(), last.getId()).encode();
         }
-        return new CompletedReviewsResponse(items, nextCursor, hasNext);
+
+        // 첫 페이지에서만 COUNT — 이후 페이지는 필터가 같으므로 클라이언트가 첫 값을 유지한다.
+        Long totalCount = c == null
+                ? reviewScheduleRepository.countCompleted(memberId, materialId, rating)
+                : null;
+
+        return new CompletedReviewsResponse(items, nextCursor, hasNext, totalCount);
     }
 
     private int clampSize(Integer size) {
