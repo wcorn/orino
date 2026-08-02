@@ -1,4 +1,9 @@
-import { createEvent, fireEvent, waitFor } from "@testing-library/react";
+import {
+  createEvent,
+  fireEvent,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { Editor } from "@tiptap/core";
 import { EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -112,6 +117,68 @@ describe("DatasetTableView — 셀 드래그 시 표가 끌려나오지 않는�
     // (핸들러를 NodeViewWrapper 자식에 걸면 부모발 이 이벤트를 못 잡아 defaultPrevented=false로 실패한다.)
     expect(dragEvent.defaultPrevented).toBe(true);
 
+    editor.destroy();
+  });
+});
+
+// TipTap의 `selected`는 "이 표가 단독 선택됨"이 아니라 "선택이 이 표를 덮음"이라(isNodeViewSelected),
+// Cmd+A(문서 전체 선택)에서도 참이 된다. 그대로 그리드에 넘기면 표를 건드리지도 않았는데 그리드가
+// 첫 셀을 잡고 셀 입력창이 DOM 포커스를 가져가, 그 뒤 키 입력이 에디터 대신 셀로 새어 Backspace가
+// 먹통이 됐다(#1008). 표'만' 선택됐을 때로 좁힌 것을 검증한다.
+describe("DatasetTableView — 표를 덮는 선택이 셀 포커스를 뺏지 않는다", () => {
+  beforeEach(() => {
+    useAuthStore.setState({ accessToken: "mock-token" });
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(
+      FAKE_RECT,
+    );
+    mockDataset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** 표 노드의 문서 내 위치. */
+  function datasetTablePos(editor: Editor): number {
+    let pos = -1;
+    editor.state.doc.descendants((n, p) => {
+      if (n.type.name === "datasetTable") pos = p;
+    });
+    return pos;
+  }
+
+  const activeCellInput = () =>
+    screen.queryByLabelText("1행 1열 셀 (입력하면 편집)");
+
+  it("문서 전체 선택(Cmd+A)은 표의 첫 셀을 잡지 않는다", async () => {
+    const editor = makeEditor();
+    renderWithRouter(<EditorContent editor={editor} />);
+    await screen.findByTestId("dataset-grid");
+
+    editor.commands.selectAll();
+
+    // NodeView의 선택 반영은 rAF로 미뤄지므로 붙잡을 시간을 준다.
+    await waitFor(() => {
+      expect(editor.state.selection.from).toBeLessThanOrEqual(
+        datasetTablePos(editor),
+      );
+    });
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(activeCellInput()).not.toBeInTheDocument();
+    editor.destroy();
+  });
+
+  it("표만 선택하면(NodeSelection) 첫 셀을 잡아 바로 타이핑할 수 있다", async () => {
+    const editor = makeEditor();
+    renderWithRouter(<EditorContent editor={editor} />);
+    await screen.findByTestId("dataset-grid");
+
+    editor.commands.setNodeSelection(datasetTablePos(editor));
+
+    await waitFor(() => {
+      expect(activeCellInput()).toBeInTheDocument();
+    });
     editor.destroy();
   });
 });
