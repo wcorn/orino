@@ -41,6 +41,23 @@ public interface ReviewScheduleRepository extends JpaRepository<ReviewSchedule, 
     /** 미러 enable 백필용 — 멤버의 모든 PENDING 복습(과거·미래 포함). */
     List<ReviewSchedule> findAllByMemberIdAndStatus(Long memberId, ReviewStatus status);
 
+    /**
+     * 간격 규칙 변경 백필용(#1001) — 아직 오지 않은 복습과 <b>그 복습을 만들어낸 직전 회차</b> 쌍.
+     * 직전 회차에 rating·간격·ease·완료시각이 남아 있어 새 규칙으로 다시 계산할 수 있다.
+     * 회차 1(카드 생성 시 자동 생성분)은 직전 회차가 없어 결과에서 자연히 빠진다.
+     * 각 원소는 {@code [PENDING, 직전 COMPLETED]} 2칸 배열이다.
+     */
+    @Query("""
+            SELECT p, c FROM ReviewSchedule p, ReviewSchedule c
+            WHERE p.status = ds.project.orino.domain.planner.review.entity.ReviewStatus.PENDING
+              AND c.status = ds.project.orino.domain.planner.review.entity.ReviewStatus.COMPLETED
+              AND c.memberId = p.memberId
+              AND c.flashcardId = p.flashcardId
+              AND c.sequence = p.sequence - 1
+            ORDER BY p.id ASC
+            """)
+    List<Object[]> findPendingWithPrecedingCompleted();
+
     /** 오늘 완료 수 — completed_at 이 [todayStart, tomorrowStart) 인 COMPLETED. */
     long countByMemberIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
             Long memberId, ReviewStatus status, Instant todayStart, Instant tomorrowStart);

@@ -132,13 +132,14 @@ class ReviewControllerTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("POST complete - EASY 평가 시 ease +0.10")
+    @DisplayName("POST complete - EASY 평가 시 ease +0.15, 간격은 Good보다 길다")
     void complete_easy() throws Exception {
         LocalDate today = testToday(clock);
         ReviewSchedule current = reviewScheduleRepository.save(new ReviewSchedule(
                 member.getId(), card.getId(), 2, atTestZone(today.atTime(4, 0)), 6,
                 new BigDecimal("2.50")));
 
+        // 직전 6일·ease 2.50 → ease 2.65, good = round(6×2.65)=16, easy = round(16×1.3)=21
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -146,7 +147,30 @@ class ReviewControllerTest extends ApiTestSupport {
                                 {"rating":"EASY"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.nextReview.easeFactor").value(2.60));
+                .andExpect(jsonPath("$.data.nextReview.intervalDays").value(21))
+                .andExpect(jsonPath("$.data.nextReview.easeFactor").value(2.65));
+    }
+
+    @Test
+    @DisplayName("POST complete - HARD 평가 시 ease -0.15, 간격은 직전 × 1.2 (#1001)")
+    void complete_hard() throws Exception {
+        LocalDate today = testToday(clock);
+        ReviewSchedule current = reviewScheduleRepository.save(new ReviewSchedule(
+                member.getId(), card.getId(), 2, atTestZone(today.atTime(4, 0)), 6,
+                new BigDecimal("2.50")));
+
+        // 예전엔 GOOD과 똑같은 15일이 나왔다 — 이제 round(6×1.2)=7일로 갈린다.
+        mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"rating":"HARD"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nextReview.intervalDays").value(7))
+                .andExpect(jsonPath("$.data.nextReview.scheduledAt",
+                        startsWith(today.plusDays(7) + "T04:00")))
+                .andExpect(jsonPath("$.data.nextReview.easeFactor").value(2.35));
     }
 
     @Test

@@ -121,20 +121,21 @@ class TodayReviewsControllerTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("GET today - preview 4지가 SM-2와 일치 (sequence=2 기준)")
-    void preview_matches_sm2() throws Exception {
+    @DisplayName("GET today - preview 4지가 등급별로 갈린다 (sequence=2, 직전 6일·ease 2.50)")
+    void preview_differs_per_rating() throws Exception {
         LocalDate today = testToday(clock);
         reviewScheduleRepository.save(new ReviewSchedule(
                 member.getId(), card.getId(), 2, atTestZone(today.atStartOfDay()), 6,
                 new BigDecimal("2.50")));
 
+        // #1001 회귀: 예전엔 hard/good/easy가 모두 15로 같아 채점이 무의미했다.
         mockMvc.perform(get("/api/planner/reviews/today")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.reviews[0].preview.again").value(1))
-                .andExpect(jsonPath("$.data.reviews[0].preview.hard").value(15))
+                .andExpect(jsonPath("$.data.reviews[0].preview.hard").value(7))
                 .andExpect(jsonPath("$.data.reviews[0].preview.good").value(15))
-                .andExpect(jsonPath("$.data.reviews[0].preview.easy").value(15));
+                .andExpect(jsonPath("$.data.reviews[0].preview.easy").value(21));
     }
 
     @Test
