@@ -78,6 +78,31 @@ function mockNoteDetail(
   );
 }
 
+/** 본문에 박힌 datasetTable 블록이 실제로 그려지도록 표 조회 3종을 목킹한다. */
+function mockDataset() {
+  server.use(
+    http.get(`${API_BASE}/datasets/1`, () =>
+      HttpResponse.json({
+        code: "OK",
+        data: { id: 1, columns: [{ key: "c0", label: "과목" }], rowCount: 1 },
+      }),
+    ),
+    http.get(`${API_BASE}/datasets/1/rows`, () =>
+      HttpResponse.json({
+        code: "OK",
+        data: {
+          rows: [{ id: 100, rowIndex: 0, cells: ["네트워크"] }],
+          offset: 0,
+          limit: 100,
+        },
+      }),
+    ),
+    http.get(`${API_BASE}/datasets/1/merges`, () =>
+      HttpResponse.json({ code: "OK", data: { merges: [] } }),
+    ),
+  );
+}
+
 /** 좁은 화면(모바일, md 미만)으로 matchMedia를 목킹한다. */
 function setNarrowViewport() {
   window.matchMedia = ((query: string) => ({
@@ -373,6 +398,53 @@ describe("NoteWorkspace (독립 노트)", () => {
         expect(screen.queryByLabelText("노트 제목")).not.toBeInTheDocument();
       });
       expect(screen.getByRole("button", { name: "노트1" })).toBeInTheDocument();
+    });
+
+    // 표는 본문 좌우 패딩을 음수 마진으로 상쇄해 카드 폭을 꽉 쓴다(모바일). 두 값은 짝이라
+    // 한쪽만 바꾸면 표가 카드를 넘치거나(마진이 크면) 여백이 남는다. jsdom은 CSS를 적용하지
+    // 않아 렌더된 폭으로는 검증할 수 없으므로, 짝이 맞는지를 클래스에서 숫자로 뽑아 비교한다.
+    it("표 블록의 음수 마진이 본문 좌우 패딩과 짝이 맞는다", async () => {
+      setNarrowViewport();
+      mockTree([
+        { id: 1, title: "노트1", parentId: null, sortOrder: 0, children: [] },
+      ]);
+      mockNoteDetail(
+        1,
+        {
+          type: "doc",
+          content: [{ type: "datasetTable", attrs: { datasetId: 1 } }],
+        },
+        "노트1",
+      );
+      mockDataset();
+
+      const user = userEvent.setup();
+      renderWorkspace();
+
+      await user.click(await screen.findByRole("button", { name: "노트1" }));
+
+      const body = await screen.findByLabelText("노트 본문");
+      const table = await waitFor(() => {
+        const el = document.querySelector("[data-dataset-table]");
+        if (!el) throw new Error("표 블록 미마운트");
+        return el as HTMLElement;
+      });
+
+      // md: 접두사가 없는 것 = 모바일에 적용되는 값.
+      const scale = (cls: string, prefix: string) => {
+        const found = cls
+          .split(/\s+/)
+          .find((c) => c.startsWith(prefix) && !c.includes(":"));
+        return found ? Number(found.slice(prefix.length)) : null;
+      };
+
+      const padLeft = scale(body.className, "pl-");
+      const padRight = scale(body.className, "pr-");
+      const bleed = scale(table.className, "-mx-");
+
+      expect(padLeft).not.toBeNull();
+      expect(bleed).toBe(padLeft);
+      expect(bleed).toBe(padRight);
     });
   });
 });

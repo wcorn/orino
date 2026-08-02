@@ -83,6 +83,10 @@ export function DatasetTableView({
       as="div"
       data-dataset-table={datasetId ?? ""}
       contentEditable={false}
+      // 표만 모바일에서 본문 좌우 패딩(pl-3 pr-3)을 음수 마진으로 상쇄해 카드 폭을 꽉 쓴다.
+      // 표는 폭이 곧 읽을 수 있는 열 수라, 글 블록과 좌측선을 맞추는 것보다 폭이 우선이다.
+      // 값이 본문 패딩과 짝이므로 한쪽만 바꾸면 표가 카드를 넘치거나 어긋난다.
+      className="-mx-3 md:mx-0"
     >
       {datasetId != null && (
         <DatasetGrid

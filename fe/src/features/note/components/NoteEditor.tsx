@@ -94,8 +94,11 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
       content: note.content as JSONContent,
       editorProps: {
         attributes: {
+          // pl-10은 블록 이동(⣿) 핸들이 본문 왼쪽에 뜰 자리다. 그 핸들은 hover로만
+          // 나타나 터치 기기엔 아예 안 뜨므로, 모바일에선 거터를 두지 않고(pl-3)
+          // 그만큼을 본문 폭으로 돌린다(핸들 자체도 md 미만에선 감춘다).
           class:
-            "prose prose-sm dark:prose-invert max-w-none min-h-[40svh] focus:outline-none py-4 pr-4 pl-10",
+            "prose prose-sm dark:prose-invert max-w-none min-h-[40svh] focus:outline-none py-4 pr-3 pl-3 md:pr-4 md:pl-10",
           "aria-label": "노트 본문",
         },
         handlePaste: (_view, event) => {
@@ -268,10 +271,13 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
           // edgeDetection "none": 기본값(left,top)은 항목 왼쪽 가장자리에서 부모(리스트)를
           // 우선해 하위 불릿 왼쪽에 호버 시 항목 핸들이 안 뜨고 글자에 대야 떴다. none이면
           // 커서 위치와 무관하게 가장 깊은 항목이 일관되게 잡혀 행 어디서나 핸들이 뜬다.
+          // hidden md:block: 핸들은 hover로만 뜨는 UI라 터치 기기에선 어차피 나타나지
+          // 않는다. 모바일에서 왼쪽 거터(pl-10)를 없앤 만큼 여기 뜨면 본문 글자와 겹치므로
+          // 아예 감춘다(데스크탑은 그대로).
           <DragHandle
             editor={editor}
             nested={{ edgeDetection: "none" }}
-            className="z-10"
+            className="z-10 hidden md:block"
           >
             <button
               type="button"
