@@ -25,6 +25,7 @@ import { DatasetTableContext } from "../editor/datasetTableContext";
 import { extractImageFiles, uploadAndInsertImage } from "../editor/imageUpload";
 import { LinkShortcut, noteLinkOptions } from "../editor/link";
 import { insertTableFromCells } from "../editor/pasteCellsAsTable";
+import { handleTableCopy, handleTablePaste } from "../editor/tableClipboard";
 import { useAutoSaveNote } from "../hooks/useAutoSaveNote";
 import { useCreateNote, useDeleteNote } from "../hooks/useNoteMutations";
 import { useNoteTree } from "../hooks/useNoteTree";
@@ -131,7 +132,27 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
             void insertTableFromCells(editorRef.current, cellsTsv);
             return true;
           }
+          // 3) 표가 든 HTML(우리 노트에서 복사한 표·엑셀·노션 등) → 표마다 새 표를 만들어 삽입.
+          //    표 데이터는 문서 밖 리소스라 같은 id를 재사용하면 두 블록이 한 표를 공유한다.
+          const html = event.clipboardData?.getData("text/html");
+          if (html && editorRef.current) {
+            if (handleTablePaste(editorRef.current, html)) {
+              event.preventDefault();
+              return true;
+            }
+          }
           return false;
+        },
+        // 표 블록은 문서엔 id만 있어 그대로 복사하면 빈 껍데기가 나간다. 표가 낀 복사에서만
+        // 실제 표 모양(<table> · 마크다운)으로 바꿔 담는다 — 다른 앱에도 표로 붙는다.
+        // (표가 없는 복사는 ProseMirror 기본 경로 그대로 — slice 정보가 보존돼야 한다.)
+        handleDOMEvents: {
+          copy: (view, event) => handleTableCopy(view, event as ClipboardEvent),
+          cut: (view, event) => {
+            if (!handleTableCopy(view, event as ClipboardEvent)) return false;
+            view.dispatch(view.state.tr.deleteSelection());
+            return true;
+          },
         },
         // 드래그앤드롭으로 이미지 업로드
         handleDrop: (_view, event) => {

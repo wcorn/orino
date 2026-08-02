@@ -65,6 +65,7 @@ import { useDatasetMeta } from "./hooks/useDatasetMeta";
 import { useDatasetRows } from "./hooks/useDatasetRows";
 import { FORMAT_LABELS, formatCellValue, NUMBER_FORMATS } from "./numberFormat";
 import { datasetKeys } from "./queryKeys";
+import { registerTableSnapshot } from "./tableSnapshot";
 import { useUndoStack } from "./undoStack";
 
 /** 행 높이(px) — 고정. 좌우(열 너비)만 조절 가능하고 위아래는 조절하지 않는다. */
@@ -138,7 +139,7 @@ export function DatasetGrid({
   const { push: pushUndo, undo: undoAction, redo: redoAction } = useUndoStack();
   // 스택에 쌓인 undo/redo 썽크는 나중에 실행돼 캡처 당시의 낡은 캐시 클로저를 읽으면 안 된다.
   // 매 렌더 최신 리더를 이 ref에 담아 두고, 지연 실행되는 스냅샷은 여기서 읽는다(값 갱신은 하단).
-  const liveRead = useRef({ getRow, getFormulas, getStyles });
+  const liveRead = useRef({ getRow, getFormulas, getStyles, meta });
   // 가상화 목록(본문)의 문서 최상단으로부터의 오프셋. 윈도우 스크롤 기준 가상화에 쓴다.
   const listRef = useRef<HTMLDivElement>(null);
   // 표 컨테이너 — 셀을 한 번 클릭하면 여기로 포커스를 옮겨(ProseMirror 대신) 키 입력을 직접 받는다.
@@ -197,6 +198,22 @@ export function DatasetGrid({
 
   const colCount = meta?.columns.length ?? 0;
   const rowCount = meta?.rowCount ?? 0;
+
+  // 복사할 때 이 표의 현재 내용을 동기적으로 꺼내 갈 수 있게 등록해 둔다(클립보드 직렬화는
+  // 동기라 그 자리에서 API를 못 부른다). 값은 매 렌더 갱신되는 liveRead에서 읽는다.
+  useEffect(() => {
+    return registerTableSnapshot(datasetId, () => {
+      const m = liveRead.current.meta;
+      return {
+        name: m?.name ?? null,
+        headers: m?.columns.map((c) => c.label) ?? [],
+        rows: Array.from({ length: m?.rowCount ?? 0 }, (_, r) => {
+          const cells = liveRead.current.getRow(r);
+          return (m?.columns ?? []).map((_c, i) => cells?.[i] ?? "");
+        }),
+      };
+    });
+  }, [datasetId]);
 
   const invalidateMeta = () =>
     queryClient.invalidateQueries({ queryKey: datasetKeys.meta(datasetId) });
@@ -770,7 +787,7 @@ export function DatasetGrid({
 
   // ---------- 되돌리기(undo) 헬퍼 ----------
   // liveRead ref는 최상단에 둔다(조기 return 뒤에 두면 훅 순서가 깨진다). 여기선 값만 갱신.
-  liveRead.current = { getRow, getFormulas, getStyles };
+  liveRead.current = { getRow, getFormulas, getStyles, meta };
 
   /** 한 행의 저장형(원본 수식 포함) 셀 배열 — 재저장·재삽입에 쓴다. */
   const rawRow = (cells: string[], formulas: Record<string, string>) =>
