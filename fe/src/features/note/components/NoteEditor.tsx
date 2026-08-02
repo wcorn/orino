@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import type { NoteContent, NoteDetail } from "../api/notes";
 import { deleteDataset } from "../dataset/api/datasets";
 import { DATASET_CELLS_MIME } from "../dataset/cellClipboard";
+import { BlockActions } from "../editor/blockActions";
 import { SelectionLadder } from "../editor/blockSelection";
 import { ChildPage, collectChildPageIds } from "../editor/childPage";
 import { ChildPageContext } from "../editor/childPageContext";
@@ -95,6 +96,8 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
         NodeRange.configure({ key: null }),
         // Cmd+A 점진 선택. NodeRange의 "항상 전체 블록"을 우선순위로 덮는다.
         SelectionLadder,
+        // Esc 하강 사다리 + 블록 복제·이동.
+        BlockActions,
         LinkShortcut.configure({
           onTrigger: () => openLinkEditorRef.current(),
         }),
