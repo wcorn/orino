@@ -112,8 +112,12 @@ test.describe("표가 있는 노트의 포커스 소유권", () => {
     await openNote(page);
   });
 
-  test("Cmd+A 후에도 포커스가 에디터에 남는다", async ({ page }) => {
+  test("전체 선택 후에도 포커스가 에디터에 남는다", async ({ page }) => {
     await page.getByText("첫째 줄").click();
+    expect(await focusOwner(page)).toBe("editor");
+
+    // Cmd+A는 점진 선택이라 두 번 눌러야 문서 전체가 잡힌다(#1011). 표를 덮는 건 두 번째다.
+    await page.keyboard.press("ControlOrMeta+a");
     expect(await focusOwner(page)).toBe("editor");
 
     await page.keyboard.press("ControlOrMeta+a");
@@ -121,9 +125,12 @@ test.describe("표가 있는 노트의 포커스 소유권", () => {
     expect(await focusOwner(page)).toBe("editor");
   });
 
-  test("Cmd+A → Backspace 로 표를 포함한 본문이 지워진다", async ({ page }) => {
+  test("전체 선택 → Backspace 로 표를 포함한 본문이 지워진다", async ({
+    page,
+  }) => {
     await page.getByText("첫째 줄").click();
-    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.press("ControlOrMeta+a"); // 블록 안 텍스트
+    await page.keyboard.press("ControlOrMeta+a"); // 문서 전체 블록
     await page.keyboard.press("Backspace");
 
     // 표 블록이 지워지면 dataset 정리 확인 창이 뜬다(고아 dataset 방지 경로).

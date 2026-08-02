@@ -97,6 +97,11 @@ interface Props {
   /** 에디터에서 표 블록이 선택된 상태(NodeSelection)인지. 첫 셀 자동 선택 트리거. */
   blockSelected?: boolean;
   /**
+   * 표 전체가 이미 선택된 상태에서 Cmd/Ctrl+A를 한 번 더 눌렀을 때 — 표 밖(문서 전체)으로
+   * 선택을 넘긴다. 표가 키를 막고 있어 그냥 두면 사다리가 표에서 끊긴다.
+   */
+  onSelectAllEscape?: () => void;
+  /**
    * 같은 노트의 다른 표들(자기 제외). 표간 참조 피커가 대상 표·열을 고르고, 저장 시 표 이름→id
    * 맵(tableRefs)을 만드는 데 쓴다. 이름 없는 표는 참조할 수 없다(피커에서 제외).
    */
@@ -112,6 +117,7 @@ export function DatasetGrid({
   datasetId,
   onDeleteBlock,
   blockSelected,
+  onSelectAllEscape,
   siblingTables,
 }: Props) {
   const queryClient = useQueryClient();
@@ -1219,6 +1225,13 @@ export function DatasetGrid({
   const handleNavKey = (e: React.KeyboardEvent): boolean => {
     if ((e.metaKey || e.ctrlKey) && (e.key === "a" || e.key === "A")) {
       e.preventDefault();
+      // 사다리: 셀 범위 → 표 전체 → 문서 전체. 이미 표 전체면 한 칸 더 올라가 표 밖으로
+      // 넘긴다(표가 키를 막고 있어 넘겨주지 않으면 사다리가 여기서 끊긴다).
+      if (sel?.kind === "table" && onSelectAllEscape) {
+        setSel(null);
+        onSelectAllEscape();
+        return true;
+      }
       setEditing(null);
       setSel({ kind: "table" });
       return true;
