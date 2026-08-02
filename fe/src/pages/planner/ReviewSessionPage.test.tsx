@@ -40,9 +40,15 @@ interface ReviewSpec {
   id: number;
   delayDays?: number;
   materialId?: number;
+  ordering?: boolean;
 }
 
-function makeReview({ id, delayDays = 0, materialId = 1 }: ReviewSpec) {
+function makeReview({
+  id,
+  delayDays = 0,
+  materialId = 1,
+  ordering = false,
+}: ReviewSpec) {
   return {
     id,
     scheduledAt: "2026-05-18T04:00:00",
@@ -52,15 +58,30 @@ function makeReview({ id, delayDays = 0, materialId = 1 }: ReviewSpec) {
     easeFactor: 2.5,
     flashcard: {
       id: id * 10,
-      type: "BASIC",
+      type: ordering ? "ORDERING" : "BASIC",
       front: `질문 ${id}`,
-      back: `답 ${id}`,
-      items: null,
+      back: ordering ? null : `답 ${id}`,
+      items: ordering
+        ? [
+            { id: `${id}-a`, text: `항목 A${id}` },
+            { id: `${id}-b`, text: `항목 B${id}` },
+          ]
+        : null,
       siblingGroupId: null,
       material: { id: materialId, title: `자료 ${materialId}`, type: "BOOK" },
     },
     preview: { again: 1, hard: 6, good: 6, easy: 15 },
   };
+}
+
+type User = ReturnType<typeof userEvent.setup>;
+
+/**
+ * 답을 여는 단축키. 기본 흐름에선 답 입력칸에 포커스가 있어 Space가 그리로 들어가므로,
+ * 입력칸 안에서도 통하는 ⌘/Ctrl+Enter를 쓴다(Enter는 줄바꿈이라 못 쓴다).
+ */
+async function revealAnswer(user: User) {
+  await user.keyboard("{Control>}{Enter}{/Control}");
 }
 
 function mockToday(specs: ReviewSpec[]) {
@@ -166,7 +187,7 @@ describe("ReviewSessionPage", () => {
     expect(screen.queryByText("질문 1")).not.toBeInTheDocument();
   });
 
-  it("Space로 답이 공개되고 1/2/3/4 키로 평가가 전송된다", async () => {
+  it("⌘/Ctrl+Enter로 답이 공개되고 1/2/3/4 키로 평가가 전송된다", async () => {
     mockToday([{ id: 1 }]);
     const ratings: Array<{ id: number; rating: string }> = [];
     mockComplete(ratings);
@@ -177,9 +198,10 @@ describe("ReviewSessionPage", () => {
       expect(screen.getByText("질문 1")).toBeInTheDocument();
     });
 
-    await user.keyboard(" ");
+    await revealAnswer(user);
     expect(await screen.findByText("답 1")).toBeInTheDocument();
 
+    // 공개 시 입력칸에서 포커스가 빠져야 숫자 키가 입력이 아닌 채점으로 간다
     await user.keyboard("3");
     await waitFor(() => {
       expect(ratings).toEqual([{ id: 1, rating: "GOOD" }]);
@@ -196,14 +218,14 @@ describe("ReviewSessionPage", () => {
       expect(screen.getByText("질문 1")).toBeInTheDocument();
     });
 
-    await user.keyboard(" ");
+    await revealAnswer(user);
     await user.click(await screen.findByRole("button", { name: /Good/ }));
 
     await waitFor(() => {
       expect(screen.getByText("질문 2")).toBeInTheDocument();
     });
 
-    await user.keyboard(" ");
+    await revealAnswer(user);
     await user.click(await screen.findByRole("button", { name: /Good/ }));
 
     await waitFor(() => {
@@ -261,7 +283,7 @@ describe("ReviewSessionPage", () => {
     });
     expect(screen.getByText("1 / 3")).toBeInTheDocument();
 
-    await user.keyboard(" ");
+    await revealAnswer(user);
     await user.click(await screen.findByRole("button", { name: /Good/ }));
 
     await waitFor(() => {
@@ -272,5 +294,109 @@ describe("ReviewSessionPage", () => {
     expect(
       await screen.findByText(/짝 카드는 다른 날 복습해요/),
     ).toBeInTheDocument();
+  });
+
+  describe("답 적기", () => {
+    it("적은 답이 공개 후에도 정답과 함께 남는다", async () => {
+      mockToday([{ id: 1 }]);
+      const user = userEvent.setup();
+      renderPage();
+
+      const note = await screen.findByLabelText("내 답");
+      await user.type(note, "내가 떠올린 답");
+      await revealAnswer(user);
+
+      // 입력칸은 사라지고 적은 내용이 읽기 전용으로 남아 정답과 나란히 보인다
+      expect(screen.queryByLabelText("내 답")).not.toBeInTheDocument();
+      expect(screen.getByText("내가 떠올린 답")).toBeInTheDocument();
+      expect(screen.getByText("답 1")).toBeInTheDocument();
+    });
+
+    it("채점하면 다음 카드의 입력칸이 비워진다", async () => {
+      mockToday([{ id: 1 }, { id: 2 }]);
+      mockComplete([]);
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.type(
+        await screen.findByLabelText("내 답"),
+        "1번 카드에 쓴 답",
+      );
+      await revealAnswer(user);
+      await user.click(await screen.findByRole("button", { name: /Good/ }));
+
+      await waitFor(() => {
+        expect(screen.getByText("질문 2")).toBeInTheDocument();
+      });
+      expect(await screen.findByLabelText("내 답")).toHaveValue("");
+      expect(screen.queryByText("1번 카드에 쓴 답")).not.toBeInTheDocument();
+    });
+
+    it("빈칸이어도 답을 볼 수 있고, 이때 '내 답'은 남지 않는다", async () => {
+      mockToday([{ id: 1 }]);
+      const user = userEvent.setup();
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByText("질문 1")).toBeInTheDocument();
+      });
+      await user.click(screen.getByRole("button", { name: /답 보기/ }));
+
+      expect(await screen.findByText("답 1")).toBeInTheDocument();
+      expect(screen.queryByText("내 답")).not.toBeInTheDocument();
+    });
+
+    it("순서 카드에도 입력칸이 있다", async () => {
+      mockToday([{ id: 1, ordering: true }]);
+      const user = userEvent.setup();
+      renderPage();
+
+      const note = await screen.findByLabelText("내 답");
+      await user.type(note, "A가 먼저다");
+      await user.click(screen.getByRole("button", { name: /정답 확인/ }));
+
+      expect(await screen.findByText("정답 순서")).toBeInTheDocument();
+      expect(screen.getByText("A가 먼저다")).toBeInTheDocument();
+    });
+
+    it("입력칸 밖에 포커스가 있으면 Space로도 답이 열린다", async () => {
+      mockToday([{ id: 1 }]);
+      const user = userEvent.setup();
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByText("질문 1")).toBeInTheDocument();
+      });
+      // 자동 포커스된 입력칸에서 포커스를 뺀다(기존 Space 단축키가 그대로 사는지)
+      (document.activeElement as HTMLElement | null)?.blur();
+
+      await user.keyboard(" ");
+      expect(await screen.findByText("답 1")).toBeInTheDocument();
+    });
+
+    it("터치 기기에서는 입력칸에 자동 포커스하지 않는다", async () => {
+      const originalMatchMedia = window.matchMedia;
+      window.matchMedia = ((query: string) => ({
+        matches: query.includes("pointer: coarse"),
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        onchange: null,
+        dispatchEvent: () => false,
+      })) as unknown as typeof window.matchMedia;
+
+      try {
+        mockToday([{ id: 1 }]);
+        renderPage();
+
+        const note = await screen.findByLabelText("내 답");
+        // 가상 키보드가 질문을 덮지 않도록 포커스를 주지 않는다
+        expect(note).not.toHaveFocus();
+      } finally {
+        window.matchMedia = originalMatchMedia;
+      }
+    });
   });
 });
