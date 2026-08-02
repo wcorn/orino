@@ -96,9 +96,8 @@ public class ReviewIntervalBackfillService {
             return false;
         }
 
-        int newSequence = pending.getSequence();
         int legacyInterval = Sm2Calculator.legacyIntervalDays(
-                newSequence, preceding.getIntervalDays(), preceding.getEaseFactor(), rating);
+                pending.getSequence(), preceding.getIntervalDays(), preceding.getEaseFactor(), rating);
         Instant legacyScheduledAt = ReviewSchedule.computeScheduledAt(
                 rating, legacyInterval, completedAt, zone);
 
@@ -108,8 +107,10 @@ public class ReviewIntervalBackfillService {
             return false;
         }
 
+        // 그때 며칠 늦게 봤는지는 완료 기록에 남아 있다(elapsedDays) — 새 규칙의 days_late 보너스에 쓴다.
+        int daysLate = preceding.getElapsedDays() == null ? 0 : preceding.getElapsedDays();
         Sm2Calculator.Result next = Sm2Calculator.next(
-                newSequence, preceding.getIntervalDays(), preceding.getEaseFactor(), rating);
+                preceding.getIntervalDays(), preceding.getEaseFactor(), daysLate, rating);
         if (next.intervalDays() == pending.getIntervalDays()
                 && next.easeFactor().compareTo(pending.getEaseFactor()) == 0) {
             return false;

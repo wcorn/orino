@@ -161,21 +161,20 @@ public class ReviewQueryService {
         StudyMaterial material = materialById.get(card.getMaterialId());
         TodayReviewFlashcard flashcardDto = TodayReviewFlashcard.of(
                 card, itemsCodec.parse(card.getItems()), TodayReviewMaterial.of(material));
-        PreviewView preview = preview(r);
         int delayDays = (int) ChronoUnit.DAYS.between(r.getScheduledAt().atZone(zone).toLocalDate(), today);
         return new TodayReviewItem(
                 r.getId(), r.getScheduledAt(), delayDays,
                 r.getSequence(), r.getIntervalDays(), r.getEaseFactor(),
-                flashcardDto, preview);
+                flashcardDto, preview(r, delayDays));
     }
 
-    private PreviewView preview(ReviewSchedule r) {
-        int newSeq = r.getSequence() + 1;
+    /** 지금 각 버튼을 누르면 다음 복습이 며칠 뒤인지. 밀린 일수가 간격에 반영되므로 함께 넘긴다. */
+    private PreviewView preview(ReviewSchedule r, int delayDays) {
         return new PreviewView(
-                Sm2Calculator.next(newSeq, r.getIntervalDays(), r.getEaseFactor(), Rating.AGAIN).intervalDays(),
-                Sm2Calculator.next(newSeq, r.getIntervalDays(), r.getEaseFactor(), Rating.HARD).intervalDays(),
-                Sm2Calculator.next(newSeq, r.getIntervalDays(), r.getEaseFactor(), Rating.GOOD).intervalDays(),
-                Sm2Calculator.next(newSeq, r.getIntervalDays(), r.getEaseFactor(), Rating.EASY).intervalDays());
+                Sm2Calculator.next(r.getIntervalDays(), r.getEaseFactor(), delayDays, Rating.AGAIN).intervalDays(),
+                Sm2Calculator.next(r.getIntervalDays(), r.getEaseFactor(), delayDays, Rating.HARD).intervalDays(),
+                Sm2Calculator.next(r.getIntervalDays(), r.getEaseFactor(), delayDays, Rating.GOOD).intervalDays(),
+                Sm2Calculator.next(r.getIntervalDays(), r.getEaseFactor(), delayDays, Rating.EASY).intervalDays());
     }
 
     // ===== v2.5 복습 허브 (조회 전용) =====

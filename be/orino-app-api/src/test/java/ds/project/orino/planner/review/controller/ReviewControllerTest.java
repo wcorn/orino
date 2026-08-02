@@ -95,9 +95,10 @@ class ReviewControllerTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.data.completed.completedAt").exists())
                 .andExpect(jsonPath("$.data.nextReview.flashcardId").value(card.getId()))
                 .andExpect(jsonPath("$.data.nextReview.sequence").value(2))
+                // 하루 밀려서 봤다 → good = max(round((1 + 1/2) × 2.50), hard + 1) = 4일
                 .andExpect(jsonPath("$.data.nextReview.scheduledAt",
-                        startsWith(today.plusDays(6) + "T04:00")))
-                .andExpect(jsonPath("$.data.nextReview.intervalDays").value(6))
+                        startsWith(today.plusDays(4) + "T04:00")))
+                .andExpect(jsonPath("$.data.nextReview.intervalDays").value(4))
                 .andExpect(jsonPath("$.data.nextReview.easeFactor").value(2.50))
                 .andExpect(jsonPath("$.data.nextReview.status").value("PENDING"));
 
@@ -132,14 +133,14 @@ class ReviewControllerTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("POST complete - EASY 평가 시 ease +0.15, 간격은 Good보다 길다")
+    @DisplayName("POST complete - EASY 평가 시 ease +0.15, 간격은 직전 × ease × 1.3")
     void complete_easy() throws Exception {
         LocalDate today = testToday(clock);
         ReviewSchedule current = reviewScheduleRepository.save(new ReviewSchedule(
                 member.getId(), card.getId(), 2, atTestZone(today.atTime(4, 0)), 6,
                 new BigDecimal("2.50")));
 
-        // 직전 6일·ease 2.50 → ease 2.65, good = round(6×2.65)=16, easy = round(16×1.3)=21
+        // 제때 복습 → easy = max(round(6 × 2.50 × 1.3), good + 1) = 20일. ease는 다음 회차부터 2.65.
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -147,7 +148,7 @@ class ReviewControllerTest extends ApiTestSupport {
                                 {"rating":"EASY"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.nextReview.intervalDays").value(21))
+                .andExpect(jsonPath("$.data.nextReview.intervalDays").value(20))
                 .andExpect(jsonPath("$.data.nextReview.easeFactor").value(2.65));
     }
 
@@ -159,7 +160,7 @@ class ReviewControllerTest extends ApiTestSupport {
                 member.getId(), card.getId(), 2, atTestZone(today.atTime(4, 0)), 6,
                 new BigDecimal("2.50")));
 
-        // 예전엔 GOOD과 똑같은 15일이 나왔다 — 이제 round(6×1.2)=7일로 갈린다.
+        // 예전엔 GOOD과 똑같은 15일이 나왔다 — 이제 round(6 × 1.2) = 7일로 갈린다.
         mockMvc.perform(post("/api/planner/reviews/{id}/complete", current.getId())
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -262,7 +263,8 @@ class ReviewControllerTest extends ApiTestSupport {
                 new BigDecimal("2.50")));
 
         Long currentId = firstReview.getId();
-        int[] expectedIntervals = {6, 15, 38, 95};
+        // 1 → 3 → 8 → 20 → 50 (직전 × ease 2.50, hard+1 하한). 밀린 일수 없음
+        int[] expectedIntervals = {3, 8, 20, 50};
 
         for (int i = 0; i < 4; i++) {
             int expectedInterval = expectedIntervals[i];

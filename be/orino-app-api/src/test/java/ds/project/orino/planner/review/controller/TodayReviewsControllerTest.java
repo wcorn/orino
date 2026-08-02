@@ -121,7 +121,7 @@ class TodayReviewsControllerTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("GET today - preview 4지가 등급별로 갈린다 (sequence=2, 직전 6일·ease 2.50)")
+    @DisplayName("GET today - preview 4지가 등급별로 갈린다 (직전 6일·ease 2.50, 제때)")
     void preview_differs_per_rating() throws Exception {
         LocalDate today = testToday(clock);
         reviewScheduleRepository.save(new ReviewSchedule(
@@ -129,13 +129,32 @@ class TodayReviewsControllerTest extends ApiTestSupport {
                 new BigDecimal("2.50")));
 
         // #1001 회귀: 예전엔 hard/good/easy가 모두 15로 같아 채점이 무의미했다.
+        // hard=max(round(6×1.2),7)=7 · good=max(round(6×2.5),8)=15 · easy=max(round(6×2.5×1.3),16)=20
         mockMvc.perform(get("/api/planner/reviews/today")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.reviews[0].preview.again").value(1))
                 .andExpect(jsonPath("$.data.reviews[0].preview.hard").value(7))
                 .andExpect(jsonPath("$.data.reviews[0].preview.good").value(15))
-                .andExpect(jsonPath("$.data.reviews[0].preview.easy").value(21));
+                .andExpect(jsonPath("$.data.reviews[0].preview.easy").value(20));
+    }
+
+    @Test
+    @DisplayName("GET today - 밀린 복습은 preview에 밀린 일수 보너스가 반영된다")
+    void preview_includes_days_late_bonus() throws Exception {
+        LocalDate today = testToday(clock);
+        // 10일 간격으로 잡혔는데 8일 밀렸다 → good=(10+8/2)×2.5=35 · easy=(10+8)×2.5×1.3=58.5→59
+        reviewScheduleRepository.save(new ReviewSchedule(
+                member.getId(), card.getId(), 3, atTestZone(today.minusDays(8).atTime(4, 0)), 10,
+                new BigDecimal("2.50")));
+
+        mockMvc.perform(get("/api/planner/reviews/today")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reviews[0].delayDays").value(8))
+                .andExpect(jsonPath("$.data.reviews[0].preview.hard").value(12))
+                .andExpect(jsonPath("$.data.reviews[0].preview.good").value(35))
+                .andExpect(jsonPath("$.data.reviews[0].preview.easy").value(59));
     }
 
     @Test

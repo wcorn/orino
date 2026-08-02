@@ -69,7 +69,7 @@ class ReviewIntervalBackfillServiceTest extends ApiTestSupport {
     @Test
     @DisplayName("HARD로 잡힌 일정은 새 규칙(직전×1.2)으로 당겨진다")
     void hard_pending_is_pulled_in() {
-        // 3회차 완료(HARD, 직전 6일·ease 2.50) → 옛 규칙은 15일, 새 규칙은 7일
+        // 3회차 완료(HARD, 직전 6일·ease 2.50) → 옛 규칙은 15일, 새 규칙은 max(round(6×1.2), 7) = 7일
         Pair pair = givenCompletedThenPending(Rating.HARD, 3, 6, INITIAL_EASE);
 
         assertThat(backfillService.run()).isEqualTo(1);
@@ -82,26 +82,38 @@ class ReviewIntervalBackfillServiceTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("EASY로 잡힌 일정은 새 규칙(Good×1.3)으로 밀린다")
+    @DisplayName("EASY로 잡힌 일정은 새 규칙(직전×ease×1.3)으로 밀린다")
     void easy_pending_is_pushed_out() {
+        // 옛 규칙 15일 → 새 규칙 max(round(6×2.50×1.3), good+1) = 20일. ease도 2.60 → 2.65
         Pair pair = givenCompletedThenPending(Rating.EASY, 3, 6, INITIAL_EASE);
 
         assertThat(backfillService.run()).isEqualTo(1);
 
         ReviewSchedule pending = reload(pair.pendingId());
-        assertThat(pending.getIntervalDays()).isEqualTo(21);
+        assertThat(pending.getIntervalDays()).isEqualTo(20);
         assertThat(pending.getEaseFactor()).isEqualByComparingTo("2.65");
     }
 
     @Test
-    @DisplayName("GOOD·AGAIN으로 잡힌 일정은 새 규칙에서도 값이 같아 건드리지 않는다")
-    void good_and_again_are_untouched() {
-        Pair good = givenCompletedThenPending(Rating.GOOD, 3, 6, INITIAL_EASE);
+    @DisplayName("고정 단계가 사라져 GOOD으로 잡힌 일정도 당겨진다")
+    void good_pending_is_pulled_in() {
+        // 2회차(직전 1일)를 GOOD으로 완료 → 옛 규칙은 고정 6일, 새 규칙은 max(round(1×2.50), hard+1) = 3일
+        Pair pair = givenCompletedThenPending(Rating.GOOD, 2, 1, INITIAL_EASE);
+
+        assertThat(backfillService.run()).isEqualTo(1);
+
+        ReviewSchedule pending = reload(pair.pendingId());
+        assertThat(pending.getIntervalDays()).isEqualTo(3);
+        assertThat(pending.getEaseFactor()).isEqualByComparingTo("2.50");
+    }
+
+    @Test
+    @DisplayName("AGAIN으로 잡힌 일정은 새 규칙에서도 값이 같아 건드리지 않는다")
+    void again_is_untouched() {
         Pair again = givenCompletedThenPending(Rating.AGAIN, 3, 6, INITIAL_EASE);
 
         assertThat(backfillService.run()).isZero();
 
-        assertThat(reload(good.pendingId()).getIntervalDays()).isEqualTo(15);
         assertThat(reload(again.pendingId()).getIntervalDays()).isEqualTo(1);
     }
 
@@ -162,25 +174,12 @@ class ReviewIntervalBackfillServiceTest extends ApiTestSupport {
 
         int legacyInterval = Sm2Calculator.legacyIntervalDays(
                 pendingSequence, prevInterval, prevEase, rating);
-        BigDecimal legacyEase = legacyEase(prevEase, rating);
         ReviewSchedule pending = reviewScheduleRepository.save(new ReviewSchedule(
                 member.getId(), card.getId(), pendingSequence,
                 ReviewSchedule.computeScheduledAt(rating, legacyInterval, completedAt, TEST_ZONE),
-                legacyInterval, legacyEase));
+                legacyInterval, Sm2Calculator.legacyEaseFactor(prevEase, rating)));
 
         return new Pair(pending.getId(), completedAt);
-    }
-
-    /** 옛 규칙의 ease 갱신폭(AGAIN -0.20 / HARD -0.14 / GOOD 0 / EASY +0.10). */
-    private static BigDecimal legacyEase(BigDecimal prevEase, Rating rating) {
-        BigDecimal delta = switch (rating) {
-            case AGAIN -> new BigDecimal("-0.20");
-            case HARD -> new BigDecimal("-0.14");
-            case GOOD -> BigDecimal.ZERO;
-            case EASY -> new BigDecimal("0.10");
-        };
-        BigDecimal next = prevEase.add(delta);
-        return next.compareTo(Sm2Calculator.MIN_EASE) < 0 ? Sm2Calculator.MIN_EASE : next;
     }
 
     private ReviewSchedule reload(Long id) {

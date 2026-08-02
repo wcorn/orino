@@ -20,6 +20,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -53,8 +54,11 @@ public class ReviewCompletionService {
         ZoneId zone = UserTimeZone.get();
 
         int newSequence = current.getSequence() + 1;
+        // 예정일보다 늦게 봤는데도 기억했다면 그만큼 간격을 더 벌린다(Anki days_late 보너스).
+        int daysLate = (int) ChronoUnit.DAYS.between(
+                current.getScheduledAt().atZone(zone).toLocalDate(), now.atZone(zone).toLocalDate());
         Sm2Calculator.Result computed = Sm2Calculator.next(
-                newSequence, current.getIntervalDays(), current.getEaseFactor(), request.rating());
+                current.getIntervalDays(), current.getEaseFactor(), daysLate, request.rating());
 
         current.complete(request.rating(), now, zone);
 
