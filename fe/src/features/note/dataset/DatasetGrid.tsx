@@ -1865,6 +1865,13 @@ export function DatasetGrid({
         // 표 이름 입력창도 표(노드뷰) 안이라, 클릭하면 ProseMirror가 포커스를 도로 가져가 입력이
         // 안 됐다. 셀과 같은 방식으로 클릭 뒤(mouseup 이후) 포커스를 다시 잡아 이긴다.
         onClick={(e) => e.currentTarget.focus({ preventScroll: true })}
+        // 이름에 들어오면 셀 선택을 푼다. 활성 셀 입력창은 autoFocus로 뜨는데, 남겨 두면
+        // 다시 마운트될 때마다 방금 클릭한 이름에서 포커스를 되가져가 이름을 못 고쳤다(#1017).
+        // 선택을 없애 입력창 자체를 내리는 게 확실하다("이름을 만지는 중 = 셀 편집 아님").
+        onFocus={() => {
+          setSel(null);
+          setEditing(null);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter") e.currentTarget.blur();
         }}
