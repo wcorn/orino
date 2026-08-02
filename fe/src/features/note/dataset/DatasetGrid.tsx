@@ -535,14 +535,31 @@ export function DatasetGrid({
     );
   }
 
+  /** 유연폭(너비 미지정) 열이 줄어들 수 있는 한계. gridTemplateColumns의 minmax 최솟값과 같아야 한다. */
+  const FLEX_COL_MIN_WIDTH = 120;
+  /** 그 열이 실제로 차지할 폭. 리사이즈 드래그 중이면 아직 저장 전이라 진행 중 너비로 본다. */
+  const columnWidth = (col: (typeof meta.columns)[number]) =>
+    resizing?.key === col.key ? resizing.width : col.width;
+
   // 너비를 지정한 열은 고정 px, 안 한 열은 기존대로 남는 폭을 나눠 갖는다.
-  // 드래그 중인 열은 아직 저장 전이므로 진행 중 너비로 그린다.
   const gridTemplateColumns = meta.columns
     .map((col) => {
-      const width = resizing?.key === col.key ? resizing.width : col.width;
-      return width != null ? `${width}px` : "minmax(120px, 1fr)";
+      const width = columnWidth(col);
+      return width != null
+        ? `${width}px`
+        : `minmax(${FLEX_COL_MIN_WIDTH}px, 1fr)`;
     })
     .join(" ");
+
+  // 표가 최소한 차지하는 폭. 가로 스크롤 컨테이너 안의 블록 요소는 폭이 auto라 "보이는 폭"까지만
+  // 차지하는데, 그 위의 w-full 요소들(행의 border-b, 열 선택 핸들 바, 병합 오버레이)이 거기서 끊긴다.
+  // 셀은 gridTemplateColumns대로 그 너머까지 그려지니, 스크롤하면 줄 없이 내용만 보였다(#996).
+  // 행이 absolute라 width:max-content로는 안 된다(절대 위치 자식은 intrinsic 폭에 기여하지 않는다).
+  // 컨테이너가 이보다 넓으면 min-width가 안 걸려 기존 1fr 스트레치가 그대로 산다.
+  const minTableWidth = meta.columns.reduce(
+    (sum, col) => sum + (columnWidth(col) ?? FLEX_COL_MIN_WIDTH),
+    0,
+  );
 
   const colIndexByKey = new Map(meta.columns.map((c, i) => [c.key, i]));
   // 세로·블록 병합(rowSpan>1)은 오버레이로 그린다(가상화와 양립하려면 앵커 행 렌더에 의존하면 안 된다).
@@ -1874,7 +1891,12 @@ export function DatasetGrid({
           {/* 본문 (윈도우 가상화) */}
           <div
             ref={listRef}
-            style={{ height: virtualizer.getTotalSize(), position: "relative" }}
+            style={{
+              height: virtualizer.getTotalSize(),
+              position: "relative",
+              // 안의 w-full 요소들(행 구분선·열 핸들 바·병합 오버레이)이 표 전체 폭으로 늘어나게 한다.
+              minWidth: minTableWidth,
+            }}
           >
             {/* 열 선택 핸들 — 상단 얇은 바(열별). 표 호버 시 나타난다. 클릭=열 선택, 드래그=여러 열. */}
             <div
@@ -2122,7 +2144,8 @@ export function DatasetGrid({
           {meta.columns.some((col) => col.summary) && (
             <div
               className="border-border bg-muted/30 grid border-t text-sm"
-              style={{ gridTemplateColumns }}
+              // 본문과 같은 이유로 min-width가 필요하다 — 없으면 border-t가 보이는 폭에서 끊긴다(#996).
+              style={{ gridTemplateColumns, minWidth: minTableWidth }}
               aria-label="열 요약"
             >
               {meta.columns.map((col) => (
