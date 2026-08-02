@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DragHandle } from "@tiptap/extension-drag-handle-react";
 import Image from "@tiptap/extension-image";
+import { NodeRange } from "@tiptap/extension-node-range";
 import Placeholder from "@tiptap/extension-placeholder";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
@@ -15,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import type { NoteContent, NoteDetail } from "../api/notes";
 import { deleteDataset } from "../dataset/api/datasets";
 import { DATASET_CELLS_MIME } from "../dataset/cellClipboard";
+import { SelectionLadder } from "../editor/blockSelection";
 import { ChildPage, collectChildPageIds } from "../editor/childPage";
 import { ChildPageContext } from "../editor/childPageContext";
 import { collectDatasetIds, DatasetTable } from "../editor/datasetTable";
@@ -87,6 +89,12 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
         }),
         ChildPage,
         DatasetTable,
+        // 블록 레이어. key:null이라 블록을 넘나드는 평범한 드래그도 블록 선택으로 승격한다
+        // (Notion과 동일). 한 문단 안 드래그는 부분 텍스트 선택 그대로라 서식 적용은 안 깨진다.
+        // Shift+↑/↓ 블록 확장·드래그 핸들의 다중 블록 이동도 여기서 나온다.
+        NodeRange.configure({ key: null }),
+        // Cmd+A 점진 선택. NodeRange의 "항상 전체 블록"을 우선순위로 덮는다.
+        SelectionLadder,
         LinkShortcut.configure({
           onTrigger: () => openLinkEditorRef.current(),
         }),

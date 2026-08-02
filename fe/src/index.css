@@ -262,3 +262,18 @@
 .tiptap img.ProseMirror-selectednode {
   outline: 2px solid var(--primary);
 }
+
+/* 블록 선택(NodeRangeSelection) — 글자가 아니라 블록 전체 폭이 잡혔음을 보인다.
+   라이트/다크 모두 본문 대비를 해치지 않게 primary를 옅게 깐다. */
+.tiptap .ProseMirror-selectednoderange {
+  background-color: color-mix(in srgb, var(--primary) 16%, transparent);
+  border-radius: 0.25rem;
+}
+.dark .tiptap .ProseMirror-selectednoderange {
+  background-color: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+/* 블록 선택 중엔 안쪽 텍스트 하이라이트를 숨긴다 — 두 겹으로 겹쳐 보이지 않게. */
+.ProseMirror-noderangeselection ::selection,
+.ProseMirror-noderangeselection::selection {
+  background: transparent;
+}

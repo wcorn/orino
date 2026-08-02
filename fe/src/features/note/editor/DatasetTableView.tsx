@@ -7,6 +7,7 @@ import { useEffect, useRef } from "react";
 import { type DatasetMeta, fetchDatasetMeta } from "../dataset/api/datasets";
 import { DatasetGrid } from "../dataset/DatasetGrid";
 import { datasetKeys } from "../dataset/queryKeys";
+import { selectAllBlocks } from "./blockSelection";
 import { useDatasetTableContext } from "./datasetTableContext";
 
 /**
@@ -92,6 +93,13 @@ export function DatasetTableView({
     requestDeleteDataset(datasetId, removeBlock);
   };
 
+  // 표 전체가 선택된 상태에서 Cmd+A를 한 번 더 → 문서 전체 블록으로 올라간다.
+  // 포커스가 셀 입력창에 있으므로 에디터로 되돌린 뒤 선택을 건다(안 그러면 이후 키가 또 샌다).
+  const escapeSelectionToDocument = () => {
+    editor.commands.focus();
+    selectAllBlocks(editor);
+  };
+
   return (
     <NodeViewWrapper
       ref={wrapRef}
@@ -111,6 +119,8 @@ export function DatasetTableView({
           // 곧바로 타이핑=편집이 되게 한다(블록만 선택돼 키가 먹통이던 문제 해소).
           // 여러 블록을 함께 선택한 경우엔 잡지 않는다 — 위 soleSelected 주석 참고.
           blockSelected={soleSelected}
+          // 선택 사다리의 마지막 칸 — 표 전체 다음은 문서 전체다.
+          onSelectAllEscape={escapeSelectionToDocument}
           // 표간 참조 피커·저장(tableRefs)에 쓸 같은 노트의 다른 표들.
           siblingTables={siblingTables}
         />
