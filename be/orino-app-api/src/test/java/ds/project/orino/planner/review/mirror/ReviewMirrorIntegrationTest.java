@@ -177,9 +177,9 @@ class ReviewMirrorIntegrationTest extends ApiTestSupport {
 
         // 완료된 dueDate(today+1) 묶음은 N=0 → 삭제
         assertThat(mirrorRepository.findByMemberIdAndDueDate(memberId, today.plusDays(1))).isEmpty();
-        // 다음 복습(GOOD: interval 6) dueDate(today+6) 묶음은 새로 insert
+        // 다음 복습(GOOD: 직전 1일 × ease 2.50 → interval 3) dueDate(today+3) 묶음은 새로 insert
         ReviewCalendarMirror next =
-                mirrorRepository.findByMemberIdAndDueDate(memberId, today.plusDays(6)).orElseThrow();
+                mirrorRepository.findByMemberIdAndDueDate(memberId, today.plusDays(3)).orElseThrow();
         assertThat(next.getPendingCount()).isEqualTo(1);
         assertThat(next.getGoogleEventId()).isEqualTo("evt-2");
 

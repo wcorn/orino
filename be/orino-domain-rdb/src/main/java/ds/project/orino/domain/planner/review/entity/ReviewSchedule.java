@@ -132,6 +132,16 @@ public class ReviewSchedule {
     }
 
     /**
+     * 간격 규칙이 바뀌었을 때(#1001) 아직 오지 않은 복습을 다시 계산해 덮어쓴다.
+     * 회차·상태·평가 기록은 그대로 두고 간격·ease·due 시각만 바꾼다.
+     */
+    public void reschedule(int intervalDays, BigDecimal easeFactor, Instant scheduledAt) {
+        this.intervalDays = intervalDays;
+        this.easeFactor = easeFactor;
+        this.scheduledAt = scheduledAt;
+    }
+
+    /**
      * Sibling burying — due 시각을 익일 04:00(사용자 시간대)으로 미룬다.
      * SM-2 간격/ease/sequence/status는 건드리지 않고 due 날짜만 이동한다.
      */

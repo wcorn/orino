@@ -70,7 +70,8 @@ function makeReview({
       siblingGroupId: null,
       material: { id: materialId, title: `자료 ${materialId}`, type: "BOOK" },
     },
-    preview: { again: 1, hard: 6, good: 6, easy: 15 },
+    // BE가 등급별로 다른 간격을 준다(#1001) — 직전 6일·ease 2.50 카드를 제때 볼 때의 실제 값
+    preview: { again: 1, hard: 7, good: 15, easy: 20 },
   };
 }
 
