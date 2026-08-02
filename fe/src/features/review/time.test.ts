@@ -26,6 +26,14 @@ describe("formatUpcomingLabel", () => {
   it("모레 이후는 'MM/DD'", () => {
     expect(formatUpcomingLabel("2026-05-25T04:00:00", NOW)).toBe("05/25");
   });
+
+  it("새벽 2시에 보면 그날 04:00은 '내일' — 학습일이 아직 안 넘어갔다 (#1003)", () => {
+    const lateNight = new Date(2026, 4, 19, 2, 0); // 학습일 5/18
+
+    expect(formatUpcomingLabel("2026-05-19T04:00:00", lateNight)).toBe(
+      "내일 05/19",
+    );
+  });
 });
 
 describe("formatCompletedLabel", () => {
@@ -41,5 +49,10 @@ describe("formatCompletedLabel", () => {
     expect(formatCompletedLabel("2026-05-10T14:05:00", NOW)).toBe(
       "05/10 14:05",
     );
+  });
+
+  it("어젯밤 새벽에 한 복습은 낮에 보면 '어제' (#1003)", () => {
+    // 5/18 01:30은 학습일 5/17 — 5/18 낮에 보면 어제 몫이다
+    expect(formatCompletedLabel("2026-05-18T01:30:00", NOW)).toBe("어제 01:30");
   });
 });

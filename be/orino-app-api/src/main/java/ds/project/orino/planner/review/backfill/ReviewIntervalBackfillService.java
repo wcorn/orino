@@ -1,5 +1,6 @@
 package ds.project.orino.planner.review.backfill;
 
+import ds.project.orino.common.time.StudyDay;
 import ds.project.orino.core.time.UserTimeZone;
 import ds.project.orino.domain.planner.review.entity.Rating;
 import ds.project.orino.domain.planner.review.entity.ReviewSchedule;
@@ -65,13 +66,13 @@ public class ReviewIntervalBackfillService {
             ReviewSchedule pending = (ReviewSchedule) pair[0];
             ReviewSchedule preceding = (ReviewSchedule) pair[1];
 
-            LocalDate previousDueDate = pending.getScheduledAt().atZone(zone).toLocalDate();
+            LocalDate previousDueDate = StudyDay.of(pending.getScheduledAt(), zone);
             if (!reschedule(pending, preceding, zone)) {
                 continue;
             }
             rescheduled++;
 
-            LocalDate newDueDate = pending.getScheduledAt().atZone(zone).toLocalDate();
+            LocalDate newDueDate = StudyDay.of(pending.getScheduledAt(), zone);
             if (!newDueDate.equals(previousDueDate)) {
                 Set<LocalDate> dates = affectedDates.computeIfAbsent(
                         pending.getMemberId(), id -> new LinkedHashSet<>());

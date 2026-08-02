@@ -11,6 +11,7 @@ import ds.project.orino.planner.review.dto.CompletedReviewView;
 import ds.project.orino.planner.review.dto.ReviewCompletionRequest;
 import ds.project.orino.planner.review.dto.ReviewCompletionResponse;
 import ds.project.orino.planner.review.dto.ReviewScheduleView;
+import ds.project.orino.common.time.StudyDay;
 import ds.project.orino.core.time.UserTimeZone;
 import ds.project.orino.planner.review.sm2.Sm2Calculator;
 import org.springframework.stereotype.Service;
@@ -56,7 +57,7 @@ public class ReviewCompletionService {
         int newSequence = current.getSequence() + 1;
         // 예정일보다 늦게 봤는데도 기억했다면 그만큼 간격을 더 벌린다(Anki days_late 보너스).
         int daysLate = (int) ChronoUnit.DAYS.between(
-                current.getScheduledAt().atZone(zone).toLocalDate(), now.atZone(zone).toLocalDate());
+                StudyDay.of(current.getScheduledAt(), zone), StudyDay.of(now, zone));
         Sm2Calculator.Result computed = Sm2Calculator.next(
                 current.getIntervalDays(), current.getEaseFactor(), daysLate, request.rating());
 
@@ -75,8 +76,8 @@ public class ReviewCompletionService {
         // 완료된 dueDate(감소)와 다음 dueDate(증가) 묶음 + burying으로 바뀐 dueDate들을 재동기화(커밋 후).
         // AGAIN은 04:00 정각이 아니어서 reconcile 집계에서 자연히 제외된다.
         List<LocalDate> reconcileDates = new ArrayList<>();
-        reconcileDates.add(current.getScheduledAt().atZone(zone).toLocalDate());
-        reconcileDates.add(next.getScheduledAt().atZone(zone).toLocalDate());
+        reconcileDates.add(StudyDay.of(current.getScheduledAt(), zone));
+        reconcileDates.add(StudyDay.of(next.getScheduledAt(), zone));
         for (Long epochDay : affectedDates) {
             reconcileDates.add(LocalDate.ofEpochDay(epochDay));
         }
@@ -112,9 +113,9 @@ public class ReviewCompletionService {
 
         List<Long> buriedIds = new ArrayList<>();
         for (ReviewSchedule sibling : dueSiblings) {
-            affectedDates.add(sibling.getScheduledAt().atZone(zone).toLocalDate().toEpochDay());
+            affectedDates.add(StudyDay.of(sibling.getScheduledAt(), zone).toEpochDay());
             sibling.bury(now, zone);
-            affectedDates.add(sibling.getScheduledAt().atZone(zone).toLocalDate().toEpochDay());
+            affectedDates.add(StudyDay.of(sibling.getScheduledAt(), zone).toEpochDay());
             buriedIds.add(sibling.getId());
         }
         return buriedIds;

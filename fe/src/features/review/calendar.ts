@@ -1,4 +1,5 @@
 import type { CalendarReview } from "./api/calendar";
+import { studyDayStart } from "./studyDay";
 
 export type ReviewBucket = "completed" | "overdue" | "today" | "upcoming";
 
@@ -46,17 +47,18 @@ export function monthGridDays(year: number, month0: number): Date[] {
 
 export function classifyReview(
   review: CalendarReview,
-  today: Date,
+  now: Date,
 ): ReviewBucket {
   if (review.status === "COMPLETED") {
     return "completed";
   }
+  // "오늘"은 자정이 아니라 학습일(04:00 롤오버) 기준 — BE의 due 판정과 같은 경계다(#1003).
   const scheduled = parseIsoDate(reviewDate(review)).getTime();
-  const todayMid = startOfDay(today).getTime();
-  if (scheduled < todayMid) {
+  const todayStart = startOfDay(studyDayStart(now)).getTime();
+  if (scheduled < todayStart) {
     return "overdue";
   }
-  if (scheduled === todayMid) {
+  if (scheduled === todayStart) {
     return "today";
   }
   return "upcoming";

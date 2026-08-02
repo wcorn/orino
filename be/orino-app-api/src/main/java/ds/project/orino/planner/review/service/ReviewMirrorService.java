@@ -2,6 +2,7 @@ package ds.project.orino.planner.review.service;
 
 import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
+import ds.project.orino.common.time.StudyDay;
 import ds.project.orino.domain.planner.flashcard.entity.Flashcard;
 import ds.project.orino.domain.planner.flashcard.repository.FlashcardRepository;
 import ds.project.orino.domain.planner.google.entity.GoogleAccount;
@@ -128,7 +129,7 @@ public class ReviewMirrorService {
     private void backfill(Long memberId, ZoneId zone) {
         Set<LocalDate> dueDates = reviewScheduleRepository
                 .findAllByMemberIdAndStatus(memberId, ReviewStatus.PENDING).stream()
-                .map(review -> review.getScheduledAt().atZone(zone).toLocalDate())
+                .map(review -> StudyDay.of(review.getScheduledAt(), zone))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         dueDates.forEach(date -> self.reconcileDate(memberId, date, zone));
     }

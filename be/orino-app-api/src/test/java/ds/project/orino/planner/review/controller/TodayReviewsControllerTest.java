@@ -85,7 +85,7 @@ class TodayReviewsControllerTest extends ApiTestSupport {
                 member.getId(), card.getId(), 2, atTestZone(today.minusDays(2).atTime(4, 0)), 6,
                 new BigDecimal("2.50")));
         ReviewSchedule dueToday = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 3, atTestZone(today.atStartOfDay()), 15,
+                member.getId(), card.getId(), 3, atTestZone(today.atTime(4, 0)), 15,
                 new BigDecimal("2.50")));
         reviewScheduleRepository.save(new ReviewSchedule(
                 member.getId(), card.getId(), 4, atTestZone(today.plusDays(3).atTime(4, 0)), 3,
@@ -106,7 +106,7 @@ class TodayReviewsControllerTest extends ApiTestSupport {
     void embeds_flashcard_and_material() throws Exception {
         LocalDate today = testToday(clock);
         reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 1, atTestZone(today.atStartOfDay()), 1,
+                member.getId(), card.getId(), 1, atTestZone(today.atTime(4, 0)), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(get("/api/planner/reviews/today")
@@ -125,7 +125,7 @@ class TodayReviewsControllerTest extends ApiTestSupport {
     void preview_differs_per_rating() throws Exception {
         LocalDate today = testToday(clock);
         reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 2, atTestZone(today.atStartOfDay()), 6,
+                member.getId(), card.getId(), 2, atTestZone(today.atTime(4, 0)), 6,
                 new BigDecimal("2.50")));
 
         // #1001 회귀: 예전엔 hard/good/easy가 모두 15로 같아 채점이 무의미했다.
@@ -166,10 +166,10 @@ class TodayReviewsControllerTest extends ApiTestSupport {
         Flashcard otherCard = flashcardRepository.save(
                 new Flashcard(otherMember.getId(), otherMaterial.getId(), "Q2", "A2"));
         reviewScheduleRepository.save(new ReviewSchedule(
-                otherMember.getId(), otherCard.getId(), 1, atTestZone(today.atStartOfDay()), 1,
+                otherMember.getId(), otherCard.getId(), 1, atTestZone(today.atTime(4, 0)), 1,
                 new BigDecimal("2.50")));
         reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 1, atTestZone(today.atStartOfDay()), 1,
+                member.getId(), card.getId(), 1, atTestZone(today.atTime(4, 0)), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(get("/api/planner/reviews/today")
@@ -184,7 +184,7 @@ class TodayReviewsControllerTest extends ApiTestSupport {
     void excludes_completed_reviews() throws Exception {
         LocalDate today = testToday(clock);
         ReviewSchedule pending = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), 2, atTestZone(today.atStartOfDay()), 6,
+                member.getId(), card.getId(), 2, atTestZone(today.atTime(4, 0)), 6,
                 new BigDecimal("2.50")));
         ReviewSchedule completed = new ReviewSchedule(
                 member.getId(), card.getId(), 1, atTestZone(today.minusDays(5).atTime(4, 0)), 1,
@@ -207,7 +207,7 @@ class TodayReviewsControllerTest extends ApiTestSupport {
                 member.getId(), material.getId(), "순서대로 배열",
                 "[{\"id\":\"a\",\"text\":\"1단계\"},{\"id\":\"b\",\"text\":\"2단계\"},{\"id\":\"c\",\"text\":\"3단계\"}]"));
         reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), ordering.getId(), 1, atTestZone(today.atStartOfDay()), 1,
+                member.getId(), ordering.getId(), 1, atTestZone(today.atTime(4, 0)), 1,
                 new BigDecimal("2.50")));
 
         mockMvc.perform(get("/api/planner/reviews/today")
