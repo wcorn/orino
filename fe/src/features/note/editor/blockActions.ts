@@ -53,6 +53,35 @@ export function targetBlockRange(
   };
 }
 
+/** 그 위치를 품는 최상위 블록의 구간. 우클릭 지점의 블록을 집을 때 쓴다. */
+export function blockRangeAt(
+  doc: Node,
+  pos: number,
+): { from: number; to: number } | null {
+  return topLevelBlocks(doc).find((b) => b.from <= pos && b.to >= pos) ?? null;
+}
+
+/** 지금 선택이 그 위치를 이미 품고 있는가. 우클릭이 기존 선택을 깨야 할지 판단한다. */
+export function selectionCovers(state: EditorState, pos: number): boolean {
+  const range = isNodeRangeSelection(state.selection)
+    ? { from: state.selection.from, to: state.selection.to }
+    : null;
+  return !!range && range.from <= pos && range.to >= pos;
+}
+
+/** 그 위치의 블록을 블록 선택한다. */
+export function selectBlockAt(editor: Editor, pos: number): boolean {
+  const { state, view } = editor;
+  const range = blockRangeAt(state.doc, pos);
+  if (!range) return false;
+  view.dispatch(
+    state.tr.setSelection(
+      NodeRangeSelection.create(state.doc, range.from, range.to),
+    ),
+  );
+  return true;
+}
+
 /** 커서가 놓인 블록을 블록 선택으로 승격한다(Esc 1단). */
 export function selectCurrentBlock(editor: Editor): boolean {
   const { state, view } = editor;

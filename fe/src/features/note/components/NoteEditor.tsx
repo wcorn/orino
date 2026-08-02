@@ -29,6 +29,7 @@ import { useAutoSaveNote } from "../hooks/useAutoSaveNote";
 import { useCreateNote, useDeleteNote } from "../hooks/useNoteMutations";
 import { useNoteTree } from "../hooks/useNoteTree";
 import { noteKeys } from "../queryKeys";
+import { BlockContextMenu } from "./BlockContextMenu";
 import { EditorToolbar } from "./EditorToolbar";
 import { LinkMenu } from "./LinkMenu";
 import { SaveStatusIndicator } from "./SaveStatusIndicator";
@@ -306,6 +307,7 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
             <EditorContent editor={editor} className="relative" />
           </DatasetTableContext.Provider>
         </ChildPageContext.Provider>
+        <BlockContextMenu editor={editor} />
       </div>
 
       <ConfirmDialog

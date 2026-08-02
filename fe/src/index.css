@@ -272,8 +272,9 @@
 .dark .tiptap .ProseMirror-selectednoderange {
   background-color: color-mix(in srgb, var(--primary) 30%, transparent);
 }
-/* 블록 선택 중엔 안쪽 텍스트 하이라이트를 숨긴다 — 두 겹으로 겹쳐 보이지 않게. */
+/* 블록 선택 중엔 안쪽 텍스트 하이라이트를 숨긴다 — 두 겹으로 겹쳐 보이지 않게.
+   ::selection에 적용되는 건 background-color다(단축 background 대신 이쪽을 쓴다). */
 .ProseMirror-noderangeselection ::selection,
 .ProseMirror-noderangeselection::selection {
-  background: transparent;
+  background-color: transparent;
 }
