@@ -17,25 +17,30 @@ import ds.project.orino.support.MemberFixture;
 import ds.project.orino.planner.review.sm2.Sm2Calculator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Import(FixedClockConfig.class)
-@DisplayName("복습 간격 규칙 백필 (#1001)")
-class ReviewIntervalBackfillServiceTest extends ApiTestSupport {
+@DisplayName("복습 일정 백필 (#1001 간격 · #1003 학습일)")
+class ReviewScheduleBackfillServiceTest extends ApiTestSupport {
 
     private static final BigDecimal INITIAL_EASE = new BigDecimal("2.50");
 
     @Autowired
-    private ReviewIntervalBackfillService backfillService;
+    private ReviewScheduleBackfillService backfillService;
 
     @Autowired
     private MemberRepository memberRepository;
@@ -54,6 +59,9 @@ class ReviewIntervalBackfillServiceTest extends ApiTestSupport {
 
     @Autowired
     private Clock clock;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private Member member;
     private StudyMaterial material;
@@ -142,31 +150,107 @@ class ReviewIntervalBackfillServiceTest extends ApiTestSupport {
         assertThat(reload(pair.pendingId()).getScheduledAt()).isEqualTo(buriedAt);
     }
 
-    @Test
-    @DisplayName("직전 회차가 없는 1회차 일정(카드 생성분)은 건드리지 않는다")
-    void first_review_without_predecessor_is_untouched() {
-        LocalDate today = testToday(clock);
+    @Nested
+    @DisplayName("학습일 경계 (#1003) — 자정~04:00에 잡힌 일정")
+    class StudyDayBoundary {
+
+        @Test
+        @DisplayName("새벽 1시에 만든 카드의 첫 복습이 하루 당겨진다")
+        void first_review_created_before_dawn_is_pulled_in() {
+            LocalDate today = testToday(clock);
+            // 옛 규칙: 새벽 1시를 그날(D)로 쳐서 첫 복습을 D+1 04:00에 잡아뒀다
+            ReviewSchedule first = givenFirstReviewCreatedAt(
+                    atTestZone(today.minusDays(1).atTime(1, 0)), today.minusDays(1).plusDays(1));
+
+            assertThat(backfillService.run()).isEqualTo(1);
+
+            // 학습일은 D-1이므로 첫 복습도 하루 앞(D)으로 온다
+            assertThat(reload(first.getId()).getScheduledAt())
+                    .isEqualTo(atTestZone(today.minusDays(1).atTime(4, 0)));
+        }
+
+        @Test
+        @DisplayName("낮에 만든 카드의 첫 복습은 그대로 둔다")
+        void first_review_created_in_daytime_is_untouched() {
+            LocalDate today = testToday(clock);
+            ReviewSchedule first = givenFirstReviewCreatedAt(
+                    atTestZone(today.minusDays(1).atTime(14, 0)), today);
+
+            assertThat(backfillService.run()).isZero();
+
+            assertThat(reload(first.getId()).getScheduledAt())
+                    .isEqualTo(atTestZone(today.atTime(4, 0)));
+        }
+
+        @Test
+        @DisplayName("새벽 1시에 채점한 복습의 다음 일정도 하루 당겨진다 (간격은 그대로)")
+        void completion_before_dawn_is_pulled_in() {
+            LocalDate today = testToday(clock);
+            // 직전 6일·ease 2.50을 GOOD으로 → 간격 15일은 옛/새 규칙이 같고, 날짜만 어긋나 있다
+            Pair pair = givenCompletedThenPending(
+                    Rating.GOOD, 3, 6, INITIAL_EASE, today.minusDays(10).atTime(1, 0));
+
+            assertThat(backfillService.run()).isEqualTo(1);
+
+            ReviewSchedule pending = reload(pair.pendingId());
+            assertThat(pending.getIntervalDays()).isEqualTo(15);
+            // 학습일 기준 D-11 + 15일 (옛 규칙은 D-10 + 15일이었다)
+            assertThat(pending.getScheduledAt())
+                    .isEqualTo(atTestZone(today.minusDays(11).plusDays(15).atTime(4, 0)));
+        }
+
+        @Test
+        @DisplayName("두 번 돌려도 한 번만 당긴다 (멱등)")
+        void is_idempotent() {
+            LocalDate today = testToday(clock);
+            ReviewSchedule first = givenFirstReviewCreatedAt(
+                    atTestZone(today.minusDays(1).atTime(1, 0)), today);
+
+            assertThat(backfillService.run()).isEqualTo(1);
+            assertThat(backfillService.run()).isZero();
+
+            assertThat(reload(first.getId()).getScheduledAt())
+                    .isEqualTo(atTestZone(today.minusDays(1).atTime(4, 0)));
+        }
+    }
+
+    /**
+     * 카드 생성분(1회차) PENDING을 심는다. {@code createdAt}은 감사 필드라 저장 후 직접 덮어쓴다
+     * (JPA auditing이 {@code Instant.now()}를 쓰므로 고정 시계로는 제어할 수 없다).
+     */
+    private ReviewSchedule givenFirstReviewCreatedAt(Instant createdAt, LocalDate scheduledDate) {
         Flashcard card = flashcardRepository.save(
                 new Flashcard(member.getId(), material.getId(), "Q", "A"));
-        ReviewSchedule first = reviewScheduleRepository.save(
-                ReviewSchedule.firstReview(member.getId(), card.getId(), today, TEST_ZONE));
+        ReviewSchedule first = reviewScheduleRepository.save(new ReviewSchedule(
+                member.getId(), card.getId(), 1,
+                atTestZone(scheduledDate.atTime(4, 0)), 1, INITIAL_EASE));
 
-        assertThat(backfillService.run()).isZero();
+        // Hibernate는 hibernate.jdbc.time_zone=UTC로 쓰는데 JdbcTemplate의 Timestamp는 JVM 존을 타므로
+        // UTC 벽시계 값으로 명시해 넣는다(안 그러면 9시간 어긋난다).
+        jdbcTemplate.update("UPDATE review_schedule SET created_at = ? WHERE id = ?",
+                Timestamp.valueOf(LocalDateTime.ofInstant(createdAt, ZoneOffset.UTC)), first.getId());
+        assertThat(reload(first.getId()).getCreatedAt()).isEqualTo(createdAt);
+        return first;
+    }
 
-        assertThat(reload(first.getId()).getScheduledAt()).isEqualTo(first.getScheduledAt());
+    private Pair givenCompletedThenPending(Rating rating, int pendingSequence,
+                                           int prevInterval, BigDecimal prevEase) {
+        LocalDate today = testToday(clock);
+        return givenCompletedThenPending(rating, pendingSequence, prevInterval, prevEase,
+                today.minusDays(1).atTime(9, 0));
     }
 
     /**
      * 옛 규칙이 만들어냈을 상태를 그대로 심는다 — {@code sequence-1} 회차를 {@code rating}으로 완료하고,
-     * 거기서 옛 규칙이 계산한 간격으로 다음 회차 PENDING을 잡아둔 모양.
+     * 거기서 옛 규칙(순정 SM-2 간격 + <b>달력 날짜</b> 경계)이 계산한 자리에 다음 회차 PENDING을 잡아둔 모양.
      */
     private Pair givenCompletedThenPending(Rating rating, int pendingSequence,
-                                           int prevInterval, BigDecimal prevEase) {
-        LocalDate today = testToday(clock);
+                                           int prevInterval, BigDecimal prevEase,
+                                           LocalDateTime completedLocal) {
         Flashcard card = flashcardRepository.save(
                 new Flashcard(member.getId(), material.getId(), "Q", "A"));
 
-        Instant completedAt = atTestZone(today.minusDays(1).atTime(9, 0));
+        Instant completedAt = atTestZone(completedLocal);
         ReviewSchedule completed = new ReviewSchedule(member.getId(), card.getId(),
                 pendingSequence - 1, completedAt, prevInterval, prevEase);
         completed.complete(rating, completedAt, TEST_ZONE);
@@ -174,9 +258,12 @@ class ReviewIntervalBackfillServiceTest extends ApiTestSupport {
 
         int legacyInterval = Sm2Calculator.legacyIntervalDays(
                 pendingSequence, prevInterval, prevEase, rating);
+        // 옛 경계는 달력 날짜였다 — 학습일이 아니라 completedAt의 날짜에 간격을 더한다.
+        Instant legacyScheduledAt = rating == Rating.AGAIN
+                ? completedAt.plusSeconds(ReviewSchedule.RELEARN_MINUTES * 60L)
+                : atTestZone(completedLocal.toLocalDate().plusDays(legacyInterval).atTime(4, 0));
         ReviewSchedule pending = reviewScheduleRepository.save(new ReviewSchedule(
-                member.getId(), card.getId(), pendingSequence,
-                ReviewSchedule.computeScheduledAt(rating, legacyInterval, completedAt, TEST_ZONE),
+                member.getId(), card.getId(), pendingSequence, legacyScheduledAt,
                 legacyInterval, Sm2Calculator.legacyEaseFactor(prevEase, rating)));
 
         return new Pair(pending.getId(), completedAt);

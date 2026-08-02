@@ -18,6 +18,7 @@ import ds.project.orino.planner.flashcard.dto.FlashcardUpdateRequest;
 import ds.project.orino.planner.flashcard.dto.OrderingItem;
 import ds.project.orino.planner.review.dto.ReviewScheduleView;
 import ds.project.orino.planner.review.service.ReviewMirrorService;
+import ds.project.orino.common.time.StudyDay;
 import ds.project.orino.core.time.UserTimeZone;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -163,9 +164,9 @@ public class FlashcardService {
             return new ReviewWindow(null, null);
         }
         ZoneId zone = UserTimeZone.get();
-        LocalDate today = clock.instant().atZone(zone).toLocalDate();
-        Instant todayStart = today.atStartOfDay(zone).toInstant();
-        Instant tomorrowStart = today.plusDays(1).atStartOfDay(zone).toInstant();
+        LocalDate today = StudyDay.of(clock.instant(), zone);
+        Instant todayStart = StudyDay.startOf(today, zone);
+        Instant tomorrowStart = StudyDay.startOf(today.plusDays(1), zone);
         return switch (review) {
             case "overdue" -> new ReviewWindow(null, todayStart);
             case "today" -> new ReviewWindow(todayStart, tomorrowStart);
@@ -186,7 +187,7 @@ public class FlashcardService {
     public FlashcardCreateResponse create(Long memberId, Long materialId, FlashcardCreateRequest request) {
         requireOwnedMaterial(memberId, materialId);
         ZoneId zone = UserTimeZone.get();
-        LocalDate today = clock.instant().atZone(zone).toLocalDate();
+        LocalDate today = StudyDay.of(clock.instant(), zone);
 
         if (request.isBidirectional()) {
             return createBidirectional(memberId, materialId, request, today, zone);
@@ -198,7 +199,7 @@ public class FlashcardService {
 
         // 첫 복습 dueDate를 보조 캘린더에 미러(커밋 후, 미러 활성 시에만)
         reviewMirrorService.reconcileAfterCommit(memberId,
-                List.of(firstReview.getScheduledAt().atZone(zone).toLocalDate()), zone);
+                List.of(StudyDay.of(firstReview.getScheduledAt(), zone)), zone);
 
         return FlashcardCreateResponse.of(
                 FlashcardResponse.withoutReview(saved, itemsCodec.parse(saved.getItems())),
@@ -229,8 +230,8 @@ public class FlashcardService {
                 ReviewSchedule.firstReview(memberId, b.getId(), today, zone, 2));
 
         reviewMirrorService.reconcileAfterCommit(memberId, List.of(
-                reviewA.getScheduledAt().atZone(zone).toLocalDate(),
-                reviewB.getScheduledAt().atZone(zone).toLocalDate()), zone);
+                StudyDay.of(reviewA.getScheduledAt(), zone),
+                StudyDay.of(reviewB.getScheduledAt(), zone)), zone);
 
         FlashcardCreateResponse sibling = FlashcardCreateResponse.of(
                 FlashcardResponse.withoutReview(b, null), ReviewScheduleView.firstReview(reviewB));

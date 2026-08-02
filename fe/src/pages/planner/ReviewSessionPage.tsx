@@ -10,6 +10,7 @@ import { ReviewCard } from "@/features/review/components/ReviewCard";
 import { useCompleteReview } from "@/features/review/hooks/useCompleteReview";
 import { useTodayReviews } from "@/features/review/hooks/useTodayReviews";
 import { shuffleDeck } from "@/features/review/ordering";
+import { studyDayDiff } from "@/features/review/studyDay";
 import { toast } from "@/shared/lib/toast";
 
 /**
@@ -109,11 +110,9 @@ function formatNextReviewMessage(scheduledAt: string): string {
     return `다음 복습은 약 ${diffMin}분 후`;
   }
 
-  const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const nextMid = new Date(next.getFullYear(), next.getMonth(), next.getDate());
-  const days = Math.round(
-    (nextMid.getTime() - todayMid.getTime()) / (1000 * 60 * 60 * 24),
-  );
+  // "며칠 후"는 자정이 아니라 학습일(04:00 롤오버) 기준으로 센다 — 새벽에 복습해도
+  // 다음 복습이 하루 더 남은 것처럼 보이지 않는다(#1003).
+  const days = studyDayDiff(now, next);
   const md = `${next.getMonth() + 1}/${next.getDate()}`;
   if (days <= 0) {
     return `다음 복습은 오늘 (${md})`;

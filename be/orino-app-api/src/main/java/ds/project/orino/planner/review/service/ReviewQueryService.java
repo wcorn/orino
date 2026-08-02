@@ -36,6 +36,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import ds.project.orino.common.time.StudyDay;
 import ds.project.orino.core.time.UserTimeZone;
 
 import java.time.Clock;
@@ -75,7 +76,7 @@ public class ReviewQueryService {
     public TodayReviewsResponse findToday(Long memberId) {
         ZoneId zone = UserTimeZone.get();
         Instant now = clock.instant();
-        LocalDate today = now.atZone(zone).toLocalDate();
+        LocalDate today = StudyDay.of(now, zone);
 
         List<ReviewSchedule> reviews = reviewScheduleRepository
                 .findAllByMemberIdAndStatusAndScheduledAtLessThanEqualOrderByScheduledAtAscIdAsc(
@@ -161,7 +162,7 @@ public class ReviewQueryService {
         StudyMaterial material = materialById.get(card.getMaterialId());
         TodayReviewFlashcard flashcardDto = TodayReviewFlashcard.of(
                 card, itemsCodec.parse(card.getItems()), TodayReviewMaterial.of(material));
-        int delayDays = (int) ChronoUnit.DAYS.between(r.getScheduledAt().atZone(zone).toLocalDate(), today);
+        int delayDays = (int) ChronoUnit.DAYS.between(StudyDay.of(r.getScheduledAt(), zone), today);
         return new TodayReviewItem(
                 r.getId(), r.getScheduledAt(), delayDays,
                 r.getSequence(), r.getIntervalDays(), r.getEaseFactor(),
@@ -190,9 +191,9 @@ public class ReviewQueryService {
     public ReviewSummaryResponse summary(Long memberId) {
         ZoneId zone = UserTimeZone.get();
         Instant now = clock.instant();
-        LocalDate today = now.atZone(zone).toLocalDate();
-        Instant todayStart = today.atStartOfDay(zone).toInstant();
-        Instant tomorrowStart = today.plusDays(1).atStartOfDay(zone).toInstant();
+        LocalDate today = StudyDay.of(now, zone);
+        Instant todayStart = StudyDay.startOf(today, zone);
+        Instant tomorrowStart = StudyDay.startOf(today.plusDays(1), zone);
 
         List<ReviewSchedule> pending = reviewScheduleRepository
                 .findAllByMemberIdAndStatus(memberId, ReviewStatus.PENDING);
@@ -256,7 +257,7 @@ public class ReviewQueryService {
         if (!earliest.isAfter(now)) {
             return "지금";
         }
-        LocalDate date = earliest.atZone(zone).toLocalDate();
+        LocalDate date = StudyDay.of(earliest, zone);
         if (date.equals(today)) {
             return "오늘";
         }
@@ -269,8 +270,8 @@ public class ReviewQueryService {
                                                 String when, String type, String cursor, Integer size) {
         ZoneId zone = UserTimeZone.get();
         Instant now = clock.instant();
-        LocalDate today = now.atZone(zone).toLocalDate();
-        Instant todayStart = today.atStartOfDay(zone).toInstant();
+        LocalDate today = StudyDay.of(now, zone);
+        Instant todayStart = StudyDay.startOf(today, zone);
         int pageSize = clampSize(size);
 
         Instant upperBound = upperBound(scope, when, today, zone);
@@ -371,7 +372,7 @@ public class ReviewQueryService {
         if (!at.isAfter(now)) {
             return WhenKind.NOW;
         }
-        return at.atZone(zone).toLocalDate().equals(today) ? WhenKind.TODAY : WhenKind.FUTURE;
+        return StudyDay.of(at, zone).equals(today) ? WhenKind.TODAY : WhenKind.FUTURE;
     }
 
     /** scope와 when 상한을 하나로 합친다(둘 다 scheduled_at 상한이므로 더 좁은 쪽). null이면 상한 없음. */
@@ -392,8 +393,8 @@ public class ReviewQueryService {
             return null;
         }
         return switch (scope) {
-            case "today" -> today.plusDays(1).atStartOfDay(zone).toInstant();
-            case "overdue" -> today.atStartOfDay(zone).toInstant();
+            case "today" -> StudyDay.startOf(today.plusDays(1), zone);
+            case "overdue" -> StudyDay.startOf(today, zone);
             default -> throw new CustomException(ErrorCode.INVALID_REQUEST);
         };
     }
@@ -403,9 +404,9 @@ public class ReviewQueryService {
             return null;
         }
         return switch (when) {
-            case "today" -> today.plusDays(1).atStartOfDay(zone).toInstant();
-            case "3d" -> today.plusDays(3).atStartOfDay(zone).toInstant();
-            case "7d" -> today.plusDays(7).atStartOfDay(zone).toInstant();
+            case "today" -> StudyDay.startOf(today.plusDays(1), zone);
+            case "3d" -> StudyDay.startOf(today.plusDays(3), zone);
+            case "7d" -> StudyDay.startOf(today.plusDays(7), zone);
             default -> throw new CustomException(ErrorCode.INVALID_REQUEST);
         };
     }

@@ -41,6 +41,9 @@ public interface ReviewScheduleRepository extends JpaRepository<ReviewSchedule, 
     /** 미러 enable 백필용 — 멤버의 모든 PENDING 복습(과거·미래 포함). */
     List<ReviewSchedule> findAllByMemberIdAndStatus(Long memberId, ReviewStatus status);
 
+    /** 스케줄 규칙 변경 백필용 — 아직 오지 않은 전체 복습(1회차 카드 생성분 포함). */
+    List<ReviewSchedule> findAllByStatus(ReviewStatus status);
+
     /**
      * 간격 규칙 변경 백필용(#1001) — 아직 오지 않은 복습과 <b>그 복습을 만들어낸 직전 회차</b> 쌍.
      * 직전 회차에 rating·간격·ease·완료시각이 남아 있어 새 규칙으로 다시 계산할 수 있다.

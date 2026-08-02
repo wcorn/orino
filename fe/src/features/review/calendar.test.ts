@@ -44,36 +44,45 @@ describe("addMonths", () => {
 });
 
 describe("classifyReview", () => {
-  const today = new Date(2026, 4, 18);
+  const now = new Date(2026, 4, 18, 11, 0); // 학습일 5/18 한낮
 
   it("COMPLETED → completed", () => {
-    expect(classifyReview(review("2026-05-10", "COMPLETED"), today)).toBe(
+    expect(classifyReview(review("2026-05-10", "COMPLETED"), now)).toBe(
       "completed",
     );
   });
 
   it("PENDING + 과거 → overdue", () => {
-    expect(classifyReview(review("2026-05-15", "PENDING"), today)).toBe(
+    expect(classifyReview(review("2026-05-15", "PENDING"), now)).toBe(
       "overdue",
     );
   });
 
   it("PENDING + 오늘 → today", () => {
-    expect(classifyReview(review("2026-05-18", "PENDING"), today)).toBe(
-      "today",
-    );
+    expect(classifyReview(review("2026-05-18", "PENDING"), now)).toBe("today");
   });
 
   it("PENDING + 미래 → upcoming", () => {
-    expect(classifyReview(review("2026-05-20", "PENDING"), today)).toBe(
+    expect(classifyReview(review("2026-05-20", "PENDING"), now)).toBe(
       "upcoming",
+    );
+  });
+
+  it("새벽 2시는 아직 전날 학습일이라 그날 04:00 복습은 upcoming (#1003)", () => {
+    const lateNight = new Date(2026, 4, 18, 2, 0); // 학습일 5/17
+
+    expect(classifyReview(review("2026-05-18", "PENDING"), lateNight)).toBe(
+      "upcoming",
+    );
+    expect(classifyReview(review("2026-05-17", "PENDING"), lateNight)).toBe(
+      "today",
     );
   });
 });
 
 describe("groupByDate / countBuckets", () => {
   it("날짜별로 그룹핑하고 버킷 카운트를 센다", () => {
-    const today = new Date(2026, 4, 18);
+    const now = new Date(2026, 4, 18, 11, 0); // 학습일 5/18 한낮
     const reviews = [
       review("2026-05-18", "PENDING"), // today
       review("2026-05-18", "COMPLETED"), // completed
@@ -83,7 +92,7 @@ describe("groupByDate / countBuckets", () => {
     expect(grouped.get("2026-05-18")).toHaveLength(2);
     expect(grouped.get("2026-05-15")).toHaveLength(1);
 
-    const counts = countBuckets(grouped.get("2026-05-18")!, today);
+    const counts = countBuckets(grouped.get("2026-05-18")!, now);
     expect(counts.today).toBe(1);
     expect(counts.completed).toBe(1);
     expect(counts.overdue).toBe(0);

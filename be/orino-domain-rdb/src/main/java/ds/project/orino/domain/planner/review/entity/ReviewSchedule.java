@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import ds.project.orino.common.time.StudyDay;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -26,8 +27,11 @@ public class ReviewSchedule {
 
     public static final BigDecimal INITIAL_EASE_FACTOR = new BigDecimal("2.50");
 
-    /** 다중일 복습 due 시각(롤오버). 해당 날짜 04:00부터 due가 되어 그 날 하루 종일 복습 가능. */
-    public static final int ROLLOVER_HOUR = 4;
+    /**
+     * 다중일 복습 due 시각(롤오버). 해당 날짜 04:00부터 due가 되어 그 날 하루 종일 복습 가능.
+     * 학습일 경계와 같은 값이다 — 단일 출처는 {@link StudyDay#ROLLOVER_HOUR}.
+     */
+    public static final int ROLLOVER_HOUR = StudyDay.ROLLOVER_HOUR;
 
     /** AGAIN(틀림) 시 당일 재복습까지의 분. */
     public static final int RELEARN_MINUTES = 10;
@@ -103,31 +107,31 @@ public class ReviewSchedule {
      */
     public static ReviewSchedule firstReview(Long memberId, Long flashcardId, LocalDate today,
                                              ZoneId zone, int afterDays) {
-        Instant scheduledAt = today.plusDays(afterDays).atTime(ROLLOVER_HOUR, 0).atZone(zone).toInstant();
+        Instant scheduledAt = StudyDay.startOf(today.plusDays(afterDays), zone);
         return new ReviewSchedule(memberId, flashcardId, 1, scheduledAt, 1, INITIAL_EASE_FACTOR);
     }
 
     /**
-     * 다음 복습 due 시각을 계산한다. 저장은 UTC({@link Instant})지만 "당일/익일 04:00 롤오버"는
-     * 사용자 시간대({@code zone}) 기준으로 계산한다.
-     * AGAIN(틀림)은 {@value #RELEARN_MINUTES}분 뒤(분 단위), 그 외는 사용자 로컬 날짜 기준 일 간격 뒤 04:00.
+     * 다음 복습 due 시각을 계산한다. 저장은 UTC({@link Instant})지만 "며칠 뒤 04:00"은
+     * 사용자 시간대({@code zone}) 기준 <b>학습일</b>({@link StudyDay})로 센다 — 새벽 1시에 본 복습은
+     * 아직 전날 몫이라 다음 복습도 하루 앞에서 출발한다(#1003).
+     * AGAIN(틀림)은 {@value #RELEARN_MINUTES}분 뒤(분 단위), 그 외는 학습일 기준 일 간격 뒤 04:00.
      */
     public static Instant computeScheduledAt(Rating rating, int intervalDays, Instant now, ZoneId zone) {
         if (rating == Rating.AGAIN) {
             return now.plusSeconds(RELEARN_MINUTES * 60L);
         }
-        LocalDate dueDate = now.atZone(zone).toLocalDate().plusDays(intervalDays);
-        return dueDate.atTime(ROLLOVER_HOUR, 0).atZone(zone).toInstant();
+        return StudyDay.startOf(StudyDay.of(now, zone).plusDays(intervalDays), zone);
     }
 
     /**
-     * 복습을 완료 처리한다. 경과일(elapsedDays)은 사용자 시간대 기준 날짜 차이로 계산한다.
+     * 복습을 완료 처리한다. 경과일(elapsedDays)은 학습일 기준 날짜 차이로 계산한다.
      */
     public void complete(Rating rating, Instant now, ZoneId zone) {
         this.status = ReviewStatus.COMPLETED;
         this.rating = rating;
         this.elapsedDays = (int) ChronoUnit.DAYS.between(
-                this.scheduledAt.atZone(zone).toLocalDate(), now.atZone(zone).toLocalDate());
+                StudyDay.of(this.scheduledAt, zone), StudyDay.of(now, zone));
         this.completedAt = now;
     }
 
@@ -146,8 +150,7 @@ public class ReviewSchedule {
      * SM-2 간격/ease/sequence/status는 건드리지 않고 due 날짜만 이동한다.
      */
     public void bury(Instant now, ZoneId zone) {
-        LocalDate tomorrow = now.atZone(zone).toLocalDate().plusDays(1);
-        this.scheduledAt = tomorrow.atTime(ROLLOVER_HOUR, 0).atZone(zone).toInstant();
+        this.scheduledAt = StudyDay.startOf(StudyDay.of(now, zone).plusDays(1), zone);
     }
 
     public Long getId() {
