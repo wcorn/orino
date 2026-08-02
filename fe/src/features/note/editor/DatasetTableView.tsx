@@ -1,4 +1,5 @@
 import { useQueries } from "@tanstack/react-query";
+import { isNodeRangeSelection } from "@tiptap/extension-node-range";
 import { NodeSelection } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
@@ -60,6 +61,12 @@ export function DatasetTableView({
     typeof pos === "number" &&
     selection.from === pos;
 
+  // 블록 선택(문단들과 함께 잡힌 상태)에 이 표가 들어 있는가. 블록 선택 하이라이트는 블록의
+  // 배경으로 그려지는데 그리드는 자기 배경이 불투명해(bg-card) 그 색을 가린다 — 그래서 표만
+  // 안 잡힌 것처럼 보였다. 그리드가 직접 같은 색 틴트를 덧씌워 다른 블록과 똑같이 보이게 한다.
+  // 표 단독 선택(soleSelected)은 제외한다 — 그땐 셀 단위 UI가 뜨므로 전체 틴트는 시끄럽다.
+  const inBlockSelection = selected && isNodeRangeSelection(selection);
+
   // 셀을 드래그해 범위 선택하려 할 때 표 블록이 통째로 끌려나오던 문제를 막는다.
   // 표가 NodeSelection으로 선택되면(셀 클릭 시 blockSelected) PM의 MouseDown이 spec.draggable:false를
   // 무시하고 노드의 바깥 DOM에 draggable=true를 심는다(NodeSelection 분기). 그 바깥 DOM은 TipTap이
@@ -119,6 +126,8 @@ export function DatasetTableView({
           // 곧바로 타이핑=편집이 되게 한다(블록만 선택돼 키가 먹통이던 문제 해소).
           // 여러 블록을 함께 선택한 경우엔 잡지 않는다 — 위 soleSelected 주석 참고.
           blockSelected={soleSelected}
+          // 블록 선택에 함께 잡혔음을 표 위에도 보이게 한다(위 inBlockSelection 주석 참고).
+          inBlockSelection={inBlockSelection}
           // 선택 사다리의 마지막 칸 — 표 전체 다음은 문서 전체다.
           onSelectAllEscape={escapeSelectionToDocument}
           // 표간 참조 피커·저장(tableRefs)에 쓸 같은 노트의 다른 표들.

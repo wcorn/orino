@@ -97,6 +97,11 @@ interface Props {
   /** 에디터에서 표 블록이 선택된 상태(NodeSelection)인지. 첫 셀 자동 선택 트리거. */
   blockSelected?: boolean;
   /**
+   * 문단들과 함께 잡힌 블록 선택에 이 표가 들어 있는지. 그리드 배경이 불투명해 블록 선택
+   * 하이라이트를 가리므로, 참이면 같은 색 틴트를 그리드 위에 덧씌워 선택돼 보이게 한다.
+   */
+  inBlockSelection?: boolean;
+  /**
    * 표 전체가 이미 선택된 상태에서 Cmd/Ctrl+A를 한 번 더 눌렀을 때 — 표 밖(문서 전체)으로
    * 선택을 넘긴다. 표가 키를 막고 있어 그냥 두면 사다리가 표에서 끊긴다.
    */
@@ -117,6 +122,7 @@ export function DatasetGrid({
   datasetId,
   onDeleteBlock,
   blockSelected,
+  inBlockSelection,
   onSelectAllEscape,
   siblingTables,
 }: Props) {
@@ -1904,6 +1910,17 @@ export function DatasetGrid({
         className="border-border bg-card group/grid relative flex flex-col rounded-md border outline-none"
         data-testid="dataset-grid"
       >
+        {/* 블록 선택 틴트 — 그리드 배경(bg-card)이 불투명해 블록 선택 하이라이트를 가리므로,
+          그 위에 같은 색을 덧씌워 선택된 문단과 같아 보이게 한다. 표 바깥 여백엔 하이라이트가
+          이미 비치므로 여기(박스 안)에만 씌워야 색이 두 겹으로 진해지지 않는다.
+          셀 오버레이(z-30까지)보다 위, 메뉴(z-40+)보다 아래. 클릭은 통과시킨다. */}
+        {inBlockSelection && (
+          <div
+            aria-hidden
+            data-testid="dataset-block-selected"
+            className="bg-primary/16 pointer-events-none absolute inset-0 z-[35] rounded-md"
+          />
+        )}
         {/* 값 셀만(제목 행 없음). 가로는 열이 넘치면 스크롤하고(overflow-x-auto),
           세로는 뷰포트를 두지 않아 행이 늘수록 페이지 흐름대로 자란다.
           행/열 추가 버튼은 공간을 차지하지 않게 절대 위치로 띄우고 표 호버 시에만 보인다. */}
