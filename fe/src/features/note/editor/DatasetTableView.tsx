@@ -1,4 +1,5 @@
 import { useQueries } from "@tanstack/react-query";
+import { NodeSelection } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { useEffect, useRef } from "react";
@@ -43,6 +44,20 @@ export function DatasetTableView({
   const datasetId = node.attrs.datasetId as number | null;
   const { requestDeleteDataset } = useDatasetTableContext();
   const siblingTables = useSiblingTables(editor, datasetId ?? -1);
+
+  // TipTap의 `selected`는 "이 표가 단독 선택됨"이 아니라 "선택이 이 표를 덮음"이다
+  // (isNodeViewSelected: from <= pos && to >= pos + nodeSize). 그래서 Cmd+A(문서 전체)나
+  // 표를 가로지르는 드래그에서도 참이 된다. 그대로 그리드에 넘기면 표를 건드리지도 않았는데
+  // 그리드가 첫 셀을 잡고(DatasetGrid의 blockSelected effect) 셀 입력창이 DOM 포커스를
+  // 가져가, 그 뒤 키 입력이 에디터 대신 셀로 새어 Backspace 같은 게 먹통이 됐다.
+  // 표'만' 선택된 NodeSelection일 때로 좁힌다 — 원래 의도(표만 골랐을 때 바로 타이핑=편집).
+  const selection = editor.state.selection;
+  const pos = getPos();
+  const soleSelected =
+    selected &&
+    selection instanceof NodeSelection &&
+    typeof pos === "number" &&
+    selection.from === pos;
 
   // 셀을 드래그해 범위 선택하려 할 때 표 블록이 통째로 끌려나오던 문제를 막는다.
   // 표가 NodeSelection으로 선택되면(셀 클릭 시 blockSelected) PM의 MouseDown이 spec.draggable:false를
@@ -92,9 +107,10 @@ export function DatasetTableView({
         <DatasetGrid
           datasetId={datasetId}
           onDeleteBlock={requestDelete}
-          // 표 블록이 선택되면(한 번 클릭·키보드 이동 등) 그리드가 첫 셀을 잡아
+          // 표 블록'만' 선택되면(한 번 클릭·키보드 이동 등) 그리드가 첫 셀을 잡아
           // 곧바로 타이핑=편집이 되게 한다(블록만 선택돼 키가 먹통이던 문제 해소).
-          blockSelected={selected}
+          // 여러 블록을 함께 선택한 경우엔 잡지 않는다 — 위 soleSelected 주석 참고.
+          blockSelected={soleSelected}
           // 표간 참조 피커·저장(tableRefs)에 쓸 같은 노트의 다른 표들.
           siblingTables={siblingTables}
         />
