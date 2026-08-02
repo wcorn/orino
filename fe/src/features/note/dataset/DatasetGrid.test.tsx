@@ -3146,3 +3146,85 @@ describe("DatasetGrid", () => {
     expect(await screen.findByLabelText(ACTIVE_INPUT)).toBeInTheDocument();
   });
 });
+
+describe("DatasetGrid - 가로 넘침 시 행 구분선 (#996)", () => {
+  beforeEach(() => {
+    useAuthStore.setState({ accessToken: "mock-token" });
+    useToastStore.setState({ toasts: [] });
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(
+      FAKE_RECT,
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** 열 정의만 바꿔 끼운다(행·병합은 mockDataset이 이미 목킹한 것을 쓴다). */
+  function mockColumnMeta(columns: unknown[]) {
+    server.use(
+      http.get(`${API_BASE}/datasets/1`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: { id: 1, columns, rowCount: 1 },
+        }),
+      ),
+    );
+  }
+
+  /** 본문 컨테이너 — 행·열 핸들 바·병합 오버레이가 모두 이 폭을 기준으로 늘어난다. */
+  function gridBody(): HTMLElement {
+    return document.querySelector<HTMLElement>(
+      '[data-testid="dataset-grid"] .overflow-x-auto > div',
+    )!;
+  }
+
+  it("유연폭 열만 있으면 최소폭 합계(120 × 열 수)가 min-width가 된다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    mockColumnMeta([
+      { key: "c0", label: "과목" },
+      { key: "c1", label: "점수" },
+    ]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    expect(gridBody().style.minWidth).toBe("240px");
+  });
+
+  it("너비를 지정한 열은 그 값으로, 안 한 열은 최소폭으로 더한다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    mockColumnMeta([
+      { key: "c0", label: "과목", width: 300 },
+      { key: "c1", label: "점수" },
+    ]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("네트워크");
+
+    // 300(지정) + 120(유연) — 컨테이너가 이보다 넓으면 min-width가 안 걸려 1fr 스트레치가 산다.
+    expect(gridBody().style.minWidth).toBe("420px");
+  });
+
+  it("열이 많아 넘칠수록 min-width도 함께 커진다", async () => {
+    mockDataset([Array.from({ length: 10 }, (_, i) => `v${i}`)]);
+    mockColumnMeta(
+      Array.from({ length: 10 }, (_, i) => ({ key: `c${i}`, label: `열${i}` })),
+    );
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+    await screen.findByText("v0");
+
+    expect(gridBody().style.minWidth).toBe("1200px");
+  });
+
+  it("요약줄도 같은 min-width를 가진다 — 없으면 border-t가 보이는 폭에서 끊긴다", async () => {
+    mockDataset([["네트워크", "92"]]);
+    mockColumnMeta([
+      { key: "c0", label: "과목", width: 300 },
+      { key: "c1", label: "점수", summary: "SUM" },
+    ]);
+    renderWithRouter(<DatasetGrid datasetId={1} />);
+
+    const footer = await screen.findByLabelText("열 요약");
+    expect(footer.style.minWidth).toBe("420px");
+    expect(gridBody().style.minWidth).toBe("420px");
+  });
+});
