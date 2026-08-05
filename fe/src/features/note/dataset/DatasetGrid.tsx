@@ -2615,25 +2615,27 @@ export function DatasetGrid({
           })()}
       </div>
 
-      {/* 행 추가 — 표 아래 가장자리 바(표 밖 gutter). 하단에 호버할 때만 나타난다. */}
+      {/* 행 추가 — 표 아래 가장자리 바(표 밖 gutter). 데스크탑은 하단에 호버할 때만 나타난다.
+        모바일은 상시 표시(opacity-100) — hover가 없어 터치에선 영영 안 떴고, 그 탓에 거터가
+        기능 없는 죽은 여백으로만 보였다(#1023). 보이면 여백이 아니라 버튼으로 읽힌다. */}
       <button
         type="button"
         aria-label="행 추가"
         title="행 추가"
         onClick={() => addRow()}
         disabled={insertMut.isPending}
-        className="bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground absolute right-5 bottom-0 left-0 z-20 flex h-5 items-center justify-center opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
+        className="bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground absolute right-5 bottom-0 left-0 z-20 flex h-5 items-center justify-center opacity-100 transition-opacity hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50 md:opacity-0"
       >
         <Plus className="size-3.5" />
       </button>
-      {/* 열 추가 — 표 오른쪽 가장자리 바(표 밖 gutter). 오른쪽에 호버할 때만 나타난다. */}
+      {/* 열 추가 — 표 오른쪽 가장자리 바(표 밖 gutter). 모바일 상시 표시는 행 추가와 같은 이유. */}
       <button
         type="button"
         aria-label="열 추가"
         title="열 추가"
         onClick={() => addColumn()}
         disabled={addColMut.isPending}
-        className="bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground absolute top-0 right-0 bottom-5 z-20 flex w-5 items-center justify-center opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
+        className="bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground absolute top-0 right-0 bottom-5 z-20 flex w-5 items-center justify-center opacity-100 transition-opacity hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50 md:opacity-0"
       >
         <Plus className="size-3.5" />
       </button>

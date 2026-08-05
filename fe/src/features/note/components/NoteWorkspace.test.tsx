@@ -400,10 +400,12 @@ describe("NoteWorkspace (독립 노트)", () => {
       expect(screen.getByRole("button", { name: "노트1" })).toBeInTheDocument();
     });
 
-    // 표는 본문 좌우 패딩을 음수 마진으로 상쇄해 카드 폭을 꽉 쓴다(모바일). 두 값은 짝이라
-    // 한쪽만 바꾸면 표가 카드를 넘치거나(마진이 크면) 여백이 남는다. jsdom은 CSS를 적용하지
-    // 않아 렌더된 폭으로는 검증할 수 없으므로, 짝이 맞는지를 클래스에서 숫자로 뽑아 비교한다.
-    it("표 블록의 음수 마진이 본문 좌우 패딩과 짝이 맞는다", async () => {
+    // 모바일 좌측선 통일(#1023). 예전엔 본문에 좌우 패딩을 주고 표만 음수 마진으로 상쇄했는데,
+    // 왼쪽만 당겨지고 오른쪽은 안 당겨져 좌우가 비대칭이고 문단과도 어긋났다. 이제 둘 다 0이라
+    // 여백은 페이지 p-4 한 겹뿐이다 — 어느 한쪽이 되살아나면 그 어긋남이 그대로 재발한다.
+    // jsdom은 CSS를 적용하지 않아 실제 폭으로는 검증할 수 없으므로(그건 e2e가 실측한다)
+    // 여기선 "모바일에 걸리는 가로 패딩·마진이 0"이라는 클래스 계약을 지킨다.
+    it("모바일 본문 좌우 패딩과 표 음수 마진이 모두 없다", async () => {
       setNarrowViewport();
       mockTree([
         { id: 1, title: "노트1", parentId: null, sortOrder: 0, children: [] },
@@ -430,21 +432,50 @@ describe("NoteWorkspace (독립 노트)", () => {
         return el as HTMLElement;
       });
 
-      // md: 접두사가 없는 것 = 모바일에 적용되는 값.
-      const scale = (cls: string, prefix: string) => {
-        const found = cls
-          .split(/\s+/)
-          .find((c) => c.startsWith(prefix) && !c.includes(":"));
-        return found ? Number(found.slice(prefix.length)) : null;
-      };
+      // 접두사(md: 등)가 없는 클래스 = 모바일에 실제로 걸리는 값.
+      const mobileClasses = (el: HTMLElement) =>
+        el.className.split(/\s+/).filter((c) => c && !c.includes(":"));
 
-      const padLeft = scale(body.className, "pl-");
-      const padRight = scale(body.className, "pr-");
-      const bleed = scale(table.className, "-mx-");
+      // 가로 패딩은 px-0만 허용 — pl-3 같은 게 되살아나면 표와 좌측선이 다시 어긋난다.
+      const bodyPad = mobileClasses(body).filter((c) => /^p[lrx]-/.test(c));
+      expect(bodyPad).toEqual(["px-0"]);
 
-      expect(padLeft).not.toBeNull();
-      expect(bleed).toBe(padLeft);
-      expect(bleed).toBe(padRight);
+      // 표는 상쇄할 패딩이 없으니 음수 마진도 없어야 한다.
+      const tableBleed = mobileClasses(table).filter((c) =>
+        /^-m[lrx]-/.test(c),
+      );
+      expect(tableBleed).toEqual([]);
+
+      // 데스크탑 거터(블록 이동 핸들 자리)는 그대로 살아 있어야 한다 — 모바일 정리가
+      // 데스크탑까지 넘어가면 핸들이 본문 글자 위에 뜬다.
+      expect(body.className).toContain("md:pl-10");
+    });
+
+    // 카드 껍데기(테두리·배경)가 모바일에 남으면 여백이 다시 3겹이 된다(#1023).
+    it("모바일에선 본문 카드 테두리·배경이 md 이상에서만 걸린다", async () => {
+      setNarrowViewport();
+      mockTree([
+        { id: 1, title: "노트1", parentId: null, sortOrder: 0, children: [] },
+      ]);
+      mockNoteDetail(1, { type: "doc", content: [] }, "노트1");
+
+      const user = userEvent.setup();
+      renderWorkspace();
+
+      await user.click(await screen.findByRole("button", { name: "노트1" }));
+
+      const body = await screen.findByLabelText("노트 본문");
+      // 본문을 감싼 카드 = EditorContent의 조부모(카드 > EditorContent(relative) > .ProseMirror)
+      const card = body.parentElement?.parentElement;
+      if (!card) throw new Error("카드 래퍼 미탐색");
+
+      const mobile = card.className
+        .split(/\s+/)
+        .filter((c) => c && !c.includes(":"));
+      expect(mobile).not.toContain("border");
+      expect(mobile).not.toContain("bg-card");
+      expect(card.className).toContain("md:border");
+      expect(card.className).toContain("md:bg-card");
     });
   });
 });
