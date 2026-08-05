@@ -132,7 +132,10 @@ export function EditorToolbar({
     <div
       role="toolbar"
       aria-label="에디터 도구"
-      className="border-border bg-background flex flex-wrap gap-0.5 rounded-t-md border-b p-1"
+      // 모바일은 한 줄 고정 + 가로 스크롤. 버튼 14개가 flex-wrap으로 2줄이 되면 좁은 화면
+      // 상단을 크게 잡아먹었다(#1023). 데스크탑은 폭이 남으니 기존대로 줄바꿈한다.
+      // px-0(모바일): 카드 껍데기가 없어 툴바도 본문과 같은 좌측선에서 시작해야 한다.
+      className="border-border bg-background flex gap-0.5 overflow-x-auto border-b px-0 py-1 md:flex-wrap md:overflow-x-visible md:rounded-t-md md:p-1"
     >
       {buttons.map((btn) => {
         const Icon = btn.icon;
@@ -144,7 +147,8 @@ export function EditorToolbar({
             size="icon-sm"
             aria-label={btn.label}
             aria-pressed={btn.isActive()}
-            className={cn(btn.isActive() && "bg-muted")}
+            // shrink-0: 모바일 가로 스크롤 툴바에서 버튼이 찌그러지지 않게 한다.
+            className={cn("shrink-0", btn.isActive() && "bg-muted")}
             onClick={btn.onClick}
           >
             <Icon className="size-4" />
@@ -158,7 +162,7 @@ export function EditorToolbar({
           size="icon-sm"
           aria-label="링크"
           aria-pressed={editor.isActive("link")}
-          className={cn(editor.isActive("link") && "bg-muted")}
+          className={cn("shrink-0", editor.isActive("link") && "bg-muted")}
           // 선택된 텍스트가 있거나 커서가 링크 위에 있을 때만 활성.
           disabled={editor.state.selection.empty && !editor.isActive("link")}
           onClick={onInsertLink}
@@ -171,6 +175,7 @@ export function EditorToolbar({
         variant="ghost"
         size="icon-sm"
         aria-label="표 삽입"
+        className="shrink-0"
         disabled={insertingTable}
         onClick={() => void handleInsertTable()}
       >
@@ -181,6 +186,7 @@ export function EditorToolbar({
         variant="ghost"
         size="icon-sm"
         aria-label="이미지 추가"
+        className="shrink-0"
         onClick={() => imageInputRef.current?.click()}
       >
         <ImagePlus className="size-4" />
@@ -203,6 +209,7 @@ export function EditorToolbar({
         variant="ghost"
         size="icon-sm"
         aria-label="가져오기"
+        className="shrink-0"
         onClick={() => setImportOpen(true)}
       >
         <Sheet className="size-4" />
@@ -214,11 +221,15 @@ export function EditorToolbar({
       />
       {onInsertPage && (
         <>
-          <span className="bg-border mx-1 w-px self-stretch" aria-hidden />
+          <span
+            className="bg-border mx-1 w-px shrink-0 self-stretch"
+            aria-hidden
+          />
           <Button
             type="button"
             variant="ghost"
             size="sm"
+            className="shrink-0"
             aria-label="하위 페이지 추가"
             disabled={insertPagePending}
             onClick={onInsertPage}

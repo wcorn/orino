@@ -95,6 +95,10 @@ async function openNote(page: Page) {
 /**
  * 모바일에서 좌우 여백이 4겹(페이지 p-6 + 카드 테두리 + 본문 pl-10/pr-4 + 표 거터)으로 쌓여
  * 390px 중 126px이 여백이던 회귀를 잡는다. 폭이 곧 읽을 수 있는 열 수라 표에 특히 치명적이었다.
+ *
+ * #1023에서 한 겹 더 나아가 여백을 페이지 p-4 하나로 줄이고, 남아 있던 "정렬" 문제까지 잡았다.
+ * 예전엔 표만 음수 마진으로 넓혀 왼쪽만 당겨졌고(문단과 12px 어긋남) 오른쪽은 그리드 거터가
+ * 남아 좌우가 비대칭이었다. 이제 제목·툴바·문단·표가 한 좌측선을 공유한다(Notion 모바일).
  */
 test.describe("모바일 노트 좌우 여백", () => {
   test.use({ viewport: { width: 390, height: 844 } });
@@ -104,21 +108,73 @@ test.describe("모바일 노트 좌우 여백", () => {
     await openNote(page);
   });
 
+  test("제목·툴바·문단·표가 모두 같은 좌측선에서 시작한다", async ({
+    page,
+  }) => {
+    const left = async (locator: ReturnType<Page["locator"]>) => {
+      const box = await locator.boundingBox();
+      expect(box).not.toBeNull();
+      return box!.x;
+    };
+
+    const title = await left(page.getByLabel("노트 제목"));
+    const toolbar = await left(page.getByRole("toolbar"));
+    const paragraph = await left(page.locator(".ProseMirror > p").first());
+    const grid = await left(page.getByTestId("dataset-grid"));
+
+    // 페이지 여백(p-4=16px) 한 겹만 남아야 한다.
+    expect(title).toBe(16);
+    for (const x of [toolbar, paragraph, grid]) {
+      expect(Math.abs(x - title)).toBeLessThan(2);
+    }
+  });
+
   test("표가 뷰포트 폭의 80% 이상을 쓴다", async ({ page }) => {
     const grid = await page.getByTestId("dataset-grid").boundingBox();
     expect(grid).not.toBeNull();
 
-    // 수정 전 264/390 = 68%. 수정 후 336/390 = 86%.
+    // #1007 이전 264/390 = 68%. 지금은 338/390 = 87%
+    // (오른쪽 20px은 열 추가 바 자리 — 모바일에선 상시 보이는 버튼이다).
     expect(grid!.width).toBeGreaterThanOrEqual(390 * 0.8);
   });
 
-  test("표를 넓혀도 페이지가 가로로 넘치지 않는다", async ({ page }) => {
-    // 표 full-bleed는 본문 패딩을 음수 마진으로 상쇄하는 방식이라, 짝이 어긋나면
-    // 표가 카드 밖으로 삐져나와 페이지 전체에 가로 스크롤이 생긴다.
+  test("페이지가 가로로 넘치지 않는다", async ({ page }) => {
+    // 본문이 카드 없이 페이지 여백만 쓰므로, 어느 블록이든 그 폭을 넘기면 곧장
+    // 페이지 전체에 가로 스크롤이 생긴다(표는 자기 안에서 스크롤해야 한다).
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test("툴바가 한 줄이고 넘치면 가로 스크롤한다", async ({ page }) => {
+    // flex-wrap이면 버튼 14개가 2줄로 접혀 좁은 화면 상단을 크게 잡아먹는다.
+    const ys = await page
+      .getByRole("toolbar")
+      .getByRole("button")
+      .evaluateAll((els) =>
+        els.map((el) => Math.round(el.getBoundingClientRect().y)),
+      );
+    expect(ys.length).toBeGreaterThan(5);
+    expect(new Set(ys).size).toBe(1);
+
+    // 한 줄에 다 안 들어가므로 잘린 버튼은 스크롤로 닿아야 한다.
+    const scrollable = await page
+      .getByRole("toolbar")
+      .evaluate((el) => el.scrollWidth > el.clientWidth);
+    expect(scrollable).toBe(true);
+  });
+
+  test("행·열 추가 바가 모바일에선 상시 보인다", async ({ page }) => {
+    // hover 전용이면 터치에선 영영 안 떠서 행·열을 늘릴 방법이 사라지고, 그 자리(거터)는
+    // 기능 없는 죽은 여백으로만 남는다. Playwright의 toBeVisible은 opacity를 보지 않으므로
+    // 계산된 opacity를 직접 확인한다.
+    for (const name of ["행 추가", "열 추가"]) {
+      const opacity = await page
+        .getByRole("button", { name })
+        .evaluate((el) => getComputedStyle(el).opacity);
+      expect(opacity, `${name} 바가 모바일에서 보여야 한다`).toBe("1");
+    }
   });
 
   test("블록 이동(⣿) 핸들은 모바일에서 보이지 않는다", async ({ page }) => {
@@ -167,5 +223,30 @@ test.describe("데스크탑 노트 좌우 여백", () => {
     expect(handleBox!.x + handleBox!.width).toBeLessThanOrEqual(
       paragraph!.x + 1,
     );
+  });
+
+  test("본문 카드(테두리·배경)가 유지된다", async ({ page }) => {
+    // 카드 제거는 모바일 전용이다. 데스크탑은 폭이 남아 카드가 본문 영역을 구분해 준다.
+    const card = await page.getByLabel("노트 본문").evaluate((el) => {
+      const wrapper = el.parentElement?.parentElement;
+      if (!wrapper) return null;
+      const s = getComputedStyle(wrapper);
+      return { borderWidth: s.borderTopWidth, radius: s.borderTopLeftRadius };
+    });
+    expect(card).not.toBeNull();
+    expect(parseFloat(card!.borderWidth)).toBeGreaterThan(0);
+    expect(parseFloat(card!.radius)).toBeGreaterThan(0);
+  });
+
+  test("행·열 추가 바는 호버 전엔 보이지 않는다", async ({ page }) => {
+    // 모바일 상시 표시가 데스크탑까지 넘어오면 표 옆에 늘 회색 바가 붙어 시끄럽다.
+    for (const name of ["행 추가", "열 추가"]) {
+      const opacity = await page
+        .getByRole("button", { name })
+        .evaluate((el) => getComputedStyle(el).opacity);
+      expect(opacity, `${name} 바는 데스크탑에서 호버 전 숨어야 한다`).toBe(
+        "0",
+      );
+    }
   });
 });

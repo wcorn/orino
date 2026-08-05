@@ -108,10 +108,12 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
       editorProps: {
         attributes: {
           // pl-10은 블록 이동(⣿) 핸들이 본문 왼쪽에 뜰 자리다. 그 핸들은 hover로만
-          // 나타나 터치 기기엔 아예 안 뜨므로, 모바일에선 거터를 두지 않고(pl-3)
+          // 나타나 터치 기기엔 아예 안 뜨므로, 모바일에선 거터를 두지 않고(px-0)
           // 그만큼을 본문 폭으로 돌린다(핸들 자체도 md 미만에선 감춘다).
+          // 모바일 좌우 패딩이 0인 건 카드 껍데기를 벗겨(아래 참고) 페이지 여백 p-4 한 겹만
+          // 남기기 때문이다 — 문단·헤딩·표가 모두 같은 좌측선에서 시작한다(Notion 모바일).
           class:
-            "prose prose-sm dark:prose-invert max-w-none min-h-[40svh] focus:outline-none py-4 pr-3 pl-3 md:pr-4 md:pl-10",
+            "prose prose-sm dark:prose-invert max-w-none min-h-[40svh] focus:outline-none py-4 px-0 md:pr-4 md:pl-10",
           "aria-label": "노트 본문",
         },
         handlePaste: (_view, event) => {
@@ -279,7 +281,10 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
           onChange={(e) => handleTitleChange(e.target.value)}
           aria-label="노트 제목"
           placeholder="제목 없음"
-          className="border-none px-0 text-lg font-semibold shadow-none focus-visible:ring-0"
+          // px-0: 제목이 본문 블록과 같은 좌측선에서 시작하게 한다.
+          // 모바일에선 제목을 키운다 — 카드 껍데기가 없어진 만큼 제목이 화면의 기준선 역할을
+          // 한다(Notion 모바일). Input이 h-8 고정이라 글자를 키우려면 높이도 함께 올려야 한다.
+          className="h-9 border-none px-0 text-xl font-semibold shadow-none focus-visible:ring-0 md:h-8 md:text-lg"
         />
         {/* 상태가 나타났다 사라질 때 제목 Input 폭이 밀리지 않게 슬롯 폭을 예약한다. */}
         <div className="flex min-w-[7rem] shrink-0 justify-end">
@@ -291,7 +296,11 @@ export function NoteEditor({ materialId, note, onOpenNote }: Props) {
         </div>
       </div>
 
-      <div className="border-border bg-card overflow-hidden rounded-md border">
+      {/* 모바일엔 카드 껍데기(테두리·배경·라운드)를 두지 않는다. 페이지 여백 + 카드 테두리 +
+        본문 패딩이 3겹으로 쌓여 본문이 좁아지고, 표만 음수 마진으로 상쇄하던 탓에 좌측선이
+        블록마다 어긋났다(#1023). 껍데기를 벗기면 여백이 페이지 p-4 한 겹으로 통일된다.
+        데스크탑은 폭이 남아 카드가 본문 영역을 구분해 주므로 그대로 둔다. */}
+      <div className="md:border-border md:bg-card overflow-hidden md:rounded-md md:border">
         <EditorToolbar
           editor={editor}
           onInsertPage={handleInsertPage}
