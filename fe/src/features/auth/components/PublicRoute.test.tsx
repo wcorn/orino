@@ -14,7 +14,7 @@ function renderWithPublicRoute() {
         <Route element={<PublicRoute />}>
           <Route path="/login" element={<div>로그인 페이지</div>} />
         </Route>
-        <Route path="/home" element={<div>홈 페이지</div>} />
+        <Route path="/select" element={<div>워크스페이스 선택</div>} />
       </Routes>
     </Providers>,
     { initialEntries: ["/login"] },
@@ -34,12 +34,12 @@ describe("PublicRoute", () => {
     });
   });
 
-  it("인증 시 /home으로 리다이렉트한다", async () => {
+  it("인증 시 /select로 리다이렉트한다 — 마지막 워크스페이스를 기억하지 않는다", async () => {
     useAuthStore.setState({ accessToken: "mock-token" });
     renderWithPublicRoute();
 
     await waitFor(() => {
-      expect(screen.getByText("홈 페이지")).toBeInTheDocument();
+      expect(screen.getByText("워크스페이스 선택")).toBeInTheDocument();
     });
   });
 });

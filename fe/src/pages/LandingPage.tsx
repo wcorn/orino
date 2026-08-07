@@ -10,7 +10,7 @@ export function LandingPage() {
   const { isAuthenticated } = useAuth();
 
   if (isAuthenticated) {
-    return <Navigate to="/home" replace />;
+    return <Navigate to="/select" replace />;
   }
 
   return (

@@ -48,6 +48,15 @@ export const importLifelogFlowDetail = () =>
   import("../pages/LifelogFlowDetailPage").then((m) => ({
     default: m.LifelogFlowDetailPage,
   }));
+export const importWorkspaceSelect = () =>
+  import("../pages/WorkspaceSelectPage").then((m) => ({
+    default: m.WorkspaceSelectPage,
+  }));
+// 여행 화면은 후속 이슈에서 채운다. 지금은 라우트 자리를 잡는 임시 페이지 하나를 공유한다.
+export const importTravelPlaceholder = () =>
+  import("../pages/travel/TravelPlaceholderPage").then((m) => ({
+    default: m.TravelPlaceholderPage,
+  }));
 
 /**
  * 로그인 후 idle 시간에 페이지 청크를 미리 받아둔다.
@@ -66,6 +75,8 @@ export function prefetchRoutes() {
     void importPlannerCalendar().catch(ignore);
     void importHome().catch(ignore);
     void importNotes().catch(ignore);
+    // 로그인 직후 반드시 거치는 화면이라 가장 먼저 필요해진다.
+    void importWorkspaceSelect().catch(ignore);
   };
   if (typeof requestIdleCallback === "function") {
     requestIdleCallback(run);

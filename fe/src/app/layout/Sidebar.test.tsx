@@ -77,4 +77,122 @@ describe("Sidebar", () => {
       "text-primary",
     );
   });
+
+  describe("워크스페이스 스위처", () => {
+    it("일상 경로에서는 일상 메뉴를, 여행 경로에서는 여행 메뉴를 보여준다", async () => {
+      const { unmount } = renderSidebar("/home");
+      await waitFor(() => {
+        expect(
+          screen.getByRole("link", { name: /학습 자료/ }),
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByRole("link", { name: /여행 목록/ })).toBeNull();
+      unmount();
+
+      renderSidebar("/travel");
+      await waitFor(() => {
+        expect(
+          screen.getByRole("link", { name: /여행 목록/ }),
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByRole("link", { name: /학습 자료/ })).toBeNull();
+      expect(screen.getByRole("link", { name: /도구/ })).toBeInTheDocument();
+    });
+
+    it("현재 워크스페이스 버튼이 활성으로 표시된다", async () => {
+      const { unmount } = renderSidebar("/home");
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "일상" })).toHaveAttribute(
+          "aria-current",
+          "true",
+        );
+      });
+      expect(screen.getByRole("button", { name: "여행" })).not.toHaveAttribute(
+        "aria-current",
+      );
+      unmount();
+
+      renderSidebar("/travel/trips");
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "여행" })).toHaveAttribute(
+          "aria-current",
+          "true",
+        );
+      });
+    });
+
+    it("일상 워크스페이스에서는 여행 요약을 부르지 않는다", async () => {
+      let called = false;
+      server.use(
+        http.get(`${API_BASE}/travel/summary`, () => {
+          called = true;
+          return HttpResponse.json({
+            code: "OK",
+            data: { ongoing: null, next: null, recentCompleted: null },
+          });
+        }),
+      );
+
+      renderSidebar("/home");
+      await waitFor(() => {
+        expect(
+          screen.getByRole("link", { name: /학습 자료/ }),
+        ).toBeInTheDocument();
+      });
+
+      expect(called).toBe(false);
+    });
+
+    it("진행 중 여행이 없으면 일정 보드 링크가 여행 목록을 가리킨다", async () => {
+      renderSidebar("/travel");
+      const link = await screen.findByRole("link", { name: /일정 보드/ });
+      expect(link).toHaveAttribute("href", "/travel/trips");
+    });
+
+    it("진행 중 여행이 있으면 일정 보드 링크가 그 보드를 가리킨다", async () => {
+      server.use(
+        http.get(`${API_BASE}/travel/summary`, () =>
+          HttpResponse.json({
+            code: "OK",
+            data: {
+              ongoing: {
+                id: 3,
+                title: "도쿄",
+                boardPath: "/travel/trips/3/board",
+              },
+              next: null,
+              recentCompleted: null,
+            },
+          }),
+        ),
+      );
+
+      renderSidebar("/travel");
+
+      await waitFor(() => {
+        expect(screen.getByRole("link", { name: /일정 보드/ })).toHaveAttribute(
+          "href",
+          "/travel/trips/3/board",
+        );
+      });
+    });
+
+    it("보드 경로에서는 여행 목록이 아니라 일정 보드가 활성화된다", async () => {
+      renderSidebar("/travel/trips/3/board");
+      const board = await screen.findByRole("link", { name: /일정 보드/ });
+      expect(board.className).toContain("text-primary");
+      expect(
+        screen.getByRole("link", { name: /여행 목록/ }).className,
+      ).not.toContain("text-primary");
+    });
+
+    it("여행 목록 경로에서는 일정 보드가 아니라 여행 목록이 활성화된다", async () => {
+      renderSidebar("/travel/trips");
+      const list = await screen.findByRole("link", { name: /여행 목록/ });
+      expect(list.className).toContain("text-primary");
+      expect(
+        screen.getByRole("link", { name: /일정 보드/ }).className,
+      ).not.toContain("text-primary");
+    });
+  });
 });

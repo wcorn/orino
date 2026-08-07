@@ -16,7 +16,7 @@ function renderLandingPage() {
     <Providers>
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/home" element={<div>홈 페이지</div>} />
+        <Route path="/select" element={<div>워크스페이스 선택</div>} />
         <Route path="/login" element={<div>로그인 페이지</div>} />
       </Routes>
     </Providers>,
@@ -38,17 +38,17 @@ describe("LandingPage", () => {
     });
   });
 
-  it("인증 상태면 /home으로 리다이렉트한다", async () => {
+  it("인증 상태면 /select로 리다이렉트한다", async () => {
     useAuthStore.setState({ accessToken: "valid-token" });
 
     renderLandingPage();
 
     await waitFor(() => {
-      expect(screen.getByText("홈 페이지")).toBeInTheDocument();
+      expect(screen.getByText("워크스페이스 선택")).toBeInTheDocument();
     });
   });
 
-  it("reissue 성공으로 인증되면 /home으로 리다이렉트한다", async () => {
+  it("reissue 성공으로 인증되면 /select로 리다이렉트한다", async () => {
     server.use(
       http.post(`${API_BASE}/auth/reissue`, () => {
         return HttpResponse.json({

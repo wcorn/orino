@@ -23,7 +23,9 @@ import {
   importReviewHub,
   importReviewSession,
   importRoutines,
+  importTravelPlaceholder,
   importWeeklyPlan,
+  importWorkspaceSelect,
 } from "./routeImports";
 
 // 로그인 후에만 쓰는 페이지들은 lazy 로드해 초기 번들에서 분리한다.
@@ -41,6 +43,8 @@ const NotesPage = lazy(importNotes);
 const LifelogPage = lazy(importLifelog);
 const LifelogFlowsPage = lazy(importLifelogFlows);
 const LifelogFlowDetailPage = lazy(importLifelogFlowDetail);
+const WorkspaceSelectPage = lazy(importWorkspaceSelect);
+const TravelPlaceholderPage = lazy(importTravelPlaceholder);
 
 function RouteFallback() {
   return (
@@ -48,6 +52,15 @@ function RouteFallback() {
       <BrandMark size={40} animated />
       <LoadingText />
     </div>
+  );
+}
+
+/** 여행 라우트의 임시 화면. 후속 이슈가 각 경로의 element를 실제 페이지로 바꾼다. */
+function TravelRoute({ title }: { title: string }) {
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <TravelPlaceholderPage title={title} />
+    </Suspense>
   );
 }
 
@@ -59,6 +72,15 @@ export function AppRouter() {
         <Route path="/login" element={<LoginPage />} />
       </Route>
       <Route element={<PrivateRoute />}>
+        {/* 워크스페이스 선택 — 자체 헤더를 쓰고 사이드바가 없어 AppLayout 밖에 둔다. */}
+        <Route
+          path="/select"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <WorkspaceSelectPage />
+            </Suspense>
+          }
+        />
         <Route element={<AppLayout />}>
           <Route
             path="/home"
@@ -173,6 +195,24 @@ export function AppRouter() {
               </Suspense>
             }
           />
+          {/* 여행 워크스페이스. 화면은 후속 이슈에서 채우고 여기서는 라우트 자리를 잡는다.
+              푸시 알림 클릭이 /travel/* 딥링크로 들어오므로 선택 화면으로 되돌리지 않는다. */}
+          <Route path="/travel" element={<TravelRoute title="여행" />} />
+          <Route
+            path="/travel/trips"
+            element={<TravelRoute title="여행 목록" />}
+          />
+          <Route
+            path="/travel/trips/:tripId/board"
+            element={<TravelRoute title="일정 보드" />}
+          />
+          <Route path="/travel/tools" element={<TravelRoute title="도구" />} />
+          <Route
+            path="/travel/settings"
+            element={<TravelRoute title="여행 설정" />}
+          />
+          {/* 아직 없는 여행 하위 경로는 랜딩이 아니라 여행 홈으로 보낸다. */}
+          <Route path="/travel/*" element={<Navigate to="/travel" replace />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

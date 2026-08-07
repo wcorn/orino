@@ -11,7 +11,7 @@ function renderLoginPage() {
   return renderWithRouter(
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/home" element={<div>홈 페이지</div>} />
+      <Route path="/select" element={<div>워크스페이스 선택</div>} />
     </Routes>,
     { initialEntries: ["/login"] },
   );
@@ -30,7 +30,7 @@ describe("LoginPage", () => {
     expect(screen.getByRole("button", { name: "로그인" })).toBeInTheDocument();
   });
 
-  it("로그인 성공 시 /home으로 이동한다", async () => {
+  it("로그인 성공 시 /select로 이동한다", async () => {
     const user = userEvent.setup();
     renderLoginPage();
 
@@ -39,7 +39,7 @@ describe("LoginPage", () => {
     await user.click(screen.getByRole("button", { name: "로그인" }));
 
     await waitFor(() => {
-      expect(screen.getByText("홈 페이지")).toBeInTheDocument();
+      expect(screen.getByText("워크스페이스 선택")).toBeInTheDocument();
     });
   });
 
@@ -66,7 +66,7 @@ describe("LoginPage", () => {
     await user.type(screen.getByLabelText("비밀번호"), "password{Enter}");
 
     await waitFor(() => {
-      expect(screen.getByText("홈 페이지")).toBeInTheDocument();
+      expect(screen.getByText("워크스페이스 선택")).toBeInTheDocument();
     });
   });
 });
