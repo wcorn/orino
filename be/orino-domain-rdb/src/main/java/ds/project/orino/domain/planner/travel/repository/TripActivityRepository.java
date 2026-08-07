@@ -77,6 +77,26 @@ public interface TripActivityRepository extends JpaRepository<TripActivity, Long
                             @Param("startDate") LocalDate startDate,
                             @Param("endDate") LocalDate endDate);
 
+    /** 미배정 보관함 일정 수(보관함 칩의 "{n}개"). */
+    @Query("""
+            SELECT COUNT(a) FROM TripActivity a
+            WHERE a.tripId = :tripId AND a.activityDate IS NULL
+            """)
+    long countUnscheduled(@Param("tripId") Long tripId);
+
+    /** 보드 날짜 탭의 건수 — 날짜마다 COUNT를 날리지 않고 한 번에 센다. */
+    @Query("""
+            SELECT new ds.project.orino.domain.planner.travel.repository.ActivityDateCount(
+                       a.activityDate, COUNT(a))
+            FROM TripActivity a
+            WHERE a.tripId = :tripId AND a.activityDate IS NOT NULL
+            GROUP BY a.activityDate
+            """)
+    List<ActivityDateCount> countByDate(@Param("tripId") Long tripId);
+
+    /** 순서 재부여 대상 — 여러 날짜를 한 번에 읽는다(드래그 한 번이 두 날짜를 건드린다). */
+    List<TripActivity> findAllByTripIdAndActivityDateIn(Long tripId, List<LocalDate> dates);
+
     /** 여행별 일정 수를 한 번에 센다 — 목록 화면의 N+1을 막는다. */
     @Query("""
             SELECT new ds.project.orino.domain.planner.travel.repository.TripActivityCount(
