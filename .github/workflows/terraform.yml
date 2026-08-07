@@ -36,6 +36,15 @@ jobs:
           role-to-assume: ${{ github.event_name == 'pull_request' && 'arn:aws:iam::012900311331:role/github-actions-terraform-plan' || 'arn:aws:iam::012900311331:role/github-actions-terraform' }}
           aws-region: ap-northeast-2
 
+      # GCP도 OIDC(Workload Identity Federation)로 받는다. 서비스 계정 키 파일 없음.
+      # AWS와 같이 PR은 읽기 전용 SA, main push는 쓰기 SA를 가장한다.
+      - name: Configure GCP credentials (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: orino-499511
+          workload_identity_provider: projects/202935442863/locations/global/workloadIdentityPools/github-actions/providers/github
+          service_account: ${{ github.event_name == 'pull_request' && 'github-actions-terraform-plan@orino-499511.iam.gserviceaccount.com' || 'github-actions-terraform@orino-499511.iam.gserviceaccount.com' }}
+
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.14.8"
@@ -50,6 +59,8 @@ jobs:
       - name: Terraform plan
         if: github.event_name == 'pull_request'
         run: |
+          # tee 를 거치면 파이프라인 종료 코드가 tee 의 것(0)이 돼 plan 실패가 초록으로 보고된다.
+          set -o pipefail
           echo '### Terraform Plan' >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           terraform plan -input=false -no-color 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
