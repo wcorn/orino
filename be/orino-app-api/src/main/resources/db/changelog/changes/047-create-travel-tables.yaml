@@ -1,0 +1,341 @@
+databaseChangeLog:
+  # 여행(Travel) 모듈 스키마 (#1030, Epic #1029). 1단계 토대.
+  #
+  # 절대 틀리면 안 되는 것 두 가지.
+  #   1) 일정 시각은 여행 타임존의 "벽시계 값"이다 — activity_date=DATE, start_time=TIME.
+  #      DATETIME/Instant로 저장하면 여행 타임존을 바꾸는 순간 전 일정이 통째로 밀린다.
+  #   2) 여행 상태(예정/진행 중/완료)·D-day·일차는 컬럼을 두지 않고 매 조회 시 파생한다.
+  #      저장하면 날짜가 넘어갈 때 갱신할 주체가 없어 반드시 어긋난다.
+  #
+  # travel_place는 1단계에 쓰지 않지만 지금 만든다 — trip.destination_place_id·
+  # trip_activity.place_id FK를 2단계에 붙이면 ALTER가 필요하다. 테이블은 처음부터 두고
+  # 2단계에 "쓰기 시작"한다.
+  #
+  # 컨벤션 — 불리언은 BIT(1)(BOOLEAN=tinyint는 Hibernate validate 실패), 절대시각은 DATETIME(6),
+  # 단일 사용자지만 최상위 엔티티(trip·travel_place)에 member_id 스코프를 둔다.
+
+  - changeSet:
+      id: 047-create-travel-place
+      author: wcorn
+      comment: 장소 캐시. 여행에 종속되지 않고 멤버 단위로 재사용한다(⭐ 좋았던 곳 판정).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: travel_place
+      changes:
+        - createTable:
+            tableName: travel_place
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # 구글 장소 식별자. 직접 입력한 장소면 NULL(중복 허용).
+              - column:
+                  name: google_place_id
+                  type: VARCHAR(255)
+              - column:
+                  name: name
+                  type: VARCHAR(200)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: address
+                  type: VARCHAR(500)
+              - column:
+                  name: lat
+                  type: DECIMAL(10, 7)
+              - column:
+                  name: lng
+                  type: DECIMAL(10, 7)
+              - column:
+                  name: category
+                  type: VARCHAR(100)
+              - column:
+                  name: phone
+                  type: VARCHAR(50)
+              # 구글 평점(0.0~5.0).
+              - column:
+                  name: rating
+                  type: DECIMAL(2, 1)
+              # 영업시간 캐시. details_refreshed_at + 30일이 지나면 재조회한다.
+              - column:
+                  name: opening_hours
+                  type: JSON
+              # MinIO에 캐시한 대표 사진 key. 공개 URL은 base(img.orino.dev)+key로 조립.
+              - column:
+                  name: photo_object_key
+                  type: VARCHAR(512)
+              # Google 사진 저작자 표기(사용 조건상 필수).
+              - column:
+                  name: photo_attribution
+                  type: VARCHAR(500)
+              - column:
+                  name: details_refreshed_at
+                  type: DATETIME(6)
+              # 직접 입력 여부. manual은 MySQL 8.4 예약어라 컬럼명으로 쓸 수 없다.
+              - column:
+                  name: manual_entry
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        # 같은 구글 장소를 두 번 저장하지 않는다. NULL은 중복 허용 = 직접 입력 다건 OK.
+        - createIndex:
+            tableName: travel_place
+            indexName: uk_place_member_google
+            unique: true
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: google_place_id
+        # 최근/이름 조회.
+        - createIndex:
+            tableName: travel_place
+            indexName: idx_place_member_name
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: name
+
+  - changeSet:
+      id: 047-create-trip
+      author: wcorn
+      comment: 여행 1건. 상태·D-day는 컬럼 없이 timezone 기준으로 파생한다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: trip
+      changes:
+        - createTable:
+            tableName: trip
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # 미입력 시 목적지명으로 채워 저장한다(빈 제목을 만들지 않는다).
+              - column:
+                  name: title
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              # 목적지 표시명. 목록 카드 메타에 쓰려고 denormalize한다.
+              - column:
+                  name: destination_name
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              # 검색으로 고른 목적지 도시. 1단계는 항상 NULL(수동 입력), 2단계부터 채운다.
+              - column:
+                  name: destination_place_id
+                  type: BIGINT
+                  constraints:
+                    foreignKeyName: fk_trip_destination_place
+                    references: travel_place(id)
+              - column:
+                  name: start_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              # >= start_date 는 애플리케이션 검증(DB CHECK를 두지 않는다).
+              - column:
+                  name: end_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              # IANA ID(Asia/Tokyo). 상태·D-day·알림 시각 환산의 유일한 기준.
+              - column:
+                  name: timezone
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              # ISO 4217(JPY).
+              - column:
+                  name: currency
+                  type: CHAR(3)
+                  constraints:
+                    nullable: false
+              # 목적지 좌표 — 날씨 조회 기준점.
+              - column:
+                  name: lat
+                  type: DECIMAL(10, 7)
+              - column:
+                  name: lng
+                  type: DECIMAL(10, 7)
+              - column:
+                  name: default_notify_minutes
+                  type: INT
+                  defaultValueNumeric: 15
+                  constraints:
+                    nullable: false
+              - column:
+                  name: morning_summary_enabled
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        # 예정·진행 중 정렬(시작일 오름차순).
+        - createIndex:
+            tableName: trip
+            indexName: idx_trip_member_start
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: start_date
+        # 완료 정렬(종료일 내림차순).
+        - createIndex:
+            tableName: trip
+            indexName: idx_trip_member_end
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: end_date
+                  descending: true
+
+  - changeSet:
+      id: 047-create-trip-activity
+      author: wcorn
+      comment: 일정 1건. activity_date IS NULL 이 미배정 보관함이다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: trip_activity
+      changes:
+        - createTable:
+            tableName: trip_activity
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: trip_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_trip_activity_trip
+                    references: trip(id)
+                    deleteCascade: true
+              - column:
+                  name: title
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              # NULL = 미배정 보관함. 값이 있으면 여행 기간 내 날짜만 허용(애플리케이션 검증).
+              - column:
+                  name: activity_date
+                  type: DATE
+              # 같은 날짜(또는 보관함) 내 정렬. 시각이 아니라 이 값이 유일한 정렬 기준이다 —
+              # 시각 없는 일정이 허용되고, 드래그로 정한 순서가 시각보다 우선한다.
+              - column:
+                  name: sort_order
+                  type: INT
+                  constraints:
+                    nullable: false
+              # 여행 타임존의 벽시계 시각. UTC로 변환하지 않는다.
+              - column:
+                  name: start_time
+                  type: TIME
+              # FK는 아래에서 별도로 건다 — ON DELETE SET NULL은 인라인 제약으로 표현할 수 없다.
+              - column:
+                  name: place_id
+                  type: BIGINT
+              - column:
+                  name: memo
+                  type: VARCHAR(1000)
+              # 예약 페이지 링크 1개.
+              - column:
+                  name: url
+                  type: VARCHAR(500)
+              - column:
+                  name: notify_enabled
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              # NULL이면 trip.default_notify_minutes를 쓴다.
+              - column:
+                  name: notify_minutes
+                  type: INT
+              - column:
+                  name: departure_notify_enabled
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        # 장소가 지워져도 일정은 남는다(참조만 끊는다).
+        - addForeignKeyConstraint:
+            baseTableName: trip_activity
+            baseColumnNames: place_id
+            constraintName: fk_trip_activity_place
+            referencedTableName: travel_place
+            referencedColumnNames: id
+            onDelete: SET NULL
+        # 보드 조회의 유일한 접근 경로.
+        - createIndex:
+            tableName: trip_activity
+            indexName: idx_activity_trip_date_order
+            columns:
+              - column:
+                  name: trip_id
+              - column:
+                  name: activity_date
+              - column:
+                  name: sort_order
