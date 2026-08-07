@@ -23,7 +23,9 @@ import {
   importReviewHub,
   importReviewSession,
   importRoutines,
+  importTravelHome,
   importTravelPlaceholder,
+  importTripList,
   importWeeklyPlan,
   importWorkspaceSelect,
 } from "./routeImports";
@@ -45,6 +47,8 @@ const LifelogFlowsPage = lazy(importLifelogFlows);
 const LifelogFlowDetailPage = lazy(importLifelogFlowDetail);
 const WorkspaceSelectPage = lazy(importWorkspaceSelect);
 const TravelPlaceholderPage = lazy(importTravelPlaceholder);
+const TravelHomePage = lazy(importTravelHome);
+const TripListPage = lazy(importTripList);
 
 function RouteFallback() {
   return (
@@ -197,10 +201,21 @@ export function AppRouter() {
           />
           {/* 여행 워크스페이스. 화면은 후속 이슈에서 채우고 여기서는 라우트 자리를 잡는다.
               푸시 알림 클릭이 /travel/* 딥링크로 들어오므로 선택 화면으로 되돌리지 않는다. */}
-          <Route path="/travel" element={<TravelRoute title="여행" />} />
+          <Route
+            path="/travel"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <TravelHomePage />
+              </Suspense>
+            }
+          />
           <Route
             path="/travel/trips"
-            element={<TravelRoute title="여행 목록" />}
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <TripListPage />
+              </Suspense>
+            }
           />
           <Route
             path="/travel/trips/:tripId/board"
