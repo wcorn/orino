@@ -81,6 +81,13 @@ export async function fetchBoard(
   return data.data;
 }
 
+export async function fetchActivity(activityId: number): Promise<Activity> {
+  const { data } = await client.get<ApiEnvelope<Activity>>(
+    `/travel/activities/${activityId}`,
+  );
+  return data.data;
+}
+
 export interface ActivityWriteRequest {
   title: string;
   /** null이면 보관함으로 넣는다. */

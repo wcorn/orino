@@ -36,6 +36,7 @@ export function useCreateActivity(tripId: number) {
 }
 
 export function useUpdateActivity(tripId: number) {
+  const queryClient = useQueryClient();
   const invalidate = useInvalidateBoard(tripId);
   return useMutation({
     mutationFn: ({
@@ -45,7 +46,12 @@ export function useUpdateActivity(tripId: number) {
       activityId: number;
       body: ActivityWriteRequest;
     }) => updateActivity(activityId, body),
-    onSuccess: invalidate,
+    onSuccess: (_data, { activityId }) => {
+      invalidate();
+      void queryClient.invalidateQueries({
+        queryKey: travelKeys.activity(activityId),
+      });
+    },
   });
 }
 

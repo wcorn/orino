@@ -11,6 +11,7 @@ import { LandingPage } from "../pages/LandingPage";
 import { LoginPage } from "../pages/LoginPage";
 import { AppLayout } from "./layout/AppLayout";
 import {
+  importActivityDetail,
   importHome,
   importIntegrations,
   importLifelog,
@@ -53,6 +54,7 @@ const TravelHomePage = lazy(importTravelHome);
 const TripListPage = lazy(importTripList);
 const TripFormPage = lazy(importTripForm);
 const TripBoardPage = lazy(importTripBoard);
+const ActivityDetailPage = lazy(importActivityDetail);
 
 function RouteFallback() {
   return (
@@ -242,6 +244,14 @@ export function AppRouter() {
             element={
               <Suspense fallback={<RouteFallback />}>
                 <TripBoardPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/travel/activities/:activityId"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <ActivityDetailPage />
               </Suspense>
             }
           />

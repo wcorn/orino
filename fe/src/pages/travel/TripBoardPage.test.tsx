@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Providers } from "@/app/providers";
 import { AppRouter } from "@/app/router";
 import { useAuthStore } from "@/features/auth/store/authStore";
+import { usePendingActions } from "@/features/travel/board/pendingActions";
 import { useToastStore } from "@/shared/lib/toast";
 import { server } from "@/test/mocks/server";
 import { renderWithRouter } from "@/test/render";
@@ -113,6 +114,8 @@ describe("TripBoardPage", () => {
     // 스낵바는 모듈 스토어라 테스트 사이에 남는다. 이전 실행취소 스낵바가 섞이면
     // 다음 테스트가 엉뚱한 버튼을 누른다.
     useToastStore.setState({ toasts: [] });
+    // 보류함도 모듈 스토어라 테스트 사이에 남는다.
+    usePendingActions.setState({ pendingIds: [], commits: new Map() });
   });
 
   describe("날짜 탭", () => {
@@ -260,6 +263,19 @@ describe("TripBoardPage", () => {
       expect(
         await screen.findByRole("link", { name: /센소지/ }),
       ).toHaveAttribute("href", "/travel/activities/1");
+    });
+
+    it("드래그 모드가 아닐 때 행이 비활성 버튼으로 읽히지 않는다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+
+      renderBoard();
+      await screen.findByText("센소지");
+
+      // dnd의 disabled sortable은 role="button" aria-disabled를 남긴다.
+      // 그러면 행 전체가 비활성으로 읽혀 안의 링크를 누를 수 없다.
+      const row = screen.getByRole("link", { name: /센소지/ }).closest("li");
+      expect(row).not.toHaveAttribute("aria-disabled");
+      expect(row).not.toHaveAttribute("role", "button");
     });
 
     it("보관함에서는 '보관함으로' 액션을 감춘다", async () => {
@@ -478,7 +494,7 @@ describe("TripBoardPage", () => {
       vi.useRealTimers();
     });
 
-    it("보류 중에 화면을 떠나면 요청을 즉시 보낸다", async () => {
+    it("보드를 떠나도 보류가 유지된다 — 되돌릴 기회가 사라지면 안 된다", async () => {
       mockBoard({ byDate: { "2026-10-24": [activity()] } });
       const { deletes } = captureWrites();
 
@@ -486,10 +502,26 @@ describe("TripBoardPage", () => {
       await screen.findByText("센소지");
       await userEvent.click(screen.getByLabelText("센소지 삭제"));
       await screen.findByRole("button", { name: /실행취소/ });
+
+      // 일정 상세 등 다른 화면으로 옮겨 가는 상황. 타이머는 스낵바가 들고 있다.
+      unmount();
+
+      expect(deletes).toHaveLength(0);
+      expect(usePendingActions.getState().pendingIds).toEqual([1]);
+    });
+
+    it("탭을 닫으면 보류 중인 요청을 즉시 보낸다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+      const { deletes } = captureWrites();
+
+      renderBoard();
+      await screen.findByText("센소지");
+      await userEvent.click(screen.getByLabelText("센소지 삭제"));
+      await screen.findByRole("button", { name: /실행취소/ });
       expect(deletes).toHaveLength(0);
 
-      // 5초를 기다리다 화면이 사라지면 영영 반영되지 않는다.
-      unmount();
+      // 그냥 사라지면 사용자는 지웠다고 믿는데 서버에는 남는다.
+      window.dispatchEvent(new Event("pagehide"));
 
       await waitFor(() => expect(deletes).toEqual(["1"]));
     });

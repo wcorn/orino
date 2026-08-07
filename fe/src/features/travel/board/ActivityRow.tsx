@@ -66,6 +66,11 @@ export function ActivityRow({
 
   const longPress = useLongPress(onEnterDragMode, !dragMode);
 
+  // 드래그 모드가 아니면 dnd 속성을 아예 붙이지 않는다. `disabled`인 sortable은
+  // `role="button" aria-disabled="true"`를 남기는데, 그러면 행 전체가 "비활성 버튼"으로
+  // 읽혀 안의 링크를 누를 수 없다(스크린리더에도 그렇게 들린다).
+  const dragProps = dragMode ? { ...attributes, ...listeners } : {};
+
   /**
    * 버튼 위에서 시작한 포인터는 드래그로 넘기지 않는다.
    *
@@ -90,8 +95,7 @@ export function ActivityRow({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn("relative touch-pan-y", isDragging && "z-10")}
-      {...attributes}
-      {...listeners}
+      {...dragProps}
     >
       <div
         style={{ transform: `translateX(${swipe.offset}px)` }}

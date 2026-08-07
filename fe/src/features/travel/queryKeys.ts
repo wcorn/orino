@@ -9,4 +9,5 @@ export const travelKeys = {
   board: (tripId: number, day: string | undefined) =>
     ["travel", "board", tripId, day ?? "default"] as const,
   boards: (tripId: number) => ["travel", "board", tripId] as const,
+  activity: (activityId: number) => ["travel", "activity", activityId] as const,
 };
