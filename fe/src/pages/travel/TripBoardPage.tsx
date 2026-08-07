@@ -14,6 +14,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Map,
@@ -45,6 +46,7 @@ import {
   useUpdateActivity,
 } from "@/features/travel/hooks/useActivityMutations";
 import { useBoard } from "@/features/travel/hooks/useBoard";
+import { travelKeys } from "@/features/travel/queryKeys";
 import { toast, toastUndo } from "@/shared/lib/toast";
 
 /** `?day=` 값 — 0부터 시작하는 일차 인덱스, 또는 보관함. */
@@ -74,6 +76,7 @@ const collisionDetection: CollisionDetection = (args) => {
 export function TripBoardPage() {
   const { tripId: tripIdParam } = useParams();
   const tripId = Number(tripIdParam);
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -170,7 +173,15 @@ export function TripBoardPage() {
     run: () => Promise<unknown>,
   ) => {
     deferred.defer(activity.id, () => {
-      void run();
+      // 보류가 풀린 뒤에야 실제 요청이 나가므로, 여기서 실패하면 알려 줄 사람이 없다.
+      // 화면에서는 이미 지워진 상태라 조용히 두면 서버와 어긋난 채로 남는다.
+      void run().catch(() => {
+        toast("변경을 저장하지 못했어요.", "error");
+        // 낙관적으로 감췄던 행을 서버 상태로 되돌린다.
+        void queryClient.invalidateQueries({
+          queryKey: travelKeys.boards(tripId),
+        });
+      });
     });
     toastUndo(message, {
       onUndo: () => deferred.cancel(activity.id),

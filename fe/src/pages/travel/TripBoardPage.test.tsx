@@ -452,6 +452,32 @@ describe("TripBoardPage", () => {
       vi.useRealTimers();
     });
 
+    it("보류가 풀린 뒤 요청이 실패하면 알려 주고 목록을 되돌린다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+      server.use(
+        http.delete(`${API_BASE}/travel/activities/:id`, () =>
+          HttpResponse.error(),
+        ),
+      );
+
+      // 스낵바 타이머가 등록되기 전에 가짜 시계를 켜야 앞당길 수 있다.
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      renderBoard();
+      await screen.findByText("센소지");
+      await userEvent.click(screen.getByLabelText("센소지 삭제"));
+      await screen.findByRole("button", { name: /실행취소/ });
+
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+
+      // 화면에서는 이미 지운 뒤라, 실패를 알리지 않으면 서버와 어긋난 채로 남는다.
+      expect(
+        await screen.findByText("변경을 저장하지 못했어요."),
+      ).toBeInTheDocument();
+      vi.useRealTimers();
+    });
+
     it("보류 중에 화면을 떠나면 요청을 즉시 보낸다", async () => {
       mockBoard({ byDate: { "2026-10-24": [activity()] } });
       const { deletes } = captureWrites();
