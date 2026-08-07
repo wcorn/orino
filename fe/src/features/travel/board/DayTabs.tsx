@@ -1,3 +1,4 @@
+import { useDroppable } from "@dnd-kit/core";
 import { Archive } from "lucide-react";
 
 import type { BoardDay } from "@/features/travel/api/activities";
@@ -11,6 +12,8 @@ interface DayTabsProps {
   selectedDate: string | null;
   onSelectDate: (date: string) => void;
   onSelectArchive: () => void;
+  /** 드래그 중이면 칩이 드롭 대상이 된다 — 여기로 떨어뜨리면 그 날짜로 옮긴다. */
+  droppable?: boolean;
 }
 
 /**
@@ -25,6 +28,7 @@ export function DayTabs({
   selectedDate,
   onSelectDate,
   onSelectArchive,
+  droppable = false,
 }: DayTabsProps) {
   return (
     <div
@@ -35,6 +39,7 @@ export function DayTabs({
       {days.map((day) => (
         <Chip
           key={day.date}
+          dropId={droppable ? `day:${day.date}` : undefined}
           active={selectedDate === day.date}
           label={`${day.dayIndex}일차`}
           sub={`${formatShortDate(day.date)} ${day.weekday}`}
@@ -42,6 +47,7 @@ export function DayTabs({
         />
       ))}
       <Chip
+        dropId={droppable ? "day:archive" : undefined}
         active={selectedDate === null}
         label="보관함"
         icon={<Archive className="size-3.5" />}
@@ -58,11 +64,19 @@ interface ChipProps {
   sub: string;
   icon?: React.ReactNode;
   onClick: () => void;
+  /** 있으면 드롭 대상으로 등록한다. */
+  dropId?: string;
 }
 
-function Chip({ active, label, sub, icon, onClick }: ChipProps) {
+function Chip({ active, label, sub, icon, onClick, dropId }: ChipProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: dropId ?? "",
+    disabled: !dropId,
+  });
+
   return (
     <button
+      ref={dropId ? setNodeRef : undefined}
       type="button"
       role="tab"
       aria-selected={active}
@@ -72,6 +86,8 @@ function Chip({ active, label, sub, icon, onClick }: ChipProps) {
         active
           ? "bg-accent text-accent-foreground border-primary"
           : "bg-card border-border hover:bg-muted",
+        // 이 칩 위에 떠 있다 — 놓으면 이 날짜로 간다는 걸 미리 보여준다.
+        isOver && "border-primary ring-primary bg-accent ring-2",
       )}
     >
       <span className="flex items-center gap-1 text-[13px] font-semibold">

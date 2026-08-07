@@ -1,4 +1,20 @@
 import {
+  closestCenter,
+  type CollisionDetection,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import {
   ArrowLeft,
   Map,
   MoreVertical,
@@ -15,20 +31,36 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingText } from "@/components/ui/loading-text";
 import { Menu, MenuItem } from "@/components/ui/menu";
 import type { Activity } from "@/features/travel/api/activities";
+// 삭제는 뮤테이션 훅이 아니라 raw 요청을 쓴다 — 화면을 떠난 뒤에 보낼 수도 있어서다.
+import { deleteActivity as deleteActivityRequest } from "@/features/travel/api/activities";
 import { deleteTrip } from "@/features/travel/api/travel";
 import { ActivityRow } from "@/features/travel/board/ActivityRow";
 import { AddSheet } from "@/features/travel/board/AddSheet";
 import { DayTabs } from "@/features/travel/board/DayTabs";
+import { DragModeBar } from "@/features/travel/board/DragModeBar";
+import { useDeferredCommits } from "@/features/travel/board/useDeferredCommits";
 import {
   useCreateActivity,
-  useDeleteActivity,
+  useReorderActivities,
   useUpdateActivity,
 } from "@/features/travel/hooks/useActivityMutations";
 import { useBoard } from "@/features/travel/hooks/useBoard";
-import { toast } from "@/shared/lib/toast";
+import { toast, toastUndo } from "@/shared/lib/toast";
 
 /** `?day=` 값 — 0부터 시작하는 일차 인덱스, 또는 보관함. */
 const ARCHIVE = "archive";
+
+/**
+ * 포인터가 들어간 대상을 먼저 본다.
+ *
+ * <p>기본 판정(사각형 겹침)은 끌고 있는 행의 큰 사각형을 기준으로 하는데, 날짜 칩은 작고
+ * 목록 위쪽에 있어 손가락이 칩 위에 있어도 바로 아래 행이 더 많이 겹쳐 이긴다.
+ * 칩에 떨어뜨리는 건 "손가락이 어디 있느냐"의 문제라 포인터를 우선한다.
+ */
+const collisionDetection: CollisionDetection = (args) => {
+  const byPointer = pointerWithin(args);
+  return byPointer.length > 0 ? byPointer : closestCenter(args);
+};
 
 /**
  * S-04 일정 보드. 주 화면이다.
@@ -36,7 +68,8 @@ const ARCHIVE = "archive";
  * <p><b>선택한 날짜는 URL이 소유한다</b>(`?day=0..N|archive`). 컴포넌트 상태로 들고 있으면
  * 새로고침·뒤로가기에서 1일차로 튕겨, 현지에서 앱을 다시 열 때마다 오늘을 다시 찾아야 한다.
  *
- * <p>드래그 정렬·스와이프·실행취소는 #1038에서 붙는다.
+ * <p>드래그는 행을 400ms 길게 눌러야 시작한다 — 목록을 세로로 스크롤하는 손짓과
+ * 행을 집어 올리는 손짓을 구분하는 유일한 방법이다.
  */
 export function TripBoardPage() {
   const { tripId: tripIdParam } = useParams();
@@ -66,12 +99,22 @@ export function TripBoardPage() {
   const board = needsOwnQuery ? dayBoard : base;
 
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<Activity | null>(null);
   const [deletingTrip, setDeletingTrip] = useState(false);
+  const [dragMode, setDragMode] = useState(false);
 
   const createActivity = useCreateActivity(tripId);
   const updateActivity = useUpdateActivity(tripId);
-  const removeActivity = useDeleteActivity(tripId);
+  const reorder = useReorderActivities(tripId);
+  const deferred = useDeferredCommits();
+
+  // 드래그 모드 안에서만 정렬이 켜지므로(행의 `disabled`) 여기서는 지연을 두지 않는다.
+  // 모드에 들어와 있다는 건 이미 "옮기려는 중"이라, 곧바로 잡히는 편이 자연스럽다.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   if (isPending || !board) {
     return (
@@ -83,6 +126,10 @@ export function TripBoardPage() {
 
   const selectedDate = isArchive ? null : board.selectedDate;
   const selectedIndex = board.days.findIndex((d) => d.date === selectedDate);
+  // 실행취소를 기다리는 동안에는 이미 사라진 것처럼 보여야 한다(낙관적 반영).
+  const activities = board.activities.filter(
+    (a) => !deferred.pendingIds.includes(a.id),
+  );
 
   const selectDay = (date: string) => {
     const index = board.days.findIndex((d) => d.date === date);
@@ -113,24 +160,101 @@ export function TripBoardPage() {
     setSheetOpen(false);
   };
 
-  /** 일정을 보관함으로 내린다 — 지우는 게 아니라 날짜만 비운다. */
-  const archiveActivity = async (activity: Activity) => {
+  /**
+   * 보관함으로 내리기·삭제는 <b>요청을 5초 미룬다</b>. 화면에서는 즉시 사라지고,
+   * 실행취소를 누르면 요청 자체가 나가지 않는다(서버에 복원 API를 두지 않는 이유).
+   */
+  const deferAction = (
+    activity: Activity,
+    message: string,
+    run: () => Promise<unknown>,
+  ) => {
+    deferred.defer(activity.id, () => {
+      void run();
+    });
+    toastUndo(message, {
+      onUndo: () => deferred.cancel(activity.id),
+      onCommit: () => deferred.commit(activity.id),
+    });
+  };
+
+  const archiveActivity = (activity: Activity) =>
+    deferAction(
+      activity,
+      `"${activity.title}"을(를) 보관함으로 옮겼어요.`,
+      () =>
+        updateActivity.mutateAsync({
+          activityId: activity.id,
+          body: {
+            title: activity.title,
+            activityDate: null,
+            startTime: activity.startTime,
+          },
+        }),
+    );
+
+  const removeActivityDeferred = (activity: Activity) =>
+    deferAction(activity, `"${activity.title}"을(를) 삭제했어요.`, () =>
+      deleteActivityRequest(activity.id),
+    );
+
+  /** 같은 날짜 안에서 두 행의 자리를 바꾼다(드래그·화살표 공통). */
+  const moveWithin = (fromIndex: number, toIndex: number) => {
+    if (toIndex < 0 || toIndex >= activities.length) return;
+    const next = [...activities];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    reorder.mutate({
+      date: selectedDate,
+      activityIds: next.map((a) => a.id),
+    });
+  };
+
+  /** 날짜 탭에 떨어뜨렸다 — 그 날짜의 맨 뒤로 보낸다. */
+  const moveToDay = async (activity: Activity, target: string | null) => {
+    if (target === selectedDate) return;
     await updateActivity.mutateAsync({
       activityId: activity.id,
       body: {
         title: activity.title,
-        activityDate: null,
+        activityDate: target,
         startTime: activity.startTime,
       },
     });
-    toast("보관함으로 옮겼어요.", "success");
+    toast(
+      target === null ? "보관함으로 옮겼어요." : "다른 날짜로 옮겼어요.",
+      "success",
+    );
   };
 
-  const confirmDeleteActivity = async () => {
-    if (!pendingDelete) return;
-    await removeActivity.mutateAsync(pendingDelete.id);
-    setPendingDelete(null);
-    toast("일정을 삭제했어요.", "success");
+  /** 행을 길게 눌렀다 — 드래그 모드로 들어간다. */
+  const enterDragMode = () => {
+    if (dragMode) return;
+    setDragMode(true);
+    // 모드에 들어왔다는 걸 손끝으로 알린다. 지원하지 않는 기기는 조용히 무시된다.
+    navigator.vibrate?.(10);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const overId = String(over.id);
+    if (overId.startsWith("day:")) {
+      const target = overId.slice(4);
+      const activity = activities.find((a) => a.id === active.id);
+      if (activity) {
+        void moveToDay(activity, target === ARCHIVE ? null : target);
+      }
+      return;
+    }
+
+    if (active.id === over.id) return;
+    const fromIndex = activities.findIndex((a) => a.id === active.id);
+    const toIndex = activities.findIndex((a) => a.id === over.id);
+    if (fromIndex < 0 || toIndex < 0) return;
+    moveWithin(fromIndex, toIndex);
+    toast("순서 변경 · 이동시간과 알림을 다시 계산했어요.", "success");
   };
 
   const removeTrip = async () => {
@@ -186,27 +310,51 @@ export function TripBoardPage() {
         </div>
       </header>
 
-      <DayTabs
-        days={board.days}
-        archiveCount={board.archiveCount}
-        selectedDate={selectedDate}
-        onSelectDate={selectDay}
-        onSelectArchive={selectArchive}
-      />
+      <DndContext
+        sensors={sensors}
+        collisionDetection={collisionDetection}
+        onDragEnd={handleDragEnd}
+      >
+        <DayTabs
+          days={board.days}
+          archiveCount={board.archiveCount}
+          selectedDate={selectedDate}
+          onSelectDate={selectDay}
+          onSelectArchive={selectArchive}
+          // 드래그가 시작된 뒤에 등록하면 그 드래그의 충돌 판정 대상에 들어가지 못한다.
+          // 드래그 중이 아닐 때는 아무 영향도 없으므로 항상 켜 둔다.
+          droppable
+        />
 
-      {board.activities.length > 0 ? (
-        <ul className="flex flex-col">
-          {board.activities.map((activity) => (
-            <ActivityRow
-              key={activity.id}
-              activity={activity}
-              inArchive={selectedDate === null}
-              onArchive={(a) => void archiveActivity(a)}
-              onDelete={setPendingDelete}
-            />
-          ))}
-        </ul>
-      ) : (
+        {activities.length > 0 && (
+          <SortableContext
+            items={activities.map((a) => a.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ul className="flex flex-col">
+              {activities.map((activity, index) => (
+                <ActivityRow
+                  key={activity.id}
+                  activity={activity}
+                  inArchive={selectedDate === null}
+                  dragMode={dragMode}
+                  canMoveUp={index > 0}
+                  canMoveDown={index < activities.length - 1}
+                  onMoveUp={() => moveWithin(index, index - 1)}
+                  onMoveDown={() => moveWithin(index, index + 1)}
+                  onArchive={() => archiveActivity(activity)}
+                  onDelete={() => removeActivityDeferred(activity)}
+                  onEnterDragMode={enterDragMode}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+        )}
+      </DndContext>
+
+      {dragMode && <DragModeBar onDone={() => setDragMode(false)} />}
+
+      {activities.length === 0 && (
         <EmptyState className="min-h-[30svh]">
           <p className="text-muted-foreground text-sm">
             {selectedDate === null
@@ -220,16 +368,19 @@ export function TripBoardPage() {
         </EmptyState>
       )}
 
-      <div className="flex justify-center py-2 pb-6">
-        <Button
-          variant="outline"
-          size="icon-lg"
-          aria-label="일정 추가"
-          onClick={() => setSheetOpen(true)}
-        >
-          <Plus className="size-[18px]" />
-        </Button>
-      </div>
+      {/* 드래그 모드에서는 추가 버튼을 감춘다 — 옮기는 중에 누를 일이 없고 오조작만 는다. */}
+      {!dragMode && (
+        <div className="flex justify-center py-2 pb-6">
+          <Button
+            variant="outline"
+            size="icon-lg"
+            aria-label="일정 추가"
+            onClick={() => setSheetOpen(true)}
+          >
+            <Plus className="size-[18px]" />
+          </Button>
+        </div>
+      )}
 
       <AddSheet
         open={sheetOpen}
@@ -239,19 +390,6 @@ export function TripBoardPage() {
         onCreate={(input) => void addActivity(input)}
         onPickFromArchive={(a) => void pickFromArchive(a)}
         pending={createActivity.isPending || updateActivity.isPending}
-      />
-
-      <ConfirmDialog
-        open={pendingDelete !== null}
-        onOpenChange={(open) => {
-          if (!open) setPendingDelete(null);
-        }}
-        title="일정을 삭제할까요?"
-        description={`"${pendingDelete?.title ?? ""}"이(가) 삭제됩니다.`}
-        confirmLabel="삭제"
-        destructive
-        onConfirm={() => void confirmDeleteActivity()}
-        pending={removeActivity.isPending}
       />
 
       <ConfirmDialog

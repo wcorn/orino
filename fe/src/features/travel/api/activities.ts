@@ -119,3 +119,24 @@ export async function updateActivity(
 export async function deleteActivity(activityId: number): Promise<void> {
   await client.delete(`/travel/activities/${activityId}`);
 }
+
+/** 날짜 하나의 전체 순서. 부분 갱신은 보내지 않는다(순서가 비결정적이 된다). */
+export interface ReorderMove {
+  /** null이면 미배정 보관함. */
+  date: string | null;
+  activityIds: number[];
+}
+
+/**
+ * 드래그 결과를 한 번에 반영한다. 응답의 `legs`(이동시간)는 2단계에서 채워진다.
+ *
+ * <p>다른 날짜로 옮기는 것은 이 엔드포인트가 아니라 {@link updateActivity}로 한다 —
+ * 서버가 대상 날짜의 맨 뒤에 붙이고 떠나온 날짜를 재인덱싱해 주기 때문에, 대상 날짜의
+ * 기존 순서를 모르는 화면에서도 정확히 "끝에 추가"가 된다.
+ */
+export async function reorderActivities(
+  tripId: number,
+  moves: ReorderMove[],
+): Promise<void> {
+  await client.put(`/travel/trips/${tripId}/activities/order`, { moves });
+}
