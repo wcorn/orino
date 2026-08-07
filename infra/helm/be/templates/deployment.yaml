@@ -132,6 +132,15 @@ spec:
                   optional: true
             - name: GOOGLE_REDIRECT_URI
               value: {{ .Values.env.GOOGLE_REDIRECT_URI | quote }}
+            # 여행 장소 검색·이동시간(Places/Routes). google-secret과 별도 시크릿이다 —
+            # 저건 사용자 OAuth, 이건 서버 API 키라 발급처도 교체 주기도 다르다.
+            # 2단계 기능이라 아직 없어도 기동돼야 한다(optional:true).
+            - name: GOOGLE_PLACES_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: travel-secret
+                  key: GOOGLE_PLACES_API_KEY
+                  optional: true
             - name: FRONTEND_URL
               value: {{ .Values.env.FRONTEND_URL | quote }}
           resources:
