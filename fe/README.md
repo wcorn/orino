@@ -4,12 +4,12 @@ React 프론트엔드.
 
 ## 버전
 
-| 항목       | 버전   | 선택 이유                                           |
-| ---------- | ------ | --------------------------------------------------- |
-| Node.js    | 24 LTS | Java 25 LTS 선택 기준과 동일 — 런타임은 LTS 우선    |
-| React      | 19.2.x | Spring Boot 4.0.3과 동일 — 최신 stable              |
-| Vite       | 7.3.x  | 최신 stable (8 beta 제외) — pre-release 미사용 원칙 |
-| TypeScript | 5.7.x  | 최신 stable                                         |
+| 항목       | 버전   | 선택 이유                                             |
+| ---------- | ------ | ----------------------------------------------------- |
+| Node.js    | 22 LTS | 런타임은 LTS 우선 — CI·Dockerfile·`engines`가 모두 22 |
+| React      | 19.2.x | 최신 stable                                           |
+| Vite       | 7.3.x  | 최신 stable (8 beta 제외) — pre-release 미사용 원칙   |
+| TypeScript | 5.7.x  | 최신 stable                                           |
 
 ## 실행
 
@@ -19,8 +19,15 @@ npm install
 npm run dev      # 개발 서버 (port 3000, /api → localhost:8080 프록시)
 ```
 
-`npm run dev`는 BE를 `http://localhost:8080`으로 프록시한다. BE는
-`be/`에서 `docker compose up -d mysql redis` + `./gradlew bootRun`으로 띄운다.
+`npm run dev`는 BE를 `http://localhost:8080`으로 프록시한다. BE는 **리포 루트**의
+`docker-compose.yml`로 의존 서비스를 띄운 뒤 실행한다.
+
+```bash
+docker compose up -d mysql redis   # 리포 루트에서 (compose 파일 위치)
+cd be && ./gradlew bootRun
+```
+
+루트 `Makefile`의 `make local`은 위 compose + `npm run dev`를 한 번에 실행한다.
 
 ## 스크립트
 
