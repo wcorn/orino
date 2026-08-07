@@ -113,7 +113,7 @@ class ReviewMirrorIntegrationTest extends ApiTestSupport {
         accessTokenRepository.save(memberId, "test-access", Duration.ofMinutes(30));
 
         authHeader = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc);
-        today = clock.instant().atZone(TEST_ZONE).toLocalDate();
+        today = testToday(clock);
     }
 
     @Test
