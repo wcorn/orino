@@ -31,8 +31,13 @@ resource "google_project_service" "travel" {
 # IP 제한을 두지 않는 이유는 결정 기록 D-15 — 클러스터 이그레스가 집 회선이라
 # 공인 IP가 고정이 아니다. 대신 호출 가능한 API를 둘로 묶고, 금전 피해는 예산 알림이 잡는다.
 resource "google_apikeys_key" "travel_places_routes" {
-  project      = var.gcp_project_id
-  name         = "orino-travel-places-routes"
+  project = var.gcp_project_id
+
+  # `name`은 표시 이름이 아니라 **키 ID**다. gcloud가 만들 때 UUID로 정해졌고,
+  # 이 값을 바꾸면 Terraform이 키를 삭제·재생성한다 → 키 문자열이 바뀌어
+  # 이미 봉인한 SealedSecret(#1051)과 .secrets가 통째로 무효가 된다.
+  # 사람이 읽는 이름은 display_name이 담당하므로 ID는 그대로 둔다.
+  name         = "18229d57-dd99-439e-82a7-41ee91af8308"
   display_name = "orino-travel-places-routes"
 
   restrictions {
