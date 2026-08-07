@@ -2,3 +2,6 @@
 # terraform.tfvars는 .gitignore로 추적 제외됩니다.
 
 operator_emails = ["you@example.com"]
+
+# GCP 관련 값(프로젝트·결제계정·예산액)은 variables.tf에 기본값이 있어 따로 채우지 않아도 된다.
+# 예산액만 바꾸려면: gcp_budget_krw = 50000
