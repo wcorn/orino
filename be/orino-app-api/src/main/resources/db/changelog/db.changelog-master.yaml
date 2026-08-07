@@ -91,3 +91,5 @@ databaseChangeLog:
       file: db/changelog/changes/045-add-formula-ref-to-dataset-id.yaml
   - include:
       file: db/changelog/changes/046-create-lifelog-tables.yaml
+  - include:
+      file: db/changelog/changes/047-create-travel-tables.yaml
