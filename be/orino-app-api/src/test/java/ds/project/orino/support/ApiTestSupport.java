@@ -1,5 +1,6 @@
 package ds.project.orino.support;
 
+import ds.project.orino.common.time.StudyDay;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MockMvc;
@@ -39,8 +40,13 @@ public abstract class ApiTestSupport {
         return localDateTime.atZone(TEST_ZONE).toInstant();
     }
 
-    /** 사용자 시간대(Asia/Seoul) 기준 오늘 날짜. */
+    /**
+     * 앱이 "오늘"로 보는 학습일(Asia/Seoul, 04시 롤오버).
+     *
+     * <p>달력 날짜를 쓰면 자정~04:00 사이에 돌릴 때만 하루 어긋나 테스트가 깨진다 —
+     * 그 시간대엔 앱이 아직 전날을 오늘로 보기 때문이다({@link StudyDay}).
+     */
     protected static LocalDate testToday(Clock clock) {
-        return clock.instant().atZone(TEST_ZONE).toLocalDate();
+        return StudyDay.of(clock.instant(), TEST_ZONE);
     }
 }
