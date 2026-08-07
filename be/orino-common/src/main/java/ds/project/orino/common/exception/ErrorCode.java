@@ -41,7 +41,9 @@ public enum ErrorCode {
     TRAVEL_INVALID_CURRENCY("TRAVEL-ERR-004", "유효하지 않은 통화 코드입니다.", 400),
     // 기간을 줄이면 잘린 일정이 보관함으로 밀린다. 사용자가 모르고 잃지 않도록 확인을 요구한다.
     TRAVEL_ARCHIVE_CONFIRM_REQUIRED("TRAVEL-ERR-005",
-            "기간을 줄이면 일부 일정이 미배정 보관함으로 이동합니다.", 409);
+            "기간을 줄이면 일부 일정이 미배정 보관함으로 이동합니다.", 409),
+    TRAVEL_ACTIVITY_NOT_FOUND("TRAVEL-ERR-006", "존재하지 않는 일정입니다.", 404),
+    TRAVEL_DATE_OUT_OF_RANGE("TRAVEL-ERR-007", "여행 기간 밖의 날짜입니다.", 400);
 
     private final String code;
     private final String message;
