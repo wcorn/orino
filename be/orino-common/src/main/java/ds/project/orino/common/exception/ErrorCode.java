@@ -31,7 +31,17 @@ public enum ErrorCode {
     LIFELOG_MOMENT_NOT_FOUND("LIFELOG-ERR-002", "존재하지 않는 기록입니다.", 404),
     LIFELOG_EMPTY_MOMENT("LIFELOG-ERR-003", "본문이나 사진 중 하나는 있어야 합니다.", 400),
     LIFELOG_INVALID_COORDINATE("LIFELOG-ERR-004", "위도와 경도는 함께 지정해야 합니다.", 400),
-    LIFELOG_FLOW_NOT_FOUND("LIFELOG-ERR-005", "존재하지 않는 흐름입니다.", 404);
+    LIFELOG_FLOW_NOT_FOUND("LIFELOG-ERR-005", "존재하지 않는 흐름입니다.", 404),
+
+    // TRAVEL (여행)
+    // 소유권 실패도 404다 — 403으로 답하면 "그 id의 여행은 있다"는 사실이 새어나간다.
+    TRAVEL_TRIP_NOT_FOUND("TRAVEL-ERR-001", "존재하지 않는 여행입니다.", 404),
+    TRAVEL_INVALID_PERIOD("TRAVEL-ERR-002", "종료일은 시작일보다 빠를 수 없습니다.", 400),
+    TRAVEL_INVALID_TIMEZONE("TRAVEL-ERR-003", "유효하지 않은 시간대입니다.", 400),
+    TRAVEL_INVALID_CURRENCY("TRAVEL-ERR-004", "유효하지 않은 통화 코드입니다.", 400),
+    // 기간을 줄이면 잘린 일정이 보관함으로 밀린다. 사용자가 모르고 잃지 않도록 확인을 요구한다.
+    TRAVEL_ARCHIVE_CONFIRM_REQUIRED("TRAVEL-ERR-005",
+            "기간을 줄이면 일부 일정이 미배정 보관함으로 이동합니다.", 409);
 
     private final String code;
     private final String message;

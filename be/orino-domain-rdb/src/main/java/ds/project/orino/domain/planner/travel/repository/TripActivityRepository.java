@@ -63,4 +63,27 @@ public interface TripActivityRepository extends JpaRepository<TripActivity, Long
                                          @Param("endDate") LocalDate endDate);
 
     long countByTripId(Long tripId);
+
+    /**
+     * 기간 밖으로 밀려난 일정 수. 확인 모달·409 응답이 개수만 필요로 해서 목록 없이 센다.
+     */
+    @Query("""
+            SELECT COUNT(a) FROM TripActivity a
+            WHERE a.tripId = :tripId
+              AND a.activityDate IS NOT NULL
+              AND (a.activityDate < :startDate OR a.activityDate > :endDate)
+            """)
+    long countOutsidePeriod(@Param("tripId") Long tripId,
+                            @Param("startDate") LocalDate startDate,
+                            @Param("endDate") LocalDate endDate);
+
+    /** 여행별 일정 수를 한 번에 센다 — 목록 화면의 N+1을 막는다. */
+    @Query("""
+            SELECT new ds.project.orino.domain.planner.travel.repository.TripActivityCount(
+                       a.tripId, COUNT(a))
+            FROM TripActivity a
+            WHERE a.tripId IN :tripIds
+            GROUP BY a.tripId
+            """)
+    List<TripActivityCount> countByTripIds(@Param("tripIds") List<Long> tripIds);
 }

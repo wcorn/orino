@@ -28,10 +28,11 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(CustomException.class)
-    public ResponseEntity<ErrorResponse> handleCustomException(CustomException e) {
+    public ResponseEntity<?> handleCustomException(CustomException e) {
         log.error("handleCustomException: {}", e.getErrorCode().toString());
-        return ResponseEntity.status(e.getErrorCode().getHttpStatus())
-                .body(ErrorResponse.of(e));
+        // 값을 실은 에러만 data가 붙은 형태로 나간다. 나머지는 기존 {code, message} 그대로.
+        Object body = e.getData() != null ? DataErrorResponse.of(e) : ErrorResponse.of(e);
+        return ResponseEntity.status(e.getErrorCode().getHttpStatus()).body(body);
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
