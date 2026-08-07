@@ -110,9 +110,7 @@ describe("WorkspaceSelectPage", () => {
     await userEvent.click(travelCard);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "일정 보드" }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /1일차/ })).toBeInTheDocument();
     });
   });
 

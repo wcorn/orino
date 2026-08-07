@@ -154,3 +154,7 @@ export async function fetchShrinkPreview(
   );
   return data.data;
 }
+
+export async function deleteTrip(tripId: number): Promise<void> {
+  await client.delete(`/travel/trips/${tripId}`);
+}

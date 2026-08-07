@@ -25,6 +25,7 @@ import {
   importRoutines,
   importTravelHome,
   importTravelPlaceholder,
+  importTripBoard,
   importTripForm,
   importTripList,
   importWeeklyPlan,
@@ -51,6 +52,7 @@ const TravelPlaceholderPage = lazy(importTravelPlaceholder);
 const TravelHomePage = lazy(importTravelHome);
 const TripListPage = lazy(importTripList);
 const TripFormPage = lazy(importTripForm);
+const TripBoardPage = lazy(importTripBoard);
 
 function RouteFallback() {
   return (
@@ -237,7 +239,11 @@ export function AppRouter() {
           />
           <Route
             path="/travel/trips/:tripId/board"
-            element={<TravelRoute title="일정 보드" />}
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <TripBoardPage />
+              </Suspense>
+            }
           />
           <Route path="/travel/tools" element={<TravelRoute title="도구" />} />
           <Route
