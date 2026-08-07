@@ -7,6 +7,9 @@ import org.springframework.stereotype.Component;
 public class DbCleaner {
 
     private static final String[] TABLES_IN_FK_ORDER = {
+            "trip_activity",
+            "trip",
+            "travel_place",
             "holiday",
             "day_plan_block",
             "routine_check",
