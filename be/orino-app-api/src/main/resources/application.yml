@@ -79,6 +79,21 @@ geocoding:
     connect-timeout: ${NOMINATIM_CONNECT_TIMEOUT:5s}
     read-timeout: ${NOMINATIM_READ_TIMEOUT:10s}
 
+travel:
+  places:
+    # 키가 없으면 장소 기능만 꺼지고 앱은 정상 기동한다(2단계 전 환경·로컬 개발용).
+    api-key: ${GOOGLE_PLACES_API_KEY:}
+    base-url: ${GOOGLE_PLACES_BASE_URL:https://places.googleapis.com}
+    language-code: ${GOOGLE_PLACES_LANGUAGE:ko}
+    # §4.7 — 검색 1시간, 장소 상세 30일.
+    search-ttl: ${GOOGLE_PLACES_SEARCH_TTL:1h}
+    details-ttl: ${GOOGLE_PLACES_DETAILS_TTL:30d}
+    max-results: ${GOOGLE_PLACES_MAX_RESULTS:20}
+    # 목적지 주변 우선(§1.5). 필터가 아니라 편향이라 반경 밖도 나올 수 있다.
+    search-radius-m: ${GOOGLE_PLACES_RADIUS_M:20000}
+    connect-timeout: ${GOOGLE_PLACES_CONNECT_TIMEOUT:5s}
+    read-timeout: ${GOOGLE_PLACES_READ_TIMEOUT:10s}
+
 management:
   tracing:
     sampling:

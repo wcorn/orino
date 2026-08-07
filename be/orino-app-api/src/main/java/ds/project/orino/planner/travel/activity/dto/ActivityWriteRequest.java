@@ -30,6 +30,12 @@ public record ActivityWriteRequest(
 
         Long placeId,
 
+        /**
+         * 구글 장소를 그대로 담을 때 쓴다(S-06 "담기"). 서버가 {@code travel_place}에 upsert 한 뒤
+         * {@code placeId}로 연결한다 — 화면이 장소를 먼저 저장하고 id를 들고 오지 않아도 되게.
+         */
+        String googlePlaceId,
+
         @Size(max = 1000, message = "메모는 1000자를 넘을 수 없습니다.")
         String memo,
 

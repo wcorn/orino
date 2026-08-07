@@ -19,6 +19,9 @@ public interface TravelPlaceRepository extends JpaRepository<TravelPlace, Long> 
     /** 이미 담아둔 구글 장소인지 확인해 중복 저장을 막는다({@code uk_place_member_google}). */
     Optional<TravelPlace> findByMemberIdAndGooglePlaceId(Long memberId, String googlePlaceId);
 
+    /** 검색 결과 중 이미 담아 둔 장소를 한 번에 찾는다(결과 20개마다 조회하지 않게). */
+    List<TravelPlace> findAllByMemberIdAndGooglePlaceIdIn(Long memberId, List<String> googlePlaceIds);
+
     /** 여러 일정의 장소를 한 번에 붙일 때 쓰는 배치 조회(N+1 회피). */
     List<TravelPlace> findAllByIdIn(List<Long> ids);
 
