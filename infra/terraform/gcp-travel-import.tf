@@ -94,3 +94,28 @@ import {
   to = google_service_account_iam_member.terraform_plan_wif
   id = "projects/orino-499511/serviceAccounts/github-actions-terraform-plan@orino-499511.iam.gserviceaccount.com roles/iam.workloadIdentityUser principalSet://iam.googleapis.com/projects/202935442863/locations/global/workloadIdentityPools/github-actions/attribute.repository/wcorn/orino"
 }
+
+import {
+  to = google_project_iam_member.terraform_apply["roles/iam.workloadIdentityPoolAdmin"]
+  id = "orino-499511 roles/iam.workloadIdentityPoolAdmin serviceAccount:github-actions-terraform@orino-499511.iam.gserviceaccount.com"
+}
+
+import {
+  to = google_project_iam_member.terraform_apply["roles/iam.serviceAccountAdmin"]
+  id = "orino-499511 roles/iam.serviceAccountAdmin serviceAccount:github-actions-terraform@orino-499511.iam.gserviceaccount.com"
+}
+
+import {
+  to = google_project_iam_member.terraform_apply["roles/resourcemanager.projectIamAdmin"]
+  id = "orino-499511 roles/resourcemanager.projectIamAdmin serviceAccount:github-actions-terraform@orino-499511.iam.gserviceaccount.com"
+}
+
+import {
+  to = google_project_iam_member.terraform_plan["roles/iam.workloadIdentityPoolViewer"]
+  id = "orino-499511 roles/iam.workloadIdentityPoolViewer serviceAccount:github-actions-terraform-plan@orino-499511.iam.gserviceaccount.com"
+}
+
+import {
+  to = google_project_iam_member.terraform_plan["roles/iam.securityReviewer"]
+  id = "orino-499511 roles/iam.securityReviewer serviceAccount:github-actions-terraform-plan@orino-499511.iam.gserviceaccount.com"
+}

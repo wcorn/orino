@@ -42,9 +42,14 @@ resource "google_service_account" "terraform_apply" {
 }
 
 resource "google_project_iam_member" "terraform_apply" {
+  # Terraform은 자기가 만드는 리소스보다 넓은 권한이 필요하다 — refresh 때 IAM 정책·
+  # 서비스 계정·WIF 풀을 읽어야 하고, 자기 자신(cicd)의 바인딩도 관리하기 때문이다.
   for_each = toset([
-    "roles/serviceusage.serviceUsageAdmin", # API 활성화/비활성화
-    "roles/serviceusage.apiKeysAdmin",      # API 키 생성·제한 변경
+    "roles/serviceusage.serviceUsageAdmin",  # API 활성화/비활성화
+    "roles/serviceusage.apiKeysAdmin",       # API 키 생성·제한 변경
+    "roles/iam.workloadIdentityPoolAdmin",   # WIF 풀·provider
+    "roles/iam.serviceAccountAdmin",         # 서비스 계정과 그 IAM 정책
+    "roles/resourcemanager.projectIamAdmin", # 프로젝트 역할 바인딩
   ])
 
   project = var.gcp_project_id
@@ -66,6 +71,9 @@ resource "google_project_iam_member" "terraform_plan" {
     "roles/serviceusage.serviceUsageViewer",
     # plan이 API 키를 refresh 하려면 키 문자열 조회까지 필요하다(apikeys.keys.getKeyString).
     "roles/serviceusage.apiKeysViewer",
+    "roles/iam.workloadIdentityPoolViewer",
+    # 서비스 계정과 프로젝트 IAM 정책 읽기. 이게 없으면 plan이 403으로 깨진다.
+    "roles/iam.securityReviewer",
   ])
 
   project = var.gcp_project_id

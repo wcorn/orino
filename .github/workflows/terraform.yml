@@ -59,6 +59,8 @@ jobs:
       - name: Terraform plan
         if: github.event_name == 'pull_request'
         run: |
+          # tee 를 거치면 파이프라인 종료 코드가 tee 의 것(0)이 돼 plan 실패가 초록으로 보고된다.
+          set -o pipefail
           echo '### Terraform Plan' >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           terraform plan -input=false -no-color 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
