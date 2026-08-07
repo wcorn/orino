@@ -17,6 +17,7 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   project                            = var.gcp_project_id
   workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
   workload_identity_pool_provider_id = "github"
+  display_name                       = "github"
 
   attribute_mapping = {
     "google.subject"       = "assertion.sub"
@@ -82,20 +83,18 @@ resource "google_project_iam_member" "terraform_plan" {
 }
 
 # ---------------------------------------------------------------------------
-# 결제 계정 역할 — 예산은 프로젝트가 아니라 결제 계정에 붙는 리소스다.
-# 프로젝트에 부여하면 예산을 못 읽고/못 만든다.
+# 결제 계정 역할은 여기서 관리하지 않는다 (부트스트랩, CLI로 부여).
+#
+# 예산은 결제 계정에 붙는 리소스라 CI에 결제 계정 역할이 필요하다. 그런데 그 "역할 부여"까지
+# Terraform이 하려면 CI에 billing.accounts.setIamPolicy(사실상 billing.admin)를 줘야 하고,
+# 그러면 CI가 결제 계정 접근 권한을 아무에게나 줄 수 있게 된다 — 필요 이상이다.
+#
+# 그래서 CI에는 예산을 다룰 최소 권한만 주고(apply=costsManager, plan=billing.viewer),
+# 그 부여 자체는 WIF 풀과 같은 부트스트랩으로 남긴다.
+#   gcloud billing accounts add-iam-policy-binding 01EDAC-CEFAA5-004180 \
+#     --member=serviceAccount:github-actions-terraform@orino-499511.iam.gserviceaccount.com \
+#     --role=roles/billing.costsManager
 # ---------------------------------------------------------------------------
-resource "google_billing_account_iam_member" "terraform_apply" {
-  billing_account_id = var.gcp_billing_account
-  role               = "roles/billing.costsManager"
-  member             = "serviceAccount:${google_service_account.terraform_apply.email}"
-}
-
-resource "google_billing_account_iam_member" "terraform_plan" {
-  billing_account_id = var.gcp_billing_account
-  role               = "roles/billing.viewer"
-  member             = "serviceAccount:${google_service_account.terraform_plan.email}"
-}
 
 # ---------------------------------------------------------------------------
 # WIF 바인딩 — wcorn/orino 워크플로만 이 SA를 가장할 수 있다.

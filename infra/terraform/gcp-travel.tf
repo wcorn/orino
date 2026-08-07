@@ -11,6 +11,8 @@ locals {
     "places.googleapis.com",
     "routes.googleapis.com",
     "billingbudgets.googleapis.com",
+    # Terraform이 API 키를 읽고 관리하는 통로. gcloud로 만들 때는 다른 경로라 필요 없었다.
+    "apikeys.googleapis.com",
   ]
 }
 

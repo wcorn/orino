@@ -23,6 +23,11 @@ import {
 }
 
 import {
+  to = google_project_service.travel["apikeys.googleapis.com"]
+  id = "orino-499511/apikeys.googleapis.com"
+}
+
+import {
   to = google_apikeys_key.travel_places_routes
   id = "projects/orino-499511/locations/global/keys/18229d57-dd99-439e-82a7-41ee91af8308"
 }
@@ -75,15 +80,7 @@ import {
   id = "orino-499511 roles/serviceusage.apiKeysViewer serviceAccount:github-actions-terraform-plan@orino-499511.iam.gserviceaccount.com"
 }
 
-import {
-  to = google_billing_account_iam_member.terraform_apply
-  id = "billingAccounts/01EDAC-CEFAA5-004180 roles/billing.costsManager serviceAccount:github-actions-terraform@orino-499511.iam.gserviceaccount.com"
-}
 
-import {
-  to = google_billing_account_iam_member.terraform_plan
-  id = "billingAccounts/01EDAC-CEFAA5-004180 roles/billing.viewer serviceAccount:github-actions-terraform-plan@orino-499511.iam.gserviceaccount.com"
-}
 
 import {
   to = google_service_account_iam_member.terraform_apply_wif
