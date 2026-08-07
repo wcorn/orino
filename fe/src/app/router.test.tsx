@@ -83,10 +83,9 @@ describe("AppRouter", () => {
 
     renderApp(["/travel/trips/3/board"]);
 
+    // 보드가 실제로 열린다(선택 화면으로 튕기지 않는다).
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "일정 보드" }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /1일차/ })).toBeInTheDocument();
     });
     expect(screen.queryByRole("heading", { name: "어디로 갈까요" })).toBeNull();
   });

@@ -133,10 +133,9 @@ describe("TripFormPage", () => {
       await fillNewTripForm();
       await userEvent.click(screen.getByRole("button", { name: "만들기" }));
 
+      // 만든 여행의 보드로 이동한다.
       await waitFor(() => {
-        expect(
-          screen.getByRole("heading", { name: "일정 보드" }),
-        ).toBeInTheDocument();
+        expect(screen.getByRole("tab", { name: /1일차/ })).toBeInTheDocument();
       });
     });
 

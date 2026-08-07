@@ -96,6 +96,39 @@ export const handlers = [
     });
   }),
 
+  // 기본값: 일정 없는 하루짜리 보드. 보드를 거쳐가는 테스트(생성 후 이동 등)가
+  // 매번 핸들러를 세우지 않아도 되도록. 내용을 검증하는 테스트는 server.use로 덮어쓴다.
+  http.get(`${API_BASE}/travel/trips/:tripId/board`, ({ params }) => {
+    return HttpResponse.json({
+      code: "OK",
+      data: {
+        trip: {
+          id: Number(params.tripId),
+          title: "여행",
+          timezone: "Asia/Tokyo",
+          currency: "JPY",
+          startDate: "2026-10-24",
+          endDate: "2026-10-24",
+          status: "UPCOMING",
+          recordMode: false,
+        },
+        days: [
+          {
+            dayIndex: 1,
+            date: "2026-10-24",
+            weekday: "토",
+            activityCount: 0,
+            weather: null,
+          },
+        ],
+        selectedDate: "2026-10-24",
+        archiveCount: 0,
+        activities: [],
+        legs: [],
+      },
+    });
+  }),
+
   // 기본값: 빈 캘린더 피드. `/select`의 "오늘 루틴" 메타가 항상 해소되도록.
   http.get(`${API_BASE}/planner/calendar`, () => {
     return HttpResponse.json({
