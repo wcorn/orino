@@ -1,0 +1,249 @@
+import { ArrowLeft, Trash2 } from "lucide-react";
+import { type FormEvent, useEffect, useId, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+
+import { Button } from "@/components/ui/button";
+import { FormField } from "@/components/ui/form-field";
+import { Input } from "@/components/ui/input";
+import { LoadingText } from "@/components/ui/loading-text";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  type Activity,
+  deleteActivity as deleteActivityRequest,
+} from "@/features/travel/api/activities";
+import { useUndoableAction } from "@/features/travel/board/useUndoableAction";
+import { useActivity } from "@/features/travel/hooks/useActivity";
+import { useUpdateActivity } from "@/features/travel/hooks/useActivityMutations";
+import { useTrip } from "@/features/travel/hooks/useTrip";
+import {
+  toTimeInputValue,
+  toWallClockTime,
+} from "@/features/travel/lib/tripClock";
+import { dayChips, formatShortDate } from "@/features/travel/lib/tripStatus";
+import { toast } from "@/shared/lib/toast";
+
+const MEMO_MAX = 1000;
+const URL_MAX = 500;
+/** 날짜 Select에서 "보관함"을 나타내는 값. 빈 문자열은 Select가 미선택으로 본다. */
+const ARCHIVE_VALUE = "archive";
+
+interface FormState {
+  title: string;
+  /** 날짜 문자열 또는 `ARCHIVE_VALUE`. */
+  day: string;
+  /** `"HH:mm"` 또는 빈 문자열. Date로 파싱하지 않는다. */
+  startTime: string;
+  memo: string;
+  url: string;
+}
+
+/**
+ * S-07 일정 상세·편집의 <b>계획 영역</b>.
+ *
+ * <p>알림 영역은 3단계, 기록 영역은 4단계다. 자리를 비워 두지 않고 아예 렌더하지 않는다 —
+ * 빈 껍데기는 "고장난 화면"으로 읽힌다.
+ *
+ * <p>저장은 명시적이다(자동 저장 아님). 날짜·시각을 고치는 도중의 중간 상태가 그대로
+ * 저장되면 보드의 순서와 알림이 사용자가 의도하지 않은 시점에 흔들린다.
+ */
+export function ActivityDetailPage() {
+  const { activityId: activityIdParam } = useParams();
+  const activityId = Number(activityIdParam);
+  const navigate = useNavigate();
+
+  const { data: activity, isPending } = useActivity(activityId);
+  const { data: trip } = useTrip(activity?.tripId ?? null);
+  const updateActivity = useUpdateActivity(activity?.tripId ?? 0);
+  const undoable = useUndoableAction(activity?.tripId ?? 0);
+
+  const [form, setForm] = useState<FormState | null>(null);
+  const dayLabelId = useId();
+
+  useEffect(() => {
+    if (activity) setForm(toFormState(activity));
+  }, [activity]);
+
+  if (isPending || !activity || !form) {
+    return (
+      <div className="grid min-h-[40svh] place-items-center">
+        <LoadingText />
+      </div>
+    );
+  }
+
+  /**
+   * 이 일정이 속한 탭으로 돌아간다.
+   *
+   * <p>기본 탭으로 돌려보내면 방금 옮기거나 지운 일정이 보이지 않아, 반영됐는지도
+   * 실행취소가 먹혔는지도 확인할 수 없다.
+   */
+  const boardPathFor = (day: string) => {
+    const base = `/travel/trips/${activity.tripId}/board`;
+    if (day === ARCHIVE_VALUE) return `${base}?day=archive`;
+    const index = trip
+      ? dayChips(trip.startDate, trip.endDate).findIndex((c) => c.date === day)
+      : -1;
+    return index >= 0 ? `${base}?day=${index}` : base;
+  };
+  const boardPath = boardPathFor(form.day);
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+    setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
+
+  // 1일차~N일차 + 보관함. 여행 기간을 알아야 만들 수 있어 상세를 함께 읽는다.
+  const dayOptions = [
+    ...(trip
+      ? dayChips(trip.startDate, trip.endDate).map((chip) => ({
+          value: chip.date,
+          label: `${chip.dayIndex}일차 · ${formatShortDate(chip.date)} ${chip.weekday}`,
+        }))
+      : []),
+    { value: ARCHIVE_VALUE, label: "보관함 (미배정)" },
+  ];
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!form.title.trim()) return;
+    try {
+      await updateActivity.mutateAsync({
+        activityId,
+        body: {
+          title: form.title.trim(),
+          activityDate: form.day === ARCHIVE_VALUE ? null : form.day,
+          // 문자열 그대로 보낸다. 시각이 없으면 null이고 그건 정상이다.
+          startTime: toWallClockTime(form.startTime),
+          memo: form.memo.trim() || null,
+          url: form.url.trim() || null,
+          // 알림 설정은 3단계 화면의 몫이라 지금 값을 그대로 유지한다.
+          notifyEnabled: activity.notifyEnabled,
+          notifyMinutes: activity.notifyMinutes,
+          departureNotifyEnabled: activity.departureNotifyEnabled,
+        },
+      });
+      toast("일정을 저장했어요.", "success");
+      // 옮겼다면 옮겨간 날짜의 탭으로 간다.
+      navigate(boardPathFor(form.day));
+    } catch {
+      toast("저장하지 못했어요.", "error");
+    }
+  };
+
+  /** 삭제는 보드로 돌아간 뒤에도 5초 안에 되돌릴 수 있다(보류함이 화면 밖에 있다). */
+  const remove = () => {
+    undoable({
+      activityId,
+      message: `"${activity.title}"을(를) 삭제했어요.`,
+      run: () => deleteActivityRequest(activityId),
+    });
+    navigate(boardPath);
+  };
+
+  return (
+    <div className="mx-auto flex max-w-[560px] flex-col gap-5">
+      <header className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="뒤로"
+          onClick={() => navigate(boardPath)}
+        >
+          <ArrowLeft className="size-4" />
+        </Button>
+        <h1 className="text-heading min-w-0 flex-1 truncate font-semibold">
+          {activity.title}
+        </h1>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="일정 삭제"
+          onClick={remove}
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      </header>
+
+      <form className="flex flex-col gap-4" onSubmit={save} noValidate>
+        <h2 className="text-caption text-muted-foreground font-semibold">
+          계획
+        </h2>
+
+        <FormField label="제목" htmlFor="title">
+          <Input
+            id="title"
+            value={form.title}
+            onChange={(e) => set("title", e.target.value)}
+            maxLength={100}
+          />
+        </FormField>
+
+        <div className="flex gap-3">
+          <FormField
+            label="날짜"
+            labelId={dayLabelId}
+            className="min-w-0 flex-1"
+          >
+            <Select
+              value={form.day}
+              onValueChange={(v) => set("day", v)}
+              options={dayOptions}
+              ariaLabelledby={dayLabelId}
+            />
+          </FormField>
+          <FormField label="시작 시각" htmlFor="startTime" className="flex-1">
+            <Input
+              id="startTime"
+              type="time"
+              value={form.startTime}
+              onChange={(e) => set("startTime", e.target.value)}
+            />
+          </FormField>
+        </div>
+
+        {/* 장소 블록은 2단계 — placeId가 생기는 시점에 이 자리에 들어간다. */}
+
+        <FormField label="메모" htmlFor="memo">
+          <Textarea
+            id="memo"
+            rows={3}
+            value={form.memo}
+            onChange={(e) => set("memo", e.target.value)}
+            maxLength={MEMO_MAX}
+          />
+        </FormField>
+
+        <FormField label="링크" htmlFor="url">
+          <Input
+            id="url"
+            value={form.url}
+            onChange={(e) => set("url", e.target.value)}
+            placeholder="https://"
+            maxLength={URL_MAX}
+          />
+        </FormField>
+
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => navigate(boardPath)}
+          >
+            취소
+          </Button>
+          <Button type="submit" disabled={updateActivity.isPending}>
+            저장
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function toFormState(activity: Activity): FormState {
+  return {
+    title: activity.title,
+    day: activity.activityDate ?? ARCHIVE_VALUE,
+    startTime: toTimeInputValue(activity.startTime),
+    memo: activity.memo ?? "",
+    url: activity.url ?? "",
+  };
+}

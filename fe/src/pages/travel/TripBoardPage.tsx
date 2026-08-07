@@ -14,7 +14,6 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Map,
@@ -39,15 +38,15 @@ import { ActivityRow } from "@/features/travel/board/ActivityRow";
 import { AddSheet } from "@/features/travel/board/AddSheet";
 import { DayTabs } from "@/features/travel/board/DayTabs";
 import { DragModeBar } from "@/features/travel/board/DragModeBar";
-import { useDeferredCommits } from "@/features/travel/board/useDeferredCommits";
+import { usePendingActions } from "@/features/travel/board/pendingActions";
+import { useUndoableAction } from "@/features/travel/board/useUndoableAction";
 import {
   useCreateActivity,
   useReorderActivities,
   useUpdateActivity,
 } from "@/features/travel/hooks/useActivityMutations";
 import { useBoard } from "@/features/travel/hooks/useBoard";
-import { travelKeys } from "@/features/travel/queryKeys";
-import { toast, toastUndo } from "@/shared/lib/toast";
+import { toast } from "@/shared/lib/toast";
 
 /** `?day=` 값 — 0부터 시작하는 일차 인덱스, 또는 보관함. */
 const ARCHIVE = "archive";
@@ -76,7 +75,6 @@ const collisionDetection: CollisionDetection = (args) => {
 export function TripBoardPage() {
   const { tripId: tripIdParam } = useParams();
   const tripId = Number(tripIdParam);
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -108,7 +106,8 @@ export function TripBoardPage() {
   const createActivity = useCreateActivity(tripId);
   const updateActivity = useUpdateActivity(tripId);
   const reorder = useReorderActivities(tripId);
-  const deferred = useDeferredCommits();
+  const undoable = useUndoableAction(tripId);
+  const pendingIds = usePendingActions((state) => state.pendingIds);
 
   // 드래그 모드 안에서만 정렬이 켜지므로(행의 `disabled`) 여기서는 지연을 두지 않는다.
   // 모드에 들어와 있다는 건 이미 "옮기려는 중"이라, 곧바로 잡히는 편이 자연스럽다.
@@ -130,9 +129,7 @@ export function TripBoardPage() {
   const selectedDate = isArchive ? null : board.selectedDate;
   const selectedIndex = board.days.findIndex((d) => d.date === selectedDate);
   // 실행취소를 기다리는 동안에는 이미 사라진 것처럼 보여야 한다(낙관적 반영).
-  const activities = board.activities.filter(
-    (a) => !deferred.pendingIds.includes(a.id),
-  );
+  const activities = board.activities.filter((a) => !pendingIds.includes(a.id));
 
   const selectDay = (date: string) => {
     const index = board.days.findIndex((d) => d.date === date);
@@ -164,36 +161,14 @@ export function TripBoardPage() {
   };
 
   /**
-   * 보관함으로 내리기·삭제는 <b>요청을 5초 미룬다</b>. 화면에서는 즉시 사라지고,
+   * 보관함으로 내리기·삭제는 요청을 5초 미룬다. 화면에서는 즉시 사라지고,
    * 실행취소를 누르면 요청 자체가 나가지 않는다(서버에 복원 API를 두지 않는 이유).
    */
-  const deferAction = (
-    activity: Activity,
-    message: string,
-    run: () => Promise<unknown>,
-  ) => {
-    deferred.defer(activity.id, () => {
-      // 보류가 풀린 뒤에야 실제 요청이 나가므로, 여기서 실패하면 알려 줄 사람이 없다.
-      // 화면에서는 이미 지워진 상태라 조용히 두면 서버와 어긋난 채로 남는다.
-      void run().catch(() => {
-        toast("변경을 저장하지 못했어요.", "error");
-        // 낙관적으로 감췄던 행을 서버 상태로 되돌린다.
-        void queryClient.invalidateQueries({
-          queryKey: travelKeys.boards(tripId),
-        });
-      });
-    });
-    toastUndo(message, {
-      onUndo: () => deferred.cancel(activity.id),
-      onCommit: () => deferred.commit(activity.id),
-    });
-  };
-
   const archiveActivity = (activity: Activity) =>
-    deferAction(
-      activity,
-      `"${activity.title}"을(를) 보관함으로 옮겼어요.`,
-      () =>
+    undoable({
+      activityId: activity.id,
+      message: `"${activity.title}"을(를) 보관함으로 옮겼어요.`,
+      run: () =>
         updateActivity.mutateAsync({
           activityId: activity.id,
           body: {
@@ -202,12 +177,14 @@ export function TripBoardPage() {
             startTime: activity.startTime,
           },
         }),
-    );
+    });
 
   const removeActivityDeferred = (activity: Activity) =>
-    deferAction(activity, `"${activity.title}"을(를) 삭제했어요.`, () =>
-      deleteActivityRequest(activity.id),
-    );
+    undoable({
+      activityId: activity.id,
+      message: `"${activity.title}"을(를) 삭제했어요.`,
+      run: () => deleteActivityRequest(activity.id),
+    });
 
   /** 같은 날짜 안에서 두 행의 자리를 바꾼다(드래그·화살표 공통). */
   const moveWithin = (fromIndex: number, toIndex: number) => {
