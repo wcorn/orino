@@ -18,7 +18,7 @@ React + Tailwind CSS v4 component library (shadcn/ui 스타일). 컴포넌트는
 - 강조: `bg-primary text-primary-foreground`, `bg-secondary`, `bg-destructive text-destructive-foreground`
 - 테두리/링: `border border-border`, `ring-ring`
 - 반경: `rounded-md`, `rounded-lg`(`--radius` 기반)
-- 브랜드 색: 토큰 `--brand`(보라 `oklch(0.55 0.25 297.5)`) — 유틸리티가 필요하면 `text-[var(--brand)]` / `bg-[var(--brand)]`로 사용
+- 브랜드 색: 토큰 `--brand`(보라 `oklch(0.55 0.22 297.5)`, 다크 `oklch(0.58 0.22 297.5)`) — 유틸리티가 필요하면 `text-[var(--brand)]` / `bg-[var(--brand)]`로 사용
 - 간격은 표준 Tailwind 스케일(`gap-3`, `p-4`). 타이포는 raw `text-2xl` 대신 시맨틱 스케일 토큰을 쓴다. 색과 함께 써도 `cn("text-muted-foreground text-caption")`처럼 안전(폰트크기 그룹 등록됨):
 
   | 토큰 | 크기 | 용도 |
