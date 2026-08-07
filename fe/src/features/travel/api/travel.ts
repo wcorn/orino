@@ -103,3 +103,54 @@ export async function fetchTrip(tripId: number): Promise<TripDetail> {
   );
   return data.data;
 }
+
+/** 여행 생성·수정 요청. 전체 수정이라 두 경로가 같은 형태를 쓴다. */
+export interface TripWriteRequest {
+  /** 비우면 서버가 `destinationName`으로 채운다. */
+  title?: string;
+  destinationName: string;
+  startDate: string;
+  endDate: string;
+  timezone: string;
+  currency: string;
+  defaultNotifyMinutes?: number;
+  morningSummaryEnabled?: boolean;
+  /** 기간 단축으로 잘리는 일정을 보관함으로 옮겨도 좋다는 확인. */
+  confirmArchive?: boolean;
+}
+
+export interface ShrinkPreview {
+  movedActivityCount: number;
+}
+
+export async function createTrip(body: TripWriteRequest): Promise<TripDetail> {
+  const { data } = await client.post<ApiEnvelope<TripDetail>>(
+    "/travel/trips",
+    body,
+  );
+  return data.data;
+}
+
+export async function updateTrip(
+  tripId: number,
+  body: TripWriteRequest,
+): Promise<TripDetail> {
+  const { data } = await client.put<ApiEnvelope<TripDetail>>(
+    `/travel/trips/${tripId}`,
+    body,
+  );
+  return data.data;
+}
+
+/** 이 기간으로 바꾸면 보관함으로 갈 일정 수. 확인 모달의 문구에 그대로 들어간다. */
+export async function fetchShrinkPreview(
+  tripId: number,
+  startDate: string,
+  endDate: string,
+): Promise<ShrinkPreview> {
+  const { data } = await client.get<ApiEnvelope<ShrinkPreview>>(
+    `/travel/trips/${tripId}/shrink-preview`,
+    { params: { startDate, endDate } },
+  );
+  return data.data;
+}
