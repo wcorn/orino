@@ -25,6 +25,7 @@ import {
   importRoutines,
   importTravelHome,
   importTravelPlaceholder,
+  importTripForm,
   importTripList,
   importWeeklyPlan,
   importWorkspaceSelect,
@@ -49,6 +50,7 @@ const WorkspaceSelectPage = lazy(importWorkspaceSelect);
 const TravelPlaceholderPage = lazy(importTravelPlaceholder);
 const TravelHomePage = lazy(importTravelHome);
 const TripListPage = lazy(importTripList);
+const TripFormPage = lazy(importTripForm);
 
 function RouteFallback() {
   return (
@@ -214,6 +216,22 @@ export function AppRouter() {
             element={
               <Suspense fallback={<RouteFallback />}>
                 <TripListPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/travel/trips/new"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <TripFormPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/travel/trips/:tripId/edit"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <TripFormPage />
               </Suspense>
             }
           />

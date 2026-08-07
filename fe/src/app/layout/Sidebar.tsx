@@ -37,8 +37,8 @@ interface NavItem {
 
 /** `/travel/trips/12/board` · `/travel/trips/12/map` */
 const BOARD_PATH = /^\/travel\/trips\/\d+\/(board|map)$/;
-/** `/travel/trips` · `/travel/trips/new` · `/travel/trips/12` (목록과 생성·수정 폼) */
-const TRIP_LIST_PATH = /^\/travel\/trips(\/(new|\d+))?$/;
+/** `/travel/trips` · `/travel/trips/new` · `/travel/trips/12/edit` (목록과 생성·수정 폼) */
+const TRIP_LIST_PATH = /^\/travel\/trips(\/new|\/\d+\/edit)?$/;
 
 const DAILY_NAV_ITEMS: NavItem[] = [
   { to: "/home", label: "홈", icon: Home },

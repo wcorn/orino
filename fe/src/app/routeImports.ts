@@ -60,6 +60,10 @@ export const importTripList = () =>
   import("../pages/travel/TripListPage").then((m) => ({
     default: m.TripListPage,
   }));
+export const importTripForm = () =>
+  import("../pages/travel/TripFormPage").then((m) => ({
+    default: m.TripFormPage,
+  }));
 // 아직 화면이 없는 여행 라우트(보드·도구·설정)가 공유하는 임시 페이지.
 export const importTravelPlaceholder = () =>
   import("../pages/travel/TravelPlaceholderPage").then((m) => ({
