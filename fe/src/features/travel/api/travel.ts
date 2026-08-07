@@ -1,5 +1,7 @@
 import { client } from "@/shared/api";
 
+import type { TripStatus } from "../lib/tripStatus";
+
 interface ApiEnvelope<T> {
   code: string;
   data: T;
@@ -46,5 +48,58 @@ export interface TravelSummary {
 export async function fetchTravelSummary(): Promise<TravelSummary> {
   const { data } =
     await client.get<ApiEnvelope<TravelSummary>>("/travel/summary");
+  return data.data;
+}
+
+/** 여행 목록 카드 하나. `status`·`dDay`는 서버가 여행 타임존으로 파생해 준 값이다. */
+export interface TripSummary {
+  id: number;
+  title: string;
+  destinationName: string;
+  startDate: string;
+  endDate: string;
+  status: TripStatus;
+  dDay: number;
+  activityCount: number;
+}
+
+export interface TripCounts {
+  upcoming: number;
+  ongoing: number;
+  completed: number;
+}
+
+export interface TripListResponse {
+  /** 탭 라벨 뒤 건수. 필터와 무관하게 항상 전체 기준이다. */
+  counts: TripCounts;
+  trips: TripSummary[];
+}
+
+/** 여행 상세. 생성·수정 화면(#1036)이 폼을 채울 때도 쓴다. */
+export interface TripDetail extends TripSummary {
+  destinationPlaceId: number | null;
+  timezone: string;
+  currency: string;
+  lat: number | null;
+  lng: number | null;
+  defaultNotifyMinutes: number;
+  morningSummaryEnabled: boolean;
+  totalDays: number;
+}
+
+export async function fetchTrips(
+  status?: TripStatus,
+): Promise<TripListResponse> {
+  const { data } = await client.get<ApiEnvelope<TripListResponse>>(
+    "/travel/trips",
+    { params: status ? { status } : undefined },
+  );
+  return data.data;
+}
+
+export async function fetchTrip(tripId: number): Promise<TripDetail> {
+  const { data } = await client.get<ApiEnvelope<TripDetail>>(
+    `/travel/trips/${tripId}`,
+  );
   return data.data;
 }

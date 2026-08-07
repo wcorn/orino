@@ -52,7 +52,15 @@ export const importWorkspaceSelect = () =>
   import("../pages/WorkspaceSelectPage").then((m) => ({
     default: m.WorkspaceSelectPage,
   }));
-// 여행 화면은 후속 이슈에서 채운다. 지금은 라우트 자리를 잡는 임시 페이지 하나를 공유한다.
+export const importTravelHome = () =>
+  import("../pages/travel/TravelHomePage").then((m) => ({
+    default: m.TravelHomePage,
+  }));
+export const importTripList = () =>
+  import("../pages/travel/TripListPage").then((m) => ({
+    default: m.TripListPage,
+  }));
+// 아직 화면이 없는 여행 라우트(보드·도구·설정)가 공유하는 임시 페이지.
 export const importTravelPlaceholder = () =>
   import("../pages/travel/TravelPlaceholderPage").then((m) => ({
     default: m.TravelPlaceholderPage,
