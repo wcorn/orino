@@ -1,11 +1,13 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { act } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Providers } from "@/app/providers";
 import { AppRouter } from "@/app/router";
 import { useAuthStore } from "@/features/auth/store/authStore";
+import { useToastStore } from "@/shared/lib/toast";
 import { server } from "@/test/mocks/server";
 import { renderWithRouter } from "@/test/render";
 
@@ -108,6 +110,9 @@ function renderBoard(path = "/travel/trips/3/board") {
 describe("TripBoardPage", () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: "valid-token" });
+    // 스낵바는 모듈 스토어라 테스트 사이에 남는다. 이전 실행취소 스낵바가 섞이면
+    // 다음 테스트가 엉뚱한 버튼을 누른다.
+    useToastStore.setState({ toasts: [] });
   });
 
   describe("날짜 탭", () => {
@@ -372,47 +377,121 @@ describe("TripBoardPage", () => {
     });
   });
 
-  describe("일정 액션", () => {
-    it("보관함으로 옮기면 날짜만 비운다(삭제가 아니다)", async () => {
-      mockBoard({ byDate: { "2026-10-24": [activity()] } });
-      const seen: Record<string, unknown>[] = [];
+  describe("일정 액션 · 실행취소", () => {
+    /** 보류 중인 요청을 잡아 두고, 실제로 나갔는지 세는 핸들러. */
+    function captureWrites() {
+      const puts: Record<string, unknown>[] = [];
+      const deletes: string[] = [];
       server.use(
         http.put(`${API_BASE}/travel/activities/:id`, async ({ request }) => {
-          seen.push((await request.json()) as Record<string, unknown>);
+          puts.push((await request.json()) as Record<string, unknown>);
           return HttpResponse.json({ code: "OK", data: activity() });
         }),
+        http.delete(`${API_BASE}/travel/activities/:id`, ({ params }) => {
+          deletes.push(String(params.id));
+          return HttpResponse.json({ code: "OK", data: null });
+        }),
       );
+      return { puts, deletes };
+    }
+
+    it("보관함으로 옮기면 즉시 사라지지만 요청은 아직 나가지 않는다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+      const { puts } = captureWrites();
 
       renderBoard();
       await screen.findByText("센소지");
 
       await userEvent.click(screen.getByLabelText("센소지 보관함으로"));
 
-      await waitFor(() => expect(seen).toHaveLength(1));
-      expect(seen[0]).toMatchObject({ activityDate: null, startTime: "09:00" });
+      // 낙관적으로 목록에서 빠지고, 되돌릴 수 있는 스낵바가 뜬다.
+      await waitFor(() => {
+        expect(screen.queryByLabelText("센소지 보관함으로")).toBeNull();
+      });
+      expect(
+        await screen.findByRole("button", { name: /실행취소/ }),
+      ).toBeInTheDocument();
+      expect(puts).toHaveLength(0);
     });
 
-    it("삭제는 확인을 받은 뒤에 요청한다", async () => {
+    it("실행취소를 누르면 요청이 아예 나가지 않고 일정이 돌아온다", async () => {
       mockBoard({ byDate: { "2026-10-24": [activity()] } });
-      let deleted = false;
-      server.use(
-        http.delete(`${API_BASE}/travel/activities/:id`, () => {
-          deleted = true;
-          return HttpResponse.json({ code: "OK", data: null });
-        }),
-      );
+      const { puts, deletes } = captureWrites();
 
       renderBoard();
       await screen.findByText("센소지");
-
       await userEvent.click(screen.getByLabelText("센소지 삭제"));
-      expect(await screen.findByRole("dialog")).toHaveTextContent(
-        "일정을 삭제할까요?",
-      );
-      expect(deleted).toBe(false);
+      await waitFor(() => {
+        expect(screen.queryByLabelText("센소지 삭제")).toBeNull();
+      });
 
-      await userEvent.click(screen.getByRole("button", { name: "삭제" }));
-      await waitFor(() => expect(deleted).toBe(true));
+      await userEvent.click(
+        await screen.findByRole("button", { name: /실행취소/ }),
+      );
+
+      expect(await screen.findByText("센소지")).toBeInTheDocument();
+      expect(deletes).toHaveLength(0);
+      expect(puts).toHaveLength(0);
+    });
+
+    it("5초가 지나면 삭제 요청이 실제로 나간다", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+      const { deletes } = captureWrites();
+
+      renderBoard();
+      await screen.findByText("센소지");
+      await userEvent.click(screen.getByLabelText("센소지 삭제"));
+      await screen.findByRole("button", { name: /실행취소/ });
+
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+
+      await waitFor(() => expect(deletes).toEqual(["1"]));
+      vi.useRealTimers();
+    });
+
+    it("보류가 풀린 뒤 요청이 실패하면 알려 주고 목록을 되돌린다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+      server.use(
+        http.delete(`${API_BASE}/travel/activities/:id`, () =>
+          HttpResponse.error(),
+        ),
+      );
+
+      // 스낵바 타이머가 등록되기 전에 가짜 시계를 켜야 앞당길 수 있다.
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      renderBoard();
+      await screen.findByText("센소지");
+      await userEvent.click(screen.getByLabelText("센소지 삭제"));
+      await screen.findByRole("button", { name: /실행취소/ });
+
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+
+      // 화면에서는 이미 지운 뒤라, 실패를 알리지 않으면 서버와 어긋난 채로 남는다.
+      expect(
+        await screen.findByText("변경을 저장하지 못했어요."),
+      ).toBeInTheDocument();
+      vi.useRealTimers();
+    });
+
+    it("보류 중에 화면을 떠나면 요청을 즉시 보낸다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+      const { deletes } = captureWrites();
+
+      const { unmount } = renderBoard();
+      await screen.findByText("센소지");
+      await userEvent.click(screen.getByLabelText("센소지 삭제"));
+      await screen.findByRole("button", { name: /실행취소/ });
+      expect(deletes).toHaveLength(0);
+
+      // 5초를 기다리다 화면이 사라지면 영영 반영되지 않는다.
+      unmount();
+
+      await waitFor(() => expect(deletes).toEqual(["1"]));
     });
   });
 

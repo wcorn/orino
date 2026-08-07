@@ -2,8 +2,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import {
   type ActivityWriteRequest,
+  type Board,
   createActivity,
   deleteActivity,
+  reorderActivities,
   updateActivity,
 } from "../api/activities";
 import { travelKeys } from "../queryKeys";
@@ -52,5 +54,49 @@ export function useDeleteActivity(tripId: number) {
   return useMutation({
     mutationFn: (activityId: number) => deleteActivity(activityId),
     onSuccess: invalidate,
+  });
+}
+
+/**
+ * 같은 날짜 안의 순서 변경. <b>낙관적으로 먼저 반영하고 실패하면 되돌린다</b> —
+ * 드래그는 손을 뗀 순간 결과가 보여야 하고, 왕복을 기다리면 행이 제자리로 튀었다가
+ * 다시 움직이는 것처럼 보인다.
+ */
+export function useReorderActivities(tripId: number) {
+  const queryClient = useQueryClient();
+  const invalidate = useInvalidateBoard(tripId);
+
+  return useMutation({
+    mutationFn: ({
+      date,
+      activityIds,
+    }: {
+      date: string | null;
+      activityIds: number[];
+    }) => reorderActivities(tripId, [{ date, activityIds }]),
+
+    onMutate: async ({ date, activityIds }) => {
+      const key = travelKeys.board(tripId, date ?? "archive");
+      await queryClient.cancelQueries({ queryKey: key });
+      const snapshot = queryClient.getQueryData<Board>(key);
+      if (snapshot) {
+        const byId = new Map(snapshot.activities.map((a) => [a.id, a]));
+        queryClient.setQueryData<Board>(key, {
+          ...snapshot,
+          activities: activityIds
+            .map((id) => byId.get(id))
+            .filter((a): a is NonNullable<typeof a> => Boolean(a)),
+        });
+      }
+      return { key, snapshot };
+    },
+
+    onError: (_error, _vars, context) => {
+      if (context?.snapshot) {
+        queryClient.setQueryData(context.key, context.snapshot);
+      }
+    },
+
+    onSettled: invalidate,
   });
 }

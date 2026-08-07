@@ -95,14 +95,15 @@ test.describe("인증 흐름", () => {
     await expect(page).toHaveURL(/\/login/);
   });
 
-  test("로그인 성공 시 /home으로 이동한다", async ({ page }) => {
+  test("로그인 성공 시 /select로 이동한다", async ({ page }) => {
     await page.goto("/login");
 
     await page.getByLabel("아이디").fill("admin");
     await page.getByLabel("비밀번호").fill("password");
     await page.getByRole("button", { name: "로그인" }).click();
 
-    await expect(page).toHaveURL(/\/home/);
+    // 로그인 직후는 항상 워크스페이스 선택이다(마지막 선택을 기억하지 않는다).
+    await expect(page).toHaveURL(/\/select/);
     // 워드마크가 글자를 쪼개 놓아(or + ı + no) getByText로는 안 잡힌다. 접근성 이름으로 찾는다.
     await expect(
       page.getByRole("img", { name: "orino" }).first(),
@@ -126,7 +127,7 @@ test.describe("인증 흐름", () => {
     await page.getByLabel("아이디").fill("admin");
     await page.getByLabel("비밀번호").fill("password");
     await page.getByRole("button", { name: "로그인" }).click();
-    await expect(page).toHaveURL(/\/home/);
+    await expect(page).toHaveURL(/\/select/);
 
     // 로그아웃
     await page.getByRole("button", { name: /로그아웃/ }).click();
