@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **프로젝트 규범**: 이 저장소의 최상위 규칙은 [`.specify/memory/constitution.md`](.specify/memory/constitution.md)에 있다.
+> 이 파일은 그 원칙의 실행 안내서다. 둘이 충돌하면 constitution이 우선한다.
+
 ## Repository Structure
 
 ```
@@ -33,15 +36,20 @@ orino/
 
 ## Backend (be/)
 
-**Spring Boot 4.0.3 / Java 25**, Gradle Groovy DSL
+**Spring Boot 4.0.7 / Java 25**, Gradle Groovy DSL, 멀티모듈
+(`orino-app-api`, `orino-core-web`, `orino-domain-rdb`, `orino-domain-redis`, `orino-common`)
 
 ```bash
 cd be
-./gradlew build          # Build
+./gradlew build          # Build (test + checkstyle 포함)
 ./gradlew bootRun        # Run
 ./gradlew test           # Run all tests
+./gradlew check          # 테스트 + Checkstyle (maxWarnings = 0)
 ./gradlew clean build    # Clean and rebuild
 ```
+
+> Jackson은 3.x다. `ObjectMapper`는 `tools.jackson`에서 import한다 (`com.fasterxml.jackson` 아님).
+> 애너테이션만 `com.fasterxml` 네임스페이스를 유지한다.
 
 ### Profiles
 
@@ -95,6 +103,24 @@ npm run test:e2e:ui   # E2E tests with UI
 | 통합 | MockMvc + TestContainers | RTL + MSW |
 | E2E | — | Playwright |
 
+## 품질 게이트 (푸시 전 필수)
+
+테스트만 돌려서는 CI에서 깨지는 문제를 잡지 못한다. 푸시 전에 해당 영역의 게이트를 모두 통과시킨다.
+
+| 영역 | 명령 |
+|---|---|
+| BE | `cd be && ./gradlew check` (테스트 + Checkstyle, 경고 0) |
+| FE | `cd fe && npm run format:check && npm run lint && npm test && npm run build` |
+| Infra (YAML) | `yamllint -c .yamllint.yml infra/` |
+| Infra (Helm) | `helm lint infra/helm/<app>` · `helm template infra/helm/<app> \| kubeconform -strict` |
+| Terraform | `cd infra/terraform && terraform fmt -check -recursive` |
+
+- pre-commit 훅(husky + lint-staged, BE Checkstyle)을 `--no-verify`로 우회하지 않는다.
+- CI는 경로별로 나뉜다: `be/**` → BE CI(Gradle build + Trivy), `fe/**` → FE CI,
+  `infra/**` → Infra CI(yamllint · helm lint · kubeconform), `infra/terraform/**` → Terraform,
+  `infra/ansible/**` → Ansible.
+- Trivy 이미지 스캔(CRITICAL/HIGH)은 무시 목록으로 덮지 않고 의존성 버전을 올려 해결한다.
+
 ## Infra / GitOps
 
 모든 인프라 설치는 Git을 통해 관리한다 (GitOps). ArgoCD가 클러스터에 설치되어 있으며 App of Apps 패턴을 사용한다.
@@ -109,6 +135,20 @@ infra/helm/<app>/
 ├── values.yaml    # 커스텀 설정
 └── Chart.lock     # dependency lock
 ```
+
+### infra/ 하위 구성
+
+| 디렉토리 | 용도 | 적용 경로 |
+|---|---|---|
+| `argocd/` | Application 정의 (App of Apps) | ArgoCD 동기화 |
+| `helm/` | wrapper chart (`values.yaml`에 설정) | ArgoCD 동기화 |
+| `terraform/` | AWS 리소스 (Route53, S3 등) | PR=plan, main 머지=자동 apply (OIDC) |
+| `ansible/` | note1/note2 노드 부트스트랩 IaC | main 머지 시 자동 apply (tailnet 경유) |
+
+- `terraform apply`를 로컬에서 수동 실행하지 않는다. 정적 AWS 키를 만들지 않는다.
+- 노드(`note1`, `note2`)에 허락 없이 설치·설정 변경을 하지 않는다. 변경은 `infra/ansible/`로 코드화한다.
+- 컨테이너 안에서 런타임에 패키지를 설치하지 않는다(`apt`, `microdnf`, `awscli` 등). 공식 prebuilt 이미지를 조합한다.
+- Helm 변경은 `helm template`으로 렌더링 결과를 확인한 뒤 커밋한다.
 
 ### Secrets 관리
 
@@ -127,6 +167,8 @@ infra/helm/<app>/
 - 반드시 새 브랜치에서 작업하고 PR을 통해 머지한다.
 - PR 생성 시 base 브랜치는 항상 main으로 설정한다. 중간 브랜치를 base로 사용하지 않는다.
 - **워크트리는 세션마다 고유 이름(`be-fe-{해쉬}`, `infra-{해쉬}`)으로 생성한다.** 고정 이름을 쓰면 여러 세션이 같은 워크트리를 공유해 브랜치·커밋이 꼬인다(한 워크트리엔 브랜치 하나만 체크아웃 가능).
+- 워크트리에서 작업 중이면 git 명령도 그 워크트리에서 실행한다. 메인 체크아웃 디렉토리로 `cd`하지 않는다.
+- 이미 머지된 PR에는 커밋을 추가하지 않는다. 후속 작업은 새 이슈·새 PR로 연다.
 
 ## GitHub Templates
 
@@ -145,3 +187,4 @@ Issue/PR 생성 시 `.github/` 템플릿을 반드시 따른다.
 - 본문: 구체적인 내용, `-`로 구분 (한 줄 72자 이내)
 - 꼬릿말: 관련 이슈 번호 (예: `#7`)
 - Types: `feat`, `fix`, `docs`, `test`, `refactor`, `style`, `chore`
+- 커밋 메시지와 PR 본문에 도구 서명(`Co-Authored-By`, 생성 뱃지 등)을 넣지 않는다.

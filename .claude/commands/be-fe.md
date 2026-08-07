@@ -17,7 +17,7 @@
 
 ## 기술 스택
 
-- BE: Spring Boot 4.0.3 / Java 25 / MySQL / Redis / Spring Security / JWT
+- BE: Spring Boot 4.0.7 / Java 25 / MySQL / Redis / Spring Security / JWT
 - FE: React / TypeScript / Axios
 
 ## 참고 문서
