@@ -26,7 +26,7 @@ export function LoginPage() {
     try {
       await login({ loginId, password });
       refresh();
-      navigate("/home", { replace: true });
+      navigate("/select", { replace: true });
     } catch {
       setError("아이디 또는 비밀번호가 올바르지 않습니다.");
     } finally {

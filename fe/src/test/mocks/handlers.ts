@@ -87,4 +87,29 @@ export const handlers = [
   http.get(`${API_BASE}/planner/monthly-goals/:year/:month`, () => {
     return HttpResponse.json({ code: "OK", data: null });
   }),
+
+  // 기본값: 여행 없음. 세 필드가 전부 null이면 "여행 만들기"만 보이는 상태다.
+  http.get(`${API_BASE}/travel/summary`, () => {
+    return HttpResponse.json({
+      code: "OK",
+      data: { ongoing: null, next: null, recentCompleted: null },
+    });
+  }),
+
+  // 기본값: 빈 캘린더 피드. `/select`의 "오늘 루틴" 메타가 항상 해소되도록.
+  http.get(`${API_BASE}/planner/calendar`, () => {
+    return HttpResponse.json({
+      code: "OK",
+      data: {
+        from: "2026-05-18",
+        to: "2026-05-18",
+        googleConnected: false,
+        partial: false,
+        errors: [],
+        events: [],
+        tasks: [],
+        reviews: [],
+      },
+    });
+  }),
 ];

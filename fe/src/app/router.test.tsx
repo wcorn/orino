@@ -51,7 +51,7 @@ describe("AppRouter", () => {
     });
   });
 
-  it("/login 경로에서 인증 시 /home으로 리다이렉트한다", async () => {
+  it("/login 경로에서 인증 시 /select로 리다이렉트한다", async () => {
     mockEmptyTodayReviews();
     useAuthStore.setState({ accessToken: "valid-token" });
 
@@ -59,8 +59,49 @@ describe("AppRouter", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /로그아웃/ }),
+        screen.getByRole("heading", { name: "어디로 갈까요" }),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("/ 경로에서 인증 시 /select로 리다이렉트한다", async () => {
+    mockEmptyTodayReviews();
+    useAuthStore.setState({ accessToken: "valid-token" });
+
+    renderApp(["/"]);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "어디로 갈까요" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("/travel 딥링크는 선택 화면으로 되돌리지 않는다 (푸시 알림 진입점)", async () => {
+    mockEmptyTodayReviews();
+    useAuthStore.setState({ accessToken: "valid-token" });
+
+    renderApp(["/travel/trips/3/board"]);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "일정 보드" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("heading", { name: "어디로 갈까요" })).toBeNull();
+  });
+
+  it("/select 는 미인증 시 로그인으로 보낸다", async () => {
+    server.use(
+      http.post(`${API_BASE}/auth/reissue`, () => {
+        return HttpResponse.json(null, { status: 401 });
+      }),
+    );
+
+    renderApp(["/select"]);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("아이디")).toBeInTheDocument();
     });
   });
 
@@ -84,12 +125,11 @@ describe("AppRouter", () => {
 
     renderApp(["/home"]);
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /로그아웃/ }),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("안녕하세요 👋")).toBeInTheDocument();
+    // 헤더는 lazy 페이지보다 먼저 뜨므로, 페이지 본문이 나타날 때까지 기다린다.
+    expect(await screen.findByText("안녕하세요 👋")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /로그아웃/ }),
+    ).toBeInTheDocument();
   });
 
   it("/planner/materials 경로에서 자료 목록을 렌더링한다", async () => {
