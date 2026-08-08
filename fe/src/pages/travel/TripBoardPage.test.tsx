@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { act } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Providers } from "@/app/providers";
 import { AppRouter } from "@/app/router";
@@ -772,6 +772,123 @@ describe("TripBoardPage", () => {
       expect(
         screen.queryByRole("button", { name: /이동시간/ }),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("오프라인 (§4.6)", () => {
+    /**
+     * `navigator.onLine`은 게터라 `vi.spyOn(navigator, "onLine", "get")`으로 바꾼다.
+     * 되돌리기는 `restoreAllMocks`가 해 준다 — `defineProperty`와 달리 새지 않는다.
+     */
+    function goOffline() {
+      vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("배너로 왜 안 되는지와 무엇은 되는지를 말한다", async () => {
+      goOffline();
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+
+      renderBoard();
+
+      expect(
+        await screen.findByText("오프라인 · 일정 조회만 가능합니다"),
+      ).toBeInTheDocument();
+      // 조회는 그대로 된다.
+      expect(screen.getByText("센소지")).toBeInTheDocument();
+    });
+
+    it("편집 진입을 없앤다 — 실패할 요청을 보내지 않는다", async () => {
+      goOffline();
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+
+      renderBoard();
+      await screen.findByText("센소지");
+
+      // 추가 버튼은 아예 없다.
+      expect(
+        screen.queryByRole("button", { name: "일정 추가" }),
+      ).not.toBeInTheDocument();
+      // 행 액션도 없다.
+      expect(screen.queryByLabelText("센소지 삭제")).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("센소지 보관함으로"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("지도는 열 수 없다 — 타일을 캐시할 수 없다", async () => {
+      goOffline();
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+
+      renderBoard();
+      await screen.findByText("센소지");
+
+      expect(screen.getByRole("button", { name: "지도" })).toBeDisabled();
+    });
+
+    it("이동시간은 캐시값이라 눌러도 다른 수단을 물어볼 수 없다", async () => {
+      goOffline();
+      mockBoard({
+        byDate: {
+          "2026-10-24": [
+            activity({
+              id: 1,
+              title: "아침 산책",
+              place: {
+                id: 10,
+                name: "센소지",
+                address: "다이토구",
+                lat: 35.7147651,
+                lng: 139.7966553,
+              },
+            }),
+            activity({
+              id: 2,
+              title: "전망대",
+              place: {
+                id: 11,
+                name: "도쿄 스카이트리",
+                address: "스미다구",
+                lat: 35.7100627,
+                lng: 139.8107004,
+              },
+            }),
+          ],
+        },
+        legs: [
+          {
+            fromActivityId: 1,
+            toActivityId: 2,
+            mode: "WALK",
+            durationMinutes: 12,
+            distanceM: 900,
+            fallback: false,
+          },
+        ],
+      });
+
+      renderBoard();
+
+      expect(
+        await screen.findByRole("button", { name: "이동시간 12분" }),
+      ).toBeDisabled();
+    });
+
+    it("온라인이면 그대로 편집할 수 있다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+
+      renderBoard();
+      await screen.findByText("센소지");
+
+      expect(
+        screen.queryByText("오프라인 · 일정 조회만 가능합니다"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "일정 추가" }),
+      ).toBeInTheDocument();
     });
   });
 });

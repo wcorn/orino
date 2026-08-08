@@ -25,6 +25,8 @@ interface ActivityRowProps {
   /** 보관함을 보고 있으면 "보관함으로"를 감춘다(이미 거기 있다). */
   inArchive: boolean;
   dragMode: boolean;
+  /** 오프라인이면 편집이 아예 없다(§4.6) — 실패할 요청을 보내지 않는다. */
+  offline: boolean;
   /** 드래그 모드에서 한 칸씩 옮기기. 정밀하게 맞추기 어려운 손가락을 위한 대안이다. */
   onMoveUp: () => void;
   onMoveDown: () => void;
@@ -46,6 +48,7 @@ export function ActivityRow({
   activity,
   inArchive,
   dragMode,
+  offline,
   onMoveUp,
   onMoveDown,
   canMoveUp,
@@ -64,7 +67,7 @@ export function ActivityRow({
     isDragging,
   } = useSortable({ id: activity.id, disabled: !dragMode });
 
-  const longPress = useLongPress(onEnterDragMode, !dragMode);
+  const longPress = useLongPress(onEnterDragMode, !dragMode && !offline);
 
   // 드래그 모드가 아니면 dnd 속성을 아예 붙이지 않는다. `disabled`인 sortable은
   // `role="button" aria-disabled="true"`를 남기는데, 그러면 행 전체가 "비활성 버튼"으로
@@ -85,7 +88,8 @@ export function ActivityRow({
 
   const swipe = useSwipeAction({
     // 드래그 모드에서는 세로 드래그가 주인이라 스와이프를 끈다.
-    disabled: dragMode,
+    // 오프라인에서는 밀 수는 있어도 되돌릴 수 없는 요청이 나가면 안 된다.
+    disabled: dragMode || offline,
     onSwipeLeft: onDelete,
     onSwipeRight: inArchive ? undefined : onArchive,
   });
@@ -198,7 +202,8 @@ export function ActivityRow({
                   className="text-muted-foreground size-3.5"
                 />
               )}
-              {!inArchive && (
+              {/* 오프라인이면 액션을 감춘다 — 눌러도 실패할 버튼을 두지 않는다. */}
+              {!offline && !inArchive && (
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -209,15 +214,17 @@ export function ActivityRow({
                   <Archive className="size-4" />
                 </Button>
               )}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`${activity.title} 삭제`}
-                onClick={onDelete}
-                {...stopDrag}
-              >
-                <Trash2 className="size-4" />
-              </Button>
+              {!offline && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`${activity.title} 삭제`}
+                  onClick={onDelete}
+                  {...stopDrag}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              )}
             </>
           )}
         </span>

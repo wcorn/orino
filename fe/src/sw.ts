@@ -1,5 +1,13 @@
 /// <reference lib="webworker" />
-import { cleanupOutdatedCaches, precacheAndRoute } from "workbox-precaching";
+import { CacheableResponsePlugin } from "workbox-cacheable-response";
+import { ExpirationPlugin } from "workbox-expiration";
+import {
+  cleanupOutdatedCaches,
+  createHandlerBoundToURL,
+  precacheAndRoute,
+} from "workbox-precaching";
+import { NavigationRoute, registerRoute } from "workbox-routing";
+import { NetworkFirst } from "workbox-strategies";
 
 declare const self: ServiceWorkerGlobalScope;
 
@@ -13,6 +21,58 @@ precacheAndRoute(self.__WB_MANIFEST);
 
 // 옛 배포의 캐시를 남겨두면 용량만 먹는다. 새 SW가 활성화될 때 정리한다.
 cleanupOutdatedCaches();
+
+/**
+ * SPA 경로 폴백.
+ *
+ * <p>온라인에서는 서버(nginx)가 어떤 경로든 index.html을 준다. 오프라인에는 그 서버가 없어서,
+ * <b>SW가 같은 일을 대신하지 않으면 새로고침 순간 흰 화면</b>이 된다 — precache에 index.html이
+ * 들어 있어도 `/travel/...` 요청과는 이어지지 않는다.
+ *
+ * <p>{@code generateSW}는 이걸 자동으로 넣지만 우리는 커스텀 SW라 직접 건다.
+ */
+registerRoute(
+  new NavigationRoute(createHandlerBoundToURL("index.html"), {
+    // API는 내비게이션이 아니지만, 혹시라도 셸을 돌려주면 JSON 파싱이 깨진다.
+    denylist: [/^\/api\//],
+  }),
+);
+
+/**
+ * 여행 조회 API 캐시(§4.6) — <b>NetworkFirst</b>.
+ *
+ * <p>온라인이면 항상 최신을 쓰고, 실패했을 때만 캐시로 떨어진다. 반대(CacheFirst)로 하면
+ * 현지에서 일정을 고쳐도 옛 화면이 뜬다 — 오프라인 대비가 온라인 사용을 망치면 안 된다.
+ *
+ * <p><b>GET만</b> 캐시한다. 편집은 오프라인에서 진입 자체를 막으므로(§4.6) 여기 올 일이 없고,
+ * 혹시 오더라도 캐시할 대상이 아니다.
+ *
+ * <p>지도 타일과 장소 검색은 <b>일부러 뺐다</b>. 타일은 양이 많아 캐시해도 쓸모가 없고,
+ * 장소 검색은 호출당 과금이라 오프라인에 대비해 미리 받아둘 값이 아니다.
+ */
+registerRoute(
+  ({ url, request, sameOrigin }) =>
+    request.method === "GET" &&
+    sameOrigin &&
+    url.pathname.startsWith("/api/travel/") &&
+    // 장소 검색은 오프라인 조회 대상이 아니다(§4.6).
+    !url.pathname.startsWith("/api/travel/places"),
+  new NetworkFirst({
+    cacheName: "travel-api",
+    // 네트워크가 죽은 게 아니라 느릴 때, 오래 붙잡고 있으면 화면이 멈춘 것처럼 보인다.
+    networkTimeoutSeconds: 5,
+    plugins: [
+      // 200만 캐시한다. 401·404를 캐시하면 로그인 후에도 그 응답이 나온다.
+      new CacheableResponsePlugin({ statuses: [200] }),
+      new ExpirationPlugin({
+        maxEntries: 200,
+        // 여행이 끝나면 그 캐시는 의미가 없다. 30일이면 넉넉하다.
+        maxAgeSeconds: 30 * 24 * 60 * 60,
+        purgeOnQuotaError: true,
+      }),
+    ],
+  }),
+);
 
 /**
  * 대기 중인 새 SW를 즉시 활성화하라는 신호. 앱이 "새 버전이 있어요"를 띄우고

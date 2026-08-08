@@ -41,6 +41,7 @@ import {
 } from "@/features/travel/lib/tripClock";
 import { dayChips, formatShortDate } from "@/features/travel/lib/tripStatus";
 import { toast } from "@/shared/lib/toast";
+import { useOnline } from "@/shared/lib/useOnline";
 
 // leaflet은 무겁다 — 장소 없는 일정에서는 받지 않는다.
 const PlacePreviewMap = lazy(() =>
@@ -91,6 +92,8 @@ export function ActivityDetailPage() {
   const [form, setForm] = useState<FormState | null>(null);
   const dayLabelId = useId();
   const notifyMinutesId = useId();
+  // 오프라인은 조회 전용이다(§4.6) — 저장·삭제 요청을 아예 보내지 않는다.
+  const online = useOnline();
 
   useEffect(() => {
     if (activity) setForm(toFormState(activity));
@@ -196,6 +199,7 @@ export function ActivityDetailPage() {
           variant="ghost"
           size="icon-sm"
           aria-label="일정 삭제"
+          disabled={!online}
           onClick={remove}
         >
           <Trash2 className="size-4" />
@@ -334,7 +338,7 @@ export function ActivityDetailPage() {
                 ...NOTIFY_MINUTES_OPTIONS,
               ]}
               ariaLabelledby={notifyMinutesId}
-              disabled={!hasStartTime || !form.notifyEnabled}
+              disabled={!online || !hasStartTime || !form.notifyEnabled}
             />
             <span id={notifyMinutesId} className="sr-only">
               알림 시점
@@ -342,7 +346,7 @@ export function ActivityDetailPage() {
             <Switch
               checked={form.notifyEnabled}
               onCheckedChange={(checked) => set("notifyEnabled", checked)}
-              disabled={!hasStartTime}
+              disabled={!online || !hasStartTime}
               aria-label="일정 알림"
             />
           </div>
@@ -361,7 +365,7 @@ export function ActivityDetailPage() {
               onCheckedChange={(checked) =>
                 set("departureNotifyEnabled", checked)
               }
-              disabled={!canNotifyDeparture}
+              disabled={!online || !canNotifyDeparture}
               aria-label="출발 알림"
             />
           </div>
@@ -395,7 +399,7 @@ export function ActivityDetailPage() {
           >
             취소
           </Button>
-          <Button type="submit" disabled={updateActivity.isPending}>
+          <Button type="submit" disabled={updateActivity.isPending || !online}>
             저장
           </Button>
         </div>

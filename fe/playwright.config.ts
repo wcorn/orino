@@ -12,13 +12,13 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testIgnore: /service-worker\.spec\.ts/,
+      testIgnore: /(service-worker|offline)\.spec\.ts/,
       use: { browserName: "chromium" },
     },
     // SW·precache는 빌드 결과에서만 확인된다. dev 서버에는 SW가 없다.
     {
       name: "built",
-      testMatch: /service-worker\.spec\.ts/,
+      testMatch: /(service-worker|offline)\.spec\.ts/,
       use: { browserName: "chromium", baseURL: "http://localhost:4173" },
     },
     // 여행은 Android Chrome 전용이다. 드래그·스와이프는 마우스와 터치의 동작이 달라

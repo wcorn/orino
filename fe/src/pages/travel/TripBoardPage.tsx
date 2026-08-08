@@ -40,6 +40,7 @@ import { DayTabs } from "@/features/travel/board/DayTabs";
 import { DragModeBar } from "@/features/travel/board/DragModeBar";
 import { LegRow } from "@/features/travel/board/LegRow";
 import { LocalClockLine } from "@/features/travel/board/LocalClockLine";
+import { OfflineBanner } from "@/features/travel/board/OfflineBanner";
 import { usePendingActions } from "@/features/travel/board/pendingActions";
 import { TransportSheet } from "@/features/travel/board/TransportSheet";
 import { useUndoableAction } from "@/features/travel/board/useUndoableAction";
@@ -50,6 +51,7 @@ import {
 } from "@/features/travel/hooks/useActivityMutations";
 import { useBoard } from "@/features/travel/hooks/useBoard";
 import { toast } from "@/shared/lib/toast";
+import { useOnline } from "@/shared/lib/useOnline";
 
 /** `?day=` 값 — 0부터 시작하는 일차 인덱스, 또는 보관함. */
 const ARCHIVE = "archive";
@@ -106,6 +108,8 @@ export function TripBoardPage() {
   const [deletingTrip, setDeletingTrip] = useState(false);
   const [dragMode, setDragMode] = useState(false);
   const [openLeg, setOpenLeg] = useState<Leg | null>(null);
+  // 오프라인은 조회 전용이다(§4.6). 편집을 막는 게 아니라 진입 자체를 없앤다.
+  const online = useOnline();
 
   const createActivity = useCreateActivity(tripId);
   const updateActivity = useUpdateActivity(tripId);
@@ -297,7 +301,7 @@ export function TripBoardPage() {
                 `/travel/trips/${tripId}/map${day === null ? "" : `?day=${day}`}`,
               )
             }
-            disabled={isArchive}
+            disabled={isArchive || !online}
           >
             <MapIcon className="size-4" />
           </Button>
@@ -331,6 +335,8 @@ export function TripBoardPage() {
         collisionDetection={collisionDetection}
         onDragEnd={handleDragEnd}
       >
+        {!online && <OfflineBanner />}
+
         <DayTabs
           days={board.days}
           archiveCount={board.archiveCount}
@@ -355,12 +361,14 @@ export function TripBoardPage() {
                     <LegRow
                       leg={legsByTo.get(activity.id)!}
                       onOpen={setOpenLeg}
+                      offline={!online}
                     />
                   )}
                   <ActivityRow
                     activity={activity}
                     inArchive={selectedDate === null}
                     dragMode={dragMode}
+                    offline={!online}
                     canMoveUp={index > 0}
                     canMoveDown={index < activities.length - 1}
                     onMoveUp={() => moveWithin(index, index - 1)}
@@ -387,6 +395,7 @@ export function TripBoardPage() {
           </p>
           <Button
             variant="outline"
+            disabled={!online}
             onClick={() => navigate(`/travel/trips/${tripId}/places`)}
           >
             <Search className="size-4" />
@@ -396,7 +405,7 @@ export function TripBoardPage() {
       )}
 
       {/* 드래그 모드에서는 추가 버튼을 감춘다 — 옮기는 중에 누를 일이 없고 오조작만 는다. */}
-      {!dragMode && (
+      {!dragMode && online && (
         <div className="flex justify-center py-2 pb-6">
           <Button
             variant="outline"
