@@ -10,6 +10,7 @@ import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.activity.service.ActivityService;
 import ds.project.orino.planner.travel.board.dto.BoardResponse;
+import ds.project.orino.planner.travel.route.service.LegService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,15 +37,18 @@ public class BoardService {
     private final TripRepository tripRepository;
     private final TripActivityRepository activityRepository;
     private final ActivityService activityService;
+    private final LegService legService;
     private final Clock clock;
 
     public BoardService(TripRepository tripRepository,
                         TripActivityRepository activityRepository,
                         ActivityService activityService,
+                        LegService legService,
                         Clock clock) {
         this.tripRepository = tripRepository;
         this.activityRepository = activityRepository;
         this.activityService = activityService;
+        this.legService = legService;
         this.clock = clock;
     }
 
@@ -71,8 +75,7 @@ public class BoardService {
                 selectedDate,
                 activityRepository.countUnscheduled(tripId),
                 activityService.toResponses(activities),
-                // 이동시간(legs)은 장소·Routes가 붙는 2단계에서 채운다.
-                List.of());
+                legService.legs(activities));
     }
 
     /**
