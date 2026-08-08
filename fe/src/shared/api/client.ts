@@ -56,9 +56,14 @@ client.interceptors.response.use(
     }
 
     // 재발급은 코디네이터가 탭 내 단일 비행 + 탭 간 Web Lock으로 직렬화한다.
-    const refreshed = await refreshAccessToken();
-    if (refreshed) {
+    const result = await refreshAccessToken();
+    if (result === "ok") {
       return client(originalRequest);
+    }
+    // 재발급조차 못 닿았으면 네트워크가 없는 것이다. 로그인 화면으로 쫓아내면 캐시로
+    // 보던 화면까지 잃는다(#1095) — 그냥 실패로 돌려주고 화면이 오프라인 처리를 하게 둔다.
+    if (result === "offline") {
+      return Promise.reject(error);
     }
     window.location.href = "/login";
     return Promise.reject(error);

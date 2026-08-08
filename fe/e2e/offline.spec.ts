@@ -68,4 +68,55 @@ test.describe("오프라인", () => {
       await context.setOffline(false);
     }
   });
+
+  /**
+   * #1095 — 여기까지 와야 오프라인 캐시가 쓸모 있다.
+   *
+   * <p>위 테스트는 <b>로그인 화면</b>에서만 새로고침한다. 로그인한 상태로 새로고침하면
+   * 토큰이 사라지고 재발급도 못 해, 예전에는 로그인 화면으로 쫓겨났다 — 캐시에 일정이
+   * 다 있어도 볼 수 없었다.
+   */
+  test("로그인한 채 오프라인에서 새로고침해도 로그인 화면으로 쫓겨나지 않는다", async ({
+    page,
+    context,
+  }) => {
+    await page.route("**/api/auth/login", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ code: "OK", data: { accessToken: "t" } }),
+      }),
+    );
+    // 조회는 비어 있어도 된다 — 여기서 보는 것은 "로그인 화면으로 튕기지 않는가"다.
+    await page.route("**/api/travel/**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          code: "OK",
+          data: { ongoing: null, next: null, recentCount: 0 },
+        }),
+      }),
+    );
+
+    await page.goto("/login");
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.reload();
+
+    await page.getByRole("textbox", { name: "아이디" }).fill("admin");
+    await page.getByLabel("비밀번호").fill("password");
+    await page.getByRole("button", { name: "로그인" }).click();
+    await page.waitForURL(/\/(select|home)/);
+
+    await context.setOffline(true);
+    try {
+      await page.reload();
+      await expect(page).not.toHaveURL(/\/login/);
+      await expect(page.getByRole("textbox", { name: "아이디" })).toHaveCount(
+        0,
+      );
+    } finally {
+      await context.setOffline(false);
+    }
+  });
 });
