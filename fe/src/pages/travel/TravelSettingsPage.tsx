@@ -12,6 +12,7 @@ import { useTravelSummary } from "@/features/travel/hooks/useTravelSummary";
 import { useTrip } from "@/features/travel/hooks/useTrip";
 import { useUpdateTrip } from "@/features/travel/hooks/useTripMutations";
 import { NOTIFY_MINUTES_OPTIONS } from "@/features/travel/lib/destinations";
+import { OfflineSection } from "@/features/travel/offline/OfflineSection";
 import { usePushSubscription } from "@/features/travel/push/usePushSubscription";
 import { toast } from "@/shared/lib/toast";
 
@@ -32,7 +33,6 @@ const PERMISSION_LABEL = {
  * 문제인데, 지금 관심 있는 여행은 하나뿐이다 — 진행 중이거나 다음 예정 여행. 그 여행의
  * 설정을 보여준다.
  *
- * <p>오프라인 섹션(저장 용량·초기화)은 4단계다. 캐시가 없어 표시할 값이 없다.
  */
 export function TravelSettingsPage() {
   const { data: summary, isPending } = useTravelSummary();
@@ -208,6 +208,8 @@ export function TravelSettingsPage() {
           </p>
         )}
       </section>
+
+      <OfflineSection />
 
       <section className="flex flex-col gap-2 border-t pt-5">
         <h2 className="text-caption text-muted-foreground font-semibold">

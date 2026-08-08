@@ -9,6 +9,8 @@ import {
 import { NavigationRoute, registerRoute } from "workbox-routing";
 import { NetworkFirst } from "workbox-strategies";
 
+import { TRAVEL_CACHE } from "@/shared/lib/cacheNames";
+
 declare const self: ServiceWorkerGlobalScope;
 
 /**
@@ -58,7 +60,8 @@ registerRoute(
     // 장소 검색은 오프라인 조회 대상이 아니다(§4.6).
     !url.pathname.startsWith("/api/travel/places"),
   new NetworkFirst({
-    cacheName: "travel-api",
+    // 설정 화면이 같은 이름으로 읽고 비운다(§S-09).
+    cacheName: TRAVEL_CACHE,
     // 네트워크가 죽은 게 아니라 느릴 때, 오래 붙잡고 있으면 화면이 멈춘 것처럼 보인다.
     networkTimeoutSeconds: 5,
     plugins: [
