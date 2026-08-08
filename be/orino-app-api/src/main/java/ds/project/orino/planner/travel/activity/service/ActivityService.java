@@ -8,6 +8,7 @@ import ds.project.orino.domain.planner.travel.entity.TripActivity;
 import ds.project.orino.domain.planner.travel.entity.TripActivityLog;
 import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
 import ds.project.orino.domain.planner.travel.repository.TripActivityLogRepository;
+import ds.project.orino.domain.planner.travel.repository.TripActivityPhotoRepository;
 import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.activity.dto.ActivityLogRequest;
@@ -16,6 +17,8 @@ import ds.project.orino.planner.travel.activity.dto.ActivityPlace;
 import ds.project.orino.planner.travel.activity.dto.ActivityResponse;
 import ds.project.orino.planner.travel.activity.dto.ActivityWriteRequest;
 import ds.project.orino.planner.travel.activity.dto.ReorderRequest;
+import ds.project.orino.planner.travel.photo.dto.PhotoResponse;
+import ds.project.orino.planner.travel.photo.service.TravelPhotoService;
 import ds.project.orino.planner.travel.push.service.NotificationScheduleService;
 import ds.project.orino.planner.travel.route.dto.LegResponse;
 import ds.project.orino.planner.travel.route.service.LegService;
@@ -54,6 +57,8 @@ public class ActivityService {
 
     private final TripActivityRepository activityRepository;
     private final TripActivityLogRepository logRepository;
+    private final TripActivityPhotoRepository photoRepository;
+    private final TravelPhotoService photoService;
     private final TripRepository tripRepository;
     private final TravelPlaceRepository placeRepository;
     private final PlaceService placeService;
@@ -63,6 +68,8 @@ public class ActivityService {
 
     public ActivityService(TripActivityRepository activityRepository,
                            TripActivityLogRepository logRepository,
+                           TripActivityPhotoRepository photoRepository,
+                           TravelPhotoService photoService,
                            TripRepository tripRepository,
                            TravelPlaceRepository placeRepository,
                            PlaceService placeService,
@@ -71,6 +78,8 @@ public class ActivityService {
                            Clock clock) {
         this.activityRepository = activityRepository;
         this.logRepository = logRepository;
+        this.photoRepository = photoRepository;
+        this.photoService = photoService;
         this.tripRepository = tripRepository;
         this.placeRepository = placeRepository;
         this.placeService = placeService;
@@ -231,13 +240,17 @@ public class ActivityService {
                 .orElseGet(() -> new TripActivityLog(activityId, null, null));
         log.update(request.rating(), request.memo());
 
-        if (log.isEmpty()) {
+        // 사진이 붙어 있으면 비어 있지 않다 — 지우면 FK CASCADE로 사진까지 날아간다.
+        boolean hasPhotos = log.getId() != null
+                && photoRepository.countByLogId(log.getId()) > 0;
+        if (log.isEmpty() && !hasPhotos) {
             if (log.getId() != null) {
                 logRepository.delete(log);
             }
             return null;
         }
-        return ActivityLogResponse.from(logRepository.save(log));
+        TripActivityLog saved = logRepository.save(log);
+        return ActivityLogResponse.from(saved, photoService.photosOf(saved.getId()));
     }
 
     // ---------------- helpers ----------------
@@ -327,7 +340,9 @@ public class ActivityService {
     private ActivityResponse toResponse(TripActivity activity) {
         return ActivityResponse.of(activity, placeOf(activity.getPlaceId()),
                 logRepository.findByActivityId(activity.getId())
-                        .map(ActivityLogResponse::from).orElse(null));
+                        .map(log -> ActivityLogResponse.from(log,
+                                photoService.photosOf(log.getId())))
+                        .orElse(null));
     }
 
     private ActivityPlace placeOf(Long placeId) {
@@ -370,8 +385,14 @@ public class ActivityService {
             return Map.of();
         }
         List<Long> ids = activities.stream().map(TripActivity::getId).toList();
-        return logRepository.findAllByActivityIdIn(ids).stream()
+        List<TripActivityLog> logs = logRepository.findAllByActivityIdIn(ids);
+        // 사진도 한 번에 읽는다 — 기록마다 조회하면 N+1이 한 겹 더 생긴다.
+        Map<Long, List<PhotoResponse>> photos = photoService.photosByLog(
+                logs.stream().map(TripActivityLog::getId).toList());
+
+        return logs.stream()
                 .collect(Collectors.toMap(TripActivityLog::getActivityId,
-                        ActivityLogResponse::from));
+                        log -> ActivityLogResponse.from(log,
+                                photos.getOrDefault(log.getId(), List.of()))));
     }
 }

@@ -99,3 +99,5 @@ databaseChangeLog:
       file: db/changelog/changes/049-create-push-notification.yaml
   - include:
       file: db/changelog/changes/050-create-trip-activity-log.yaml
+  - include:
+      file: db/changelog/changes/051-create-trip-activity-photo.yaml

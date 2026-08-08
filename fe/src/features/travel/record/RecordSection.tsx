@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 
 import { Textarea } from "@/components/ui/textarea";
 import type { ActivityLog } from "@/features/travel/api/activities";
+import type { ActivityPhoto } from "@/features/travel/api/photos";
+import { PhotoGrid } from "@/features/travel/record/PhotoGrid";
 import { StarRating } from "@/features/travel/record/StarRating";
 import { useAutoSaveLog } from "@/features/travel/record/useAutoSaveLog";
 
@@ -17,7 +19,7 @@ interface RecordSectionProps {
 }
 
 /**
- * S-07 <b>기록 영역</b> — 평점·메모.
+ * S-07 <b>기록 영역</b> — 평점·메모·사진.
  *
  * <p><b>여행이 시작된 뒤에만 이 영역이 존재한다.</b> 호출부가 그 판단을 하고, 여기서는
  * 항상 그려진다 — 아직 겪지 않은 일에 평점을 매기는 화면은 만들지 않는다.
@@ -33,6 +35,8 @@ export function RecordSection({
 }: RecordSectionProps) {
   const [rating, setRating] = useState<number | null>(log?.rating ?? null);
   const [memo, setMemo] = useState(log?.memo ?? "");
+  // 사진은 평점·메모와 저장 경로가 달라(즉시 등록) 여기서 따로 들고 있는다.
+  const [photos, setPhotos] = useState<ActivityPhoto[]>(log?.photos ?? []);
   const { status, schedule, flush } = useAutoSaveLog(activityId, tripId);
 
   // 다른 일정으로 넘어가면 그 일정의 기록을 보여준다.
@@ -40,6 +44,10 @@ export function RecordSection({
     setRating(log?.rating ?? null);
     setMemo(log?.memo ?? "");
   }, [activityId, log?.rating, log?.memo]);
+
+  useEffect(() => {
+    setPhotos(log?.photos ?? []);
+  }, [activityId, log?.photos]);
 
   const change = (nextRating: number | null, nextMemo: string) => {
     setRating(nextRating);
@@ -83,6 +91,13 @@ export function RecordSection({
         onChange={(e) => change(rating, e.target.value)}
         // 포커스를 잃으면 디바운스를 기다리지 않는다 — 다 쓴 뒤 화면을 닫는 게 흔하다.
         onBlur={flush}
+      />
+
+      <PhotoGrid
+        activityId={activityId}
+        photos={photos}
+        onChange={setPhotos}
+        online={online}
       />
     </section>
   );

@@ -160,6 +160,33 @@ class TravelSchemaTest {
                 .isInstanceOf(DuplicateKeyException.class);
     }
 
+    @Test
+    @DisplayName("기록을 지우면 사진도 함께 지워진다(ON DELETE CASCADE)")
+    @Transactional
+    void deletingLogCascadesToPhotos() {
+        long memberId = insertMember("photo-cascade-member");
+        long activityId = insertActivity(insertTrip(memberId, "도쿄"));
+        insertLog(activityId, 4);
+        long logId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        jdbcTemplate.update("""
+                INSERT INTO trip_activity_photo (log_id, object_key, sort_order, created_at)
+                VALUES (?, 'travel/activities/1/a.jpg', 0, NOW(6))
+                """, logId);
+
+        jdbcTemplate.update("DELETE FROM trip_activity_log WHERE id = ?", logId);
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM trip_activity_photo WHERE log_id = ?",
+                Integer.class, logId)).isZero();
+    }
+
+    @Test
+    @DisplayName("사진 조회 인덱스가 있다")
+    void photoIndexExists() {
+        assertThat(indexColumnsOf("trip_activity_photo", "idx_photo_log"))
+                .containsExactly("log_id", "sort_order");
+    }
+
     private long insertActivity(long tripId) {
         jdbcTemplate.update("""
                 INSERT INTO trip_activity (trip_id, title, activity_date, sort_order,

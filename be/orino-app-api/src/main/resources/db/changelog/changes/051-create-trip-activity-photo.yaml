@@ -1,0 +1,85 @@
+databaseChangeLog:
+  # 일정 기록 사진 (#1092, Epic #1029 · 4단계).
+  #
+  # 바이트는 MinIO에 있고 여기엔 object key만 담는다. 공개 URL은 설정의 endpoint + bucket +
+  # key로 조립한다 - 호스트를 컬럼에 박으면 환경이 바뀔 때 전 행을 고쳐야 한다.
+  #
+  # 위치정보 컬럼을 두지 않는다(§1.6). 여행 사진의 EXIF는 FE canvas 재인코딩으로 이미
+  # 제거된 상태로 올라온다 - 쓰지 않을 위치정보를 받아 두지 않는다.
+  #
+  # 10장·15MB 제한은 애플리케이션 검증이다. DB 제약으로 표현할 수 없고, 표현하려 해도
+  # 400으로 이유를 알려주는 편이 낫다.
+
+  - changeSet:
+      id: 051-create-trip-activity-photo
+      author: wcorn
+      comment: 기록 사진 0~10장. 기록이 지워지면 함께 사라진다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: trip_activity_photo
+      changes:
+        - createTable:
+            tableName: trip_activity_photo
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: log_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_photo_log
+                    references: trip_activity_log(id)
+                    deleteCascade: true
+              - column:
+                  name: object_key
+                  type: VARCHAR(512)
+                  constraints:
+                    nullable: false
+              # 썸네일 업로드만 실패할 수 있다. 그때는 원본을 줄여 보여준다.
+              - column:
+                  name: thumb_key
+                  type: VARCHAR(512)
+              - column:
+                  name: width
+                  type: INT
+              - column:
+                  name: height
+                  type: INT
+              - column:
+                  name: sort_order
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 051-photo-log-index
+      author: wcorn
+      comment: 한 기록의 사진을 업로드 순서대로 읽는 유일한 접근 경로.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                indexName: idx_photo_log
+      changes:
+        - createIndex:
+            tableName: trip_activity_photo
+            indexName: idx_photo_log
+            columns:
+              - column:
+                  name: log_id
+              - column:
+                  name: sort_order
