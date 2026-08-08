@@ -64,6 +64,12 @@ compactor:
   # 44% 감소에 그친 원인 — 나머지 절반이 이 루프다.
   # UI는 Ingress 없이 port-forward 디버깅용이라 1h면 충분하다 — #1107
   blockViewerSyncInterval: 1h
+  # 컴팩션 진행률(todo) 메트릭 계산 주기(기본 5m). 위 둘과 또 별개인 루프로,
+  # 계산 1회당 exists 61 + get 123 = 184 요청을 쓴다(실측).
+  # thanos compact의 주기 플래그는 wait / cleanup / block-viewer / progress
+  # 넷뿐이며 이것이 마지막이다. "0s"로 끄면 todo 메트릭을 잃으므로
+  # 1h로 늘려 관측성은 유지한다 — #1110
+  progressInterval: 1h
   storageClass: longhorn
   storageSize: 10Gi
   resources:
