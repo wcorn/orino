@@ -51,6 +51,13 @@ compactor:
   retentionRaw: 30d
   retention5m: 90d
   retention1h: 365d
+  # 컴팩션 루프 주기(기본 5m). 매 iteration마다 전체 블록의 meta.json GET +
+  # 마커 파일 HEAD를 캐시 없이 재조회해 S3 요청료가 발생한다
+  # (caching bucket은 store-gateway 전용이라 compactor엔 적용 안 됨).
+  # 취미 규모 단일 클러스터는 5분 주기가 무의미해 1h로 늘린다 — #1104
+  waitInterval: 1h
+  # 삭제 마킹된 블록 정리 주기(기본 5m). 위와 같은 이유로 1h.
+  cleanupInterval: 1h
   storageClass: longhorn
   storageSize: 10Gi
   resources:
