@@ -128,6 +128,34 @@ describe("PlaceSearchPage", () => {
       ).toBeInTheDocument();
     });
 
+    it("출처를 표기한다 — 지도 없이 Places 데이터를 보여주면 필수다", async () => {
+      mockSearch();
+      const user = userEvent.setup();
+      renderSearch();
+
+      await user.type(
+        await screen.findByLabelText("장소 검색"),
+        "센소지{Enter}",
+      );
+      await screen.findByText("센소지");
+
+      expect(screen.getByText("Google Maps")).toBeInTheDocument();
+    });
+
+    it("결과가 없으면 출처 표기도 없다 — 보여줄 데이터가 없다", async () => {
+      mockSearch([]);
+      const user = userEvent.setup();
+      renderSearch();
+
+      await user.type(
+        await screen.findByLabelText("장소 검색"),
+        "센소지{Enter}",
+      );
+      await screen.findByText("검색 결과가 없어요.");
+
+      expect(screen.queryByText("Google Maps")).toBeNull();
+    });
+
     it("여행 목적지 주변으로 편향시킨다", async () => {
       const calls = mockSearch();
       const user = userEvent.setup();
