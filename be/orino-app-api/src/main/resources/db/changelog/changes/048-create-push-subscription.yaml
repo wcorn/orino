@@ -1,0 +1,110 @@
+databaseChangeLog:
+  # 웹푸시 구독 (#1076, Epic #1029 · 3단계).
+  #
+  # endpoint는 푸시 서비스가 주는 URL로 수백 자에 이른다. MySQL 유니크 인덱스는 키 길이
+  # 상한이 있어 그대로 걸 수 없다 — SHA-256 해시(64자 hex)에 유니크를 건다.
+  # 같은 기기가 다시 구독하면 새 행이 아니라 그 행의 갱신이다.
+  #
+  # p256dh·auth는 브라우저가 주는 구독 키다. 이 값으로 페이로드를 종단 암호화하므로
+  # 서버가 잃어버리면 그 구독으로는 다시 보낼 수 없다(재구독만이 답).
+  #
+  # 컨벤션 — 절대시각은 DATETIME(6), 최상위 엔티티에 member_id 스코프.
+
+  - changeSet:
+      id: 048-create-push-subscription
+      author: wcorn
+      comment: 웹푸시 구독. endpoint 해시로 유니크를 건다(원본은 너무 길다).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: push_subscription
+      changes:
+        - createTable:
+            tableName: push_subscription
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # 푸시 서비스 엔드포인트 원본. 발송 대상 URL 그대로다.
+              - column:
+                  name: endpoint
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              # endpoint의 SHA-256(hex). 유니크를 걸기 위한 것이지 비밀이 아니다.
+              - column:
+                  name: endpoint_hash
+                  type: CHAR(64)
+                  constraints:
+                    nullable: false
+              # 구독 공개키(65바이트 비압축 점, base64url). 페이로드 암호화에 쓴다.
+              - column:
+                  name: p256dh
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              # 구독 인증 비밀(16바이트, base64url).
+              - column:
+                  name: auth
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              # 기기 구분용 표시명. 없어도 된다.
+              - column:
+                  name: user_agent
+                  type: VARCHAR(500)
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 048-push-subscription-unique-endpoint
+      author: wcorn
+      comment: 같은 기기가 다시 구독하면 새 행이 아니라 갱신이어야 한다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                indexName: uk_push_subscription_endpoint
+      changes:
+        - createIndex:
+            tableName: push_subscription
+            indexName: uk_push_subscription_endpoint
+            unique: true
+            columns:
+              - column:
+                  name: endpoint_hash
+
+  - changeSet:
+      id: 048-push-subscription-member-index
+      author: wcorn
+      comment: 발송은 "이 멤버의 구독 전부"로 조회한다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                indexName: idx_push_subscription_member
+      changes:
+        - createIndex:
+            tableName: push_subscription
+            indexName: idx_push_subscription_member
+            columns:
+              - column:
+                  name: member_id

@@ -19,6 +19,11 @@ env:
   GOOGLE_REDIRECT_URI: https://api.orino.dev/api/integrations/google/oauth/callback
   # OAuth 콜백 후 리다이렉트할 FE base URL
   FRONTEND_URL: https://orino.dev
+  # 웹푸시 VAPID. 공개키는 브라우저(pushManager.subscribe)에 그대로 나가므로 비밀이 아니다.
+  # 개인키만 vapid-secret(SealedSecret)에 있다.
+  VAPID_PUBLIC_KEY: BFjJ73pwTitAU1jOyD5KW4RQg-eSGird8xwpNn1-TQiMnU-vKzI3Nntqm058ImwW5UARcykaeO6G3qIMGnngfeI
+  # 푸시 서비스가 문제 시 연락할 곳(RFC 8292). 비밀이 아니다.
+  VAPID_SUBJECT: mailto:dsk08208@gmail.com
 
 resources:
   requests:

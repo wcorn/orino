@@ -143,6 +143,18 @@ spec:
                   optional: true
             - name: FRONTEND_URL
               value: {{ .Values.env.FRONTEND_URL | quote }}
+            # 웹푸시 VAPID. 공개키·subject는 비밀이 아니라 values의 평문이고,
+            # 개인키만 시크릿이다. 3단계 기능이라 아직 없어도 기동돼야 한다.
+            - name: VAPID_PUBLIC_KEY
+              value: {{ .Values.env.VAPID_PUBLIC_KEY | quote }}
+            - name: VAPID_SUBJECT
+              value: {{ .Values.env.VAPID_SUBJECT | quote }}
+            - name: VAPID_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vapid-secret
+                  key: VAPID_PRIVATE_KEY
+                  optional: true
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           lifecycle:
