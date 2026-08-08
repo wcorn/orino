@@ -1,6 +1,7 @@
 package ds.project.orino.planner.travel.push.service;
 
 import ds.project.orino.domain.planner.push.entity.NotificationStatus;
+import ds.project.orino.domain.planner.push.entity.NotificationType;
 import ds.project.orino.domain.planner.push.entity.PushNotification;
 import ds.project.orino.domain.planner.push.entity.PushSubscription;
 import ds.project.orino.domain.planner.push.repository.PushNotificationRepository;
@@ -116,14 +117,44 @@ public class NotificationDispatchService {
      * <p>탭했을 때 갈 곳({@code url})을 함께 싣는다 — SW가 이 값으로 창을 옮긴다.
      */
     private Optional<String> payloadOf(PushNotification notification) {
-        if (notification.getActivityId() == null) {
-            // 아침 요약은 다음 작업에서 붙인다.
-            return Optional.empty();
+        if (notification.getType() == NotificationType.MORNING_SUMMARY) {
+            return morningSummaryPayload(notification);
         }
         return activityRepository.findById(notification.getActivityId())
                 .map(activity -> json(title(notification, activity), body(activity),
                         "/travel/activities/" + activity.getId(),
                         "activity-" + activity.getId()));
+    }
+
+    /**
+     * 아침 요약(§4.3). <b>보내기 직전에 그날 일정을 다시 센다</b> — 예약 때만 판정하면
+     * 나중에 채운 날은 요약이 영영 안 오고, 다 지운 날엔 "일정 0개"가 간다.
+     *
+     * <p>0건이면 빈 값이라 호출부가 예약을 접는다.
+     */
+    private Optional<String> morningSummaryPayload(PushNotification notification) {
+        List<TripActivity> ordered = activityRepository
+                .findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(
+                        notification.getTripId(), notification.getTargetDate());
+        if (ordered.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(json("오늘 일정", summaryBody(ordered),
+                boardPath(notification), "morning-" + notification.getTargetDate()));
+    }
+
+    /** {@code 오늘 일정 4개 · 첫 일정 09:00 숙소 체크아웃} — 시각이 없으면 제목만 붙인다. */
+    private static String summaryBody(List<TripActivity> ordered) {
+        TripActivity first = ordered.get(0);
+        String when = first.getStartTime() == null ? "" : first.getStartTime() + " ";
+        return "오늘 일정 %d개 · 첫 일정 %s%s"
+                .formatted(ordered.size(), when, first.getTitle());
+    }
+
+    /** 특정 일정이 아니라 <b>그날 보드</b>로 보낸다 — 요약이 가리키는 것은 하루 전체다. */
+    private static String boardPath(PushNotification notification) {
+        return "/travel/trips/%d/board?date=%s"
+                .formatted(notification.getTripId(), notification.getTargetDate());
     }
 
     private static String title(PushNotification notification, TripActivity activity) {
