@@ -1,5 +1,7 @@
 package ds.project.orino.planner.travel.route.service;
 
+import ds.project.orino.common.exception.CustomException;
+import ds.project.orino.common.exception.ErrorCode;
 import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.entity.TripActivity;
 import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
@@ -61,6 +63,26 @@ public class LegService {
         return legs;
     }
 
+    /**
+     * 이동수단 시트(§S-04)가 여는 단건 조회. 자동 판정되지 않은 수단은 여기서만 계산한다.
+     *
+     * <p>보드에서 두 수단을 다 계산해 두지 않는다 — 호출당 과금이라 아무도 안 열어 볼 값까지
+     * 미리 사게 된다. 시트를 열었을 때만 부르고, 보드와 <b>같은 캐시</b>를 태워 두 번째부터는
+     * 외부 호출이 없다.
+     */
+    public LegResponse legBetween(List<TripActivity> ordered, Long fromActivityId,
+                                  Long toActivityId, TravelMode mode) {
+        Map<Long, Located> located = locate(ordered).stream()
+                .collect(Collectors.toMap(Located::activityId, Function.identity()));
+        Located from = located.get(fromActivityId);
+        Located to = located.get(toActivityId);
+        if (from == null || to == null) {
+            // 좌표가 없으면 구간 자체가 성립하지 않는다 — 화면에도 이동시간 행이 없다.
+            throw new CustomException(ErrorCode.TRAVEL_LEG_NOT_AVAILABLE);
+        }
+        return leg(from, to, mode);
+    }
+
     /** 좌표를 가진 일정만 순서대로 남긴다. 장소가 있어도 좌표가 없으면(직접 입력) 뺀다. */
     private List<Located> locate(List<TripActivity> ordered) {
         List<Long> placeIds = ordered.stream()
@@ -89,10 +111,18 @@ public class LegService {
     }
 
     private LegResponse leg(Located from, Located to) {
-        int straightM = Haversine.distanceM(from.lat(), from.lng(), to.lat(), to.lng());
         // 수단은 직선거리로 정한다(§1.3). 경로 거리로 정하면 수단을 알기 위해 경로가 필요하고,
         // 경로를 얻으려면 수단이 필요해 순환한다.
-        TravelMode mode = straightM <= props.walkThresholdM() ? TravelMode.WALK : TravelMode.DRIVE;
+        return leg(from, to, autoMode(from, to));
+    }
+
+    private TravelMode autoMode(Located from, Located to) {
+        int straightM = Haversine.distanceM(from.lat(), from.lng(), to.lat(), to.lng());
+        return straightM <= props.walkThresholdM() ? TravelMode.WALK : TravelMode.DRIVE;
+    }
+
+    private LegResponse leg(Located from, Located to, TravelMode mode) {
+        int straightM = Haversine.distanceM(from.lat(), from.lng(), to.lat(), to.lng());
 
         return route(from, to, mode)
                 .map(r -> new LegResponse(from.activityId(), to.activityId(), mode,

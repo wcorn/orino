@@ -61,7 +61,7 @@ public class ActivityController {
     public ApiResponse<ReorderResponse> reorder(@AuthenticationPrincipal Long memberId,
                                                 @PathVariable Long tripId,
                                                 @Valid @RequestBody ReorderRequest request) {
-        activityService.reorder(memberId, tripId, request);
-        return ApiResponse.success(ReorderResponse.empty());
+        return ApiResponse.success(
+                new ReorderResponse(activityService.reorder(memberId, tripId, request)));
     }
 }

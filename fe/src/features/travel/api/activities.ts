@@ -155,7 +155,8 @@ export interface ReorderMove {
 }
 
 /**
- * 드래그 결과를 한 번에 반영한다. 응답의 `legs`(이동시간)는 2단계에서 채워진다.
+ * 드래그 결과를 한 번에 반영한다. 응답에 **재계산된 `legs`가 담겨** 온다 —
+ * 드래그는 손을 뗀 순간 결과가 보여야 해서, 이동시간 때문에 한 번 더 왕복하지 않는다.
  *
  * <p>다른 날짜로 옮기는 것은 이 엔드포인트가 아니라 {@link updateActivity}로 한다 —
  * 서버가 대상 날짜의 맨 뒤에 붙이고 떠나온 날짜를 재인덱싱해 주기 때문에, 대상 날짜의
@@ -164,6 +165,10 @@ export interface ReorderMove {
 export async function reorderActivities(
   tripId: number,
   moves: ReorderMove[],
-): Promise<void> {
-  await client.put(`/travel/trips/${tripId}/activities/order`, { moves });
+): Promise<Leg[]> {
+  const { data } = await client.put<ApiEnvelope<{ legs: Leg[] }>>(
+    `/travel/trips/${tripId}/activities/order`,
+    { moves },
+  );
+  return data.data.legs;
 }

@@ -75,7 +75,9 @@ public class BoardService {
                 selectedDate,
                 activityRepository.countUnscheduled(tripId),
                 activityService.toResponses(activities),
-                legService.legs(activities));
+                // 보관함은 날짜에 배정되지 않은 목록이라 순서에 이동 의미가 없다.
+                // 계산해 봐야 화면에 쓰지 않고, 호출당 과금이라 그냥 낭비다.
+                selectedDate == null ? List.of() : legService.legs(activities));
     }
 
     /**
