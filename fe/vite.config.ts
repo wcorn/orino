@@ -2,12 +2,34 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { defineConfig } from "vite";
+import { VitePWA } from "vite-plugin-pwa";
 
 import pkg from "./package.json";
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      VitePWA({
+        // 웹푸시 수신 핸들러가 필요해 커스텀 SW를 쓴다(generateSW로는 못 넣는다).
+        strategies: "injectManifest",
+        srcDir: "src",
+        filename: "sw.ts",
+        // 새 SW를 말없이 적용하지 않는다 — 앱이 안내하고 사용자가 새로고침한다.
+        registerType: "prompt",
+        injectRegister: null,
+        injectManifest: {
+          // sourcemap(.map)까지 precache하면 용량만 커진다. 앱 셸만 담는다.
+          globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        },
+        // dev에서 SW가 돌면 HMR과 싸운다. 빌드에서만 동작한다.
+        devOptions: { enabled: false },
+        // manifest는 이미 public/site.webmanifest로 있고 index.html이 링크한다.
+        // 플러그인이 또 만들면 링크 두 개가 서로 다른 값을 말하게 된다.
+        manifest: false,
+      }),
+    ],
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
     },
