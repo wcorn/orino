@@ -1,4 +1,4 @@
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { ArrowLeft, MapPin, Navigation, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useId, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -16,6 +16,7 @@ import { useUndoableAction } from "@/features/travel/board/useUndoableAction";
 import { useActivity } from "@/features/travel/hooks/useActivity";
 import { useUpdateActivity } from "@/features/travel/hooks/useActivityMutations";
 import { useTrip } from "@/features/travel/hooks/useTrip";
+import { placeDirectionsUrl } from "@/features/travel/lib/mapsLink";
 import {
   toTimeInputValue,
   toWallClockTime,
@@ -71,6 +72,8 @@ export function ActivityDetailPage() {
       </div>
     );
   }
+
+  const mapsUrl = activity.place ? placeDirectionsUrl(activity.place) : null;
 
   /**
    * 이 일정이 속한 탭으로 돌아간다.
@@ -199,7 +202,36 @@ export function ActivityDetailPage() {
           </FormField>
         </div>
 
-        {/* 장소 블록은 2단계 — placeId가 생기는 시점에 이 자리에 들어간다. */}
+        {/*
+          장소 블록의 나머지(지도 미리보기·영업시간·전화)는 지도 뷰(S-05)와 함께 온다.
+          길찾기는 좌표만 있으면 되고 현지에서 가장 자주 누르는 버튼이라 먼저 붙인다.
+        */}
+        {activity.place && mapsUrl && (
+          <div className="border-border bg-card flex flex-col gap-2.5 rounded-xl border p-3">
+            <div className="flex items-start gap-1.5">
+              <MapPin className="text-primary mt-0.5 size-[15px] shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[15px] font-medium">{activity.place.name}</p>
+                {activity.place.address && (
+                  <p className="text-muted-foreground text-xs">
+                    {activity.place.address}
+                  </p>
+                )}
+              </div>
+            </div>
+            {/* 앱 내 이동시간이 도보/자동차여도 딥링크는 항상 대중교통이다(§4.5). */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => window.open(mapsUrl, "_blank", "noopener")}
+            >
+              <Navigation className="size-3.5" />
+              구글 지도에서 길찾기 (대중교통)
+            </Button>
+          </div>
+        )}
 
         <FormField label="메모" htmlFor="memo">
           <Textarea
