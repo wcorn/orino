@@ -1,5 +1,19 @@
-import { ArrowLeft, MapPin, Navigation, Trash2 } from "lucide-react";
-import { type FormEvent, useEffect, useId, useState } from "react";
+import {
+  ArrowLeft,
+  Clock,
+  MapPin,
+  Navigation,
+  Phone,
+  Trash2,
+} from "lucide-react";
+import {
+  type FormEvent,
+  lazy,
+  Suspense,
+  useEffect,
+  useId,
+  useState,
+} from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
@@ -15,14 +29,23 @@ import {
 import { useUndoableAction } from "@/features/travel/board/useUndoableAction";
 import { useActivity } from "@/features/travel/hooks/useActivity";
 import { useUpdateActivity } from "@/features/travel/hooks/useActivityMutations";
+import { usePlaceDetail } from "@/features/travel/hooks/usePlaceDetail";
 import { useTrip } from "@/features/travel/hooks/useTrip";
 import { placeDirectionsUrl } from "@/features/travel/lib/mapsLink";
+import { todayOpeningHours } from "@/features/travel/lib/openingHours";
 import {
   toTimeInputValue,
   toWallClockTime,
 } from "@/features/travel/lib/tripClock";
 import { dayChips, formatShortDate } from "@/features/travel/lib/tripStatus";
 import { toast } from "@/shared/lib/toast";
+
+// leaflet은 무겁다 — 장소 없는 일정에서는 받지 않는다.
+const PlacePreviewMap = lazy(() =>
+  import("@/features/travel/map/PlacePreviewMap").then((m) => ({
+    default: m.PlacePreviewMap,
+  })),
+);
 
 const MEMO_MAX = 1000;
 const URL_MAX = 500;
@@ -54,6 +77,7 @@ export function ActivityDetailPage() {
   const navigate = useNavigate();
 
   const { data: activity, isPending } = useActivity(activityId);
+  const { data: placeDetail } = usePlaceDetail(activity?.place?.id ?? null);
   const { data: trip } = useTrip(activity?.tripId ?? null);
   const updateActivity = useUpdateActivity(activity?.tripId ?? 0);
   const undoable = useUndoableAction(activity?.tripId ?? 0);
@@ -74,6 +98,7 @@ export function ActivityDetailPage() {
   }
 
   const mapsUrl = activity.place ? placeDirectionsUrl(activity.place) : null;
+  const openingToday = todayOpeningHours(placeDetail?.openingHours ?? null);
 
   /**
    * 이 일정이 속한 탭으로 돌아간다.
@@ -202,11 +227,7 @@ export function ActivityDetailPage() {
           </FormField>
         </div>
 
-        {/*
-          장소 블록의 나머지(지도 미리보기·영업시간·전화)는 지도 뷰(S-05)와 함께 온다.
-          길찾기는 좌표만 있으면 되고 현지에서 가장 자주 누르는 버튼이라 먼저 붙인다.
-        */}
-        {activity.place && mapsUrl && (
+        {activity.place && (
           <div className="border-border bg-card flex flex-col gap-2.5 rounded-xl border p-3">
             <div className="flex items-start gap-1.5">
               <MapPin className="text-primary mt-0.5 size-[15px] shrink-0" />
@@ -219,17 +240,49 @@ export function ActivityDetailPage() {
                 )}
               </div>
             </div>
+
+            {/* 영업시간·전화는 상세 조회에서 온다. 서버가 30일 캐시한다(§4.7). */}
+            {openingToday && (
+              <p className="text-muted-foreground flex items-center gap-1 text-xs">
+                <Clock className="size-[11px] shrink-0" />
+                {openingToday}
+              </p>
+            )}
+            {placeDetail?.phone && (
+              <a
+                href={`tel:${placeDetail.phone}`}
+                className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs"
+              >
+                <Phone className="size-[11px] shrink-0" />
+                {placeDetail.phone}
+              </a>
+            )}
+
+            {/* 좌표가 없으면(직접 입력) 지도도 길찾기도 없다. */}
+            {activity.place.lat !== null && activity.place.lng !== null && (
+              <Suspense
+                fallback={<div className="bg-muted h-[120px] rounded-lg" />}
+              >
+                <PlacePreviewMap
+                  lat={activity.place.lat}
+                  lng={activity.place.lng}
+                />
+              </Suspense>
+            )}
+
             {/* 앱 내 이동시간이 도보/자동차여도 딥링크는 항상 대중교통이다(§4.5). */}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={() => window.open(mapsUrl, "_blank", "noopener")}
-            >
-              <Navigation className="size-3.5" />
-              구글 지도에서 길찾기 (대중교통)
-            </Button>
+            {mapsUrl && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => window.open(mapsUrl, "_blank", "noopener")}
+              >
+                <Navigation className="size-3.5" />
+                구글 지도에서 길찾기 (대중교통)
+              </Button>
+            )}
           </div>
         )}
 

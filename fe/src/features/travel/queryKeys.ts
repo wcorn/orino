@@ -14,4 +14,5 @@ export const travelKeys = {
   placeSearch: (q: string, tripId?: number) =>
     ["travel", "places", "search", tripId ?? "none", q] as const,
   citySearch: (q: string) => ["travel", "places", "cities", q] as const,
+  place: (placeId: number) => ["travel", "place", placeId] as const,
 };

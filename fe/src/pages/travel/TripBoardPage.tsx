@@ -281,10 +281,21 @@ export function TripBoardPage() {
           </h1>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {/* 지도는 2단계, 도구는 4단계. 자리를 미리 두되 누를 수 없게 한다. */}
-          <Button variant="ghost" size="icon-sm" aria-label="지도" disabled>
+          {/* 보던 날짜를 그대로 들고 간다 — 지도가 답하는 질문은 "오늘 이 순서가 말이 되나"다. */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="지도"
+            onClick={() =>
+              navigate(
+                `/travel/trips/${tripId}/map${day === null ? "" : `?day=${day}`}`,
+              )
+            }
+            disabled={isArchive}
+          >
             <MapIcon className="size-4" />
           </Button>
+          {/* 도구는 4단계. 자리를 미리 두되 누를 수 없게 한다. */}
           <Button variant="ghost" size="icon-sm" aria-label="도구" disabled>
             <Wrench className="size-4" />
           </Button>
