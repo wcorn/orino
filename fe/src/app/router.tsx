@@ -20,6 +20,7 @@ import {
   importMaterialDetail,
   importMaterialList,
   importNotes,
+  importPlaceSearch,
   importPlannerCalendar,
   importReviewHub,
   importReviewSession,
@@ -54,6 +55,7 @@ const TravelHomePage = lazy(importTravelHome);
 const TripListPage = lazy(importTripList);
 const TripFormPage = lazy(importTripForm);
 const TripBoardPage = lazy(importTripBoard);
+const PlaceSearchPage = lazy(importPlaceSearch);
 const ActivityDetailPage = lazy(importActivityDetail);
 
 function RouteFallback() {
@@ -244,6 +246,14 @@ export function AppRouter() {
             element={
               <Suspense fallback={<RouteFallback />}>
                 <TripBoardPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/travel/trips/:tripId/places"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <PlaceSearchPage />
               </Suspense>
             }
           />

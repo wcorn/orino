@@ -19,12 +19,16 @@ interface AddSheetProps {
   onCreate: (input: { title: string; startTime: string | null }) => void;
   /** 보관함 일정을 이 날짜로 옮긴다. */
   onPickFromArchive: (activity: Activity) => void;
+  /** 장소 검색(S-06)으로 나간다. */
+  onSearchPlaces: () => void;
   pending?: boolean;
 }
 
 /**
- * 일정 추가 시트. 장소 검색은 2단계라 자리만 두고 비활성이다 —
- * 지금 감췄다가 2단계에 되살리면 "없던 게 생긴" 것처럼 보이고, 무엇이 준비 중인지도 알 수 없다.
+ * 일정 추가 시트. 장소 검색 · 직접 입력 · 보관함에서 가져오기 세 갈래다.
+ *
+ * <p>장소 검색은 시트 안에 넣지 않고 화면(S-06)으로 나간다 — 결과 20개와 날짜 선택 시트가
+ * 겹쳐 뜨면 시트 위에 시트가 쌓인다.
  */
 export function AddSheet({
   open,
@@ -33,6 +37,7 @@ export function AddSheet({
   targetDate,
   onCreate,
   onPickFromArchive,
+  onSearchPlaces,
   pending = false,
 }: AddSheetProps) {
   const [mode, setMode] = useState<Mode>("menu");
@@ -70,12 +75,11 @@ export function AddSheet({
         <div className="flex flex-col gap-2">
           <button
             type="button"
-            disabled
-            className="border-border flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm opacity-50"
+            onClick={onSearchPlaces}
+            className="border-border hover:bg-accent flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm"
           >
             <Search className="size-4 shrink-0" />
             <span className="flex-1">장소 검색</span>
-            <span className="text-muted-foreground text-xs">준비 중</span>
           </button>
 
           <button

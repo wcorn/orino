@@ -349,7 +349,10 @@ export function TripBoardPage() {
               ? "가고 싶은 곳을 미리 담아두세요"
               : "일정이 없어요"}
           </p>
-          <Button variant="outline" disabled>
+          <Button
+            variant="outline"
+            onClick={() => navigate(`/travel/trips/${tripId}/places`)}
+          >
             <Search className="size-4" />
             장소 검색
           </Button>
@@ -377,6 +380,7 @@ export function TripBoardPage() {
         targetDate={selectedDate}
         onCreate={(input) => void addActivity(input)}
         onPickFromArchive={(a) => void pickFromArchive(a)}
+        onSearchPlaces={() => navigate(`/travel/trips/${tripId}/places`)}
         pending={createActivity.isPending || updateActivity.isPending}
       />
 
