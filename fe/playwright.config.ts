@@ -38,7 +38,9 @@ export default defineConfig({
     {
       command: "npm run dev",
       url: "http://localhost:3000",
-      reuseExistingServer: true,
+      // 로컬에서는 이미 띄운 서버를 재사용한다. CI에는 재사용할 것이 없고, 남아 있는
+      // 서버를 잘못 붙잡으면 옛 코드를 검증하게 되므로 항상 새로 띄운다.
+      reuseExistingServer: !process.env.CI,
       timeout: 10_000,
     },
     // Service Worker는 dev에서 돌지 않는다(HMR과 싸워서 꺼 뒀다).
@@ -46,7 +48,7 @@ export default defineConfig({
     {
       command: "npm run build && npm run preview -- --port 4173",
       url: "http://localhost:4173",
-      reuseExistingServer: true,
+      reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
   ],
