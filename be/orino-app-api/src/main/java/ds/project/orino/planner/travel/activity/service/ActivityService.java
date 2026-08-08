@@ -12,6 +12,7 @@ import ds.project.orino.planner.travel.activity.dto.ActivityPlace;
 import ds.project.orino.planner.travel.activity.dto.ActivityResponse;
 import ds.project.orino.planner.travel.activity.dto.ActivityWriteRequest;
 import ds.project.orino.planner.travel.activity.dto.ReorderRequest;
+import ds.project.orino.planner.travel.place.service.PlaceService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,19 +47,37 @@ public class ActivityService {
     private final TripActivityRepository activityRepository;
     private final TripRepository tripRepository;
     private final TravelPlaceRepository placeRepository;
+    private final PlaceService placeService;
 
     public ActivityService(TripActivityRepository activityRepository,
                            TripRepository tripRepository,
-                           TravelPlaceRepository placeRepository) {
+                           TravelPlaceRepository placeRepository,
+                           PlaceService placeService) {
         this.activityRepository = activityRepository;
         this.tripRepository = tripRepository;
         this.placeRepository = placeRepository;
+        this.placeService = placeService;
+    }
+
+    /**
+     * 요청의 장소를 내부 id로 정규화한다.
+     *
+     * <p>화면은 구글 검색 결과를 그대로 "담기"로 보내므로(§5), 그때 장소를 upsert 해 id로 바꾼다.
+     * 이미 담아 둔 장소면 새로 만들지 않고 기존 것을 재사용한다 — 여행을 가로질러 같은 장소를
+     * 가리켜야 "이전 여행에서 좋았던 곳" 판정이 성립한다.
+     */
+    private Long resolvePlaceId(Long memberId, ActivityWriteRequest request) {
+        if (request.googlePlaceId() != null && !request.googlePlaceId().isBlank()) {
+            return placeService.upsertFromGoogle(memberId, request.googlePlaceId()).getId();
+        }
+        return request.placeId();
     }
 
     /** 새 일정은 해당 날짜(또는 보관함)의 맨 뒤에 붙인다. 클라이언트가 순서를 정하지 않는다. */
     @Transactional
     public ActivityResponse create(Long memberId, Long tripId, ActivityWriteRequest request) {
         Trip trip = getOwnedTrip(memberId, tripId);
+        Long placeId = resolvePlaceId(memberId, request);
         requireDateWithinTrip(trip, request.activityDate());
 
         int sortOrder = activityRepository.nextSortOrder(tripId, request.activityDate());
@@ -66,7 +85,7 @@ public class ActivityService {
                 request.activityDate(), sortOrder, request.startTime());
         // 생성자가 안 받는 나머지 계획 필드(메모·링크·장소·알림)를 이어서 채운다.
         activity.update(request.title().trim(), request.startTime(), request.memo(), request.url());
-        activity.updatePlace(request.placeId());
+        activity.updatePlace(placeId);
         activity.updateNotification(request.notifyEnabledOrDefault(), request.notifyMinutes(),
                 request.departureNotifyEnabledOrDefault());
 
@@ -86,6 +105,7 @@ public class ActivityService {
         TripActivity activity = getOwnedActivity(memberId, activityId);
         Trip trip = getTripOf(activity);
         requireDateWithinTrip(trip, request.activityDate());
+        Long placeId = resolvePlaceId(memberId, request);
 
         if (!Objects.equals(activity.getActivityDate(), request.activityDate())) {
             LocalDate previousDate = activity.getActivityDate();
@@ -95,7 +115,7 @@ public class ActivityService {
             reindex(activity.getTripId(), previousDate);
         }
         activity.update(request.title().trim(), request.startTime(), request.memo(), request.url());
-        activity.updatePlace(request.placeId());
+        activity.updatePlace(placeId);
         activity.updateNotification(request.notifyEnabledOrDefault(), request.notifyMinutes(),
                 request.departureNotifyEnabledOrDefault());
 
