@@ -569,14 +569,22 @@ describe("TripBoardPage", () => {
       });
     });
 
-    it("지도·도구는 후속 단계라 비활성이다", async () => {
+    it("도구는 후속 단계라 비활성이다", async () => {
       mockBoard({ byDate: { "2026-10-24": [] } });
 
       renderBoard();
       await screen.findByText("일정이 없어요");
 
-      expect(screen.getByRole("button", { name: "지도" })).toBeDisabled();
       expect(screen.getByRole("button", { name: "도구" })).toBeDisabled();
+    });
+
+    it("보관함에서는 지도를 열 수 없다 — 배정되지 않은 목록엔 동선이 없다", async () => {
+      mockBoard({ archive: [activity()] });
+
+      renderBoard("/travel/trips/3/board?day=archive");
+      await screen.findByText("센소지");
+
+      expect(screen.getByRole("button", { name: "지도" })).toBeDisabled();
     });
   });
 

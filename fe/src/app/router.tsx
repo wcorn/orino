@@ -30,6 +30,7 @@ import {
   importTripBoard,
   importTripForm,
   importTripList,
+  importTripMap,
   importWeeklyPlan,
   importWorkspaceSelect,
 } from "./routeImports";
@@ -56,6 +57,7 @@ const TripListPage = lazy(importTripList);
 const TripFormPage = lazy(importTripForm);
 const TripBoardPage = lazy(importTripBoard);
 const PlaceSearchPage = lazy(importPlaceSearch);
+const TripMapPage = lazy(importTripMap);
 const ActivityDetailPage = lazy(importActivityDetail);
 
 function RouteFallback() {
@@ -246,6 +248,14 @@ export function AppRouter() {
             element={
               <Suspense fallback={<RouteFallback />}>
                 <TripBoardPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/travel/trips/:tripId/map"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <TripMapPage />
               </Suspense>
             }
           />
