@@ -58,6 +58,12 @@ compactor:
   waitInterval: 1h
   # 삭제 마킹된 블록 정리 주기(기본 5m). 위와 같은 이유로 1h.
   cleanupInterval: 1h
+  # Block Viewer UI용 블록 목록 동기화 주기(기본 1m). 컴팩션 루프와 별개로
+  # 매분 돌면서 전체 블록의 마커 파일을 HEAD한다(meta.json은 메모리 캐시가
+  # 먹지만 마커 HEAD는 캐시되지 않음). #1104에서 컴팩션 루프만 잡아
+  # 44% 감소에 그친 원인 — 나머지 절반이 이 루프다.
+  # UI는 Ingress 없이 port-forward 디버깅용이라 1h면 충분하다 — #1107
+  blockViewerSyncInterval: 1h
   storageClass: longhorn
   storageSize: 10Gi
   resources:

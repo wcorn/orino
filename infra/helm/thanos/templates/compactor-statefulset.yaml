@@ -34,6 +34,7 @@ spec:
             - --wait
             - --wait-interval={{ .Values.compactor.waitInterval }}
             - --compact.cleanup-interval={{ .Values.compactor.cleanupInterval }}
+            - --block-viewer.global.sync-block-interval={{ .Values.compactor.blockViewerSyncInterval }}
           ports:
             - name: http
               containerPort: 9090
