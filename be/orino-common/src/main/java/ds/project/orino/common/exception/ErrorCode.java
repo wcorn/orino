@@ -49,7 +49,10 @@ public enum ErrorCode {
             "두 일정 사이의 이동시간을 계산할 수 없습니다.", 400),
     TRAVEL_FX_UNAVAILABLE("TRAVEL-ERR-010", "환율을 가져올 수 없습니다.", 503),
     TRAVEL_FX_UNSUPPORTED_CURRENCY("TRAVEL-ERR-011",
-            "지원하지 않는 통화입니다.", 400);
+            "지원하지 않는 통화입니다.", 400),
+    // 404가 아니다 — 일정은 실재하고, 아직 기록할 때가 아닐 뿐이다.
+    TRAVEL_LOG_BEFORE_TRIP("TRAVEL-ERR-012",
+            "여행이 시작된 뒤에 기록할 수 있습니다.", 400);
 
     private final String code;
     private final String message;

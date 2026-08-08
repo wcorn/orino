@@ -40,6 +40,7 @@ import {
   toWallClockTime,
 } from "@/features/travel/lib/tripClock";
 import { dayChips, formatShortDate } from "@/features/travel/lib/tripStatus";
+import { RecordSection } from "@/features/travel/record/RecordSection";
 import { toast } from "@/shared/lib/toast";
 import { useOnline } from "@/shared/lib/useOnline";
 
@@ -70,13 +71,13 @@ interface FormState {
 }
 
 /**
- * S-07 일정 상세·편집의 <b>계획 영역</b>.
+ * S-07 일정 상세·편집.
  *
- * <p>알림 영역은 3단계, 기록 영역은 4단계다. 자리를 비워 두지 않고 아예 렌더하지 않는다 —
- * 빈 껍데기는 "고장난 화면"으로 읽힌다.
+ * <p>계획·알림 영역은 <b>명시적 저장</b>이다(자동 저장 아님). 날짜·시각을 고치는 도중의
+ * 중간 상태가 그대로 저장되면 보드의 순서와 알림이 사용자가 의도하지 않은 시점에 흔들린다.
  *
- * <p>저장은 명시적이다(자동 저장 아님). 날짜·시각을 고치는 도중의 중간 상태가 그대로
- * 저장되면 보드의 순서와 알림이 사용자가 의도하지 않은 시점에 흔들린다.
+ * <p>기록 영역은 반대로 <b>자동 저장</b>이고 form 밖에 있다 — 현지에서 저장 버튼을 찾게
+ * 하지 않고, 계획을 저장하지 않아도 기록만 남아야 한다. 여행 시작 전에는 아예 없다.
  */
 export function ActivityDetailPage() {
   const { activityId: activityIdParam } = useParams();
@@ -107,6 +108,9 @@ export function ActivityDetailPage() {
     );
   }
 
+  // 기록은 여행 시작일부터다. 상태는 서버가 여행 타임존으로 판정해 내려준 값이라
+  // 기기 시간대로 다시 계산하지 않는다 — 저장 거부 규칙과 같은 기준이어야 한다.
+  const tripStarted = trip !== undefined && trip.status !== "UPCOMING";
   const mapsUrl = activity.place ? placeDirectionsUrl(activity.place) : null;
   const openingToday = todayOpeningHours(placeDetail?.openingHours ?? null);
 
@@ -404,6 +408,20 @@ export function ActivityDetailPage() {
           </Button>
         </div>
       </form>
+
+      {/*
+        기록 영역(§S-07)은 여행 시작일 이후에만 존재한다 — 아직 겪지 않은 일에 평점을
+        매길 수 없다. 계획 form 밖에 둔 것은 저장 경로가 다르기 때문이다(자동 저장,
+        사진과도 분리된 요청). 안에 두면 Enter 한 번이 계획까지 저장한다.
+      */}
+      {tripStarted && (
+        <RecordSection
+          activityId={activityId}
+          tripId={activity.tripId}
+          log={activity.log}
+          online={online}
+        />
+      )}
     </div>
   );
 }

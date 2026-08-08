@@ -1,0 +1,57 @@
+databaseChangeLog:
+  # 일정 사후 기록 - 평점·메모 (#1090, Epic #1029 · 4단계).
+  #
+  # 사진(trip_activity_photo)과 분리된 테이블이다. 사진 업로드가 실패해도 평점·메모는
+  # 독립적으로 저장돼야 한다 - 여행 중 회선에서 사진 몇 장 실패했다고 "야경이 좋았다"가
+  # 같이 날아가면 안 된다.
+  #
+  # activity_id UNIQUE - 일정당 기록은 최대 1건이다. 여러 벌을 남기는 요구가 없고,
+  # UNIQUE가 없으면 저장 재시도가 중복 행을 만든다.
+
+  - changeSet:
+      id: 050-create-trip-activity-log
+      author: wcorn
+      comment: 일정당 최대 1건의 사후 기록(평점·메모).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: trip_activity_log
+      changes:
+        - createTable:
+            tableName: trip_activity_log
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: activity_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uk_log_activity
+                    foreignKeyName: fk_log_activity
+                    references: trip_activity(id)
+                    deleteCascade: true
+              - column:
+                  name: memo
+                  type: VARCHAR(2000)
+              # 1~5. 별을 해제할 수 있어야 해서 NULL을 허용한다.
+              - column:
+                  name: rating
+                  type: TINYINT
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false

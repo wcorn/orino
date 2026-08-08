@@ -97,3 +97,5 @@ databaseChangeLog:
       file: db/changelog/changes/048-create-push-subscription.yaml
   - include:
       file: db/changelog/changes/049-create-push-notification.yaml
+  - include:
+      file: db/changelog/changes/050-create-trip-activity-log.yaml
