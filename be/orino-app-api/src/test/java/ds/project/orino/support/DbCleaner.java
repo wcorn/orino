@@ -10,6 +10,7 @@ public class DbCleaner {
             "trip_activity",
             "trip",
             "travel_place",
+            "push_subscription",
             "holiday",
             "day_plan_block",
             "routine_check",

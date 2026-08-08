@@ -104,6 +104,13 @@ travel:
     walk-threshold-m: ${GOOGLE_ROUTES_WALK_THRESHOLD_M:1500}
     connect-timeout: ${GOOGLE_ROUTES_CONNECT_TIMEOUT:5s}
     read-timeout: ${GOOGLE_ROUTES_READ_TIMEOUT:10s}
+  vapid:
+    # 공개키는 브라우저에 그대로 나가므로 비밀이 아니다. 개인키만 SealedSecret.
+    # 둘 다 없으면 알림 기능만 꺼지고 앱은 정상 기동한다.
+    public-key: ${VAPID_PUBLIC_KEY:}
+    private-key: ${VAPID_PRIVATE_KEY:}
+    # 푸시 서비스가 문제 시 연락할 곳(RFC 8292).
+    subject: ${VAPID_SUBJECT:mailto:dsk08208@gmail.com}
 
 management:
   tracing:
