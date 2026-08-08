@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { LoadingText } from "@/components/ui/loading-text";
+import { Select } from "@/components/ui/select";
 import type { ExchangeRate } from "@/features/travel/api/tools";
+import {
+  CURRENCIES,
+  type Currency,
+  currencyName,
+} from "@/features/travel/tools/currencies";
 import {
   convert,
   formatAmount,
@@ -15,7 +21,14 @@ interface ExchangeRateCardProps {
   rate: ExchangeRate | null;
   loading: boolean;
   online: boolean;
+  currency: Currency;
+  onCurrencyChange: (currency: Currency) => void;
 }
+
+const CURRENCY_OPTIONS = CURRENCIES.map((code) => ({
+  value: code,
+  label: `${code} · ${currencyName(code)}`,
+}));
 
 /** 현지에서 자주 쓰는 액수(§1.8). */
 const PRESETS = [1000, 5000, 10000];
@@ -30,6 +43,8 @@ export function ExchangeRateCard({
   rate,
   loading,
   online,
+  currency,
+  onCurrencyChange,
 }: ExchangeRateCardProps) {
   const [baseInput, setBaseInput] = useState("");
   const [quoteInput, setQuoteInput] = useState("");
@@ -64,6 +79,17 @@ export function ExchangeRateCard({
         <h2 className="text-heading flex-1 font-medium">환율</h2>
         {/* 캐시된 값이라는 걸 숨기지 않는다 — 환율은 돈이 걸린 숫자다. */}
         {!online && <Badge variant="secondary">최신 아님</Badge>}
+        {/* 여행 통화가 기본이지만 경유지에서 다른 돈을 쓰기도 한다. */}
+        <span id="fx-currency-label" className="sr-only">
+          기준 통화
+        </span>
+        <Select
+          value={currency}
+          onValueChange={onCurrencyChange}
+          options={CURRENCY_OPTIONS}
+          ariaLabelledby="fx-currency-label"
+          disabled={!online}
+        />
       </div>
 
       {loading ? (

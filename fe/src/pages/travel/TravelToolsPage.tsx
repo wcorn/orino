@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Languages } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,10 @@ import { fetchExchangeRate, fetchWeather } from "@/features/travel/api/tools";
 import { useTravelSummary } from "@/features/travel/hooks/useTravelSummary";
 import { useTrip } from "@/features/travel/hooks/useTrip";
 import { travelKeys } from "@/features/travel/queryKeys";
+import {
+  type Currency,
+  defaultCurrency,
+} from "@/features/travel/tools/currencies";
 import { ExchangeRateCard } from "@/features/travel/tools/ExchangeRateCard";
 import { translateUrl } from "@/features/travel/tools/translateLink";
 import { WeatherCard } from "@/features/travel/tools/WeatherCard";
@@ -44,7 +49,15 @@ export function TravelToolsPage() {
     staleTime: 30 * 60 * 1000,
   });
 
-  const currency = trip?.currency ?? "JPY";
+  // 여행 통화가 기본이되 바꿀 수 있다 — 경유지에서 다른 돈을 쓰기도 한다.
+  const [currency, setCurrency] = useState<Currency>(() =>
+    defaultCurrency(trip?.currency),
+  );
+  // 여행이 늦게 도착하거나(로딩) 다른 여행으로 바뀌면 그 여행 통화로 다시 맞춘다.
+  useEffect(() => {
+    setCurrency(defaultCurrency(trip?.currency));
+  }, [trip?.currency]);
+
   const { data: rate, isPending: loadingRate } = useQuery({
     queryKey: travelKeys.fx(currency, HOME_CURRENCY),
     queryFn: () => fetchExchangeRate(currency, HOME_CURRENCY),
@@ -84,6 +97,8 @@ export function TravelToolsPage() {
             rate={rate ?? null}
             loading={loadingRate}
             online={online}
+            currency={currency}
+            onCurrencyChange={setCurrency}
           />
           <WeatherCard forecast={weather ?? null} loading={loadingWeather} />
 

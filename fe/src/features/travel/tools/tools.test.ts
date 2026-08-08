@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { CURRENCIES, defaultCurrency } from "./currencies";
 import { convert, formatAmount, parseAmount } from "./money";
 import { destinationLanguage, translateUrl } from "./translateLink";
 import { needsUmbrella } from "./weatherIcon";
@@ -29,6 +30,19 @@ describe("환율 입력", () => {
     expect(krw).toBeCloseTo(89427, 0);
     // 반대로 돌리면 원래 금액 근처로 온다(표시용 반올림 오차 범위).
     expect(convert(krw, 1 / rate)).toBeCloseTo(10000, 1);
+  });
+});
+
+describe("기준 통화", () => {
+  it("여행 통화를 기본으로 쓴다", () => {
+    expect(defaultCurrency("JPY")).toBe("JPY");
+    expect(defaultCurrency("eur")).toBe("EUR");
+  });
+
+  it("ECB가 고시하지 않는 통화는 첫 통화로 떨어진다 — 빈 셀렉트보다 낫다", () => {
+    // TWD·VND는 ECB 고시표에 없다.
+    expect(defaultCurrency("TWD")).toBe(CURRENCIES[0]);
+    expect(defaultCurrency(undefined)).toBe(CURRENCIES[0]);
   });
 });
 

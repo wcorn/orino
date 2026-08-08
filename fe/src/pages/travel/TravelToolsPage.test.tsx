@@ -136,6 +136,41 @@ describe("TravelToolsPage", () => {
       ).toBeInTheDocument();
     });
 
+    it("통화를 바꾸면 그 통화로 다시 조회한다 — 경유지에서 다른 돈을 쓴다", async () => {
+      const asked: string[] = [];
+      server.use(
+        http.get(`${API_BASE}/travel/fx`, ({ request }) => {
+          const base = new URL(request.url).searchParams.get("base") ?? "";
+          asked.push(base);
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              base,
+              quote: "KRW",
+              rate: base === "USD" ? 1332.5 : 8.9427,
+              source: "ECB",
+              referenceDate: "2026-08-07",
+              fetchedAt: "2026-08-08T00:00:00Z",
+            },
+          });
+        }),
+      );
+
+      const user = userEvent.setup();
+      renderTools();
+
+      // 여행 통화가 기본이다.
+      await screen.findByLabelText("JPY 금액");
+
+      await user.click(screen.getByRole("combobox", { name: "기준 통화" }));
+      await user.click(
+        await screen.findByRole("option", { name: /USD · 미국 달러/ }),
+      );
+
+      expect(await screen.findByLabelText("USD 금액")).toBeInTheDocument();
+      expect(asked).toContain("USD");
+    });
+
     it("오프라인이면 최신 아님을 알린다", async () => {
       vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
       renderTools();
