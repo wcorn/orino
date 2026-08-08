@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { LoadingText } from "@/components/ui/loading-text";
 import type { City } from "@/features/travel/api/places";
 import { searchCities } from "@/features/travel/api/places";
+import { GoogleAttribution } from "@/features/travel/places/GoogleAttribution";
 
 interface DestinationSearchProps {
   /** 고른 목적지 이름. 검색창의 값이 아니라 확정된 값이다. */
@@ -143,6 +144,12 @@ export function DestinationSearch({
                 </button>
               </li>
             ))
+          )}
+          {/* 지도 없이 Places 데이터(도시명·타임존)를 보여주는 목록이라 출처를 표기한다. */}
+          {cities !== null && cities.length > 0 && (
+            <li>
+              <GoogleAttribution />
+            </li>
           )}
         </ul>
       )}

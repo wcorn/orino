@@ -18,6 +18,7 @@ import {
   clearRecentSearches,
   getRecentSearches,
 } from "@/features/travel/lib/recentSearches";
+import { GoogleAttribution } from "@/features/travel/places/GoogleAttribution";
 import { PickDaySheet } from "@/features/travel/places/PickDaySheet";
 import { PlaceCard } from "@/features/travel/places/PlaceCard";
 import { toast } from "@/shared/lib/toast";
@@ -198,22 +199,26 @@ export function PlaceSearchPage() {
           </Button>
         </EmptyState>
       ) : (
-        <ul className="flex flex-col gap-2 pb-6">
-          {results.map((place: PlaceSearchResult) => (
-            <PlaceCard
-              key={place.googlePlaceId}
-              place={place}
-              pending={createActivity.isPending}
-              onAdd={(p) =>
-                setTarget({
-                  kind: "google",
-                  googlePlaceId: p.googlePlaceId,
-                  name: p.name,
-                })
-              }
-            />
-          ))}
-        </ul>
+        <div className="pb-6">
+          <ul className="flex flex-col gap-2">
+            {results.map((place: PlaceSearchResult) => (
+              <PlaceCard
+                key={place.googlePlaceId}
+                place={place}
+                pending={createActivity.isPending}
+                onAdd={(p) =>
+                  setTarget({
+                    kind: "google",
+                    googlePlaceId: p.googlePlaceId,
+                    name: p.name,
+                  })
+                }
+              />
+            ))}
+          </ul>
+          {/* 지도 없이 Places 데이터를 보여주는 화면이라 출처 표기가 필수다. */}
+          <GoogleAttribution />
+        </div>
       )}
 
       <PickDaySheet
