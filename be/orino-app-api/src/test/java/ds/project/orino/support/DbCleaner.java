@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 public class DbCleaner {
 
     private static final String[] TABLES_IN_FK_ORDER = {
+            "push_notification",
             "trip_activity",
             "trip",
             "travel_place",

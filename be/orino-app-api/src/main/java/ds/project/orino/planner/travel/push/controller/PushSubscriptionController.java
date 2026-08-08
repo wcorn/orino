@@ -5,6 +5,7 @@ import ds.project.orino.planner.travel.push.config.VapidProperties;
 import ds.project.orino.planner.travel.push.dto.PushSubscriptionRequest;
 import ds.project.orino.planner.travel.push.dto.PushUnsubscribeRequest;
 import ds.project.orino.planner.travel.push.dto.VapidPublicKeyResponse;
+import ds.project.orino.planner.travel.push.service.NotificationDispatchService;
 import ds.project.orino.planner.travel.push.service.PushSubscriptionService;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -21,11 +22,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class PushSubscriptionController {
 
     private final PushSubscriptionService subscriptionService;
+    private final NotificationDispatchService dispatchService;
     private final VapidProperties vapidProperties;
 
     public PushSubscriptionController(PushSubscriptionService subscriptionService,
+                                      NotificationDispatchService dispatchService,
                                       VapidProperties vapidProperties) {
         this.subscriptionService = subscriptionService;
+        this.dispatchService = dispatchService;
         this.vapidProperties = vapidProperties;
     }
 
@@ -55,5 +59,16 @@ public class PushSubscriptionController {
                                          @Valid @RequestBody PushUnsubscribeRequest request) {
         subscriptionService.unsubscribe(memberId, request.endpoint());
         return ApiResponse.success(null);
+    }
+
+    /**
+     * 즉시 발송(S-09). 실기기 검증은 이것 없이 시작할 수 없다 — 일정을 만들고 시각이
+     * 오기를 기다릴 수는 없다.
+     *
+     * @return 실제로 전달된 구독 수. 0이면 구독이 없거나 전부 실패한 것이다
+     */
+    @PostMapping("/test")
+    public ApiResponse<Integer> test(@AuthenticationPrincipal Long memberId) {
+        return ApiResponse.success(dispatchService.sendTest(memberId));
     }
 }

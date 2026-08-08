@@ -13,6 +13,7 @@ import ds.project.orino.planner.travel.trip.dto.TravelSummaryResponse;
 import ds.project.orino.planner.travel.trip.dto.TripDetail;
 import ds.project.orino.planner.travel.trip.dto.TripListResponse;
 import ds.project.orino.planner.travel.trip.dto.TripSummary;
+import ds.project.orino.planner.travel.push.service.NotificationScheduleService;
 import ds.project.orino.planner.travel.trip.dto.TripWriteRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,13 +46,16 @@ public class TripService {
 
     private final TripRepository tripRepository;
     private final TripActivityRepository activityRepository;
+    private final NotificationScheduleService notificationService;
     private final Clock clock;
 
     public TripService(TripRepository tripRepository,
                        TripActivityRepository activityRepository,
+                       NotificationScheduleService notificationService,
                        Clock clock) {
         this.tripRepository = tripRepository;
         this.activityRepository = activityRepository;
+        this.notificationService = notificationService;
         this.clock = clock;
     }
 
@@ -110,6 +114,10 @@ public class TripService {
         if (movedCount > 0) {
             archiveActivitiesOutsidePeriod(trip);
         }
+        tripRepository.flush();
+        // §4.2 — 타임존이 바뀌면 벽시계 시각은 그대로고 알림 시각만 전부 다시 계산된다.
+        // 기본 알림 시점·기간 변경도 같은 재계산으로 흡수된다.
+        notificationService.rescheduleTrip(trip.getId());
         return detailOf(trip);
     }
 
