@@ -68,6 +68,10 @@ export const importTripBoard = () =>
   import("../pages/travel/TripBoardPage").then((m) => ({
     default: m.TripBoardPage,
   }));
+export const importTravelTools = () =>
+  import("../pages/travel/TravelToolsPage").then((m) => ({
+    default: m.TravelToolsPage,
+  }));
 export const importTravelSettings = () =>
   import("../pages/travel/TravelSettingsPage").then((m) => ({
     default: m.TravelSettingsPage,
@@ -84,12 +88,6 @@ export const importActivityDetail = () =>
   import("../pages/travel/ActivityDetailPage").then((m) => ({
     default: m.ActivityDetailPage,
   }));
-// 아직 화면이 없는 여행 라우트(보드·도구·설정)가 공유하는 임시 페이지.
-export const importTravelPlaceholder = () =>
-  import("../pages/travel/TravelPlaceholderPage").then((m) => ({
-    default: m.TravelPlaceholderPage,
-  }));
-
 /**
  * 로그인 후 idle 시간에 페이지 청크를 미리 받아둔다.
  * lazy로 초기 번들은 가볍게 유지하면서, 실제 진입 시에는 이미 캐시돼 즉시 렌더된다.

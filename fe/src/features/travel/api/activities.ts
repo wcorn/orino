@@ -1,6 +1,7 @@
 import { client } from "@/shared/api";
 
 import type { TripStatus } from "../lib/tripStatus";
+import type { DailyWeather } from "./tools";
 
 interface ApiEnvelope<T> {
   code: string;
@@ -39,8 +40,8 @@ export interface BoardDay {
   date: string;
   weekday: string;
   activityCount: number;
-  /** 날씨는 4단계. 지금은 항상 null. */
-  weather: unknown | null;
+  /** 예보 범위(16일) 밖이면 null이다 — 오류가 아니라 "아직 모름"이다. */
+  weather: DailyWeather | null;
 }
 
 export interface BoardTrip {

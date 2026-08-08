@@ -2,7 +2,9 @@ import { useDroppable } from "@dnd-kit/core";
 import { Archive } from "lucide-react";
 
 import type { BoardDay } from "@/features/travel/api/activities";
+import type { DailyWeather } from "@/features/travel/api/tools";
 import { formatShortDate } from "@/features/travel/lib/tripStatus";
+import { iconFor, needsUmbrella } from "@/features/travel/tools/weatherIcon";
 import { cn } from "@/lib/utils";
 
 interface DayTabsProps {
@@ -43,6 +45,7 @@ export function DayTabs({
           active={selectedDate === day.date}
           label={`${day.dayIndex}일차`}
           sub={`${formatShortDate(day.date)} ${day.weekday}`}
+          weather={day.weather}
           onClick={() => onSelectDate(day.date)}
         />
       ))}
@@ -62,13 +65,27 @@ interface ChipProps {
   active: boolean;
   label: string;
   sub: string;
+  /** 예보 범위(16일) 밖이면 없다 — 그 자리를 비운다. */
+  weather?: DailyWeather | null;
   icon?: React.ReactNode;
   onClick: () => void;
   /** 있으면 드롭 대상으로 등록한다. */
   dropId?: string;
 }
 
-function Chip({ active, label, sub, icon, onClick, dropId }: ChipProps) {
+function Chip({
+  active,
+  label,
+  sub,
+  weather,
+  icon,
+  onClick,
+  dropId,
+}: ChipProps) {
+  const WeatherGlyph = weather
+    ? iconFor(weather.icon, weather.precipProbability)
+    : null;
+  const alert = weather ? needsUmbrella(weather.precipProbability) : false;
   const { setNodeRef, isOver } = useDroppable({
     id: dropId ?? "",
     disabled: !dropId,
@@ -95,7 +112,18 @@ function Chip({ active, label, sub, icon, onClick, dropId }: ChipProps) {
         {label}
       </span>
       <span className="text-muted-foreground text-[11px]">{sub}</span>
-      {/* 3행 날씨는 4단계. 예보가 없으면 그때도 이 자리를 비운다. */}
+      {/* 예보 범위(16일) 밖이면 이 줄이 아예 없다 — 빈 자리를 남기지 않는다. */}
+      {weather && WeatherGlyph && (
+        <span
+          className={cn(
+            "flex items-center gap-1 text-[11px] tabular-nums",
+            alert ? "text-warning" : "text-muted-foreground",
+          )}
+        >
+          <WeatherGlyph className="size-3" />
+          {weather.tempMax ?? "–"}°/{weather.tempMin ?? "–"}°
+        </span>
+      )}
     </button>
   );
 }
