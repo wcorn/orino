@@ -102,9 +102,7 @@ public class PlaceService {
                         r.category(), r.address(), r.rating(),
                         // 사진 MinIO 캐시는 별도 이슈.
                         null,
-                        r.lat(), r.lng(),
-                        // ⭐ 좋았던 곳은 기록(평점)이 있어야 판정된다 — 기록은 4단계다.
-                        false))
+                        r.lat(), r.lng()))
                 .toList();
     }
 
@@ -129,7 +127,7 @@ public class PlaceService {
 
     /**
      * 구글 장소를 담는다. 같은 장소를 두 번 저장하지 않는다 — 이미 있으면 그걸 돌려준다
-     * (일정마다 새 행을 만들면 "이전 여행에서 좋았던 곳" 판정이 불가능해진다).
+     * ({@code uk_place_member_google}이 멤버당 한 행을 강제한다).
      */
     @Transactional
     public TravelPlace upsertFromGoogle(Long memberId, String googlePlaceId) {

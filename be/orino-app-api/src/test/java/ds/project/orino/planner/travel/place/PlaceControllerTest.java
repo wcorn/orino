@@ -153,7 +153,7 @@ class PlaceControllerTest extends ApiTestSupport {
     class Search {
 
         @Test
-        @DisplayName("검색 결과를 그대로 준다(사진·좋았던 곳은 후속 단계라 비어 있다)")
+        @DisplayName("검색 결과를 그대로 준다")
         void returnsResults() throws Exception {
             stub.placeResults = List.of(place("ChIJ_senso", "센소지"));
 
@@ -164,8 +164,7 @@ class PlaceControllerTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data[0].category").value("사찰"))
                     .andExpect(jsonPath("$.data[0].rating").value(4.5))
                     .andExpect(jsonPath("$.data[0].id").doesNotExist())
-                    .andExpect(jsonPath("$.data[0].photoUrl").doesNotExist())
-                    .andExpect(jsonPath("$.data[0].loved").value(false));
+                    .andExpect(jsonPath("$.data[0].photoUrl").doesNotExist());
         }
 
         @Test
@@ -360,7 +359,7 @@ class PlaceControllerTest extends ApiTestSupport {
                         .andExpect(status().isOk());
             }
 
-            // 여행을 가로질러 같은 장소를 가리켜야 "좋았던 곳" 판정이 성립한다.
+            // 같은 장소를 두 번 저장하지 않는다(uk_place_member_google).
             assertThat(placeRepository.findAll()).hasSize(1);
             assertThat(stub.detailFetches).containsExactly("ChIJ_senso");
         }
