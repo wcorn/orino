@@ -67,6 +67,29 @@ function mockPublicKey(key: string | null) {
   );
 }
 
+/**
+ * `navigator.serviceWorker`는 `vi.restoreAllMocks()`로 안 돌아온다 —
+ * `Object.defineProperty`로 심은 값이라 <b>직접 되돌려야</b> 다음 테스트로 새지 않는다.
+ * (CI에서 뒤 테스트들이 `getSubscription is not a function`으로 무더기 실패했다.)
+ */
+const ORIGINAL_SW = Object.getOwnPropertyDescriptor(navigator, "serviceWorker");
+
+function stubServiceWorker(value: unknown) {
+  Object.defineProperty(navigator, "serviceWorker", {
+    value,
+    configurable: true,
+  });
+}
+
+function restoreServiceWorker() {
+  if (ORIGINAL_SW) {
+    Object.defineProperty(navigator, "serviceWorker", ORIGINAL_SW);
+  } else {
+    // 원래 없던 속성이면 지워야 `"serviceWorker" in navigator`가 다시 false가 된다.
+    Reflect.deleteProperty(navigator, "serviceWorker");
+  }
+}
+
 function renderSettings() {
   return renderWithRouter(
     <Providers>
@@ -87,6 +110,7 @@ describe("TravelSettingsPage", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    restoreServiceWorker();
   });
 
   describe("알림 권한", () => {
@@ -100,10 +124,7 @@ describe("TravelSettingsPage", () => {
     it("SW가 없으면 지원 안 함이다 — ready를 기다리면 화면이 멈춘다", async () => {
       vi.stubGlobal("PushManager", class {});
       vi.stubGlobal("Notification", { permission: "default" });
-      Object.defineProperty(navigator, "serviceWorker", {
-        value: { getRegistration: () => Promise.resolve(undefined) },
-        configurable: true,
-      });
+      stubServiceWorker({ getRegistration: () => Promise.resolve(undefined) });
 
       renderSettings();
 
@@ -114,12 +135,13 @@ describe("TravelSettingsPage", () => {
       // 지원되고 SW도 등록돼 있는데 서버가 아직 키를 안 준 상태.
       vi.stubGlobal("PushManager", class {});
       vi.stubGlobal("Notification", { permission: "default" });
-      Object.defineProperty(navigator, "serviceWorker", {
-        // ready가 아니라 getRegistration을 본다 — ready는 SW가 없으면 영원히 안 풀린다.
-        value: {
-          getRegistration: () => Promise.resolve({ pushManager: {} }),
-        },
-        configurable: true,
+      // ready가 아니라 getRegistration을 본다 — ready는 SW가 없으면 영원히 안 풀린다.
+      stubServiceWorker({
+        getRegistration: () =>
+          Promise.resolve({
+            // 구독 조회까지 가므로 형태를 맞춰 둔다.
+            pushManager: { getSubscription: () => Promise.resolve(null) },
+          }),
       });
       mockPublicKey(null);
 
