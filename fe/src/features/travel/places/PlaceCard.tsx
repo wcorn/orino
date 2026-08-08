@@ -1,6 +1,5 @@
-import { Image as ImageIcon, Star } from "lucide-react";
+import { Image as ImageIcon } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { PlaceSearchResult } from "@/features/travel/api/places";
 
@@ -24,8 +23,8 @@ function metaLine(place: PlaceSearchResult): string {
 /**
  * 검색 결과 카드(§S-06).
  *
- * <p>사진과 `좋았던 곳` 배지는 응답 필드가 이미 있고 서버가 채우기 시작하면 그대로 뜬다
- * (사진 #1058, 평점 기록은 4단계). 그때 이 컴포넌트는 손대지 않는다.
+ * <p>사진은 응답 필드만 있고 서버가 채우지 않는다 — 구글 장소 사진은 약관상 캐시할 수 없어
+ * 넣지 않기로 했다(결정 기록 D-16). 자리 표시 아이콘이 그 자리를 대신한다.
  */
 export function PlaceCard({ place, onAdd, pending = false }: PlaceCardProps) {
   const meta = metaLine(place);
@@ -45,15 +44,7 @@ export function PlaceCard({ place, onAdd, pending = false }: PlaceCardProps) {
       )}
 
       <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-1.5 text-[15px] font-medium">
-          <span className="truncate">{place.name}</span>
-          {place.loved && (
-            <Badge variant="warning" className="shrink-0 gap-0.5">
-              <Star className="size-[11px]" />
-              좋았던 곳
-            </Badge>
-          )}
-        </p>
+        <p className="truncate text-[15px] font-medium">{place.name}</p>
         {meta && (
           <p className="text-muted-foreground truncate text-xs">{meta}</p>
         )}

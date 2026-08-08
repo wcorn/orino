@@ -40,7 +40,6 @@ function place(overrides: Record<string, unknown> = {}) {
     photoUrl: null,
     lat: 35.7147,
     lng: 139.7966,
-    loved: false,
     ...overrides,
   };
 }
@@ -341,23 +340,6 @@ describe("PlaceSearchPage", () => {
         placeId: 7,
         activityDate: "2026-10-24",
       });
-    });
-  });
-
-  describe("좋았던 곳 배지", () => {
-    it("loved가 true면 배지를 보여준다", async () => {
-      mockSearch([place({ loved: true })]);
-      renderSearch("/travel/trips/3/places?q=%EC%84%BC%EC%86%8C%EC%A7%80");
-
-      expect(await screen.findByText("좋았던 곳")).toBeInTheDocument();
-    });
-
-    it("기본값(false)에서는 배지가 없다 — 평점 기록은 4단계다", async () => {
-      mockSearch();
-      renderSearch("/travel/trips/3/places?q=%EC%84%BC%EC%86%8C%EC%A7%80");
-
-      await screen.findByText("센소지");
-      expect(screen.queryByText("좋았던 곳")).not.toBeInTheDocument();
     });
   });
 

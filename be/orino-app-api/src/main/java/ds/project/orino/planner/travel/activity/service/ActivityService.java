@@ -93,7 +93,7 @@ public class ActivityService {
      *
      * <p>화면은 구글 검색 결과를 그대로 "담기"로 보내므로(§5), 그때 장소를 upsert 해 id로 바꾼다.
      * 이미 담아 둔 장소면 새로 만들지 않고 기존 것을 재사용한다 — 여행을 가로질러 같은 장소를
-     * 가리켜야 "이전 여행에서 좋았던 곳" 판정이 성립한다.
+     * 가리켜야 영업시간·좌표 캐시가 한 곳에 모인다(행이 늘면 한 행만 갱신되는 일이 생긴다).
      */
     private Long resolvePlaceId(Long memberId, ActivityWriteRequest request) {
         if (request.googlePlaceId() != null && !request.googlePlaceId().isBlank()) {

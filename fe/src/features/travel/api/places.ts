@@ -28,8 +28,6 @@ export interface PlaceSearchResult {
   photoUrl: string | null;
   lat: number | null;
   lng: number | null;
-  /** 이전 여행에서 평점 4 이상을 준 곳. 기록은 4단계라 지금은 항상 false. */
-  loved: boolean;
 }
 
 export interface PlaceDetail {
