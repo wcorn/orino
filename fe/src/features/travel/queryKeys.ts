@@ -10,4 +10,8 @@ export const travelKeys = {
     ["travel", "board", tripId, day ?? "default"] as const,
   boards: (tripId: number) => ["travel", "board", tripId] as const,
   activity: (activityId: number) => ["travel", "activity", activityId] as const,
+  /** 장소 검색. 서버가 이미 캐시하지만, 뒤로 갔다 오면 결과가 그대로 있어야 한다. */
+  placeSearch: (q: string, tripId?: number) =>
+    ["travel", "places", "search", tripId ?? "none", q] as const,
+  citySearch: (q: string) => ["travel", "places", "cities", q] as const,
 };

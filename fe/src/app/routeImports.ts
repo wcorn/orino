@@ -68,6 +68,10 @@ export const importTripBoard = () =>
   import("../pages/travel/TripBoardPage").then((m) => ({
     default: m.TripBoardPage,
   }));
+export const importPlaceSearch = () =>
+  import("../pages/travel/PlaceSearchPage").then((m) => ({
+    default: m.PlaceSearchPage,
+  }));
 export const importActivityDetail = () =>
   import("../pages/travel/ActivityDetailPage").then((m) => ({
     default: m.ActivityDetailPage,

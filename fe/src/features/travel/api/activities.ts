@@ -94,6 +94,11 @@ export interface ActivityWriteRequest {
   activityDate?: string | null;
   startTime?: string | null;
   placeId?: number | null;
+  /**
+   * 검색 결과에서 곧바로 담을 때. 서버가 장소를 upsert해 일정에 연결하므로
+   * 프론트가 장소를 먼저 만들 필요가 없다. `placeId`와 함께 보내지 않는다.
+   */
+  googlePlaceId?: string | null;
   memo?: string | null;
   url?: string | null;
   notifyEnabled?: boolean;

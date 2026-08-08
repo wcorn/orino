@@ -339,7 +339,7 @@ describe("TripBoardPage", () => {
       });
     });
 
-    it("장소 검색은 2단계라 비활성이지만 자리는 보여준다", async () => {
+    it("장소 검색은 시트 안이 아니라 검색 화면으로 나간다", async () => {
       mockBoard({ byDate: { "2026-10-24": [] } });
 
       renderBoard();
@@ -347,9 +347,12 @@ describe("TripBoardPage", () => {
       await userEvent.click(screen.getByRole("button", { name: "일정 추가" }));
 
       const sheet = await screen.findByRole("dialog");
-      const search = within(sheet).getByRole("button", { name: /장소 검색/ });
-      expect(search).toBeDisabled();
-      expect(search).toHaveTextContent("준비 중");
+      await userEvent.click(
+        within(sheet).getByRole("button", { name: /장소 검색/ }),
+      );
+
+      // 결과 20개와 날짜 선택 시트가 시트 위에 쌓이지 않게 화면을 바꾼다.
+      expect(await screen.findByLabelText("장소 검색")).toBeInTheDocument();
     });
 
     it("보관함 일정을 지금 보는 날짜로 가져온다", async () => {
