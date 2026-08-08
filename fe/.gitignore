@@ -8,6 +8,8 @@ dist-ssr
 # Playwright
 test-results/
 playwright-report/
+# Playwright MCP가 남기는 스냅샷·콘솔 로그(수동 확인용 산출물)
+.playwright-mcp/
 .ds-sync/
 ds-bundle/
 .design-sync/.cache/

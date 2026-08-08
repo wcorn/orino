@@ -39,6 +39,7 @@ import { AddSheet } from "@/features/travel/board/AddSheet";
 import { DayTabs } from "@/features/travel/board/DayTabs";
 import { DragModeBar } from "@/features/travel/board/DragModeBar";
 import { LegRow } from "@/features/travel/board/LegRow";
+import { LocalClockLine } from "@/features/travel/board/LocalClockLine";
 import { usePendingActions } from "@/features/travel/board/pendingActions";
 import { TransportSheet } from "@/features/travel/board/TransportSheet";
 import { useUndoableAction } from "@/features/travel/board/useUndoableAction";
@@ -275,10 +276,15 @@ export function TripBoardPage() {
           >
             <ArrowLeft className="size-4" />
           </Button>
-          {/* 현지 시각·타임존 줄은 3단계(알림)와 함께 붙인다. */}
-          <h1 className="text-heading truncate font-semibold">
-            {board.trip.title}
-          </h1>
+          <div className="min-w-0">
+            <h1 className="text-heading truncate font-semibold">
+              {board.trip.title}
+            </h1>
+            <LocalClockLine
+              timezone={board.trip.timezone}
+              recordMode={board.trip.recordMode}
+            />
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {/* 보던 날짜를 그대로 들고 간다 — 지도가 답하는 질문은 "오늘 이 순서가 말이 되나"다. */}

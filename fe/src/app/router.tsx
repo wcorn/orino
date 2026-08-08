@@ -27,6 +27,7 @@ import {
   importRoutines,
   importTravelHome,
   importTravelPlaceholder,
+  importTravelSettings,
   importTripBoard,
   importTripForm,
   importTripList,
@@ -58,6 +59,7 @@ const TripFormPage = lazy(importTripForm);
 const TripBoardPage = lazy(importTripBoard);
 const PlaceSearchPage = lazy(importPlaceSearch);
 const TripMapPage = lazy(importTripMap);
+const TravelSettingsPage = lazy(importTravelSettings);
 const ActivityDetailPage = lazy(importActivityDetail);
 
 function RouteFallback() {
@@ -278,7 +280,11 @@ export function AppRouter() {
           <Route path="/travel/tools" element={<TravelRoute title="도구" />} />
           <Route
             path="/travel/settings"
-            element={<TravelRoute title="여행 설정" />}
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <TravelSettingsPage />
+              </Suspense>
+            }
           />
           {/* 아직 없는 여행 하위 경로는 랜딩이 아니라 여행 홈으로 보낸다. */}
           <Route path="/travel/*" element={<Navigate to="/travel" replace />} />

@@ -90,7 +90,7 @@ describe("ActivityDetailPage", () => {
     usePendingActions.setState({ pendingIds: [], commits: new Map() });
   });
 
-  it("계획 영역만 보여준다 — 알림·기록은 후속 단계다", async () => {
+  it("계획과 알림 영역을 보여준다 — 기록은 4단계다", async () => {
     mockDetail();
     renderDetail();
 
@@ -98,8 +98,8 @@ describe("ActivityDetailPage", () => {
       expect(screen.getByLabelText("제목")).toHaveValue("센소지");
     });
     expect(screen.getByText("계획")).toBeInTheDocument();
-    // 빈 껍데기를 두지 않고 아예 렌더하지 않는다.
-    expect(screen.queryByText("알림")).toBeNull();
+    expect(screen.getByText("알림")).toBeInTheDocument();
+    // 기록은 빈 껍데기를 두지 않고 아예 렌더하지 않는다.
     expect(screen.queryByText("기록")).toBeNull();
   });
 
@@ -331,6 +331,107 @@ describe("ActivityDetailPage", () => {
       await waitFor(() => {
         expect(usePendingActions.getState().pendingIds).toEqual([1]);
       });
+    });
+  });
+
+  describe("알림 영역 (S-07)", () => {
+    const PLACE = {
+      id: 10,
+      name: "센소지",
+      address: "다이토구",
+      lat: 35.7147651,
+      lng: 139.7966553,
+    };
+
+    it("시각이 없으면 통째로 비활성이다 — 언제 보낼지 정할 수 없다", async () => {
+      mockDetail({ startTime: null });
+
+      renderDetail();
+      await screen.findByLabelText("제목");
+
+      expect(
+        screen.getByText("시각을 입력하면 알림을 설정할 수 있어요."),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("switch", { name: "일정 알림" })).toBeDisabled();
+      expect(screen.getByRole("switch", { name: "출발 알림" })).toBeDisabled();
+    });
+
+    it("시각이 있으면 일정 알림을 켤 수 있다", async () => {
+      mockDetail();
+
+      renderDetail();
+      await screen.findByLabelText("제목");
+
+      expect(screen.getByRole("switch", { name: "일정 알림" })).toBeEnabled();
+    });
+
+    it("장소가 없으면 출발 알림만 비활성이다 — 어디서 출발하는지 모른다", async () => {
+      mockDetail({ place: null });
+
+      renderDetail();
+      await screen.findByLabelText("제목");
+
+      expect(screen.getByRole("switch", { name: "일정 알림" })).toBeEnabled();
+      expect(screen.getByRole("switch", { name: "출발 알림" })).toBeDisabled();
+      expect(
+        screen.getByText("시각과 이전 장소가 필요해요"),
+      ).toBeInTheDocument();
+    });
+
+    it("장소가 있으면 출발 알림을 켤 수 있다", async () => {
+      mockDetail({ place: PLACE });
+
+      renderDetail();
+      await screen.findByLabelText("제목");
+
+      expect(screen.getByRole("switch", { name: "출발 알림" })).toBeEnabled();
+    });
+
+    it("켜고 저장하면 서버로 보낸다 — 서버가 예약을 다시 짠다", async () => {
+      mockDetail({ place: PLACE });
+      const bodies: Record<string, unknown>[] = [];
+      server.use(
+        http.put(`${API_BASE}/travel/activities/:id`, async ({ request }) => {
+          bodies.push((await request.json()) as Record<string, unknown>);
+          return HttpResponse.json({ code: "OK", data: activity() });
+        }),
+      );
+
+      const user = userEvent.setup();
+      renderDetail();
+      await screen.findByLabelText("제목");
+
+      await user.click(screen.getByRole("switch", { name: "일정 알림" }));
+      await user.click(screen.getByRole("switch", { name: "출발 알림" }));
+      await user.click(screen.getByRole("button", { name: "저장" }));
+
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0]).toMatchObject({
+        notifyEnabled: true,
+        departureNotifyEnabled: true,
+      });
+    });
+
+    it("알림 시점을 비우면 여행 기본값을 따른다", async () => {
+      mockDetail({ notifyEnabled: true, notifyMinutes: 30 });
+      const bodies: Record<string, unknown>[] = [];
+      server.use(
+        http.put(`${API_BASE}/travel/activities/:id`, async ({ request }) => {
+          bodies.push((await request.json()) as Record<string, unknown>);
+          return HttpResponse.json({ code: "OK", data: activity() });
+        }),
+      );
+
+      const user = userEvent.setup();
+      renderDetail();
+      await screen.findByLabelText("제목");
+      expect(screen.getByText("시작 30분 전")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "저장" }));
+
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      // 값이 있으면 그대로 보낸다. null이면 서버가 여행 기본값으로 떨어뜨린다.
+      expect(bodies[0].notifyMinutes).toBe(30);
     });
   });
 });
