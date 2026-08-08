@@ -1,6 +1,7 @@
 import { client } from "@/shared/api";
 
 import type { TripStatus } from "../lib/tripStatus";
+import type { ActivityPhoto } from "./photos";
 import type { DailyWeather } from "./tools";
 
 interface ApiEnvelope<T> {
@@ -16,11 +17,17 @@ export interface ActivityPlace {
   lng: number | null;
 }
 
-/** 일정의 사후 기록(§S-07 기록 영역). 사진은 별도 리소스다. */
+/**
+ * 일정의 사후 기록(§S-07 기록 영역).
+ *
+ * <p>사진은 별도 테이블·별도 요청이다 — 업로드가 실패해도 평점·메모는 남는다. 조회에서만
+ * 함께 실려 온다.
+ */
 export interface ActivityLog {
   /** 1~5. null이면 아직 매기지 않았거나 해제한 것이다. */
   rating: number | null;
   memo: string | null;
+  photos: ActivityPhoto[];
   updatedAt: string;
 }
 

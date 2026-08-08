@@ -52,7 +52,10 @@ public enum ErrorCode {
             "지원하지 않는 통화입니다.", 400),
     // 404가 아니다 — 일정은 실재하고, 아직 기록할 때가 아닐 뿐이다.
     TRAVEL_LOG_BEFORE_TRIP("TRAVEL-ERR-012",
-            "여행이 시작된 뒤에 기록할 수 있습니다.", 400);
+            "여행이 시작된 뒤에 기록할 수 있습니다.", 400),
+    TRAVEL_PHOTO_LIMIT_EXCEEDED("TRAVEL-ERR-013",
+            "사진은 일정당 10장까지 올릴 수 있습니다.", 400),
+    TRAVEL_PHOTO_NOT_FOUND("TRAVEL-ERR-014", "존재하지 않는 사진입니다.", 404);
 
     private final String code;
     private final String message;
