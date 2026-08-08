@@ -25,6 +25,9 @@ const MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID as string | undefined;
 
 export type MapsStatus = "loading" | "ready" | "unavailable";
 
+/** 구글이 준비 완료를 알릴 전역 콜백 이름. 스크립트 태그에서는 이게 유일한 신호다. */
+const READY_CALLBACK = "__orinoMapsReady";
+
 let loading: Promise<boolean> | null = null;
 
 /** 스크립트를 한 번만 받는다. 지도 화면을 오갈 때마다 다시 받으면 안 된다. */
@@ -32,7 +35,8 @@ function load(): Promise<boolean> {
   if (loading) return loading;
 
   // 이미 올라와 있으면 키를 볼 것도 없다(다른 화면이 먼저 받아 뒀다).
-  if (window.google?.maps) {
+  // `google.maps`가 있는 것만으로는 부족하다 — 생성자까지 있어야 쓸 수 있다.
+  if (typeof window.google?.maps?.Map === "function") {
     loading = Promise.resolve(true);
     return loading;
   }
@@ -47,14 +51,29 @@ function load(): Promise<boolean> {
     // 이걸 안 잡으면 스크립트는 "성공"인데 지도만 회색으로 남는다.
     window.gm_authFailure = () => resolve(false);
 
+    /**
+     * <b>`script.onload`로는 판단할 수 없다.</b> 그때 `google.maps`는 만들어져 있지만
+     * `google.maps.Map`은 아직 `undefined`라, 로드됐다고 보고 지도를 만들면
+     * `Map is not a constructor`로 죽는다(실제로 프로덕션에서 그렇게 터졌다).
+     *
+     * `loading=async`만 붙인 스크립트 태그에는 `importLibrary`조차 없다 —
+     * 그건 인라인 부트스트랩 로더가 정의하는 것이다. 스크립트 태그에서는
+     * <b>`callback`이 준비 완료를 알리는 유일한 신호</b>다.
+     */
+    window[READY_CALLBACK] = () => {
+      delete window[READY_CALLBACK];
+      // 콜백이 불렸어도 실제로 생성자가 있는지까지 본다.
+      resolve(typeof window.google?.maps?.Map === "function");
+    };
+
     const script = document.createElement("script");
     script.src =
       "https://maps.googleapis.com/maps/api/js" +
-      `?key=${encodeURIComponent(API_KEY)}&libraries=marker&loading=async&v=weekly`;
+      `?key=${encodeURIComponent(API_KEY)}&libraries=marker` +
+      `&loading=async&v=weekly&callback=${READY_CALLBACK}`;
     script.async = true;
     // 오프라인이면 여기로 온다. 화면은 이미 오프라인 안내를 따로 그린다(§S-05).
     script.onerror = () => resolve(false);
-    script.onload = () => resolve(Boolean(window.google?.maps));
     document.head.appendChild(script);
   });
   return loading;
@@ -77,7 +96,7 @@ export function mapId(): string | undefined {
  */
 export function useGoogleMaps(): MapsStatus {
   const [status, setStatus] = useState<MapsStatus>(() =>
-    window.google?.maps ? "ready" : "loading",
+    typeof window.google?.maps?.Map === "function" ? "ready" : "loading",
   );
 
   useEffect(() => {

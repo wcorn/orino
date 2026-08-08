@@ -23,4 +23,6 @@ declare const __APP_VERSION__: string;
 interface Window {
   /** 키가 거부되면 구글이 예외 대신 이걸 부른다(리퍼러 불일치·API 미활성). */
   gm_authFailure?: () => void;
+  /** Maps JS가 준비되면 부르는 콜백. 이름은 googleMaps.ts의 READY_CALLBACK과 같다. */
+  __orinoMapsReady?: () => void;
 }
