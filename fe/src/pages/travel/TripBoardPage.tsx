@@ -16,13 +16,13 @@ import {
 } from "@dnd-kit/sortable";
 import {
   ArrowLeft,
-  Map,
+  Map as MapIcon,
   MoreVertical,
   Plus,
   Search,
   Wrench,
 } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -30,7 +30,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingText } from "@/components/ui/loading-text";
 import { Menu, MenuItem } from "@/components/ui/menu";
-import type { Activity } from "@/features/travel/api/activities";
+import type { Activity, Leg } from "@/features/travel/api/activities";
 // 삭제는 뮤테이션 훅이 아니라 raw 요청을 쓴다 — 화면을 떠난 뒤에 보낼 수도 있어서다.
 import { deleteActivity as deleteActivityRequest } from "@/features/travel/api/activities";
 import { deleteTrip } from "@/features/travel/api/travel";
@@ -38,7 +38,9 @@ import { ActivityRow } from "@/features/travel/board/ActivityRow";
 import { AddSheet } from "@/features/travel/board/AddSheet";
 import { DayTabs } from "@/features/travel/board/DayTabs";
 import { DragModeBar } from "@/features/travel/board/DragModeBar";
+import { LegRow } from "@/features/travel/board/LegRow";
 import { usePendingActions } from "@/features/travel/board/pendingActions";
+import { TransportSheet } from "@/features/travel/board/TransportSheet";
 import { useUndoableAction } from "@/features/travel/board/useUndoableAction";
 import {
   useCreateActivity,
@@ -102,6 +104,7 @@ export function TripBoardPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [deletingTrip, setDeletingTrip] = useState(false);
   const [dragMode, setDragMode] = useState(false);
+  const [openLeg, setOpenLeg] = useState<Leg | null>(null);
 
   const createActivity = useCreateActivity(tripId);
   const updateActivity = useUpdateActivity(tripId);
@@ -130,6 +133,14 @@ export function TripBoardPage() {
   const selectedIndex = board.days.findIndex((d) => d.date === selectedDate);
   // 실행취소를 기다리는 동안에는 이미 사라진 것처럼 보여야 한다(낙관적 반영).
   const activities = board.activities.filter((a) => !pendingIds.includes(a.id));
+  /**
+   * 구간을 <b>도착</b> 일정 id로 걸어 둔다 — 행을 그 일정 <b>바로 앞</b>에 그리기 위해서다.
+   *
+   * <p>출발 쪽에 붙이면 사이에 장소 없는 일정이 끼었을 때 "전망대 → 점심 28분"처럼 읽힌다.
+   * 실제로는 점심을 건너뛴 전망대→저녁 구간이다. 도착 앞에 두면 "저녁까지 28분"이 되어
+   * 건너뛴 일정이 있어도 가리키는 곳이 분명하다.
+   */
+  const legsByTo = new Map(board.legs.map((leg) => [leg.toActivityId, leg]));
 
   const selectDay = (date: string) => {
     const index = board.days.findIndex((d) => d.date === date);
@@ -272,7 +283,7 @@ export function TripBoardPage() {
         <div className="flex shrink-0 items-center gap-1">
           {/* 지도는 2단계, 도구는 4단계. 자리를 미리 두되 누를 수 없게 한다. */}
           <Button variant="ghost" size="icon-sm" aria-label="지도" disabled>
-            <Map className="size-4" />
+            <MapIcon className="size-4" />
           </Button>
           <Button variant="ghost" size="icon-sm" aria-label="도구" disabled>
             <Wrench className="size-4" />
@@ -321,19 +332,27 @@ export function TripBoardPage() {
           >
             <ul className="flex flex-col">
               {activities.map((activity, index) => (
-                <ActivityRow
-                  key={activity.id}
-                  activity={activity}
-                  inArchive={selectedDate === null}
-                  dragMode={dragMode}
-                  canMoveUp={index > 0}
-                  canMoveDown={index < activities.length - 1}
-                  onMoveUp={() => moveWithin(index, index - 1)}
-                  onMoveDown={() => moveWithin(index, index + 1)}
-                  onArchive={() => archiveActivity(activity)}
-                  onDelete={() => removeActivityDeferred(activity)}
-                  onEnterDragMode={enterDragMode}
-                />
+                <Fragment key={activity.id}>
+                  {/* 드래그 중에는 감춘다 — 순서가 바뀌는 중이라 표시값이 곧 거짓이 된다. */}
+                  {!dragMode && legsByTo.get(activity.id) && (
+                    <LegRow
+                      leg={legsByTo.get(activity.id)!}
+                      onOpen={setOpenLeg}
+                    />
+                  )}
+                  <ActivityRow
+                    activity={activity}
+                    inArchive={selectedDate === null}
+                    dragMode={dragMode}
+                    canMoveUp={index > 0}
+                    canMoveDown={index < activities.length - 1}
+                    onMoveUp={() => moveWithin(index, index - 1)}
+                    onMoveDown={() => moveWithin(index, index + 1)}
+                    onArchive={() => archiveActivity(activity)}
+                    onDelete={() => removeActivityDeferred(activity)}
+                    onEnterDragMode={enterDragMode}
+                  />
+                </Fragment>
               ))}
             </ul>
           </SortableContext>
@@ -372,6 +391,14 @@ export function TripBoardPage() {
           </Button>
         </div>
       )}
+
+      <TransportSheet
+        open={openLeg !== null}
+        onOpenChange={(open) => !open && setOpenLeg(null)}
+        tripId={tripId}
+        leg={openLeg}
+        activities={activities}
+      />
 
       <AddSheet
         open={sheetOpen}

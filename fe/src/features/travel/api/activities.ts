@@ -147,6 +147,23 @@ export async function deleteActivity(activityId: number): Promise<void> {
   await client.delete(`/travel/activities/${activityId}`);
 }
 
+/**
+ * 이동수단 시트가 여는 단건 조회. 자동 판정되지 않은 수단은 **고른 순간에만** 부른다 —
+ * 미리 둘 다 받아두면 아무도 안 열어 볼 값까지 사게 된다(호출당 과금).
+ */
+export async function fetchLeg(
+  tripId: number,
+  from: number,
+  to: number,
+  mode: TravelMode,
+): Promise<Leg> {
+  const { data } = await client.get<ApiEnvelope<Leg>>(
+    `/travel/trips/${tripId}/legs`,
+    { params: { from, to, mode } },
+  );
+  return data.data;
+}
+
 /** 날짜 하나의 전체 순서. 부분 갱신은 보내지 않는다(순서가 비결정적이 된다). */
 export interface ReorderMove {
   /** null이면 미배정 보관함. */
