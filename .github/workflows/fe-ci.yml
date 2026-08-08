@@ -44,3 +44,24 @@ jobs:
       - name: Build
         working-directory: fe
         run: npm run build
+
+      # E2E는 유닛 테스트가 못 보는 것을 본다 — 서비스워커·오프라인·실제 드래그.
+      # CI에 없으면 깨져도 아무도 모른다(#1098에서 실제로 그랬다).
+      - name: Install Playwright browsers
+        working-directory: fe
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E
+        working-directory: fe
+        run: npm run test:e2e
+
+      # 실패했을 때 무엇을 봤는지가 남아야 원인을 찾는다.
+      - name: Upload E2E report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            fe/playwright-report
+            fe/test-results
+          retention-days: 7

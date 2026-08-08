@@ -7,9 +7,30 @@ import { expect, test } from "@playwright/test";
  * `.env.development`가 `VITE_API_URL=/api`라 앱은 Vite 프록시(`/api/...`)로 부른다.
  * 매치가 안 되면 요청이 프록시를 타고 실제 BE로 나가고, BE가 없으면 500이 온다.
  * 경로 패턴은 dev·배포 양쪽에 다 걸린다.
+ *
+ * <p><b>인증 외의 API는 통째로 막는다.</b> 개별 경로를 하나씩 막으면 화면이 새 API를
+ * 부르기 시작할 때마다 하나씩 새고, 그때 이 테스트는 <b>BE가 떠 있는 기계에서만</b>
+ * 실패한다 — 가짜 토큰을 실제 BE가 401로 거부하고 앱이 정상적으로 자동 로그아웃하기
+ * 때문이다. 실제로 그렇게 깨졌다(#1098).
+ *
+ * <p>막는 방법에 주의: 글로브 {@code **&#47;api&#47;**}는 dev에서 <b>앱 소스</b>
+ * ({@code /src/shared/api/client.ts})까지 삼켜 화면이 아예 안 뜬다. 경로 술어로 잡는다.
+ *
+ * <p>Playwright는 <b>나중에 등록한 route가 이긴다</b> — 포괄 규칙을 먼저 깔고 개별 규칙을 얹는다.
  */
 function mockAuthApi(page: import("@playwright/test").Page) {
   return Promise.all([
+    page.route(
+      (url) => url.pathname.startsWith("/api/"),
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ code: "OK", data: null }),
+        });
+      },
+    ),
+
     page.route("**/api/auth/login", async (route) => {
       const body = route.request().postDataJSON();
       if (body.loginId === "admin" && body.password === "password") {
@@ -44,9 +65,7 @@ function mockAuthApi(page: import("@playwright/test").Page) {
       });
     }),
 
-    // 로그인 후 화면엔 Sidebar가 딸려 오고 복습 요약을 부른다. 안 막아두면
-    // 실제 BE가 가짜 토큰을 401로 거부하고 앱이 정상적으로 자동 로그아웃해 버린다
-    // (= BE가 떠 있으면 실패하는 테스트가 된다).
+    // 위 포괄 규칙으로도 막히지만, Sidebar가 이 응답의 <b>형태</b>에 기대므로 진짜에 가깝게 준다.
     page.route("**/api/planner/reviews/summary*", async (route) => {
       await route.fulfill({
         status: 200,
