@@ -63,8 +63,37 @@ function captureWrite(method: "post" | "put") {
   return seen;
 }
 
-async function fillNewTripForm() {
+const TOKYO_CITY = {
+  googlePlaceId: "ChIJ_tokyo",
+  name: "도쿄",
+  address: "일본 도쿄도",
+  lat: 35.6764225,
+  lng: 139.650027,
+  timezone: "Asia/Tokyo",
+  currency: "JPY",
+};
+
+/** 목적지 검색 응답. 호출된 검색어를 모아 둔다. */
+function mockCities(cities: unknown[] = [TOKYO_CITY]) {
+  const queries: string[] = [];
+  server.use(
+    http.get(`${API_BASE}/travel/places/cities`, ({ request }) => {
+      queries.push(new URL(request.url).searchParams.get("q") ?? "");
+      return HttpResponse.json({ code: "OK", data: cities });
+    }),
+  );
+  return queries;
+}
+
+/** 검색해서 도쿄를 고른다 — 이제 목적지를 정하는 기본 경로다. */
+async function selectTokyo() {
   await userEvent.type(screen.getByLabelText("목적지 도시"), "도쿄");
+  await userEvent.click(screen.getByRole("button", { name: "검색" }));
+  await userEvent.click(await screen.findByRole("button", { name: /도쿄/ }));
+}
+
+async function fillNewTripForm() {
+  await selectTokyo();
   await userEvent.type(screen.getByLabelText("시작일"), "2026-10-24");
   await userEvent.type(screen.getByLabelText("종료일"), "2026-10-27");
 }
@@ -72,6 +101,7 @@ async function fillNewTripForm() {
 describe("TripFormPage", () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: "valid-token" });
+    mockCities();
   });
 
   describe("생성", () => {
@@ -93,11 +123,18 @@ describe("TripFormPage", () => {
       expect(screen.getByText("기본 알림 시점")).toBeInTheDocument();
     });
 
-    it("제목 placeholder가 입력한 목적지 이름을 따라간다", async () => {
+    it("제목 placeholder가 고른 목적지 이름을 따라간다", async () => {
+      mockCities([
+        { ...TOKYO_CITY, name: "오사카", googlePlaceId: "ChIJ_osaka" },
+      ]);
       renderApp("/travel/trips/new");
+      await screen.findByLabelText("목적지 도시");
 
-      const destination = await screen.findByLabelText("목적지 도시");
-      await userEvent.type(destination, "오사카");
+      await userEvent.type(screen.getByLabelText("목적지 도시"), "오사카");
+      await userEvent.click(screen.getByRole("button", { name: "검색" }));
+      await userEvent.click(
+        await screen.findByRole("button", { name: /오사카/ }),
+      );
 
       expect(screen.getByLabelText("여행 제목")).toHaveAttribute(
         "placeholder",
@@ -144,7 +181,7 @@ describe("TripFormPage", () => {
       renderApp("/travel/trips/new");
       await screen.findByLabelText("목적지 도시");
 
-      await userEvent.type(screen.getByLabelText("목적지 도시"), "도쿄");
+      await selectTokyo();
       await userEvent.type(screen.getByLabelText("시작일"), "2026-10-27");
       await userEvent.type(screen.getByLabelText("종료일"), "2026-10-24");
       await userEvent.click(screen.getByRole("button", { name: "만들기" }));
@@ -169,13 +206,131 @@ describe("TripFormPage", () => {
     });
   });
 
+  describe("목적지 검색", () => {
+    it("고르면 타임존·통화가 함께 정해진다 — 따로 고르게 하지 않는다", async () => {
+      renderApp("/travel/trips/new");
+      await screen.findByLabelText("목적지 도시");
+
+      // 고르기 전에는 타임존 Select가 없다(검색이 정해 주므로).
+      expect(screen.queryByLabelText("타임존")).not.toBeInTheDocument();
+
+      await selectTokyo();
+
+      expect(screen.getByText(/Asia\/Tokyo · JPY/)).toBeInTheDocument();
+    });
+
+    it("고른 도시의 좌표를 함께 보낸다 — 장소 검색이 이걸로 목적지 주변을 편향시킨다", async () => {
+      const seen = captureWrite("post");
+      renderApp("/travel/trips/new");
+      await screen.findByLabelText("목적지 도시");
+
+      await fillNewTripForm();
+      await userEvent.click(screen.getByRole("button", { name: "만들기" }));
+
+      await waitFor(() => expect(seen).toHaveLength(1));
+      expect(seen[0]).toMatchObject({
+        destinationName: "도쿄",
+        timezone: "Asia/Tokyo",
+        currency: "JPY",
+        lat: 35.6764225,
+        lng: 139.650027,
+      });
+    });
+
+    it("검색어를 서버로 보낸다", async () => {
+      const queries = mockCities();
+      renderApp("/travel/trips/new");
+      await screen.findByLabelText("목적지 도시");
+
+      await userEvent.type(screen.getByLabelText("목적지 도시"), "오사카");
+      await userEvent.click(screen.getByRole("button", { name: "검색" }));
+
+      await waitFor(() => expect(queries).toEqual(["오사카"]));
+    });
+
+    it("검색창에서 엔터를 눌러도 여행이 저장되지는 않는다", async () => {
+      const seen = captureWrite("post");
+      const queries = mockCities();
+      renderApp("/travel/trips/new");
+      await screen.findByLabelText("목적지 도시");
+
+      await userEvent.type(screen.getByLabelText("목적지 도시"), "도쿄{Enter}");
+
+      // 검색 폼이 바깥 폼 안에 있어 제출이 새면 목적지도 안 고른 채 저장된다.
+      await waitFor(() => expect(queries).toEqual(["도쿄"]));
+      expect(seen).toHaveLength(0);
+    });
+  });
+
+  describe("검색이 막혔을 때", () => {
+    it("검색이 실패해도 직접 입력으로 여행을 만들 수 있다", async () => {
+      server.use(
+        http.get(`${API_BASE}/travel/places/cities`, () =>
+          HttpResponse.json({ code: "ERR" }, { status: 500 }),
+        ),
+      );
+      const seen = captureWrite("post");
+      renderApp("/travel/trips/new");
+      await screen.findByLabelText("목적지 도시");
+
+      await userEvent.type(screen.getByLabelText("목적지 도시"), "도쿄");
+      await userEvent.click(screen.getByRole("button", { name: "검색" }));
+      await userEvent.click(
+        await screen.findByRole("button", { name: "직접 입력하기" }),
+      );
+
+      // 여행 만들기가 외부 API에 걸려 막히면 안 된다.
+      await userEvent.type(screen.getByLabelText("목적지 도시"), "도쿄");
+      await userEvent.type(screen.getByLabelText("시작일"), "2026-10-24");
+      await userEvent.type(screen.getByLabelText("종료일"), "2026-10-27");
+      await userEvent.click(screen.getByRole("button", { name: "만들기" }));
+
+      await waitFor(() => expect(seen).toHaveLength(1));
+      expect(seen[0]).toMatchObject({ destinationName: "도쿄" });
+    });
+
+    it("직접 입력에서는 타임존·통화를 고를 수 있다 — 정해 줄 사람이 없다", async () => {
+      mockCities([]);
+      renderApp("/travel/trips/new");
+      await screen.findByLabelText("목적지 도시");
+
+      await userEvent.type(screen.getByLabelText("목적지 도시"), "없는도시");
+      await userEvent.click(screen.getByRole("button", { name: "검색" }));
+      await userEvent.click(
+        await screen.findByRole("button", { name: "직접 입력하기" }),
+      );
+
+      expect(screen.getByLabelText("타임존")).toBeInTheDocument();
+      expect(screen.getByLabelText("통화")).toBeInTheDocument();
+    });
+
+    it("직접 입력에서 검색으로 되돌아올 수 있다", async () => {
+      mockCities([]);
+      renderApp("/travel/trips/new");
+      await screen.findByLabelText("목적지 도시");
+
+      await userEvent.type(screen.getByLabelText("목적지 도시"), "없는도시");
+      await userEvent.click(screen.getByRole("button", { name: "검색" }));
+      await userEvent.click(
+        await screen.findByRole("button", { name: "직접 입력하기" }),
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: "검색으로 고르기" }),
+      );
+
+      expect(screen.getByRole("button", { name: "검색" })).toBeInTheDocument();
+    });
+  });
+
   describe("수정", () => {
     it("기존 값으로 폼을 채운다", async () => {
       mockTripDetail();
       renderApp("/travel/trips/3/edit");
 
+      // 저장된 목적지는 검색창 값이 아니라 "선택한 목적지"로 드러난다 —
+      // 다시 검색하지 않는 한 그대로 유지된다.
       await waitFor(() => {
-        expect(screen.getByLabelText("목적지 도시")).toHaveValue("도쿄");
+        expect(screen.getByText(/선택한 목적지/)).toHaveTextContent("도쿄");
       });
       expect(screen.getByLabelText("여행 제목")).toHaveValue("도쿄 3박 4일");
       expect(screen.getByLabelText("시작일")).toHaveValue("2026-10-24");
@@ -190,7 +345,7 @@ describe("TripFormPage", () => {
       renderApp("/travel/trips/3/edit");
 
       await waitFor(() => {
-        expect(screen.getByLabelText("목적지 도시")).toHaveValue("도쿄");
+        expect(screen.getByText(/선택한 목적지/)).toHaveTextContent("도쿄");
       });
       expect(screen.getByLabelText("여행 제목")).toHaveValue("");
     });

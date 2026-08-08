@@ -13,9 +13,11 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Places API (New) 호출 래퍼.
@@ -39,7 +41,29 @@ public class GooglePlacesClient implements PlacesClient {
     /** 도시 검색은 타임존·국가까지 필요하다(여행의 타임존·통화를 여기서 확정한다). */
     private static final String CITY_MASK = String.join(",",
             "places.id", "places.displayName", "places.formattedAddress",
-            "places.location", "places.timeZone", "places.addressComponents");
+            "places.location", "places.timeZone", "places.addressComponents", "places.types");
+
+    /**
+     * 목적지로 인정하는 Google place type.
+     *
+     * <p>도시가 어느 단계로 잡히는지는 나라마다 다르다 — 오사카·런던·뉴욕은 {@code locality}지만
+     * 도쿄도는 {@code administrative_area_level_1}, 파리는 {@code administrative_area_level_3}다.
+     * 그래서 {@code locality} 하나로 못 걸러낸다.
+     */
+    private static final Set<String> DESTINATION_TYPES = Set.of(
+            "locality", "postal_town", "administrative_area_level_1",
+            "administrative_area_level_2", "administrative_area_level_3", "country");
+
+    /** 걸러내기 전에 받아 올 후보 수. 진짜 도시가 상위에 없을 수 있어 넉넉히 받는다. */
+    private static final int CITY_CANDIDATE_COUNT = 20;
+
+    /** 걸러낸 뒤 보여줄 수. 목적지는 하나만 고르는 것이라 길 필요가 없다. */
+    private static final int CITY_RESULT_COUNT = 5;
+
+    /** 같은 검색어에 여러 단계가 걸리면 좁은 쪽(도시)을 먼저 보여준다. */
+    private static final List<String> TYPE_PRIORITY = List.of(
+            "locality", "postal_town", "administrative_area_level_3",
+            "administrative_area_level_2", "administrative_area_level_1", "country");
 
     /** 상세는 영업시간·전화번호가 추가된다. */
     private static final String DETAILS_MASK = String.join(",",
@@ -69,13 +93,40 @@ public class GooglePlacesClient implements PlacesClient {
 
     @Override
     public List<PlaceResult> searchCities(String query) {
-        // 행정구역만 받아 "도쿄 라멘집"이 목적지 후보로 뜨지 않게 한다.
+        // includedType은 <b>힌트일 뿐</b>이라(strictTypeFiltering을 켜면 도쿄도·파리가 통째로
+        // 사라진다) 실제 걸러내기는 응답의 types로 한다. 그래서 넉넉히 받아 온다 —
+        // "파리"는 상위 5개가 전부 파리바게뜨 지점이고 진짜 파리는 그 뒤에 있다.
         Map<String, Object> body = Map.of(
                 "textQuery", query,
                 "languageCode", props.languageCode(),
-                "maxResultCount", 5,
+                "maxResultCount", CITY_CANDIDATE_COUNT,
                 "includedType", "locality");
-        return searchText(body, CITY_MASK);
+        return selectDestinations(searchText(body, CITY_MASK));
+    }
+
+    /**
+     * 받아 온 후보에서 목적지가 될 만한 것만 골라 좁은 순으로 정렬한다.
+     *
+     * <p>구글 호출과 떼어 둔다 — 걸러내기 규칙이 이 기능의 전부라 따로 검증할 수 있어야 한다.
+     */
+    static List<PlaceResult> selectDestinations(List<PlaceResult> candidates) {
+        return candidates.stream()
+                .filter(city -> city.types().stream().anyMatch(DESTINATION_TYPES::contains))
+                .sorted(Comparator.comparingInt(GooglePlacesClient::typeRank))
+                .limit(CITY_RESULT_COUNT)
+                .toList();
+    }
+
+    /** 좁은 행정구역일수록 앞. 목록에 없는 타입은 맨 뒤로 보낸다. */
+    private static int typeRank(PlaceResult city) {
+        int best = TYPE_PRIORITY.size();
+        for (String type : city.types()) {
+            int rank = TYPE_PRIORITY.indexOf(type);
+            if (rank >= 0 && rank < best) {
+                best = rank;
+            }
+        }
+        return best;
     }
 
     @Override
@@ -155,7 +206,19 @@ public class GooglePlacesClient implements PlacesClient {
                 text(node, "nationalPhoneNumber"),
                 rawJson(node.get("regularOpeningHours")),
                 nestedText(node, "timeZone", "id"),
-                countryCode(node.get("addressComponents")));
+                countryCode(node.get("addressComponents")),
+                types(node.get("types")));
+    }
+
+    private static List<String> types(JsonNode types) {
+        if (types == null || !types.isArray()) {
+            return List.of();
+        }
+        List<String> values = new ArrayList<>();
+        for (JsonNode type : types) {
+            values.add(type.asString());
+        }
+        return List.copyOf(values);
     }
 
     /** 주소 구성요소에서 국가 코드(alpha-2)를 뽑는다. 통화를 여기서 유도한다. */
