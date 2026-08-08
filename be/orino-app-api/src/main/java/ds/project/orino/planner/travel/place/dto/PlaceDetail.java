@@ -9,6 +9,8 @@ import java.math.BigDecimal;
  *
  * @param openingHours 구글 영업시간 원본 JSON. 서버가 구조를 해석하지 않고 그대로 넘긴다 —
  *                     표기 규칙이 나라마다 달라 서버가 문자열을 만들면 오히려 어색해진다
+ * @param photoUrl     MinIO에 캐시한 대표 사진. 없으면 null
+ * @param photoAttribution 사진 저작자. <b>사진을 보여줄 때 함께 표시해야 한다</b>(구글 약관)
  */
 public record PlaceDetail(
         Long id,
@@ -22,6 +24,7 @@ public record PlaceDetail(
         BigDecimal rating,
         String openingHours,
         String photoUrl,
+        String photoAttribution,
         boolean manualEntry
 ) {
 
@@ -29,6 +32,6 @@ public record PlaceDetail(
         return new PlaceDetail(place.getId(), place.getGooglePlaceId(), place.getName(),
                 place.getAddress(), place.getLat(), place.getLng(), place.getCategory(),
                 place.getPhone(), place.getRating(), place.getOpeningHours(), photoUrl,
-                place.isManualEntry());
+                place.getPhotoAttribution(), place.isManualEntry());
     }
 }

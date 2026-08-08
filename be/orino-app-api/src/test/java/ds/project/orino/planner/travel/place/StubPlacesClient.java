@@ -19,10 +19,13 @@ public class StubPlacesClient implements PlacesClient {
     public final List<String> placeSearches = new ArrayList<>();
     public final List<Coordinates> biases = new ArrayList<>();
     public final List<String> detailFetches = new ArrayList<>();
+    public final List<String> photoFetches = new ArrayList<>();
 
     public List<PlaceResult> cityResults = List.of();
     public List<PlaceResult> placeResults = List.of();
     public Optional<PlaceResult> detailResult = Optional.empty();
+    /** 사진 바이트. 비워 두면 "사진을 못 받은" 상황이 된다. */
+    public Optional<byte[]> photoResult = Optional.of(new byte[] {1, 2, 3});
 
     @Override
     public List<PlaceResult> searchCities(String query) {
@@ -43,10 +46,17 @@ public class StubPlacesClient implements PlacesClient {
         return detailResult;
     }
 
+    @Override
+    public Optional<byte[]> fetchPhoto(String photoName) {
+        photoFetches.add(photoName);
+        return photoResult;
+    }
+
     public void reset() {
         citySearches.clear();
         placeSearches.clear();
         biases.clear();
         detailFetches.clear();
+        photoFetches.clear();
     }
 }

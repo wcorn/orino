@@ -22,8 +22,18 @@ public interface PlacesClient {
      */
     List<PlaceResult> searchPlaces(String query, Coordinates bias);
 
-    /** 장소 상세(영업시간·전화번호). */
+    /** 장소 상세(영업시간·전화번호·사진 리소스 이름). */
     Optional<PlaceResult> fetchDetails(String googlePlaceId);
+
+    /**
+     * 사진 바이트를 받는다.
+     *
+     * <p>구글이 주는 것은 리소스 이름뿐이고, 이미지 URL은 <b>만료된다</b>. 그래서 DB에 URL을
+     * 넣어 둘 수 없고, 받아서 우리 저장소에 넣는 수밖에 없다.
+     *
+     * @return 실패하면 비어 있다 — 사진이 없다고 장소를 못 쓰게 만들지 않는다
+     */
+    Optional<byte[]> fetchPhoto(String photoName);
 
     record Coordinates(BigDecimal lat, BigDecimal lng) {
     }

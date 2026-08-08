@@ -24,8 +24,10 @@ function metaLine(place: PlaceSearchResult): string {
 /**
  * 검색 결과 카드(§S-06).
  *
- * <p>사진과 `좋았던 곳` 배지는 응답 필드가 이미 있고 서버가 채우기 시작하면 그대로 뜬다
- * (사진 #1058, 평점 기록은 4단계). 그때 이 컴포넌트는 손대지 않는다.
+ * <p>사진은 <b>이미 담아 둔 장소</b>에만 붙는다 — 검색 20건의 사진을 받으면 화면 한 번에
+ * 유료 호출 20번이다. 사진이 있으면 저작자 표기를 함께 그린다(구글 약관).
+ *
+ * <p>`좋았던 곳` 배지는 응답 필드만 있고 서버가 아직 안 채운다(평점 판정은 별도 이슈).
  */
 export function PlaceCard({ place, onAdd, pending = false }: PlaceCardProps) {
   const meta = metaLine(place);
@@ -56,6 +58,15 @@ export function PlaceCard({ place, onAdd, pending = false }: PlaceCardProps) {
         </p>
         {meta && (
           <p className="text-muted-foreground truncate text-xs">{meta}</p>
+        )}
+        {/*
+          사진 저작자 표기. 툴팁이 아니라 <b>보이게</b> 그린다 — 구글 약관이 요구하는 것은
+          "표시"이고, 마우스를 올려야 보이는 것은 표시가 아니다. 폰에는 hover도 없다.
+        */}
+        {place.photoUrl && place.photoAttribution && (
+          <p className="text-muted-foreground truncate text-[11px]">
+            사진 © {place.photoAttribution}
+          </p>
         )}
       </div>
 

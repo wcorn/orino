@@ -20,7 +20,7 @@ class GooglePlacesClientTest {
     private static PlaceResult candidate(String name, String... types) {
         return new PlaceResult("id-" + name, name, name + " 주소",
                 new BigDecimal("35.0"), new BigDecimal("139.0"),
-                null, null, null, null, "Asia/Seoul", "KR", List.of(types));
+                null, null, null, null, "Asia/Seoul", "KR", List.of(types), null, null);
     }
 
     @Nested

@@ -65,11 +65,25 @@ public class GooglePlacesClient implements PlacesClient {
             "locality", "postal_town", "administrative_area_level_3",
             "administrative_area_level_2", "administrative_area_level_1", "country");
 
-    /** 상세는 영업시간·전화번호가 추가된다. */
+    /**
+     * 상세는 영업시간·전화번호·사진이 추가된다.
+     *
+     * <p><b>검색 마스크에는 photos를 넣지 않는다.</b> 검색 결과는 20개인데 거기까지 사진을
+     * 달면 화면 한 번에 20장을 받아야 하고, 그건 그대로 유료 호출 20번이다. 사진은 담아 둔
+     * 장소에만 붙인다.
+     */
     private static final String DETAILS_MASK = String.join(",",
             "id", "displayName", "formattedAddress", "location", "rating",
             "primaryTypeDisplayName", "nationalPhoneNumber", "regularOpeningHours",
-            "timeZone", "addressComponents");
+            "timeZone", "addressComponents", "photos");
+
+    /**
+     * 받아 올 사진의 최대 가로 픽셀.
+     *
+     * <p>장소 블록의 미리보기용이라 원본이 필요 없다. 크게 받으면 저장 용량과 전송량만
+     * 늘고, 이 사진은 오프라인 캐시에도 실린다.
+     */
+    private static final int PHOTO_MAX_WIDTH = 800;
 
     private final RestClient restClient;
     private final PlacesProperties props;
@@ -163,6 +177,45 @@ public class GooglePlacesClient implements PlacesClient {
         }
     }
 
+    /**
+     * 사진 바이트 받기 — <b>두 번 호출한다.</b>
+     *
+     * <p>구글의 media 엔드포인트는 기본적으로 CDN으로 <b>리다이렉트</b>하는데, 그 리다이렉트를
+     * 따라가면 우리 API 키가 CDN 요청에 실려 나간다. {@code skipHttpRedirect=true}로 URI만
+     * 받아 두 번째 호출에서 키 없이 내려받는다.
+     *
+     * <p>그 URI는 <b>만료된다</b>. 그래서 DB에 넣지 않고 바이트를 받아 우리 저장소에 넣는다.
+     */
+    @Override
+    public Optional<byte[]> fetchPhoto(String photoName) {
+        if (!props.enabled() || photoName == null || photoName.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            // 리소스 이름에 슬래시가 들어 있다(`places/X/photos/Y`). URI 템플릿 변수로 넘기면
+            // 슬래시가 %2F로 인코딩돼 404가 난다 — 경로로 붙여야 한다.
+            JsonNode node = restClient.get()
+                    .uri(builder -> builder.path("/v1/" + photoName + "/media")
+                            .queryParam("maxWidthPx", PHOTO_MAX_WIDTH)
+                            .queryParam("skipHttpRedirect", true)
+                            .build())
+                    .header("X-Goog-Api-Key", props.apiKey())
+                    .retrieve()
+                    .body(JsonNode.class);
+
+            String uri = text(node, "photoUri");
+            if (uri == null) {
+                return Optional.empty();
+            }
+            byte[] bytes = RestClient.create().get().uri(uri).retrieve().body(byte[].class);
+            return Optional.ofNullable(bytes).filter(b -> b.length > 0);
+        } catch (Exception e) {
+            // 사진이 없다고 장소를 못 쓰게 만들지 않는다.
+            log.warn("Places 사진 조회 실패: photo={}, {}", photoName, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
     private List<PlaceResult> searchText(Map<String, Object> body, String fieldMask) {
         if (!props.enabled()) {
             return List.of();
@@ -207,7 +260,35 @@ public class GooglePlacesClient implements PlacesClient {
                 rawJson(node.get("regularOpeningHours")),
                 nestedText(node, "timeZone", "id"),
                 countryCode(node.get("addressComponents")),
-                types(node.get("types")));
+                types(node.get("types")),
+                photoName(node.get("photos")),
+                photoAttribution(node.get("photos")));
+    }
+
+    /** 대표 사진 하나만 쓴다 — 장소 블록에 한 장이면 충분하고, 장수만큼 유료 호출이 는다. */
+    private String photoName(JsonNode photos) {
+        JsonNode first = firstPhoto(photos);
+        return first == null ? null : text(first, "name");
+    }
+
+    /**
+     * 사진 저작자 표기. <b>구글 약관상 사진을 보여줄 때 함께 표시해야 한다</b> —
+     * 사진만 캐시하고 표기를 버리면 쓸 수 없는 사진이 된다.
+     */
+    private String photoAttribution(JsonNode photos) {
+        JsonNode first = firstPhoto(photos);
+        if (first == null) {
+            return null;
+        }
+        JsonNode authors = first.get("authorAttributions");
+        if (authors == null || !authors.isArray() || authors.isEmpty()) {
+            return null;
+        }
+        return text(authors.get(0), "displayName");
+    }
+
+    private static JsonNode firstPhoto(JsonNode photos) {
+        return photos == null || !photos.isArray() || photos.isEmpty() ? null : photos.get(0);
     }
 
     private static List<String> types(JsonNode types) {

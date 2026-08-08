@@ -13,6 +13,9 @@ import ds.project.orino.planner.travel.tools.client.WeatherClient;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import software.amazon.awssdk.services.s3.S3Client;
+
+import static org.mockito.Mockito.mock;
 
 /**
  * 외부 호출을 전부 스텁으로 갈아끼운 설정.
@@ -54,5 +57,15 @@ public class StubExternalsConfig {
     @Primary
     public EcbRatesClient stubEcbRatesClient() {
         return new StubEcbRatesClient();
+    }
+
+    /**
+     * MinIO 대역. 장소 사진 캐시가 업로드를 시도하는데, 진짜 클라이언트를 두면 테스트가
+     * <b>실제 네트워크</b>로 나간다 — 느리고 회선에 흔들린다.
+     */
+    @Bean
+    @Primary
+    public S3Client stubS3Client() {
+        return mock(S3Client.class);
     }
 }

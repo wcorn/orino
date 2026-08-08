@@ -67,6 +67,8 @@ class PlaceControllerTest extends ApiTestSupport {
         stub.cityResults = List.of();
         stub.placeResults = List.of();
         stub.detailResult = Optional.empty();
+        // 스텁은 필드를 공유한다 — 앞 테스트가 비워 뒀으면 되돌려 놓는다.
+        stub.photoResult = Optional.of(new byte[] {1, 2, 3});
 
         memberRepository.save(MemberFixture.create());
         memberRepository.save(MemberFixture.create("other", "password"));
@@ -77,14 +79,15 @@ class PlaceControllerTest extends ApiTestSupport {
     private static PlaceResult city(String id, String name, String tz, String country) {
         return new PlaceResult(id, name, "일본 도쿄도", new BigDecimal("35.6762"),
                 new BigDecimal("139.6503"), null, null, null, null, tz, country,
-                List.of("locality", "political"));
+                List.of("locality", "political"), null, null);
     }
 
     private static PlaceResult place(String id, String name) {
         return new PlaceResult(id, name, "도쿄도 다이토구", new BigDecimal("35.7147"),
                 new BigDecimal("139.7966"), "사찰", new BigDecimal("4.5"),
                 "+81 3-3842-0181", "{\"weekdayDescriptions\":[\"월: 06:00~17:00\"]}",
-                "Asia/Tokyo", "JP", List.of("tourist_attraction"));
+                "Asia/Tokyo", "JP", List.of("tourist_attraction"),
+                "places/p1/photos/ph1", "구글 사용자");
     }
 
     @Nested
@@ -153,7 +156,7 @@ class PlaceControllerTest extends ApiTestSupport {
     class Search {
 
         @Test
-        @DisplayName("검색 결과를 그대로 준다(사진·좋았던 곳은 후속 단계라 비어 있다)")
+        @DisplayName("아직 담지 않은 곳은 사진이 없다 — 검색 20건의 사진을 여기서 받지 않는다")
         void returnsResults() throws Exception {
             stub.placeResults = List.of(place("ChIJ_senso", "센소지"));
 
@@ -179,6 +182,26 @@ class PlaceControllerTest extends ApiTestSupport {
             mockMvc.perform(get("/api/travel/places/search").param("q", uniqueQuery("센소지"))
                             .header(HttpHeaders.AUTHORIZATION, authHeader))
                     .andExpect(jsonPath("$.data[0].id").value(saved.getId().intValue()));
+        }
+
+        @Test
+        @DisplayName("담아 둔 장소는 캐시된 사진을 실어 준다 — 이미 받아 둔 것은 공짜다")
+        void carriesCachedPhotoForSavedPlaces() throws Exception {
+            Long memberId = memberRepository.findAll().get(0).getId();
+            TravelPlace saved = placeRepository.save(
+                    TravelPlace.fromGoogle(memberId, "ChIJ_senso", "센소지"));
+            saved.updateDetails(null, null, "travel/places/1/a.jpg", "구글 사용자",
+                    java.time.Instant.now());
+            placeRepository.saveAndFlush(saved);
+            stub.placeResults = List.of(place("ChIJ_senso", "센소지"));
+
+            mockMvc.perform(get("/api/travel/places/search").param("q", uniqueQuery("센소지"))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data[0].photoUrl")
+                            .value(org.hamcrest.Matchers.endsWith("travel/places/1/a.jpg")));
+
+            // 검색은 사진을 새로 받지 않는다.
+            assertThat(stub.photoFetches).isEmpty();
         }
 
         @Test
@@ -304,6 +327,62 @@ class PlaceControllerTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.category").value("사찰"));
 
             assertThat(stub.detailFetches).containsExactly("ChIJ_senso");
+        }
+
+        @Test
+        @DisplayName("상세를 받으면 사진도 받아 캐시하고 저작자 표기를 함께 준다")
+        void cachesPhotoOnRefresh() throws Exception {
+            Long memberId = memberRepository.findAll().get(0).getId();
+            TravelPlace saved = placeRepository.save(
+                    TravelPlace.fromGoogle(memberId, "ChIJ_senso", "센소지"));
+            stub.detailResult = Optional.of(place("ChIJ_senso", "센소지"));
+
+            mockMvc.perform(get("/api/travel/places/" + saved.getId())
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.photoUrl")
+                            .value(org.hamcrest.Matchers.containsString("travel/places/")))
+                    // 표기를 버리면 쓸 수 없는 사진이 된다(구글 약관).
+                    .andExpect(jsonPath("$.data.photoAttribution").value("구글 사용자"));
+
+            assertThat(stub.photoFetches).containsExactly("places/p1/photos/ph1");
+        }
+
+        @Test
+        @DisplayName("이미 받아 둔 사진은 다시 받지 않는다 — 사진 호출도 건당 과금이다")
+        void doesNotRefetchPhoto() throws Exception {
+            Long memberId = memberRepository.findAll().get(0).getId();
+            TravelPlace saved = placeRepository.save(
+                    TravelPlace.fromGoogle(memberId, "ChIJ_senso", "센소지"));
+            saved.updateDetails(null, null, "travel/places/1/old.jpg", "옛 저작자", null);
+            placeRepository.saveAndFlush(saved);
+            stub.detailResult = Optional.of(place("ChIJ_senso", "센소지"));
+
+            mockMvc.perform(get("/api/travel/places/" + saved.getId())
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.photoUrl")
+                            .value(org.hamcrest.Matchers.endsWith("travel/places/1/old.jpg")));
+
+            // 상세는 갱신됐지만(detailsRefreshedAt이 null이라 대상) 사진은 그대로다.
+            assertThat(stub.detailFetches).containsExactly("ChIJ_senso");
+            assertThat(stub.photoFetches).isEmpty();
+        }
+
+        @Test
+        @DisplayName("사진을 못 받아도 장소는 그대로 보인다")
+        void survivesPhotoFailure() throws Exception {
+            Long memberId = memberRepository.findAll().get(0).getId();
+            TravelPlace saved = placeRepository.save(
+                    TravelPlace.fromGoogle(memberId, "ChIJ_senso", "센소지"));
+            stub.detailResult = Optional.of(place("ChIJ_senso", "센소지"));
+            stub.photoResult = Optional.empty();
+
+            mockMvc.perform(get("/api/travel/places/" + saved.getId())
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.name").value("센소지"))
+                    .andExpect(jsonPath("$.data.phone").value("+81 3-3842-0181"))
+                    .andExpect(jsonPath("$.data.photoUrl").doesNotExist());
         }
 
         @Test

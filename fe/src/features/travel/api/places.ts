@@ -24,8 +24,10 @@ export interface PlaceSearchResult {
   category: string | null;
   address: string | null;
   rating: number | null;
-  /** 사진은 후속 작업(#1058)이라 지금은 항상 null. */
+  /** 이미 담아 둔 장소의 캐시된 사진. 아직 담지 않은 곳은 null이다. */
   photoUrl: string | null;
+  /** 사진 저작자. **사진을 보여주는 곳마다 함께 표시해야 한다**(구글 약관). */
+  photoAttribution: string | null;
   lat: number | null;
   lng: number | null;
   /** 이전 여행에서 평점 4 이상을 준 곳. 기록은 4단계라 지금은 항상 false. */
@@ -45,6 +47,8 @@ export interface PlaceDetail {
   /** Google 원본 JSON 문자열. 상세 화면에서만 쓴다. */
   openingHours: string | null;
   photoUrl: string | null;
+  /** 사진 저작자. **사진을 보여줄 때 함께 표시해야 한다**(구글 약관). */
+  photoAttribution: string | null;
   manualEntry: boolean;
 }
 

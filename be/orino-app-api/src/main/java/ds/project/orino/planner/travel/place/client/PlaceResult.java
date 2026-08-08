@@ -14,6 +14,9 @@ import java.util.List;
  * @param countryCode   ISO 3166-1 alpha-2. 통화를 여기서 유도한다
  * @param openingHours  영업시간 원본 JSON. 구조를 해석하지 않고 그대로 캐시해 FE에 넘긴다
  * @param types         Google place type 목록. 목적지 검색에서 행정구역만 골라내는 데 쓴다
+ * @param photoName     사진 <b>리소스 이름</b>(`places/X/photos/Y`). 이미지가 아니라 참조다 —
+ *                      실제 바이트는 별도 호출로 받아야 하고 그 URL은 만료된다
+ * @param photoAttribution 사진 저작자 표기. <b>구글 약관상 사진을 보여줄 때 함께 표시해야 한다</b>
  */
 public record PlaceResult(
         String googlePlaceId,
@@ -27,7 +30,9 @@ public record PlaceResult(
         String openingHours,
         String timezone,
         String countryCode,
-        List<String> types
+        List<String> types,
+        String photoName,
+        String photoAttribution
 ) {
 
     /** {@code types}는 검색 종류에 따라 요청하지 않으므로 null이 올 수 있다. */

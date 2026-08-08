@@ -6,6 +6,7 @@ import ds.project.orino.planner.travel.photo.dto.PhotoUploadUrlResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
@@ -14,6 +15,7 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
 
 import java.time.Duration;
 import java.util.Collection;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -32,6 +34,9 @@ public class TravelPhotoStorageService {
 
     private static final String ORIGINAL_PREFIX = "travel/activities";
     private static final String THUMB_PREFIX = "travel/thumbs";
+
+    /** 구글에서 받아 캐시한 장소 대표 사진. 사용자가 올린 사진과 섞이지 않게 나눈다. */
+    private static final String PLACE_PREFIX = "travel/places";
 
     /** FE가 canvas로 재인코딩해 올리므로 항상 JPEG이다(§1.6 EXIF 제거). */
     private static final String EXTENSION = "jpg";
@@ -73,6 +78,31 @@ public class TravelPhotoStorageService {
         return new PhotoUploadUrlResponse(
                 presigner.presignPutObject(presignRequest).url().toString(),
                 toPublicUrl(key), key);
+    }
+
+    /**
+     * 구글 장소 사진을 서버가 직접 올린다.
+     *
+     * <p>사용자 사진과 달리 <b>바이트가 서버를 지나간다</b> — 브라우저가 구글에서 받아 올 수
+     * 없기 때문이다(키가 필요하고 URL이 만료된다). 대신 장소당 한 장, 800px이라 작다.
+     *
+     * @return 저장된 object key. 실패하면 비어 있다
+     */
+    public Optional<String> uploadPlacePhoto(Long placeId, byte[] bytes) {
+        String key = "%s/%d/%s.jpg".formatted(PLACE_PREFIX, placeId, UUID.randomUUID());
+        try {
+            s3Client.putObject(PutObjectRequest.builder()
+                            .bucket(props.bucket())
+                            .key(key)
+                            .contentType("image/jpeg")
+                            .build(),
+                    RequestBody.fromBytes(bytes));
+            return Optional.of(key);
+        } catch (RuntimeException e) {
+            // 사진이 없다고 장소를 못 쓰게 만들지 않는다 — 다음 갱신 때 다시 시도한다.
+            log.warn("장소 사진 업로드 실패(무시): placeId={}, {}", placeId, e.getMessage());
+            return Optional.empty();
+        }
     }
 
     /** object key를 공개 URL로 조립한다. 호스트는 설정에서 온다 — 환경별로 갈린다. */

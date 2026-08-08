@@ -37,7 +37,8 @@ function place(overrides: Record<string, unknown> = {}) {
     category: "불교사찰",
     address: "도쿄도 다이토구",
     rating: 4.6,
-    photoUrl: null,
+    photoUrl: null as string | null,
+    photoAttribution: null as string | null,
     lat: 35.7147,
     lng: 139.7966,
     loved: false,
@@ -126,6 +127,38 @@ describe("PlaceSearchPage", () => {
       expect(
         screen.getByText("불교사찰 · ★ 4.6 · 도쿄도 다이토구"),
       ).toBeInTheDocument();
+    });
+
+    it("사진이 있으면 저작자를 보이게 적는다 — 툴팁은 표기가 아니다", async () => {
+      mockSearch([
+        place({
+          photoUrl: "https://img.orino.dev/note-images/travel/places/1/a.jpg",
+          photoAttribution: "구글 사용자",
+        }),
+      ]);
+      const user = userEvent.setup();
+      renderSearch();
+
+      await user.type(
+        await screen.findByLabelText("장소 검색"),
+        "센소지{Enter}",
+      );
+
+      expect(await screen.findByText("사진 © 구글 사용자")).toBeInTheDocument();
+    });
+
+    it("사진이 없으면 저작자 줄도 없다 — 빈 표기를 만들지 않는다", async () => {
+      mockSearch([place({ photoUrl: null, photoAttribution: "구글 사용자" })]);
+      const user = userEvent.setup();
+      renderSearch();
+
+      await user.type(
+        await screen.findByLabelText("장소 검색"),
+        "센소지{Enter}",
+      );
+
+      await screen.findByText("센소지");
+      expect(screen.queryByText(/사진 ©/)).toBeNull();
     });
 
     it("여행 목적지 주변으로 편향시킨다", async () => {

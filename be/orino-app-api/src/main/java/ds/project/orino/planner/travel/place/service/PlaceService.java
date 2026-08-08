@@ -13,6 +13,7 @@ import ds.project.orino.planner.travel.place.dto.CityResponse;
 import ds.project.orino.planner.travel.place.dto.PlaceCreateRequest;
 import ds.project.orino.planner.travel.place.dto.PlaceDetail;
 import ds.project.orino.planner.travel.place.dto.PlaceSearchResult;
+import ds.project.orino.planner.travel.photo.service.TravelPhotoStorageService;
 import ds.project.orino.redis.planner.travel.PlaceSearchCacheRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +46,7 @@ public class PlaceService {
     private final TravelPlaceRepository placeRepository;
     private final TripRepository tripRepository;
     private final PlacesProperties props;
+    private final TravelPhotoStorageService storageService;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -53,6 +55,7 @@ public class PlaceService {
                         TravelPlaceRepository placeRepository,
                         TripRepository tripRepository,
                         PlacesProperties props,
+                        TravelPhotoStorageService storageService,
                         ObjectMapper objectMapper,
                         Clock clock) {
         this.placesClient = placesClient;
@@ -60,6 +63,7 @@ public class PlaceService {
         this.placeRepository = placeRepository;
         this.tripRepository = tripRepository;
         this.props = props;
+        this.storageService = storageService;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -94,17 +98,24 @@ public class PlaceService {
                 () -> placesClient.searchPlaces(query, bias));
 
         // 이미 담아 둔 장소는 내부 id를 실어 준다 — FE가 "담기" 대신 상태를 보여줄 수 있다.
-        Map<String, Long> savedIds = savedIdsOf(memberId, results);
+        Map<String, TravelPlace> saved = savedOf(memberId, results);
 
         return results.stream()
-                .map(r -> new PlaceSearchResult(
-                        savedIds.get(r.googlePlaceId()), r.googlePlaceId(), r.name(),
-                        r.category(), r.address(), r.rating(),
-                        // 사진 MinIO 캐시는 별도 이슈.
-                        null,
-                        r.lat(), r.lng(),
-                        // ⭐ 좋았던 곳은 기록(평점)이 있어야 판정된다 — 기록은 4단계다.
-                        false))
+                .map(r -> {
+                    TravelPlace place = saved.get(r.googlePlaceId());
+                    return new PlaceSearchResult(
+                            place == null ? null : place.getId(),
+                            r.googlePlaceId(), r.name(),
+                            r.category(), r.address(), r.rating(),
+                            // 이미 받아 둔 사진만 보여준다. 검색 결과 20개의 사진을 여기서
+                            // 받으면 화면 한 번에 유료 호출 20번이다.
+                            place == null ? null
+                                    : storageService.toPublicUrl(place.getPhotoObjectKey()),
+                            place == null ? null : place.getPhotoAttribution(),
+                            r.lat(), r.lng(),
+                            // ⭐ 좋았던 곳은 기록(평점) 판정이라 별도 이슈다.
+                            false);
+                })
                 .toList();
     }
 
@@ -120,11 +131,12 @@ public class PlaceService {
             placesClient.fetchDetails(place.getGooglePlaceId()).ifPresent(fresh -> {
                 place.updateBasics(fresh.address(), fresh.lat(), fresh.lng(),
                         fresh.category(), fresh.rating());
+                CachedPhoto photo = cachePhoto(place, fresh);
                 place.updateDetails(fresh.phone(), fresh.openingHours(),
-                        place.getPhotoObjectKey(), place.getPhotoAttribution(), clock.instant());
+                        photo.key(), photo.attribution(), clock.instant());
             });
         }
-        return PlaceDetail.from(place, null);
+        return PlaceDetail.from(place, storageService.toPublicUrl(place.getPhotoObjectKey()));
     }
 
     /**
@@ -145,7 +157,14 @@ public class PlaceService {
         place.updateBasics(fresh.address(), fresh.lat(), fresh.lng(),
                 fresh.category(), fresh.rating());
         place.updateDetails(fresh.phone(), fresh.openingHours(), null, null, clock.instant());
-        return placeRepository.save(place);
+        // 사진 key에 place id가 들어가므로 저장해서 id를 받은 뒤에 올린다.
+        TravelPlace saved = placeRepository.save(place);
+        CachedPhoto photo = cachePhoto(saved, fresh);
+        if (photo.key() != null) {
+            saved.updateDetails(fresh.phone(), fresh.openingHours(),
+                    photo.key(), photo.attribution(), clock.instant());
+        }
+        return saved;
     }
 
     /** 직접 입력. 검색에 안 나오는 곳도 일정에 넣을 수 있어야 한다. */
@@ -157,6 +176,33 @@ public class PlaceService {
     }
 
     // ---------------- helpers ----------------
+
+    /** 캐시된 사진 한 장. 저작자 표기는 사진과 <b>붙어 다녀야</b> 한다(구글 약관). */
+    private record CachedPhoto(String key, String attribution) {
+
+        static final CachedPhoto NONE = new CachedPhoto(null, null);
+    }
+
+    /**
+     * 구글 사진을 받아 우리 저장소에 넣는다.
+     *
+     * <p><b>이미 받아 둔 장소는 다시 받지 않는다.</b> 사진 호출은 건당 과금이고, 장소 사진이
+     * 바뀌는 일은 드물다 — 갱신 주기(§4.7 30일)가 와도 사진까지 다시 살 이유는 없다.
+     *
+     * <p>실패하면 그냥 사진이 없는 채로 둔다. 다음 갱신 때 다시 시도한다.
+     */
+    private CachedPhoto cachePhoto(TravelPlace place, PlaceResult fresh) {
+        if (place.getPhotoObjectKey() != null) {
+            return new CachedPhoto(place.getPhotoObjectKey(), place.getPhotoAttribution());
+        }
+        if (fresh.photoName() == null) {
+            return CachedPhoto.NONE;
+        }
+        return placesClient.fetchPhoto(fresh.photoName())
+                .flatMap(bytes -> storageService.uploadPlacePhoto(place.getId(), bytes))
+                .map(key -> new CachedPhoto(key, fresh.photoAttribution()))
+                .orElse(CachedPhoto.NONE);
+    }
 
     /**
      * 캐시에 있으면 그대로, 없으면 불러서 채운다.
@@ -207,7 +253,7 @@ public class PlaceService {
         return new PlacesClient.Coordinates(trip.getLat(), trip.getLng());
     }
 
-    private Map<String, Long> savedIdsOf(Long memberId, List<PlaceResult> results) {
+    private Map<String, TravelPlace> savedOf(Long memberId, List<PlaceResult> results) {
         List<String> ids = results.stream()
                 .map(PlaceResult::googlePlaceId)
                 .filter(java.util.Objects::nonNull)
@@ -216,6 +262,6 @@ public class PlaceService {
             return Map.of();
         }
         return placeRepository.findAllByMemberIdAndGooglePlaceIdIn(memberId, ids).stream()
-                .collect(Collectors.toMap(TravelPlace::getGooglePlaceId, TravelPlace::getId));
+                .collect(Collectors.toMap(TravelPlace::getGooglePlaceId, place -> place));
     }
 }
