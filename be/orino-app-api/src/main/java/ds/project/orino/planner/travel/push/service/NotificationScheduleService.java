@@ -37,6 +37,9 @@ import java.util.stream.Collectors;
 @Service
 public class NotificationScheduleService {
 
+    /** 아침 요약을 보내는 현지 시각(§4.3). */
+    private static final int MORNING_SUMMARY_HOUR = 8;
+
     private final PushNotificationRepository notificationRepository;
     private final TripActivityRepository activityRepository;
     private final TripRepository tripRepository;
@@ -84,11 +87,27 @@ public class NotificationScheduleService {
         cancelAll(notificationRepository.findAllByTripIdAndStatus(
                 tripId, NotificationStatus.PENDING));
 
+        ZoneId zone = ZoneId.of(trip.getTimezone());
         for (int dayIndex = 0; dayIndex < trip.totalDays(); dayIndex++) {
             LocalDate date = trip.getStartDate().plusDays(dayIndex);
             notificationRepository.saveAll(build(trip, activityRepository
                     .findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(trip.getId(), date)));
+
+            if (trip.isMorningSummaryEnabled()) {
+                notificationRepository.save(PushNotification.morningSummary(
+                        trip.getMemberId(), trip.getId(), date, morningAt(date, zone)));
+            }
         }
+    }
+
+    /**
+     * 아침 요약 시각 — 그 날짜의 <b>현지</b> 08:00(§4.3).
+     *
+     * <p>그날 일정이 0건이어도 지금은 만든다. 판정은 <b>보내기 직전</b>에 한다 — 예약 때만 보면
+     * 나중에 일정을 채운 날은 영영 요약이 안 오고, 다 지운 날엔 "일정 0개"가 간다.
+     */
+    private static Instant morningAt(LocalDate date, ZoneId zone) {
+        return date.atTime(MORNING_SUMMARY_HOUR, 0).atZone(zone).toInstant();
     }
 
     /** 일정이 사라지거나 보관함으로 갔다 — 예약을 접는다. */

@@ -66,7 +66,11 @@ public class TripService {
                 request.startDate(), request.endDate(), request.timezone(),
                 normalizedCurrency(request.currency()));
         applyOptionalSettings(trip, request);
-        return detailOf(tripRepository.save(trip));
+        Trip saved = tripRepository.save(trip);
+        tripRepository.flush();
+        // 아침 요약은 일정이 아니라 날짜에 매달려 있어, 일정이 하나도 없어도 지금 잡힌다(§4.3).
+        notificationService.rescheduleTrip(saved.getId());
+        return detailOf(saved);
     }
 
     public TripListResponse list(Long memberId, TripStatus status) {
