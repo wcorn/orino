@@ -113,6 +113,12 @@ export interface TripWriteRequest {
   endDate: string;
   timezone: string;
   currency: string;
+  /**
+   * 목적지 좌표. 장소 검색이 이 값으로 목적지 주변을 편향시킨다 —
+   * 없으면 현지 대신 사는 곳 근처 가게가 나온다.
+   */
+  lat?: number | null;
+  lng?: number | null;
   defaultNotifyMinutes?: number;
   morningSummaryEnabled?: boolean;
   /** 기간 단축으로 잘리는 일정을 보관함으로 옮겨도 좋다는 확인. */

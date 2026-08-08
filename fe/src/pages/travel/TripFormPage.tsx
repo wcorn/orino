@@ -9,6 +9,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { LoadingText } from "@/components/ui/loading-text";
 import { Select } from "@/components/ui/select";
+import type { City } from "@/features/travel/api/places";
 import {
   fetchShrinkPreview,
   type TripDetail,
@@ -25,6 +26,7 @@ import {
   NOTIFY_MINUTES_OPTIONS,
   TIMEZONE_OPTIONS,
 } from "@/features/travel/lib/destinations";
+import { DestinationSearch } from "@/features/travel/places/DestinationSearch";
 import { toast } from "@/shared/lib/toast";
 
 const TITLE_MAX = 50;
@@ -36,6 +38,9 @@ interface FormState {
   endDate: string;
   timezone: string;
   currency: string;
+  /** 목적지 검색으로만 채워진다. 직접 입력에는 좌표가 없다. */
+  lat: number | null;
+  lng: number | null;
   notifyMinutes: string;
 }
 
@@ -46,6 +51,8 @@ const EMPTY: FormState = {
   endDate: "",
   timezone: "Asia/Tokyo",
   currency: "JPY",
+  lat: null,
+  lng: null,
   notifyMinutes: String(DEFAULT_NOTIFY_MINUTES),
 };
 
@@ -53,8 +60,12 @@ const EMPTY: FormState = {
  * S-03 여행 생성·수정. 생성과 수정이 같은 폼을 쓴다(서버도 전체 수정이다).
  *
  * <p>입력 순서는 명세 고정 — 목적지 → 제목 → 기간 → 자동 지정 확인 → 기본 알림 시점.
- * 1단계는 목적지를 직접 입력하고 타임존·통화를 고르지만, 2단계에서 검색으로 바뀌어도
- * <b>순서와 안내 문구 자리는 그대로다</b>. 입력 수단만 교체된다.
+ *
+ * <p>목적지는 <b>검색으로 고른다</b>. 고르면 타임존·통화·좌표가 함께 정해진다.
+ * 좌표가 특히 중요하다 — 장소 검색이 이 값으로 목적지 주변을 편향시킨다.
+ *
+ * <p>다만 검색은 유료 외부 API라 언제든 막힐 수 있고, 그때 여행을 아예 못 만들면 안 된다.
+ * 직접 입력 + 타임존·통화 선택을 대체 경로로 남긴다.
  */
 export function TripFormPage() {
   const { tripId } = useParams();
@@ -69,6 +80,8 @@ export function TripFormPage() {
   const [error, setError] = useState<string | null>(null);
   const [shrinkCount, setShrinkCount] = useState<number | null>(null);
   const [checkingShrink, setCheckingShrink] = useState(false);
+  // 수정 모드는 이미 목적지가 정해져 있다 — 다시 검색시키지 않고 저장된 값을 보여준다.
+  const [manual, setManual] = useState(false);
 
   // 수정 모드는 서버 값으로 폼을 채운다.
   useEffect(() => {
@@ -92,6 +105,17 @@ export function TripFormPage() {
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
+
+  /** 목적지를 고르면 타임존·통화·좌표가 한꺼번에 정해진다. 따로 고르게 하지 않는다. */
+  const selectCity = (city: City) =>
+    setForm((prev) => ({
+      ...prev,
+      destinationName: city.name,
+      timezone: city.timezone,
+      currency: city.currency,
+      lat: city.lat,
+      lng: city.lng,
+    }));
 
   /** 저장 직전 검증. 서버도 같은 규칙을 보지만 왕복 없이 바로 알려주는 편이 낫다. */
   const validate = (): string | null => {
@@ -170,16 +194,33 @@ export function TripFormPage() {
       </header>
 
       <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
-        {/* 1. 목적지 — 2단계에서 이 자리가 검색으로 바뀐다. */}
-        <FormField label="목적지 도시" htmlFor="destinationName">
-          <Input
-            id="destinationName"
+        {/* 1. 목적지 — 검색으로 고르면 타임존·통화·좌표가 함께 정해진다. */}
+        {manual ? (
+          <div className="flex flex-col gap-2">
+            <FormField label="목적지 도시" htmlFor="destinationName">
+              <Input
+                id="destinationName"
+                value={form.destinationName}
+                onChange={(e) => set("destinationName", e.target.value)}
+                placeholder="도쿄"
+                maxLength={100}
+              />
+            </FormField>
+            <button
+              type="button"
+              onClick={() => setManual(false)}
+              className="text-muted-foreground hover:text-foreground self-start text-xs underline"
+            >
+              검색으로 고르기
+            </button>
+          </div>
+        ) : (
+          <DestinationSearch
             value={form.destinationName}
-            onChange={(e) => set("destinationName", e.target.value)}
-            placeholder="도쿄"
-            maxLength={100}
+            onSelect={selectCity}
+            onFallback={() => setManual(true)}
           />
-        </FormField>
+        )}
 
         {/* 2. 제목 — 비우면 목적지 이름으로 저장된다. placeholder로 그걸 보여준다. */}
         <FormField label="여행 제목" htmlFor="title">
@@ -214,34 +255,37 @@ export function TripFormPage() {
           </FormField>
         </div>
 
-        <div className="flex gap-3">
-          <FormField
-            label="타임존"
-            labelId={timezoneLabelId}
-            className="min-w-0 flex-1"
-          >
-            <Select
-              value={form.timezone}
-              onValueChange={(v) => set("timezone", v)}
-              options={[...TIMEZONE_OPTIONS]}
-              ariaLabelledby={timezoneLabelId}
-            />
-          </FormField>
-          <FormField
-            label="통화"
-            labelId={currencyLabelId}
-            className="min-w-0 flex-1"
-          >
-            <Select
-              value={form.currency}
-              onValueChange={(v) => set("currency", v)}
-              options={[...CURRENCY_OPTIONS]}
-              ariaLabelledby={currencyLabelId}
-            />
-          </FormField>
-        </div>
+        {/* 검색으로 골랐으면 서버가 확정한 값이라 고를 것이 없다. 직접 입력일 때만 남는다. */}
+        {manual && (
+          <div className="flex gap-3">
+            <FormField
+              label="타임존"
+              labelId={timezoneLabelId}
+              className="min-w-0 flex-1"
+            >
+              <Select
+                value={form.timezone}
+                onValueChange={(v) => set("timezone", v)}
+                options={[...TIMEZONE_OPTIONS]}
+                ariaLabelledby={timezoneLabelId}
+              />
+            </FormField>
+            <FormField
+              label="통화"
+              labelId={currencyLabelId}
+              className="min-w-0 flex-1"
+            >
+              <Select
+                value={form.currency}
+                onValueChange={(v) => set("currency", v)}
+                options={[...CURRENCY_OPTIONS]}
+                ariaLabelledby={currencyLabelId}
+              />
+            </FormField>
+          </div>
+        )}
 
-        {/* 4. 자동 지정 확인 — 2단계에서는 목적지 선택만으로 이 값이 채워진다. */}
+        {/* 4. 자동 지정 확인 — 검색으로 골랐다면 이 값은 서버가 정해 준 것이다. */}
         <Alert variant="info">
           <Info />
           <AlertTitle>여행 중에는 이 타임존을 씁니다</AlertTitle>
@@ -308,6 +352,8 @@ function toFormState(trip: TripDetail): FormState {
     endDate: trip.endDate,
     timezone: trip.timezone,
     currency: trip.currency,
+    lat: trip.lat,
+    lng: trip.lng,
     notifyMinutes: String(trip.defaultNotifyMinutes),
   };
 }
@@ -320,6 +366,8 @@ function toRequest(form: FormState, confirmArchive: boolean): TripWriteRequest {
     endDate: form.endDate,
     timezone: form.timezone,
     currency: form.currency,
+    lat: form.lat,
+    lng: form.lng,
     defaultNotifyMinutes: Number(form.notifyMinutes),
     ...(confirmArchive ? { confirmArchive: true } : {}),
   };
