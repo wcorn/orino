@@ -45,7 +45,7 @@ describe("auth API", () => {
   });
 
   describe("reissue", () => {
-    it("토큰 갱신 성공 시 true를 반환하고 accessToken을 저장한다", async () => {
+    it("토큰 갱신 성공 시 ok를 반환하고 accessToken을 저장한다", async () => {
       server.use(
         http.post(`${API_BASE}/auth/reissue`, () => {
           return HttpResponse.json({
@@ -57,11 +57,11 @@ describe("auth API", () => {
 
       const result = await reissue();
 
-      expect(result).toBe(true);
+      expect(result).toBe("ok");
       expect(useAuthStore.getState().accessToken).toBe("refreshed-token");
     });
 
-    it("토큰 갱신 실패 시 false를 반환하고 accessToken을 제거한다", async () => {
+    it("서버가 거절하면 unauthorized를 반환하고 accessToken을 제거한다", async () => {
       useAuthStore.setState({ accessToken: "old-token" });
 
       server.use(
@@ -72,7 +72,7 @@ describe("auth API", () => {
 
       const result = await reissue();
 
-      expect(result).toBe(false);
+      expect(result).toBe("unauthorized");
       expect(useAuthStore.getState().accessToken).toBeNull();
     });
   });
