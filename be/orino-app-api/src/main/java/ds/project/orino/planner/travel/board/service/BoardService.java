@@ -11,6 +11,8 @@ import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.activity.service.ActivityService;
 import ds.project.orino.planner.travel.board.dto.BoardResponse;
 import ds.project.orino.planner.travel.route.service.LegService;
+import ds.project.orino.planner.travel.tools.dto.WeatherResponse;
+import ds.project.orino.planner.travel.tools.service.WeatherService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,17 +40,20 @@ public class BoardService {
     private final TripActivityRepository activityRepository;
     private final ActivityService activityService;
     private final LegService legService;
+    private final WeatherService weatherService;
     private final Clock clock;
 
     public BoardService(TripRepository tripRepository,
                         TripActivityRepository activityRepository,
                         ActivityService activityService,
                         LegService legService,
+                        WeatherService weatherService,
                         Clock clock) {
         this.tripRepository = tripRepository;
         this.activityRepository = activityRepository;
         this.activityService = activityService;
         this.legService = legService;
+        this.weatherService = weatherService;
         this.clock = clock;
     }
 
@@ -98,6 +103,8 @@ public class BoardService {
     private List<BoardResponse.BoardDay> buildDays(Trip trip) {
         Map<LocalDate, Long> counts = activityRepository.countByDate(trip.getId()).stream()
                 .collect(Collectors.toMap(ActivityDateCount::activityDate, ActivityDateCount::count));
+        // 날짜 탭이 전부 필요로 하므로 여행 기간을 한 번에 받는다(§S-08).
+        Map<LocalDate, WeatherResponse.DailyWeather> weather = weatherService.dailyByDate(trip);
 
         List<BoardResponse.BoardDay> days = new ArrayList<>();
         for (int dayIndex = 1; dayIndex <= trip.totalDays(); dayIndex++) {
@@ -105,8 +112,8 @@ public class BoardService {
             days.add(new BoardResponse.BoardDay(dayIndex, date,
                     date.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.KOREAN),
                     counts.getOrDefault(date, 0L),
-                    // 날씨는 4단계. 예보 범위 밖이면 그때도 null이 나간다.
-                    null));
+                    // 예보 범위(오늘부터 16일) 밖이면 null이다 — 화면이 그 자리를 비운다.
+                    weather.get(date)));
         }
         return days;
     }

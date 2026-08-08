@@ -27,5 +27,8 @@ dependencies {
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
     testImplementation 'org.testcontainers:testcontainers-mysql'
     testImplementation 'com.redis:testcontainers-redis:2.2.4'
+    // orino-domain-redis는 implementation이라 그 안의 Spring Data Redis 타입이 테스트에
+    // 안 보인다. 캐시 저장소를 테스트에서 갈아끼우려면 필요하다.
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-redis'
     testImplementation 'org.springframework.security:spring-security-test'
 }

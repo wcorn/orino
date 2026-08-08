@@ -3,6 +3,7 @@ package ds.project.orino.planner.travel.board.dto;
 import ds.project.orino.domain.planner.travel.entity.TripStatus;
 import ds.project.orino.planner.travel.activity.dto.ActivityResponse;
 import ds.project.orino.planner.travel.route.dto.LegResponse;
+import ds.project.orino.planner.travel.tools.dto.WeatherResponse;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -51,14 +52,14 @@ public record BoardResponse(
      * @param dayIndex      1부터 시작하는 일차
      * @param weekday       한국어 요일 한 글자("금")
      * @param activityCount 그 날짜의 일정 수
-     * @param weather       날씨 요약. 4단계에서 채운다 — 지금은 항상 null
+     * @param weather       날씨 요약. 예보 범위(16일) 밖이면 null이다
      */
     public record BoardDay(
             int dayIndex,
             LocalDate date,
             String weekday,
             long activityCount,
-            Object weather
+            WeatherResponse.DailyWeather weather
     ) {
     }
 }

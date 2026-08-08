@@ -6,6 +6,10 @@ import ds.project.orino.planner.travel.push.StubWebPushSender;
 import ds.project.orino.planner.travel.push.send.WebPushSender;
 import ds.project.orino.planner.travel.route.StubRoutesClient;
 import ds.project.orino.planner.travel.route.client.RoutesClient;
+import ds.project.orino.planner.travel.tools.StubEcbRatesClient;
+import ds.project.orino.planner.travel.tools.StubWeatherClient;
+import ds.project.orino.planner.travel.tools.client.EcbRatesClient;
+import ds.project.orino.planner.travel.tools.client.WeatherClient;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -38,5 +42,17 @@ public class StubExternalsConfig {
     @Primary
     public WebPushSender stubWebPushSender() {
         return new StubWebPushSender();
+    }
+
+    @Bean
+    @Primary
+    public WeatherClient stubWeatherClient() {
+        return new StubWeatherClient();
+    }
+
+    @Bean
+    @Primary
+    public EcbRatesClient stubEcbRatesClient() {
+        return new StubEcbRatesClient();
     }
 }
