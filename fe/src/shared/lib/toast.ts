@@ -34,6 +34,7 @@ let counter = 0;
 interface ShowOptions {
   variant?: ToastVariant;
   action?: ToastAction;
+  /** `Infinity`면 스스로 닫히지 않는다 — 사용자가 액션을 누르거나 닫아야 한다. */
   durationMs?: number;
   onExpire?: () => void;
 }
@@ -73,7 +74,11 @@ export const useToastStore = create<ToastState>((set, get) => ({
         },
       ],
     }));
-    setTimeout(() => get().expire(id), durationMs);
+    // durationMs가 유한하지 않으면 타이머를 걸지 않는다.
+    // setTimeout(fn, Infinity)는 0으로 강제돼 오히려 즉시 사라진다.
+    if (Number.isFinite(durationMs)) {
+      setTimeout(() => get().expire(id), durationMs);
+    }
     return id;
   },
 

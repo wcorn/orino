@@ -79,7 +79,8 @@ function ToastRow({ item }: { item: ToastItem }) {
  * 만료 자체는 store의 타이머가 처리하고 여기서는 표시만 한다 — 두 곳에서 닫으면 어긋난다.
  */
 function useRemainingSeconds(item: ToastItem): number | null {
-  const hasAction = Boolean(item.action);
+  // 스스로 닫히지 않는 스낵바는 셀 것이 없다(새 버전 안내처럼 계속 떠 있는 것).
+  const hasAction = Boolean(item.action) && Number.isFinite(item.expiresAt);
   const [remaining, setRemaining] = useState(() => secondsLeft(item.expiresAt));
 
   useEffect(() => {
