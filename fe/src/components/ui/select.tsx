@@ -12,6 +12,8 @@ interface SelectProps<T extends string> {
   onValueChange: (value: T) => void;
   options: SelectOption<T>[];
   ariaLabelledby?: string;
+  /** 비활성. 켤 수 없는 설정을 감추지 않고 회색으로 남겨 무엇이 있는지 알린다. */
+  disabled?: boolean;
 }
 
 /** 표준 드롭다운 셀렉트. Trigger·Popup·Item 스타일을 일원화한다. */
@@ -20,16 +22,18 @@ function Select<T extends string>({
   onValueChange,
   options,
   ariaLabelledby,
+  disabled = false,
 }: SelectProps<T>) {
   const labelOf = (v: T) => options.find((o) => o.value === v)?.label;
   return (
     <SelectPrimitive.Root
       value={value}
       onValueChange={(v) => onValueChange(v as T)}
+      disabled={disabled}
     >
       <SelectPrimitive.Trigger
         aria-labelledby={ariaLabelledby}
-        className="border-input bg-background focus-visible:ring-ring/30 flex h-9 items-center justify-between gap-2 rounded-md border px-3 text-sm shadow-xs focus-visible:ring-2 focus-visible:outline-none"
+        className="border-input bg-background focus-visible:ring-ring/30 flex h-9 items-center justify-between gap-2 rounded-md border px-3 text-sm shadow-xs focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
       >
         <SelectPrimitive.Value>
           {(v) => <span>{labelOf(v as T)}</span>}

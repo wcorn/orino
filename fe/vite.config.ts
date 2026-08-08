@@ -75,6 +75,17 @@ export default defineConfig(() => {
         },
       },
     },
+    // SW는 빌드 결과에서만 도므로 푸시·오프라인 확인은 preview로 한다.
+    // dev와 같은 프록시가 없으면 그때 API를 못 부른다.
+    preview: {
+      port: 4173,
+      proxy: {
+        "/api": {
+          target: process.env.API_TARGET ?? "http://localhost:8080",
+          changeOrigin: true,
+        },
+      },
+    },
     server: {
       host: "0.0.0.0",
       port: 3000,

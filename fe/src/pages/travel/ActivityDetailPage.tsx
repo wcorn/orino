@@ -21,6 +21,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { LoadingText } from "@/components/ui/loading-text";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   type Activity,
@@ -31,6 +32,7 @@ import { useActivity } from "@/features/travel/hooks/useActivity";
 import { useUpdateActivity } from "@/features/travel/hooks/useActivityMutations";
 import { usePlaceDetail } from "@/features/travel/hooks/usePlaceDetail";
 import { useTrip } from "@/features/travel/hooks/useTrip";
+import { NOTIFY_MINUTES_OPTIONS } from "@/features/travel/lib/destinations";
 import { placeDirectionsUrl } from "@/features/travel/lib/mapsLink";
 import { todayOpeningHours } from "@/features/travel/lib/openingHours";
 import {
@@ -60,6 +62,10 @@ interface FormState {
   startTime: string;
   memo: string;
   url: string;
+  notifyEnabled: boolean;
+  /** 빈 문자열이면 여행 기본값을 따른다. */
+  notifyMinutes: string;
+  departureNotifyEnabled: boolean;
 }
 
 /**
@@ -84,6 +90,7 @@ export function ActivityDetailPage() {
 
   const [form, setForm] = useState<FormState | null>(null);
   const dayLabelId = useId();
+  const notifyMinutesId = useId();
 
   useEffect(() => {
     if (activity) setForm(toFormState(activity));
@@ -115,6 +122,11 @@ export function ActivityDetailPage() {
     return index >= 0 ? `${base}?day=${index}` : base;
   };
   const boardPath = boardPathFor(form.day);
+  // 시각이 없으면 언제 보낼지 정할 수 없다(§1.2) — 서버도 같은 규칙이다.
+  const hasStartTime = form.startTime !== "";
+  // 출발 알림은 직전 장소 있는 일정이 필요하다. 그건 보드가 아는 값이라
+  // 여기서는 "이 일정에 장소가 있는가"까지만 본다 — 없으면 구간 자체가 안 생긴다.
+  const canNotifyDeparture = hasStartTime && activity.place !== null;
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
 
@@ -142,10 +154,10 @@ export function ActivityDetailPage() {
           startTime: toWallClockTime(form.startTime),
           memo: form.memo.trim() || null,
           url: form.url.trim() || null,
-          // 알림 설정은 3단계 화면의 몫이라 지금 값을 그대로 유지한다.
-          notifyEnabled: activity.notifyEnabled,
-          notifyMinutes: activity.notifyMinutes,
-          departureNotifyEnabled: activity.departureNotifyEnabled,
+          // 저장하면 서버가 예약을 다시 짠다(§4.2).
+          notifyEnabled: form.notifyEnabled,
+          notifyMinutes: form.notifyMinutes ? Number(form.notifyMinutes) : null,
+          departureNotifyEnabled: form.departureNotifyEnabled,
         },
       });
       toast("일정을 저장했어요.", "success");
@@ -286,6 +298,75 @@ export function ActivityDetailPage() {
           </div>
         )}
 
+        {/*
+          알림 영역(§S-07). 시각이 없으면 언제 보낼지 정할 수 없어 통째로 비활성이다 —
+          서버도 같은 규칙으로 판정한다(§1.2).
+        */}
+        <section
+          className={`flex flex-col gap-3 border-t pt-5 ${
+            hasStartTime ? "" : "opacity-55"
+          }`}
+        >
+          <h2 className="text-caption text-muted-foreground font-semibold">
+            알림
+          </h2>
+
+          {!hasStartTime && (
+            <p className="text-muted-foreground text-[13px]">
+              시각을 입력하면 알림을 설정할 수 있어요.
+            </p>
+          )}
+
+          <div className="flex items-center gap-3 border-b pb-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">일정 알림</p>
+              <p className="text-muted-foreground text-xs">
+                {form.notifyMinutes
+                  ? `시작 ${form.notifyMinutes}분 전`
+                  : "여행 기본값"}
+              </p>
+            </div>
+            <Select
+              value={form.notifyMinutes}
+              onValueChange={(value) => set("notifyMinutes", value)}
+              options={[
+                { value: "", label: "여행 기본값" },
+                ...NOTIFY_MINUTES_OPTIONS,
+              ]}
+              ariaLabelledby={notifyMinutesId}
+              disabled={!hasStartTime || !form.notifyEnabled}
+            />
+            <span id={notifyMinutesId} className="sr-only">
+              알림 시점
+            </span>
+            <Switch
+              checked={form.notifyEnabled}
+              onCheckedChange={(checked) => set("notifyEnabled", checked)}
+              disabled={!hasStartTime}
+              aria-label="일정 알림"
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">출발 알림</p>
+              <p className="text-muted-foreground text-xs">
+                {canNotifyDeparture
+                  ? "시작시각 − 이동시간 − 5분"
+                  : "시각과 이전 장소가 필요해요"}
+              </p>
+            </div>
+            <Switch
+              checked={form.departureNotifyEnabled}
+              onCheckedChange={(checked) =>
+                set("departureNotifyEnabled", checked)
+              }
+              disabled={!canNotifyDeparture}
+              aria-label="출발 알림"
+            />
+          </div>
+        </section>
+
         <FormField label="메모" htmlFor="memo">
           <Textarea
             id="memo"
@@ -330,5 +411,9 @@ function toFormState(activity: Activity): FormState {
     startTime: toTimeInputValue(activity.startTime),
     memo: activity.memo ?? "",
     url: activity.url ?? "",
+    notifyEnabled: activity.notifyEnabled,
+    notifyMinutes:
+      activity.notifyMinutes === null ? "" : String(activity.notifyMinutes),
+    departureNotifyEnabled: activity.departureNotifyEnabled,
   };
 }
