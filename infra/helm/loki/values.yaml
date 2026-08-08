@@ -25,11 +25,33 @@ loki:
         secretAccessKey: ${AWS_SECRET_ACCESS_KEY}
         accessKeyId: ${AWS_ACCESS_KEY_ID}
         s3ForcePathStyle: false
+
+    # tsdb shipper 가 오브젝트 스토리지의 인덱스 테이블을 폴링하는 주기.
+    # 기본 5m × 테이블 수만큼 LIST 가 나간다. 최근 3시간 데이터는 ingester 가
+    # 직접 서빙하므로(query_ingesters_within) 이 주기를 늘려도 조회 신선도에
+    # 영향이 없다. 차트 기본값의 index_gateway_client 와 딥머지된다 — #1114
+    storage_config:
+      tsdb_shipper:
+        resync_interval: 30m
+
     limits_config:
       retention_period: 2160h
       # structured metadata 허용 (Alloy가 logger/requestId/userId/traceId를 부착).
       # tsdb + schema v13 전제이며 Loki 3.x 기본값이 true지만 의도를 명시.
       allow_structured_metadata: true
+
+    # retention_period(90d)만으로는 아무것도 삭제되지 않는다. Loki는
+    # compactor.retention_enabled 가 true 여야 retention 을 실제로 집행하며
+    # 기본값이 false 다. 그래서 인덱스 테이블이 하루 1개씩 무한 증가했고
+    # (실측 135개 = 90일치를 초과), tsdb shipper 가 5분마다 전 테이블을
+    # LIST 하면서 S3 Tier1 39,744회/day 를 썼다 — AWS 청구 단일 최대 항목.
+    # retention_enabled 시 delete_request_store 가 필수다(미설정 시 기동 실패).
+    # apply_retention_interval 은 기본 0s(= compaction 주기 10m 마다)라
+    # 90일 정책엔 과하다. 하루 1회로 충분 — #1114
+    compactor:
+      retention_enabled: true
+      delete_request_store: s3
+      apply_retention_interval: 24h
 
     # 로그 기반 알림(Loki Ruler). 룰 파일은 loki-alerting-rules ConfigMap을
     # /rules/fake 로 마운트(auth_enabled=false → 테넌트 id "fake").
