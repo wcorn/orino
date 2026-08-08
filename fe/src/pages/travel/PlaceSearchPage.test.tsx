@@ -37,7 +37,6 @@ function place(overrides: Record<string, unknown> = {}) {
     category: "불교사찰",
     address: "도쿄도 다이토구",
     rating: 4.6,
-    photoUrl: null,
     lat: 35.7147,
     lng: 139.7966,
     ...overrides,

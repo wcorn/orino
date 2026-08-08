@@ -163,8 +163,7 @@ class PlaceControllerTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data[0].name").value("센소지"))
                     .andExpect(jsonPath("$.data[0].category").value("사찰"))
                     .andExpect(jsonPath("$.data[0].rating").value(4.5))
-                    .andExpect(jsonPath("$.data[0].id").doesNotExist())
-                    .andExpect(jsonPath("$.data[0].photoUrl").doesNotExist());
+                    .andExpect(jsonPath("$.data[0].id").doesNotExist());
         }
 
         @Test
@@ -276,7 +275,7 @@ class PlaceControllerTest extends ApiTestSupport {
             Long memberId = memberRepository.findAll().get(0).getId();
             TravelPlace saved = placeRepository.save(
                     TravelPlace.fromGoogle(memberId, "ChIJ_senso", "센소지"));
-            saved.updateDetails("+81", "{}", null, null, java.time.Instant.now());
+            saved.updateDetails("+81", "{}", java.time.Instant.now());
             placeRepository.saveAndFlush(saved);
 
             mockMvc.perform(get("/api/travel/places/" + saved.getId())

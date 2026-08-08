@@ -70,15 +70,7 @@ public class TravelPlace {
     @Column(name = "opening_hours", columnDefinition = "JSON")
     private String openingHours;
 
-    /** MinIO에 캐시한 대표 사진 key. 공개 URL은 base + key로 조립한다. */
-    @Column(name = "photo_object_key", length = 512)
-    private String photoObjectKey;
-
-    /** Google 사진 저작자 표기. 사진을 쓰면 함께 노출해야 한다. */
-    @Column(name = "photo_attribution", length = 500)
-    private String photoAttribution;
-
-    /** 영업시간·사진을 마지막으로 갱신한 시각. null이면 아직 상세를 받은 적 없다. */
+    /** 영업시간을 마지막으로 갱신한 시각. null이면 아직 상세를 받은 적 없다. */
     @Column(name = "details_refreshed_at")
     private Instant detailsRefreshedAt;
 
@@ -128,12 +120,9 @@ public class TravelPlace {
     }
 
     /** 상세 조회(영업시간·전화·사진) 결과를 채우고 갱신 시각을 찍는다. */
-    public void updateDetails(String phone, String openingHours, String photoObjectKey,
-                              String photoAttribution, Instant refreshedAt) {
+    public void updateDetails(String phone, String openingHours, Instant refreshedAt) {
         this.phone = phone;
         this.openingHours = openingHours;
-        this.photoObjectKey = photoObjectKey;
-        this.photoAttribution = photoAttribution;
         this.detailsRefreshedAt = refreshedAt;
     }
 
@@ -184,14 +173,6 @@ public class TravelPlace {
 
     public String getOpeningHours() {
         return openingHours;
-    }
-
-    public String getPhotoObjectKey() {
-        return photoObjectKey;
-    }
-
-    public String getPhotoAttribution() {
-        return photoAttribution;
     }
 
     public Instant getDetailsRefreshedAt() {

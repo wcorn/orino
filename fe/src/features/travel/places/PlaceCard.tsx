@@ -1,5 +1,3 @@
-import { Image as ImageIcon } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
 import type { PlaceSearchResult } from "@/features/travel/api/places";
 
@@ -23,26 +21,14 @@ function metaLine(place: PlaceSearchResult): string {
 /**
  * 검색 결과 카드(§S-06).
  *
- * <p>사진은 응답 필드만 있고 서버가 채우지 않는다 — 구글 장소 사진은 약관상 캐시할 수 없어
- * 넣지 않기로 했다(결정 기록 D-16). 자리 표시 아이콘이 그 자리를 대신한다.
+ * <p>썸네일 자리가 없다 — 구글 장소 사진은 약관상 캐시할 수 없어 넣지 않기로 했고(D-16),
+ * 영영 빈 자리 표시만 뜰 슬롯을 남겨두지 않는다.
  */
 export function PlaceCard({ place, onAdd, pending = false }: PlaceCardProps) {
   const meta = metaLine(place);
 
   return (
     <li className="border-border bg-card flex items-center gap-3 rounded-xl border p-2.5">
-      {place.photoUrl ? (
-        <img
-          src={place.photoUrl}
-          alt=""
-          className="size-16 shrink-0 rounded-lg object-cover"
-        />
-      ) : (
-        <div className="bg-muted flex size-16 shrink-0 items-center justify-center rounded-lg">
-          <ImageIcon className="text-muted-foreground size-[18px]" />
-        </div>
-      )}
-
       <div className="min-w-0 flex-1">
         <p className="truncate text-[15px] font-medium">{place.name}</p>
         {meta && (
