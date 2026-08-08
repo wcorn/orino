@@ -111,6 +111,15 @@ travel:
     private-key: ${VAPID_PRIVATE_KEY:}
     # 푸시 서비스가 문제 시 연락할 곳(RFC 8292).
     subject: ${VAPID_SUBJECT:mailto:dsk08208@gmail.com}
+  tools:
+    # 날씨·환율은 둘 다 무료·무인증이다. 캐시는 비용이 아니라 예의와 불필요한 재조회 방지다.
+    weather-base-url: ${OPEN_METEO_BASE_URL:https://api.open-meteo.com}
+    fx-url: ${ECB_FX_URL:https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml}
+    # §4.7 — 예보 6시간, 환율 24시간(ECB는 하루 한 번 고시).
+    weather-ttl: ${WEATHER_TTL:6h}
+    fx-ttl: ${FX_TTL:24h}
+    connect-timeout: ${TOOLS_CONNECT_TIMEOUT:5s}
+    read-timeout: ${TOOLS_READ_TIMEOUT:10s}
 
 management:
   tracing:
