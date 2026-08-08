@@ -55,6 +55,21 @@ export interface BoardTrip {
   recordMode: boolean;
 }
 
+/** 앱이 계산하는 이동수단. 대중교통은 계산하지 않는다 — 구글 지도 딥링크가 맡는다. */
+export type TravelMode = "WALK" | "DRIVE";
+
+export interface Leg {
+  fromActivityId: number;
+  toActivityId: number;
+  mode: TravelMode;
+  /** `fallback`이면 null — 거리만 안다. */
+  durationMinutes: number | null;
+  /** 경로 거리. `fallback`이면 직선거리다. */
+  distanceM: number;
+  /** Routes를 못 얻어 직선거리로 대체했다. 화면은 `약 N.Nkm`로 보여준다. */
+  fallback: boolean;
+}
+
 export interface Board {
   trip: BoardTrip;
   days: BoardDay[];
@@ -62,8 +77,8 @@ export interface Board {
   selectedDate: string | null;
   archiveCount: number;
   activities: Activity[];
-  /** 이동시간은 2단계. 지금은 항상 빈 배열. */
-  legs: unknown[];
+  /** 연속한 두 일정 사이 이동. 장소 없는 일정은 건너뛴 결과다. */
+  legs: Leg[];
 }
 
 /**
