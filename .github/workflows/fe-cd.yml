@@ -55,6 +55,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             CACHEBUST=${{ github.sha }}
+            VITE_GOOGLE_MAPS_API_KEY=${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+            VITE_GOOGLE_MAPS_MAP_ID=${{ secrets.VITE_GOOGLE_MAPS_MAP_ID }}
           cache-from: type=gha,scope=fe
           cache-to: type=gha,mode=max,scope=fe
 
@@ -83,4 +85,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             CACHEBUST=${{ github.sha }}
+            VITE_GOOGLE_MAPS_API_KEY=${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+            VITE_GOOGLE_MAPS_MAP_ID=${{ secrets.VITE_GOOGLE_MAPS_MAP_ID }}
           cache-from: type=gha,scope=fe

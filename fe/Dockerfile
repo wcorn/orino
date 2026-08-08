@@ -3,6 +3,13 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+# 여행 지도 키·Map ID. Vite는 빌드 시점에 값을 박아 넣으므로 런타임 주입이 안 된다.
+# 리퍼러 제한이 걸린 공개 키라 번들에 들어가는 것이 정상이다(#1102).
+# 비어 있어도 빌드는 되고, 그때는 지도만 빠진다.
+ARG VITE_GOOGLE_MAPS_API_KEY=""
+ARG VITE_GOOGLE_MAPS_MAP_ID=""
+ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
+ENV VITE_GOOGLE_MAPS_MAP_ID=$VITE_GOOGLE_MAPS_MAP_ID
 RUN npm run build
 
 FROM nginx:alpine
