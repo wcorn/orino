@@ -100,8 +100,6 @@ public class PlaceService {
                 .map(r -> new PlaceSearchResult(
                         savedIds.get(r.googlePlaceId()), r.googlePlaceId(), r.name(),
                         r.category(), r.address(), r.rating(),
-                        // 사진 MinIO 캐시는 별도 이슈.
-                        null,
                         r.lat(), r.lng()))
                 .toList();
     }
@@ -118,11 +116,10 @@ public class PlaceService {
             placesClient.fetchDetails(place.getGooglePlaceId()).ifPresent(fresh -> {
                 place.updateBasics(fresh.address(), fresh.lat(), fresh.lng(),
                         fresh.category(), fresh.rating());
-                place.updateDetails(fresh.phone(), fresh.openingHours(),
-                        place.getPhotoObjectKey(), place.getPhotoAttribution(), clock.instant());
+                place.updateDetails(fresh.phone(), fresh.openingHours(), clock.instant());
             });
         }
-        return PlaceDetail.from(place, null);
+        return PlaceDetail.from(place);
     }
 
     /**
@@ -142,7 +139,7 @@ public class PlaceService {
         TravelPlace place = TravelPlace.fromGoogle(memberId, googlePlaceId, fresh.name());
         place.updateBasics(fresh.address(), fresh.lat(), fresh.lng(),
                 fresh.category(), fresh.rating());
-        place.updateDetails(fresh.phone(), fresh.openingHours(), null, null, clock.instant());
+        place.updateDetails(fresh.phone(), fresh.openingHours(), clock.instant());
         return placeRepository.save(place);
     }
 
@@ -151,7 +148,7 @@ public class PlaceService {
     public PlaceDetail createManual(Long memberId, PlaceCreateRequest request) {
         TravelPlace place = TravelPlace.manual(memberId, request.name().trim());
         place.updateBasics(request.address(), request.lat(), request.lng(), null, null);
-        return PlaceDetail.from(placeRepository.save(place), null);
+        return PlaceDetail.from(placeRepository.save(place));
     }
 
     // ---------------- helpers ----------------

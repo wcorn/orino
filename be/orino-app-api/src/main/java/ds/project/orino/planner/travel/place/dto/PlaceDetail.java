@@ -21,14 +21,13 @@ public record PlaceDetail(
         String phone,
         BigDecimal rating,
         String openingHours,
-        String photoUrl,
         boolean manualEntry
 ) {
 
-    public static PlaceDetail from(TravelPlace place, String photoUrl) {
+    public static PlaceDetail from(TravelPlace place) {
         return new PlaceDetail(place.getId(), place.getGooglePlaceId(), place.getName(),
                 place.getAddress(), place.getLat(), place.getLng(), place.getCategory(),
-                place.getPhone(), place.getRating(), place.getOpeningHours(), photoUrl,
+                place.getPhone(), place.getRating(), place.getOpeningHours(),
                 place.isManualEntry());
     }
 }

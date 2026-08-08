@@ -44,7 +44,6 @@ class TravelPlaceRepositoryTest {
         place.updateBasics("도쿄도 다이토구 아사쿠사 2-3-1", new BigDecimal("35.7147651"),
                 new BigDecimal("139.7966553"), "buddhist_temple", new BigDecimal("4.5"));
         place.updateDetails("+81 3-3842-0181", "{\"weekdayText\":[\"월: 06:00~17:00\"]}",
-                "travel/places/senso-ji.jpg", "Google 사용자 제공",
                 Instant.parse("2026-08-07T00:00:00Z"));
         placeRepository.flush();
 
@@ -58,8 +57,6 @@ class TravelPlaceRepositoryTest {
         assertThat(found.getRating()).isEqualByComparingTo("4.5");
         assertThat(found.getPhone()).isEqualTo("+81 3-3842-0181");
         assertThat(found.getOpeningHours()).contains("06:00~17:00");
-        assertThat(found.getPhotoObjectKey()).isEqualTo("travel/places/senso-ji.jpg");
-        assertThat(found.getPhotoAttribution()).isEqualTo("Google 사용자 제공");
         assertThat(found.isManualEntry()).isFalse();
     }
 
@@ -133,7 +130,7 @@ class TravelPlaceRepositoryTest {
         // 아직 상세를 받은 적 없다.
         assertThat(place.needsDetailsRefresh(now)).isTrue();
 
-        place.updateDetails(null, "{}", null, null, Instant.parse("2026-08-07T00:00:00Z"));
+        place.updateDetails(null, "{}", Instant.parse("2026-08-07T00:00:00Z"));
         // 30일 딱 지나기 전에는 캐시를 그대로 쓴다.
         assertThat(place.needsDetailsRefresh(now)).isFalse();
         assertThat(place.needsDetailsRefresh(Instant.parse("2026-09-06T00:00:01Z"))).isTrue();

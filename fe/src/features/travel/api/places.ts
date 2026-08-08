@@ -25,7 +25,6 @@ export interface PlaceSearchResult {
   address: string | null;
   rating: number | null;
   /** 사진은 후속 작업(#1058)이라 지금은 항상 null. */
-  photoUrl: string | null;
   lat: number | null;
   lng: number | null;
 }
@@ -42,7 +41,6 @@ export interface PlaceDetail {
   rating: number | null;
   /** Google 원본 JSON 문자열. 상세 화면에서만 쓴다. */
   openingHours: string | null;
-  photoUrl: string | null;
   manualEntry: boolean;
 }
 

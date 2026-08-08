@@ -1,0 +1,26 @@
+databaseChangeLog:
+  # 장소 사진 컬럼 제거 (#1101 후속, 결정 기록 D-16).
+  #
+  # 구글 장소 사진은 약관상 캐시할 수 없어 넣지 않기로 했다. 이 두 컬럼은 그 기능을
+  # 위해 047에서 미리 만들어 뒀던 자리인데, 채우는 코드가 머지된 적이 없다
+  # (PR #1100은 닫혔다) — 어느 행에도 값이 없다.
+  #
+  # 빈 컬럼을 남겨두면 "사진이 있는데 안 보이는 건가"로 읽힌다. 나중에 사진을 다시
+  # 들이게 되면 그때 컬럼을 새로 만드는 편이 낫다.
+
+  - changeSet:
+      id: 052-drop-travel-place-photo-columns
+      author: wcorn
+      comment: 미도입 결정된 장소 사진 컬럼 제거. 값이 들어간 적 없다.
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            tableName: travel_place
+            columnName: photo_object_key
+      changes:
+        - dropColumn:
+            tableName: travel_place
+            columnName: photo_object_key
+        - dropColumn:
+            tableName: travel_place
+            columnName: photo_attribution
