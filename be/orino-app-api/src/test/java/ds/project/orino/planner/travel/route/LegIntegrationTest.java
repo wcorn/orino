@@ -133,6 +133,53 @@ class LegIntegrationTest extends ApiTestSupport {
                 .andExpect(status().isOk());
     }
 
+
+    private void addUnscheduled(String title, Long placeId) throws Exception {
+        String place = placeId == null ? "" : ", \"placeId\": %d".formatted(placeId);
+        mockMvc.perform(post("/api/travel/trips/" + tripId + "/activities")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "%s", "activityDate": null%s}
+                                """.formatted(title, place)))
+                .andExpect(status().isOk());
+    }
+
+    private List<Integer> activityIds() throws Exception {
+        String body = board().andReturn().getResponse().getContentAsString();
+        return com.jayway.jsonpath.JsonPath.read(body, "$.data.activities[*].id");
+    }
+
+    private List<Integer> archivedActivityIds() throws Exception {
+        String body = mockMvc.perform(get("/api/travel/trips/" + tripId + "/board")
+                        .param("archive", "true")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andReturn().getResponse().getContentAsString();
+        return com.jayway.jsonpath.JsonPath.read(body, "$.data.activities[*].id");
+    }
+
+    private org.springframework.test.web.servlet.ResultActions reorder(int... ids) throws Exception {
+        String list = java.util.Arrays.stream(ids).mapToObj(String::valueOf)
+                .collect(java.util.stream.Collectors.joining(", "));
+        return mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .put("/api/travel/trips/" + tripId + "/activities/order")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"moves": [{"date": "2026-10-24", "activityIds": [%s]}]}
+                                """.formatted(list)))
+                .andExpect(status().isOk());
+    }
+
+    private org.springframework.test.web.servlet.ResultActions legBetween(
+            int from, int to, String mode) throws Exception {
+        return mockMvc.perform(get("/api/travel/trips/" + tripId + "/legs")
+                .param("from", String.valueOf(from))
+                .param("to", String.valueOf(to))
+                .param("mode", mode)
+                .header(HttpHeaders.AUTHORIZATION, authHeader));
+    }
+
     @Nested
     @DisplayName("어디에 구간이 생기나")
     class Which {
@@ -315,4 +362,144 @@ class LegIntegrationTest extends ApiTestSupport {
             assertThat(tos.get(0)).isEqualTo(froms.get(1));
         }
     }
+
+    @Nested
+    @DisplayName("보관함")
+    class Archive {
+
+        @Test
+        @DisplayName("보관함에는 구간이 없다 — 순서에 이동 의미가 없는데 유료 호출을 낼 이유가 없다")
+        void archiveHasNoLegs() throws Exception {
+            Long a = placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG));
+            Long b = placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG));
+            addUnscheduled("센소지", a);
+            addUnscheduled("스카이트리", b);
+
+            mockMvc.perform(get("/api/travel/trips/" + tripId + "/board")
+                            .param("archive", "true")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.activities", hasSize(2)))
+                    .andExpect(jsonPath("$.data.legs", hasSize(0)));
+
+            assertThat(stub.calls).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("순서 변경 응답")
+    class Reorder {
+
+        @Test
+        @DisplayName("재계산된 구간을 함께 돌려준다 — 드래그는 손을 뗀 순간 결과가 보여야 한다")
+        void returnsRecomputedLegs() throws Exception {
+            addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("스카이트리", placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+            List<Integer> ids = activityIds();
+
+            reorder(ids.get(1), ids.get(0))
+                    .andExpect(jsonPath("$.data.legs", hasSize(1)))
+                    // 뒤집었으니 출발·도착도 뒤집혀야 한다.
+                    .andExpect(jsonPath("$.data.legs[0].fromActivityId").value(ids.get(1)))
+                    .andExpect(jsonPath("$.data.legs[0].toActivityId").value(ids.get(0)));
+        }
+
+        @Test
+        @DisplayName("구간이 없어도 빈 배열로 온다")
+        void emptyWhenNoLegs() throws Exception {
+            addActivity("점심", null);
+            addActivity("저녁", null);
+            List<Integer> ids = activityIds();
+
+            reorder(ids.get(1), ids.get(0))
+                    .andExpect(jsonPath("$.data.legs", hasSize(0)));
+        }
+    }
+
+    @Nested
+    @DisplayName("수단별 단건 조회 (이동수단 시트)")
+    class ByMode {
+
+        @Test
+        @DisplayName("자동 판정과 다른 수단도 물어볼 수 있다")
+        void asksForTheOtherMode() throws Exception {
+            addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("신주쿠", placeAt("신주쿠", jitter(SHINJUKU_LAT), jitter(SHINJUKU_LNG)));
+            List<Integer> ids = activityIds();
+
+            // 8km라 보드는 DRIVE로 준다. 시트에서 도보를 물으면 그때 계산한다.
+            board().andExpect(jsonPath("$.data.legs[0].mode").value("DRIVE"));
+            legBetween(ids.get(0), ids.get(1), "WALK")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.mode").value("WALK"))
+                    .andExpect(jsonPath("$.data.durationMinutes").value(12));
+
+            // 보드에서 미리 둘 다 계산하지 않는다 — 아무도 안 열어 볼 값까지 사게 된다.
+            assertThat(stub.calls).hasSize(2);
+            assertThat(stub.calls.get(0).mode()).isEqualTo(TravelMode.DRIVE);
+            assertThat(stub.calls.get(1).mode()).isEqualTo(TravelMode.WALK);
+        }
+
+        @Test
+        @DisplayName("보드와 같은 캐시를 탄다 — 시트를 다시 열어도 외부 호출이 없다")
+        void sharesCacheWithBoard() throws Exception {
+            addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("스카이트리", placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+            List<Integer> ids = activityIds();
+
+            board();
+            int afterBoard = stub.calls.size();
+            // 보드가 이미 WALK로 계산해 둔 구간이다.
+            legBetween(ids.get(0), ids.get(1), "WALK").andExpect(status().isOk());
+            legBetween(ids.get(0), ids.get(1), "WALK").andExpect(status().isOk());
+
+            assertThat(stub.calls).hasSize(afterBoard);
+        }
+
+        @Test
+        @DisplayName("좌표 없는 일정 사이는 400 — 화면에도 그 구간이 없다")
+        void rejectsWhenNoCoordinates() throws Exception {
+            addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("점심", null);
+            List<Integer> ids = activityIds();
+
+            legBetween(ids.get(0), ids.get(1), "WALK")
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-009"));
+        }
+
+        @Test
+        @DisplayName("보관함 일정은 400 — 이동 의미가 없다")
+        void rejectsArchivedActivities() throws Exception {
+            Long a = placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG));
+            Long b = placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG));
+            addUnscheduled("센소지", a);
+            addUnscheduled("스카이트리", b);
+            List<Integer> ids = archivedActivityIds();
+
+            legBetween(ids.get(0), ids.get(1), "WALK")
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-009"));
+        }
+
+        @Test
+        @DisplayName("남의 여행은 404")
+        void rejectsOtherMembersTrip() throws Exception {
+            addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("스카이트리", placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+            List<Integer> ids = activityIds();
+
+            memberRepository.save(MemberFixture.create("other", "password"));
+            String otherAuth = "Bearer "
+                    + AuthFixture.loginAndGetAccessToken(mockMvc, "other", "password");
+
+            mockMvc.perform(get("/api/travel/trips/" + tripId + "/legs")
+                            .param("from", String.valueOf(ids.get(0)))
+                            .param("to", String.valueOf(ids.get(1)))
+                            .param("mode", "WALK")
+                            .header(HttpHeaders.AUTHORIZATION, otherAuth))
+                    .andExpect(status().isNotFound());
+        }
+    }
+
 }

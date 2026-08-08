@@ -12,6 +12,8 @@ import ds.project.orino.planner.travel.activity.dto.ActivityPlace;
 import ds.project.orino.planner.travel.activity.dto.ActivityResponse;
 import ds.project.orino.planner.travel.activity.dto.ActivityWriteRequest;
 import ds.project.orino.planner.travel.activity.dto.ReorderRequest;
+import ds.project.orino.planner.travel.route.dto.LegResponse;
+import ds.project.orino.planner.travel.route.service.LegService;
 import ds.project.orino.planner.travel.place.service.PlaceService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,15 +50,18 @@ public class ActivityService {
     private final TripRepository tripRepository;
     private final TravelPlaceRepository placeRepository;
     private final PlaceService placeService;
+    private final LegService legService;
 
     public ActivityService(TripActivityRepository activityRepository,
                            TripRepository tripRepository,
                            TravelPlaceRepository placeRepository,
-                           PlaceService placeService) {
+                           PlaceService placeService,
+                           LegService legService) {
         this.activityRepository = activityRepository;
         this.tripRepository = tripRepository;
         this.placeRepository = placeRepository;
         this.placeService = placeService;
+        this.legService = legService;
     }
 
     /**
@@ -140,7 +145,7 @@ public class ActivityService {
      * 클라이언트가 실수로 일부만 보내도 순서에 구멍이나 중복이 남지 않게 하기 위한 것이다.
      */
     @Transactional
-    public void reorder(Long memberId, Long tripId, ReorderRequest request) {
+    public List<LegResponse> reorder(Long memberId, Long tripId, ReorderRequest request) {
         Trip trip = getOwnedTrip(memberId, tripId);
 
         Map<Long, TripActivity> targets = loadOwnedActivities(tripId, request);
@@ -160,6 +165,14 @@ public class ActivityService {
         }
         activityRepository.flush();
         touchedDates.forEach(date -> reindex(tripId, date));
+
+        // 보관함(null)은 이동 의미가 없어 건너뛴다.
+        return touchedDates.stream()
+                .filter(java.util.Objects::nonNull)
+                .flatMap(date -> legService.legs(
+                        activityRepository.findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(
+                                tripId, date)).stream())
+                .toList();
     }
 
     // ---------------- helpers ----------------
