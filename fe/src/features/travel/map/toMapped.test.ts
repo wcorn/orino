@@ -18,6 +18,7 @@ function activity(id: number, place: Activity["place"] = null): Activity {
     notifyMinutes: null,
     departureNotifyEnabled: false,
     sortOrder: id,
+    log: null,
     hasLog: false,
   };
 }

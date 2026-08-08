@@ -4,6 +4,7 @@ import ds.project.orino.support.IntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 여행 스키마(047)에서 Hibernate {@code validate}가 봐주지 않는 것들을 고정한다 —
@@ -125,6 +127,54 @@ class TravelSchemaTest {
         assertThat(columnTypeOf("trip_activity", "notify_enabled")).isEqualTo("bit");
         assertThat(columnTypeOf("trip_activity", "departure_notify_enabled")).isEqualTo("bit");
         assertThat(columnTypeOf("travel_place", "manual_entry")).isEqualTo("bit");
+    }
+
+    @Test
+    @DisplayName("일정을 지우면 기록도 함께 지워진다(ON DELETE CASCADE)")
+    @Transactional
+    void deletingActivityCascadesToLog() {
+        long memberId = insertMember("log-cascade-member");
+        long tripId = insertTrip(memberId, "도쿄");
+        long activityId = insertActivity(tripId);
+        jdbcTemplate.update("""
+                INSERT INTO trip_activity_log (activity_id, memo, rating, created_at, updated_at)
+                VALUES (?, '야경이 좋았다', 4, NOW(6), NOW(6))
+                """, activityId);
+
+        jdbcTemplate.update("DELETE FROM trip_activity WHERE id = ?", activityId);
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM trip_activity_log WHERE activity_id = ?",
+                Integer.class, activityId)).isZero();
+    }
+
+    @Test
+    @DisplayName("일정당 기록은 하나뿐이다 — UNIQUE가 없으면 저장 재시도가 중복 행을 만든다")
+    @Transactional
+    void logIsUniquePerActivity() {
+        long memberId = insertMember("log-unique-member");
+        long activityId = insertActivity(insertTrip(memberId, "도쿄"));
+        insertLog(activityId, 4);
+
+        assertThatThrownBy(() -> insertLog(activityId, 5))
+                .isInstanceOf(DuplicateKeyException.class);
+    }
+
+    private long insertActivity(long tripId) {
+        jdbcTemplate.update("""
+                INSERT INTO trip_activity (trip_id, title, activity_date, sort_order,
+                                           notify_enabled, departure_notify_enabled,
+                                           created_at, updated_at)
+                VALUES (?, '센소지', '2026-10-24', 0, b'0', b'0', NOW(6), NOW(6))
+                """, tripId);
+        return jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    }
+
+    private void insertLog(long activityId, int rating) {
+        jdbcTemplate.update("""
+                INSERT INTO trip_activity_log (activity_id, rating, created_at, updated_at)
+                VALUES (?, ?, NOW(6), NOW(6))
+                """, activityId, rating);
     }
 
     private long insertMember(String username) {

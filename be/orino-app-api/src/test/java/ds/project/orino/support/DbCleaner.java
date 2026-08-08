@@ -8,6 +8,8 @@ public class DbCleaner {
 
     private static final String[] TABLES_IN_FK_ORDER = {
             "push_notification",
+            // FK_CHECKS=0이라 CASCADE가 안 돈다 — 자식 테이블을 직접 지워야 남지 않는다.
+            "trip_activity_log",
             "trip_activity",
             "trip",
             "travel_place",

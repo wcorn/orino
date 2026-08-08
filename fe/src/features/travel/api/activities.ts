@@ -16,6 +16,14 @@ export interface ActivityPlace {
   lng: number | null;
 }
 
+/** 일정의 사후 기록(§S-07 기록 영역). 사진은 별도 리소스다. */
+export interface ActivityLog {
+  /** 1~5. null이면 아직 매기지 않았거나 해제한 것이다. */
+  rating: number | null;
+  memo: string | null;
+  updatedAt: string;
+}
+
 export interface Activity {
   id: number;
   tripId: number;
@@ -31,7 +39,8 @@ export interface Activity {
   notifyMinutes: number | null;
   departureNotifyEnabled: boolean;
   sortOrder: number;
-  /** 사후 기록(평점·메모) 존재 여부. 기록은 4단계라 지금은 항상 false. */
+  /** 아직 기록이 없으면 null. */
+  log: ActivityLog | null;
   hasLog: boolean;
 }
 
@@ -146,6 +155,28 @@ export async function updateActivity(
 
 export async function deleteActivity(activityId: number): Promise<void> {
   await client.delete(`/travel/activities/${activityId}`);
+}
+
+export interface ActivityLogRequest {
+  rating: number | null;
+  memo: string | null;
+}
+
+/**
+ * 기록(평점·메모) 저장. 사진과 분리된 요청이라 사진 업로드가 실패해도 이건 남는다.
+ *
+ * <p>둘 다 비우면 서버가 기록을 지우고 null을 돌려준다 — "다 지웠다"와 "빈 기록이 있다"는
+ * 다른 상태다.
+ */
+export async function saveActivityLog(
+  activityId: number,
+  body: ActivityLogRequest,
+): Promise<ActivityLog | null> {
+  const { data } = await client.put<ApiEnvelope<ActivityLog | null>>(
+    `/travel/activities/${activityId}/log`,
+    body,
+  );
+  return data.data ?? null;
 }
 
 /**

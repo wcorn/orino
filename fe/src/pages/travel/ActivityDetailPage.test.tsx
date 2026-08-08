@@ -46,6 +46,7 @@ function activity(overrides: Record<string, unknown> = {}) {
     notifyMinutes: null,
     departureNotifyEnabled: false,
     sortOrder: 0,
+    log: null,
     hasLog: false,
     ...overrides,
   };

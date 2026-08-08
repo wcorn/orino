@@ -5,9 +5,13 @@ import ds.project.orino.common.exception.ErrorCode;
 import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.entity.Trip;
 import ds.project.orino.domain.planner.travel.entity.TripActivity;
+import ds.project.orino.domain.planner.travel.entity.TripActivityLog;
 import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
+import ds.project.orino.domain.planner.travel.repository.TripActivityLogRepository;
 import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
+import ds.project.orino.planner.travel.activity.dto.ActivityLogRequest;
+import ds.project.orino.planner.travel.activity.dto.ActivityLogResponse;
 import ds.project.orino.planner.travel.activity.dto.ActivityPlace;
 import ds.project.orino.planner.travel.activity.dto.ActivityResponse;
 import ds.project.orino.planner.travel.activity.dto.ActivityWriteRequest;
@@ -19,6 +23,7 @@ import ds.project.orino.planner.travel.place.service.PlaceService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -48,24 +53,30 @@ public class ActivityService {
     private static final int UNLISTED_BAND = 1_000_000;
 
     private final TripActivityRepository activityRepository;
+    private final TripActivityLogRepository logRepository;
     private final TripRepository tripRepository;
     private final TravelPlaceRepository placeRepository;
     private final PlaceService placeService;
     private final LegService legService;
     private final NotificationScheduleService notificationService;
+    private final Clock clock;
 
     public ActivityService(TripActivityRepository activityRepository,
+                           TripActivityLogRepository logRepository,
                            TripRepository tripRepository,
                            TravelPlaceRepository placeRepository,
                            PlaceService placeService,
                            LegService legService,
-                           NotificationScheduleService notificationService) {
+                           NotificationScheduleService notificationService,
+                           Clock clock) {
         this.activityRepository = activityRepository;
+        this.logRepository = logRepository;
         this.tripRepository = tripRepository;
         this.placeRepository = placeRepository;
         this.placeService = placeService;
         this.legService = legService;
         this.notificationService = notificationService;
+        this.clock = clock;
     }
 
     /**
@@ -201,7 +212,42 @@ public class ActivityService {
                 .toList();
     }
 
+    /**
+     * 기록(평점·메모) upsert(§S-07 기록 영역).
+     *
+     * <p><b>여행이 시작되기 전에는 거부한다.</b> 아직 겪지 않은 일에 평점을 매길 수 없고,
+     * 화면에도 그 영역이 없다 — 그래도 요청이 오면 화면과 서버 중 하나가 틀린 것이니
+     * 조용히 받아 두지 않는다. 404가 아니라 400인 이유는 일정이 실재하기 때문이다.
+     *
+     * <p>둘 다 비면 행을 지운다. 남겨 두면 {@code hasLog}가 계속 참이라 목록에 기록 표시가
+     * 남는데, 사용자가 보기엔 다 지운 상태다.
+     */
+    @Transactional
+    public ActivityLogResponse saveLog(Long memberId, Long activityId, ActivityLogRequest request) {
+        TripActivity activity = getOwnedActivity(memberId, activityId);
+        requireTripStarted(getTripOf(activity));
+
+        TripActivityLog log = logRepository.findByActivityId(activityId)
+                .orElseGet(() -> new TripActivityLog(activityId, null, null));
+        log.update(request.rating(), request.memo());
+
+        if (log.isEmpty()) {
+            if (log.getId() != null) {
+                logRepository.delete(log);
+            }
+            return null;
+        }
+        return ActivityLogResponse.from(logRepository.save(log));
+    }
+
     // ---------------- helpers ----------------
+
+    /** 기록은 여행 시작일부터다. 기준은 기기 시간대가 아니라 여행 타임존의 오늘이다. */
+    private void requireTripStarted(Trip trip) {
+        if (trip.todayAtDestination(clock).isBefore(trip.getStartDate())) {
+            throw new CustomException(ErrorCode.TRAVEL_LOG_BEFORE_TRIP);
+        }
+    }
 
     /**
      * 요청에 담긴 일정을 전부 읽어 이 여행 소유인지 확인한다. 하나라도 남의 것이면 통째로 막는다 —
@@ -279,7 +325,9 @@ public class ActivityService {
     }
 
     private ActivityResponse toResponse(TripActivity activity) {
-        return ActivityResponse.of(activity, placeOf(activity.getPlaceId()));
+        return ActivityResponse.of(activity, placeOf(activity.getPlaceId()),
+                logRepository.findByActivityId(activity.getId())
+                        .map(ActivityLogResponse::from).orElse(null));
     }
 
     private ActivityPlace placeOf(Long placeId) {
@@ -299,14 +347,31 @@ public class ActivityService {
         Map<Long, ActivityPlace> places = placeIds.isEmpty() ? Map.of()
                 : placeRepository.findAllByIdIn(placeIds).stream()
                         .collect(Collectors.toMap(TravelPlace::getId, ActivityPlace::from));
+        Map<Long, ActivityLogResponse> logs = logsOf(activities);
 
         List<ActivityResponse> responses = new ArrayList<>();
         for (TripActivity activity : activities) {
             // placeId가 null인 일정이 대부분이다. Map.of()는 get(null)에 NPE를 던지므로 먼저 거른다.
             ActivityPlace place = activity.getPlaceId() == null
                     ? null : places.get(activity.getPlaceId());
-            responses.add(ActivityResponse.of(activity, place));
+            responses.add(ActivityResponse.of(activity, place, logs.get(activity.getId())));
         }
         return responses;
+    }
+
+    /**
+     * 일정들의 기록을 한 번에 읽는다. 건건이 조회하면 보드 한 번에 일정 수만큼 쿼리가 나간다.
+     *
+     * <p>목록에도 기록을 통째로 실어 보낸다 — 보드 응답이 곧 오프라인 캐시라(§S-04),
+     * {@code hasLog}만 내려주면 비행기 모드에서 "기록 있음"만 뜨고 내용은 못 본다.
+     */
+    private Map<Long, ActivityLogResponse> logsOf(List<TripActivity> activities) {
+        if (activities.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> ids = activities.stream().map(TripActivity::getId).toList();
+        return logRepository.findAllByActivityIdIn(ids).stream()
+                .collect(Collectors.toMap(TripActivityLog::getActivityId,
+                        ActivityLogResponse::from));
     }
 }

@@ -1,6 +1,8 @@
 package ds.project.orino.planner.travel.activity.controller;
 
 import ds.project.orino.common.response.ApiResponse;
+import ds.project.orino.planner.travel.activity.dto.ActivityLogRequest;
+import ds.project.orino.planner.travel.activity.dto.ActivityLogResponse;
 import ds.project.orino.planner.travel.activity.dto.ActivityResponse;
 import ds.project.orino.planner.travel.activity.dto.ActivityWriteRequest;
 import ds.project.orino.planner.travel.activity.dto.ReorderRequest;
@@ -54,6 +56,18 @@ public class ActivityController {
                                     @PathVariable Long activityId) {
         activityService.delete(memberId, activityId);
         return ApiResponse.success();
+    }
+
+    /**
+     * 기록(평점·메모) 저장. 사진과 분리된 요청이라 사진 업로드가 실패해도 이건 남는다.
+     *
+     * <p>둘 다 비우면 기록을 지우고 {@code data: null}을 돌려준다.
+     */
+    @PutMapping("/activities/{activityId}/log")
+    public ApiResponse<ActivityLogResponse> saveLog(@AuthenticationPrincipal Long memberId,
+                                                    @PathVariable Long activityId,
+                                                    @Valid @RequestBody ActivityLogRequest request) {
+        return ApiResponse.success(activityService.saveLog(memberId, activityId, request));
     }
 
     /** 드래그 결과 반영 — 순서 변경과 날짜 이동을 한 트랜잭션으로 처리한다. */
