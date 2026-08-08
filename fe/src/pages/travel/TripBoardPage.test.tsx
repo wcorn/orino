@@ -119,6 +119,10 @@ describe("TripBoardPage", () => {
     usePendingActions.setState({ pendingIds: [], commits: new Map() });
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe("날짜 탭", () => {
     it("기간의 모든 날짜와 맨 뒤에 보관함 칩을 보여준다", async () => {
       mockBoard({
@@ -569,7 +573,8 @@ describe("TripBoardPage", () => {
       });
     });
 
-    it("도구는 후속 단계라 비활성이다", async () => {
+    it("오프라인이면 도구를 열 수 없다 — 환율·날씨는 네트워크가 있어야 한다", async () => {
+      vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
       mockBoard({ byDate: { "2026-10-24": [] } });
 
       renderBoard();

@@ -26,8 +26,8 @@ import {
   importReviewSession,
   importRoutines,
   importTravelHome,
-  importTravelPlaceholder,
   importTravelSettings,
+  importTravelTools,
   importTripBoard,
   importTripForm,
   importTripList,
@@ -52,7 +52,6 @@ const LifelogPage = lazy(importLifelog);
 const LifelogFlowsPage = lazy(importLifelogFlows);
 const LifelogFlowDetailPage = lazy(importLifelogFlowDetail);
 const WorkspaceSelectPage = lazy(importWorkspaceSelect);
-const TravelPlaceholderPage = lazy(importTravelPlaceholder);
 const TravelHomePage = lazy(importTravelHome);
 const TripListPage = lazy(importTripList);
 const TripFormPage = lazy(importTripForm);
@@ -60,6 +59,7 @@ const TripBoardPage = lazy(importTripBoard);
 const PlaceSearchPage = lazy(importPlaceSearch);
 const TripMapPage = lazy(importTripMap);
 const TravelSettingsPage = lazy(importTravelSettings);
+const TravelToolsPage = lazy(importTravelTools);
 const ActivityDetailPage = lazy(importActivityDetail);
 
 function RouteFallback() {
@@ -68,15 +68,6 @@ function RouteFallback() {
       <BrandMark size={40} animated />
       <LoadingText />
     </div>
-  );
-}
-
-/** 여행 라우트의 임시 화면. 후속 이슈가 각 경로의 element를 실제 페이지로 바꾼다. */
-function TravelRoute({ title }: { title: string }) {
-  return (
-    <Suspense fallback={<RouteFallback />}>
-      <TravelPlaceholderPage title={title} />
-    </Suspense>
   );
 }
 
@@ -277,7 +268,14 @@ export function AppRouter() {
               </Suspense>
             }
           />
-          <Route path="/travel/tools" element={<TravelRoute title="도구" />} />
+          <Route
+            path="/travel/tools"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <TravelToolsPage />
+              </Suspense>
+            }
+          />
           <Route
             path="/travel/settings"
             element={

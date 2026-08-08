@@ -305,8 +305,14 @@ export function TripBoardPage() {
           >
             <MapIcon className="size-4" />
           </Button>
-          {/* 도구는 4단계. 자리를 미리 두되 누를 수 없게 한다. */}
-          <Button variant="ghost" size="icon-sm" aria-label="도구" disabled>
+          {/* 환율·날씨는 그 여행에 매달린 값이라 어느 여행인지 들고 간다. */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="도구"
+            disabled={!online}
+            onClick={() => navigate(`/travel/tools?tripId=${tripId}`)}
+          >
             <Wrench className="size-4" />
           </Button>
           <Menu

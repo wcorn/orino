@@ -15,4 +15,6 @@ export const travelKeys = {
     ["travel", "places", "search", tripId ?? "none", q] as const,
   citySearch: (q: string) => ["travel", "places", "cities", q] as const,
   place: (placeId: number) => ["travel", "place", placeId] as const,
+  weather: (tripId: number) => ["travel", "weather", tripId] as const,
+  fx: (base: string, quote: string) => ["travel", "fx", base, quote] as const,
 };
