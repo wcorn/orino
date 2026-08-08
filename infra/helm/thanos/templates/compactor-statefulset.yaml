@@ -32,6 +32,8 @@ spec:
             - --retention.resolution-5m={{ .Values.compactor.retention5m }}
             - --retention.resolution-1h={{ .Values.compactor.retention1h }}
             - --wait
+            - --wait-interval={{ .Values.compactor.waitInterval }}
+            - --compact.cleanup-interval={{ .Values.compactor.cleanupInterval }}
           ports:
             - name: http
               containerPort: 9090
