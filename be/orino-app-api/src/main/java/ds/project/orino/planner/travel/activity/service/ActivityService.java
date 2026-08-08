@@ -12,6 +12,7 @@ import ds.project.orino.planner.travel.activity.dto.ActivityPlace;
 import ds.project.orino.planner.travel.activity.dto.ActivityResponse;
 import ds.project.orino.planner.travel.activity.dto.ActivityWriteRequest;
 import ds.project.orino.planner.travel.activity.dto.ReorderRequest;
+import ds.project.orino.planner.travel.push.service.NotificationScheduleService;
 import ds.project.orino.planner.travel.route.dto.LegResponse;
 import ds.project.orino.planner.travel.route.service.LegService;
 import ds.project.orino.planner.travel.place.service.PlaceService;
@@ -51,17 +52,20 @@ public class ActivityService {
     private final TravelPlaceRepository placeRepository;
     private final PlaceService placeService;
     private final LegService legService;
+    private final NotificationScheduleService notificationService;
 
     public ActivityService(TripActivityRepository activityRepository,
                            TripRepository tripRepository,
                            TravelPlaceRepository placeRepository,
                            PlaceService placeService,
-                           LegService legService) {
+                           LegService legService,
+                           NotificationScheduleService notificationService) {
         this.activityRepository = activityRepository;
         this.tripRepository = tripRepository;
         this.placeRepository = placeRepository;
         this.placeService = placeService;
         this.legService = legService;
+        this.notificationService = notificationService;
     }
 
     /**
@@ -94,7 +98,11 @@ public class ActivityService {
         activity.updateNotification(request.notifyEnabledOrDefault(), request.notifyMinutes(),
                 request.departureNotifyEnabledOrDefault());
 
-        return toResponse(activityRepository.save(activity));
+        TripActivity saved = activityRepository.save(activity);
+        activityRepository.flush();
+        // 새 일정이 앞에 들어오면 뒤 일정의 출발 시각도 바뀐다 — 날짜 전체를 다시 짠다.
+        notificationService.rescheduleDate(tripId, saved.getActivityDate());
+        return toResponse(saved);
     }
 
     public ActivityResponse detail(Long memberId, Long activityId) {
@@ -112,8 +120,10 @@ public class ActivityService {
         requireDateWithinTrip(trip, request.activityDate());
         Long placeId = resolvePlaceId(memberId, request);
 
+        LocalDate movedFrom = null;
         if (!Objects.equals(activity.getActivityDate(), request.activityDate())) {
             LocalDate previousDate = activity.getActivityDate();
+            movedFrom = previousDate;
             activity.moveTo(request.activityDate(),
                     activityRepository.nextSortOrder(activity.getTripId(), request.activityDate()));
             // 떠나온 날짜에 순서 구멍이 남는다. 0..n-1로 메워 다음 드래그가 어긋나지 않게 한다.
@@ -123,7 +133,17 @@ public class ActivityService {
         activity.updatePlace(placeId);
         activity.updateNotification(request.notifyEnabledOrDefault(), request.notifyMinutes(),
                 request.departureNotifyEnabledOrDefault());
+        activityRepository.flush();
 
+        // §4.2 트리거 — 시각·날짜·순서·장소·알림 설정이 이 한 번의 수정에 다 걸려 있다.
+        if (movedFrom != null) {
+            notificationService.rescheduleDate(activity.getTripId(), movedFrom);
+        }
+        notificationService.rescheduleDate(activity.getTripId(), activity.getActivityDate());
+        // 보관함으로 갔으면 날짜가 없어 위 재계산이 아무것도 만들지 않는다. 명시적으로 접는다.
+        if (activity.getActivityDate() == null) {
+            notificationService.cancelForActivity(activity.getId());
+        }
         return toResponse(activity);
     }
 
@@ -133,9 +153,13 @@ public class ActivityService {
         LocalDate date = activity.getActivityDate();
         Long tripId = activity.getTripId();
 
+        // 알림을 먼저 접는다 — 행이 사라진 뒤엔 어떤 일정의 예약이었는지 알 수 없다.
+        notificationService.cancelForActivity(activityId);
         activityRepository.delete(activity);
         activityRepository.flush();
         reindex(tripId, date);
+        // 빠져나간 자리 때문에 남은 일정의 출발 시각이 당겨진다.
+        notificationService.rescheduleDate(tripId, date);
     }
 
     /**
@@ -165,6 +189,8 @@ public class ActivityService {
         }
         activityRepository.flush();
         touchedDates.forEach(date -> reindex(tripId, date));
+        // 순서가 바뀌면 출발 알림의 이동시간이 바뀐다(§4.2).
+        touchedDates.forEach(date -> notificationService.rescheduleDate(tripId, date));
 
         // 보관함(null)은 이동 의미가 없어 건너뛴다.
         return touchedDates.stream()

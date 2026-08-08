@@ -95,3 +95,5 @@ databaseChangeLog:
       file: db/changelog/changes/047-create-travel-tables.yaml
   - include:
       file: db/changelog/changes/048-create-push-subscription.yaml
+  - include:
+      file: db/changelog/changes/049-create-push-notification.yaml

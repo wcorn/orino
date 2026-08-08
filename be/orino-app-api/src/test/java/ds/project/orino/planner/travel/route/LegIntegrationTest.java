@@ -9,15 +9,13 @@ import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
+import ds.project.orino.support.StubExternalsConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -37,17 +35,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 보드의 이동시간(§4.4). 외부 호출만 스텁으로 갈아끼우고 캐시(Redis)·저장(MySQL)은 실물이다 —
  * 캐시가 정말 호출을 줄이는지는 실제 Redis 없이 확인되지 않는다.
  */
-@Import(LegIntegrationTest.StubConfig.class)
+@Import(StubExternalsConfig.class)
 class LegIntegrationTest extends ApiTestSupport {
 
-    @TestConfiguration
-    static class StubConfig {
-        @Bean
-        @Primary
-        RoutesClient stubRoutesClient() {
-            return new StubRoutesClient();
-        }
-    }
 
     /** 센소지. */
     private static final BigDecimal SENSOJI_LAT = new BigDecimal("35.7147651");
