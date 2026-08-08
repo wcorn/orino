@@ -21,11 +21,18 @@ locals {
   gcp_maps_service = "maps-backend.googleapis.com"
 
   # 리퍼러 제한. 이 목록 밖에서 키를 쓰면 구글이 거부한다(gm_authFailure).
+  #
+  # localhost는 넣지 않는다 — 넣어도 동작하지 않는다. 문서가 두 가지를 못박는다:
+  # "you can't use a wildcard character in the middle of a URL"(포트 자리의 *가 여기 해당),
+  # "Internal IP addresses and localhost aren't supported."
+  # https://docs.cloud.google.com/api-keys/docs/add-restrictions-api-keys
+  #
+  # 실제로 `http://localhost:*/*`를 넣어 봤고, 키 생성은 통과하지만 브라우저에서는
+  # RefererNotAllowedMapError가 난다. 매칭되지 않는 값을 목록에 두면 "로컬은 되는 줄"
+  # 오해만 남으므로 지운다. 로컬에서 지도를 봐야 하면 별도 개발 키를 만들어야 한다.
   gcp_maps_referrers = [
     "https://orino.dev/*",
     "https://www.orino.dev/*",
-    # 로컬 확인용. 지도가 안 뜨는 이유를 로컬에서 재현할 수 있어야 한다.
-    "http://localhost:*/*",
   ]
 }
 
