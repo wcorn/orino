@@ -134,6 +134,29 @@ export interface TripWriteRequest {
   confirmArchive?: boolean;
 }
 
+/**
+ * 파생된 구간. **저장된 것이 아니라 날짜에서 매번 계산한다**(D-21) — 수정 화면이 이걸로
+ * 초기값을 채우면 날짜와 어긋날 수가 없다.
+ */
+export interface CityLeg {
+  legIndex: number;
+  cityPlaceId: number;
+  cityName: string | null;
+  days: number;
+  startDate: string;
+  endDate: string;
+  timezone: string | null;
+  lat: number | null;
+  lng: number | null;
+}
+
+export async function fetchCityLegs(tripId: number): Promise<CityLeg[]> {
+  const { data } = await client.get<ApiEnvelope<CityLeg[]>>(
+    `/travel/trips/${tripId}/city-legs`,
+  );
+  return data.data;
+}
+
 export interface ShrinkPreview {
   movedActivityCount: number;
   /** 체크아웃일이 당겨질 숙소 수. */
