@@ -103,3 +103,5 @@ databaseChangeLog:
       file: db/changelog/changes/051-create-trip-activity-photo.yaml
   - include:
       file: db/changelog/changes/052-drop-travel-place-photo-columns.yaml
+  - include:
+      file: db/changelog/changes/053-travel-multi-city.yaml

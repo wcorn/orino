@@ -2,6 +2,7 @@ package ds.project.orino.planner.travel.board.service;
 
 import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
+import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.entity.Trip;
 import ds.project.orino.domain.planner.travel.entity.TripActivity;
 import ds.project.orino.domain.planner.travel.entity.TripStatus;
@@ -10,6 +11,7 @@ import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.activity.service.ActivityService;
 import ds.project.orino.planner.travel.board.dto.BoardResponse;
+import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.route.service.LegService;
 import ds.project.orino.planner.travel.tools.dto.WeatherResponse;
 import ds.project.orino.planner.travel.tools.service.WeatherService;
@@ -18,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,6 +42,7 @@ public class BoardService {
     private final TripRepository tripRepository;
     private final TripActivityRepository activityRepository;
     private final ActivityService activityService;
+    private final TripDayService tripDayService;
     private final LegService legService;
     private final WeatherService weatherService;
     private final Clock clock;
@@ -46,12 +50,14 @@ public class BoardService {
     public BoardService(TripRepository tripRepository,
                         TripActivityRepository activityRepository,
                         ActivityService activityService,
+                        TripDayService tripDayService,
                         LegService legService,
                         WeatherService weatherService,
                         Clock clock) {
         this.tripRepository = tripRepository;
         this.activityRepository = activityRepository;
         this.activityService = activityService;
+        this.tripDayService = tripDayService;
         this.legService = legService;
         this.weatherService = weatherService;
         this.clock = clock;
@@ -64,17 +70,21 @@ public class BoardService {
     public BoardResponse board(Long memberId, Long tripId, LocalDate date, boolean archive) {
         Trip trip = tripRepository.findByIdAndMemberId(tripId, memberId)
                 .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_TRIP_NOT_FOUND));
-        TripStatus status = trip.status(clock);
+        // 헤더의 타임존·통화는 아직 첫날 기준 도시에서 온다. 선택한 날짜의 도시로 갈라내는 건
+        // 파생 재작성(#1123)·보드 응답 v2.1(#1124)의 몫이다.
+        TravelPlace city = tripDayService.primaryCity(tripId);
+        TripStatus status = trip.status(clock, TripDayService.zoneOf(city));
 
-        LocalDate selectedDate = archive ? null : resolveSelectedDate(trip, status, date);
+        LocalDate selectedDate = archive ? null
+                : resolveSelectedDate(trip, status, date, TripDayService.zoneOf(city));
         List<TripActivity> activities = selectedDate == null
                 ? activityRepository.findUnscheduled(tripId)
                 : activityRepository.findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(
                         tripId, selectedDate);
 
         return new BoardResponse(
-                new BoardResponse.BoardTrip(trip.getId(), trip.getTitle(), trip.getTimezone(),
-                        trip.getCurrency(), trip.getStartDate(), trip.getEndDate(), status,
+                new BoardResponse.BoardTrip(trip.getId(), trip.getTitle(), city.getTimezone(),
+                        city.getCurrency(), trip.getStartDate(), trip.getEndDate(), status,
                         status == TripStatus.COMPLETED),
                 buildDays(trip),
                 selectedDate,
@@ -86,17 +96,18 @@ public class BoardService {
     }
 
     /**
-     * 날짜를 안 주면 — 여행 중이면 <b>여행 타임존의 오늘</b>, 아니면 1일차를 연다.
+     * 날짜를 안 주면 — 여행 중이면 <b>기준 도시 타임존의 오늘</b>, 아니면 1일차를 연다.
      * 현지에서 앱을 열자마자 오늘 일정이 보여야 하고, 그 "오늘"은 기기 시간대가 아니다.
      */
-    private LocalDate resolveSelectedDate(Trip trip, TripStatus status, LocalDate requested) {
+    private LocalDate resolveSelectedDate(Trip trip, TripStatus status, LocalDate requested,
+                                          ZoneId zone) {
         if (requested != null) {
             if (!trip.covers(requested)) {
                 throw new CustomException(ErrorCode.TRAVEL_DATE_OUT_OF_RANGE);
             }
             return requested;
         }
-        return status == TripStatus.ONGOING ? trip.todayAtDestination(clock) : trip.getStartDate();
+        return status == TripStatus.ONGOING ? trip.todayIn(clock, zone) : trip.getStartDate();
     }
 
     /** 기간에서 날짜 탭을 만든다. 일정이 하나도 없는 날짜도 탭은 나와야 한다. */

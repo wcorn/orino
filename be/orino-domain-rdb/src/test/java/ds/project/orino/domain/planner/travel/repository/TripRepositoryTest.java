@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -18,8 +17,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 여행 매핑과 목록 조회 규칙을 고정한다. 상태(예정/진행 중/완료)로 거르는 쿼리는 없다 —
- * 상태는 컬럼이 아니라 여행 타임존의 오늘로 파생하는 값이라 SQL에서 판정할 수 없고,
+ * 상태는 컬럼이 아니라 기준 도시 타임존의 오늘로 파생하는 값이라 SQL에서 판정할 수 없고,
  * 여기서는 그 대신 쓰는 기간 비교 조회만 검증한다(파생 판정은 {@code TripTest}).
+ *
+ * <p>v2.1부터 목적지·타임존·통화·좌표는 여행이 아니라 날짜의 기준 도시가 갖는다 —
+ * 그쪽 매핑은 {@code TripDayRepositoryTest}에서 본다.
  */
 @RepositoryTest
 @Transactional
@@ -40,35 +42,18 @@ class TripRepositoryTest {
     @Test
     @DisplayName("여행 필드가 그대로 저장·조회되고 알림 기본값이 붙는다")
     void savesAndLoadsTrip() {
-        Trip saved = tripRepository.save(new Trip(memberId, "도쿄 3박4일", "도쿄",
-                LocalDate.of(2026, 10, 24), LocalDate.of(2026, 10, 27), "Asia/Tokyo", "JPY"));
+        Trip saved = tripRepository.save(new Trip(memberId, "도쿄 3박4일",
+                LocalDate.of(2026, 10, 24), LocalDate.of(2026, 10, 27)));
 
         Trip found = tripRepository.findById(saved.getId()).orElseThrow();
         assertThat(found.getMemberId()).isEqualTo(memberId);
         assertThat(found.getTitle()).isEqualTo("도쿄 3박4일");
-        assertThat(found.getDestinationName()).isEqualTo("도쿄");
         assertThat(found.getStartDate()).isEqualTo(LocalDate.of(2026, 10, 24));
         assertThat(found.getEndDate()).isEqualTo(LocalDate.of(2026, 10, 27));
-        assertThat(found.getTimezone()).isEqualTo("Asia/Tokyo");
-        assertThat(found.getCurrency()).isEqualTo("JPY");
         assertThat(found.getDefaultNotifyMinutes()).isEqualTo(15);
         assertThat(found.isMorningSummaryEnabled()).isFalse();
-        // 1단계는 목적지를 수동 입력하므로 장소 참조가 비어 있다.
-        assertThat(found.getDestinationPlaceId()).isNull();
         assertThat(found.getCreatedAt()).isNotNull();
         assertThat(found.getUpdatedAt()).isNotNull();
-    }
-
-    @Test
-    @DisplayName("목적지 좌표(날씨 기준점)는 소수점 7자리까지 보존된다")
-    void keepsCoordinatePrecision() {
-        Trip trip = tripRepository.save(tokyoTrip());
-        trip.updateDestinationPlace(null, new BigDecimal("35.6812362"), new BigDecimal("139.7671248"));
-        tripRepository.flush();
-
-        Trip found = tripRepository.findById(trip.getId()).orElseThrow();
-        assertThat(found.getLat()).isEqualByComparingTo("35.6812362");
-        assertThat(found.getLng()).isEqualByComparingTo("139.7671248");
     }
 
     @Test
@@ -133,8 +118,8 @@ class TripRepositoryTest {
     void listsScopedByMember() {
         Long other = memberRepository.save(new Member("other", "pw")).getId();
         tripRepository.save(tokyoTrip());
-        tripRepository.save(new Trip(other, "남의 여행", "파리",
-                LocalDate.of(2026, 10, 24), LocalDate.of(2026, 10, 27), "Europe/Paris", "EUR"));
+        tripRepository.save(new Trip(other, "남의 여행",
+                LocalDate.of(2026, 10, 24), LocalDate.of(2026, 10, 27)));
 
         assertThat(tripRepository.findAllByMemberIdOrderByStartDateDescIdDesc(memberId))
                 .extracting(Trip::getTitle)
@@ -154,17 +139,15 @@ class TripRepositoryTest {
     }
 
     @Test
-    @DisplayName("update는 기간·타임존·통화를 함께 바꾼다")
+    @DisplayName("update는 제목과 기간을 함께 바꾼다")
     void updatesBasics() {
         Trip trip = tripRepository.save(tokyoTrip());
 
-        trip.update("오사카 2박3일", "오사카", LocalDate.of(2026, 11, 2),
-                LocalDate.of(2026, 11, 4), "Asia/Tokyo", "JPY");
+        trip.update("오사카 2박3일", LocalDate.of(2026, 11, 2), LocalDate.of(2026, 11, 4));
         tripRepository.flush();
 
         Trip found = tripRepository.findById(trip.getId()).orElseThrow();
         assertThat(found.getTitle()).isEqualTo("오사카 2박3일");
-        assertThat(found.getDestinationName()).isEqualTo("오사카");
         assertThat(found.getStartDate()).isEqualTo(LocalDate.of(2026, 11, 2));
         assertThat(found.getEndDate()).isEqualTo(LocalDate.of(2026, 11, 4));
         assertThat(found.totalDays()).isEqualTo(3);
@@ -188,7 +171,6 @@ class TripRepositoryTest {
     }
 
     private Trip trip(String title, String startDate, String endDate) {
-        return new Trip(memberId, title, title, LocalDate.parse(startDate),
-                LocalDate.parse(endDate), "Asia/Tokyo", "JPY");
+        return new Trip(memberId, title, LocalDate.parse(startDate), LocalDate.parse(endDate));
     }
 }

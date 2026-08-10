@@ -338,7 +338,10 @@ class PlaceControllerTest extends ApiTestSupport {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.place.name").value("센소지"));
 
-            assertThat(placeRepository.findAll()).hasSize(1);
+            // 여행의 기준 도시도 travel_place 행이라, 검색으로 담은 장소만 센다.
+            assertThat(placeRepository.findAll())
+                    .filteredOn(place -> place.getGooglePlaceId() != null)
+                    .hasSize(1);
         }
 
         @Test
@@ -359,7 +362,9 @@ class PlaceControllerTest extends ApiTestSupport {
             }
 
             // 같은 장소를 두 번 저장하지 않는다(uk_place_member_google).
-            assertThat(placeRepository.findAll()).hasSize(1);
+            assertThat(placeRepository.findAll())
+                    .filteredOn(place -> place.getGooglePlaceId() != null)
+                    .hasSize(1);
             assertThat(stub.detailFetches).containsExactly("ChIJ_senso");
         }
     }

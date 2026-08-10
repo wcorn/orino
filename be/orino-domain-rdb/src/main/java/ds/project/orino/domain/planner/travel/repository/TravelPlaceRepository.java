@@ -1,5 +1,6 @@
 package ds.project.orino.domain.planner.travel.repository;
 
+import ds.project.orino.domain.planner.travel.entity.PlaceKind;
 import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -27,4 +28,12 @@ public interface TravelPlaceRepository extends JpaRepository<TravelPlace, Long> 
 
     /** 이름 부분일치 — 직접 입력한 장소를 다시 고를 때. */
     List<TravelPlace> findAllByMemberIdAndNameContainingOrderByNameAsc(Long memberId, String name);
+
+    /**
+     * 검색을 거치지 않고 만든 도시. 목적지를 직접 입력한 여행이 같은 도시를 다시 쓸 때
+     * 장소를 새로 만들지 않기 위해 찾는다(같은 도시가 이름만 같은 행으로 늘어나면
+     * 도시 일치 판정이 여행마다 갈린다).
+     */
+    Optional<TravelPlace> findFirstByMemberIdAndNameAndPlaceKindAndGooglePlaceIdIsNull(
+            Long memberId, String name, PlaceKind placeKind);
 }

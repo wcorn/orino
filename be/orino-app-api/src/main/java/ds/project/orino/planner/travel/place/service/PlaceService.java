@@ -6,6 +6,7 @@ import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.entity.Trip;
 import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
+import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.place.client.PlaceResult;
 import ds.project.orino.planner.travel.place.client.PlacesClient;
 import ds.project.orino.planner.travel.place.config.PlacesProperties;
@@ -44,6 +45,7 @@ public class PlaceService {
     private final PlaceSearchCacheRepository cache;
     private final TravelPlaceRepository placeRepository;
     private final TripRepository tripRepository;
+    private final TripDayService tripDayService;
     private final PlacesProperties props;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -52,6 +54,7 @@ public class PlaceService {
                         PlaceSearchCacheRepository cache,
                         TravelPlaceRepository placeRepository,
                         TripRepository tripRepository,
+                        TripDayService tripDayService,
                         PlacesProperties props,
                         ObjectMapper objectMapper,
                         Clock clock) {
@@ -59,6 +62,7 @@ public class PlaceService {
         this.cache = cache;
         this.placeRepository = placeRepository;
         this.tripRepository = tripRepository;
+        this.tripDayService = tripDayService;
         this.props = props;
         this.objectMapper = objectMapper;
         this.clock = clock;
@@ -191,15 +195,23 @@ public class PlaceService {
         }
     }
 
+    /**
+     * 검색 편향 좌표. 지금은 <b>첫날 기준 도시</b>를 쓴다 — 날짜를 골라 그 도시로 검색하는
+     * 기준 도시 칩({@code ?city=})은 3단계(S-06)에서 붙는다.
+     */
     private PlacesClient.Coordinates biasOf(Long memberId, Long tripId) {
         if (tripId == null) {
             return null;
         }
         Trip trip = tripRepository.findByIdAndMemberId(tripId, memberId).orElse(null);
-        if (trip == null || trip.getLat() == null || trip.getLng() == null) {
+        if (trip == null) {
             return null;
         }
-        return new PlacesClient.Coordinates(trip.getLat(), trip.getLng());
+        TravelPlace city = tripDayService.primaryCity(trip.getId());
+        if (city.getLat() == null || city.getLng() == null) {
+            return null;
+        }
+        return new PlacesClient.Coordinates(city.getLat(), city.getLng());
     }
 
     private Map<String, Long> savedIdsOf(Long memberId, List<PlaceResult> results) {

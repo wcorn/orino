@@ -3,6 +3,8 @@ package ds.project.orino.domain.planner.travel.entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -18,12 +20,13 @@ import java.time.Instant;
 /**
  * 장소 캐시 하나. 구글에서 가져온 장소 또는 직접 입력한 장소를 담는다.
  *
- * <p><b>여행에 종속되지 않는다.</b> 이전 여행에서 평점 4 이상을 준 장소에 {@code ⭐ 좋았던 곳}
- * 배지를 다는 요구가 있어, 장소는 여행을 가로질러 멤버 단위로 재사용돼야 한다.
+ * <p><b>여행에 종속되지 않는다.</b> 같은 장소를 일정마다 새 행으로 만들면 영업시간·좌표 캐시가
+ * 장소 수만큼 중복되고, 한 행만 갱신돼 나머지가 옛 값으로 남는다. {@code uk_place_member_google}이
+ * 멤버당 한 행을 강제한다.
  *
- * <p>1단계에서는 아무것도 쓰지 않는다. {@link Trip#getDestinationPlaceId()}·
- * {@link TripActivity#getPlaceId()} FK를 나중에 붙이면 ALTER가 필요해 테이블만 미리 두고,
- * 2단계(장소 검색)부터 채우기 시작한다.
+ * <p><b>v2.1 — 도시도 장소다.</b> {@link PlaceKind#CITY}로 표시된 행은 날짜의 기준 도시
+ * ({@link TripDay#getBasePlaceId()})가 되어 타임존·통화·날씨 좌표의 주인이 된다. v2.0에서
+ * {@code trip}이 들고 있던 값들이 이 자리로 내려왔다.
  */
 @Entity
 @EntityListeners(AuditingEntityListener.class)
@@ -70,6 +73,34 @@ public class TravelPlace {
     @Column(name = "opening_hours", columnDefinition = "JSON")
     private String openingHours;
 
+    /** 이 장소가 속한 도시 표시명. 도시 장소 자신이면 자기 이름이 들어간다. */
+    @Column(name = "city_name", length = 100)
+    private String cityName;
+
+    /**
+     * 도시 식별자(구글 장소 id). <b>도시 일치 판정은 이 값으로만 한다</b> — 좌표 거리 임계로
+     * 하면 오사카-교토(43km)와 도쿄-요코하마(30km)에서 서로 다른 답이 나온다(D-23).
+     */
+    @Column(name = "city_place_ref", length = 255)
+    private String cityPlaceRef;
+
+    /** ISO 3166-1 alpha-2. 통화·번역 목적 언어를 파생한다. */
+    @Column(name = "country_code", length = 2)
+    private String countryCode;
+
+    /** IANA 타임존 ID. 기준 도시로 쓰이는 장소에는 반드시 있어야 한다. */
+    @Column(length = 64)
+    private String timezone;
+
+    /** ISO 4217 통화 코드. */
+    @Column(length = 3)
+    private String currency;
+
+    /** 도시인지 일반 장소인지. {@link PlaceKind#CITY}만 기준 도시로 지정할 수 있다. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "place_kind", nullable = false, length = 20)
+    private PlaceKind placeKind = PlaceKind.POI;
+
     /** 영업시간을 마지막으로 갱신한 시각. null이면 아직 상세를 받은 적 없다. */
     @Column(name = "details_refreshed_at")
     private Instant detailsRefreshedAt;
@@ -109,6 +140,45 @@ public class TravelPlace {
         return new TravelPlace(memberId, null, name, true);
     }
 
+    /**
+     * 검색을 거치지 않고 이름만으로 만든 <b>도시</b> 장소. 목적지를 직접 입력한 여행이
+     * 기준 도시를 가지려면 도시 행이 있어야 한다.
+     */
+    public static TravelPlace manualCity(Long memberId, String name,
+                                         String timezone, String currency) {
+        TravelPlace place = new TravelPlace(memberId, null, name, true);
+        place.promoteToCity(name, timezone, currency);
+        return place;
+    }
+
+    /**
+     * 이 장소를 기준 도시로 쓸 수 있게 만든다. 타임존·통화의 주인이 여행에서 도시로 넘어왔으므로,
+     * 도시로 승격하는 순간 두 값을 함께 받는다.
+     *
+     * <p>{@code cityPlaceRef}는 도시 자신의 식별자다 — 도시 장소에서는 자기 구글 id가 곧
+     * 도시 식별자라, 일정 장소({@code POI})의 {@code cityPlaceRef}와 같은 축에서 비교된다.
+     */
+    public void promoteToCity(String cityName, String timezone, String currency) {
+        this.placeKind = PlaceKind.CITY;
+        this.cityName = cityName;
+        this.timezone = timezone;
+        this.currency = currency;
+        if (this.cityPlaceRef == null) {
+            this.cityPlaceRef = this.googlePlaceId;
+        }
+    }
+
+    /** 이 장소가 어느 도시에 속하는지. 일정 장소의 도시 이탈 판정(§1124)이 이 값을 본다. */
+    public void updateCityInfo(String cityName, String cityPlaceRef, String countryCode) {
+        this.cityName = cityName;
+        this.cityPlaceRef = cityPlaceRef;
+        this.countryCode = countryCode;
+    }
+
+    public boolean isCity() {
+        return placeKind == PlaceKind.CITY;
+    }
+
     /** 위치·주소·분류 등 검색 응답으로 채워지는 기본 정보. */
     public void updateBasics(String address, BigDecimal lat, BigDecimal lng,
                              String category, BigDecimal rating) {
@@ -117,6 +187,15 @@ public class TravelPlace {
         this.lng = lng;
         this.category = category;
         this.rating = rating;
+    }
+
+    /**
+     * 좌표만 채운다. 도시 장소는 검색을 거치지 않고 만들어질 수 있어 좌표가 비는데,
+     * 좌표가 없으면 그 도시 날짜의 날씨가 통째로 사라진다.
+     */
+    public void updateCoordinates(BigDecimal lat, BigDecimal lng) {
+        this.lat = lat;
+        this.lng = lng;
     }
 
     /** 상세 조회(영업시간·전화·사진) 결과를 채우고 갱신 시각을 찍는다. */
@@ -173,6 +252,30 @@ public class TravelPlace {
 
     public String getOpeningHours() {
         return openingHours;
+    }
+
+    public String getCityName() {
+        return cityName;
+    }
+
+    public String getCityPlaceRef() {
+        return cityPlaceRef;
+    }
+
+    public String getCountryCode() {
+        return countryCode;
+    }
+
+    public String getTimezone() {
+        return timezone;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public PlaceKind getPlaceKind() {
+        return placeKind;
     }
 
     public Instant getDetailsRefreshedAt() {

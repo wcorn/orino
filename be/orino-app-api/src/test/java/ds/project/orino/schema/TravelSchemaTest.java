@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 여행 스키마(047)에서 Hibernate {@code validate}가 봐주지 않는 것들을 고정한다 —
+ * 여행 스키마(047·053)에서 Hibernate {@code validate}가 봐주지 않는 것들을 고정한다 —
  * <b>FK 삭제 규칙 · 인덱스 · 컬럼 타입</b>. validate는 컬럼의 존재와 타입 호환만 보므로
  * cascade가 빠져도, 인덱스가 없어도 통과한다.
  *
@@ -73,9 +73,56 @@ class TravelSchemaTest {
     void foreignKeyDeleteRules() {
         assertThat(deleteRuleOf("fk_trip_activity_trip")).isEqualTo("CASCADE");
         assertThat(deleteRuleOf("fk_trip_activity_place")).isEqualTo("SET NULL");
-        // 목적지 장소는 여행이 참조 중이면 지워지면 안 된다. 삭제 규칙을 안 주면 InnoDB가
-        // RESTRICT로 동작하지만 information_schema에는 NO ACTION으로 적힌다(같은 뜻).
-        assertThat(deleteRuleOf("fk_trip_destination_place")).isEqualTo("NO ACTION");
+        assertThat(deleteRuleOf("fk_trip_day_trip")).isEqualTo("CASCADE");
+        assertThat(deleteRuleOf("fk_trip_stay_trip")).isEqualTo("CASCADE");
+        // 숙소 장소는 지워져도 숙소는 남는다(참조만 끊는다).
+        assertThat(deleteRuleOf("fk_trip_stay_place")).isEqualTo("SET NULL");
+        // 기준 도시는 그 날짜의 타임존이라 SET NULL도 CASCADE도 아니다. 삭제 규칙을 안 주면
+        // InnoDB가 RESTRICT로 동작하지만 information_schema에는 NO ACTION으로 적힌다(같은 뜻).
+        assertThat(deleteRuleOf("fk_trip_day_base_place")).isEqualTo("NO ACTION");
+    }
+
+    @Test
+    @DisplayName("여행에는 목적지 컬럼이 없다 — 남아 있으면 그걸 읽는 코드가 조용히 살아남는다")
+    void tripHasNoDestinationColumns() {
+        assertThat(columnNamesOf("trip"))
+                .doesNotContain("destination_name", "destination_place_id",
+                        "timezone", "currency", "lat", "lng");
+    }
+
+    @Test
+    @DisplayName("날짜를 지우면 여행이 아니라 그 반대다 — 여행을 지우면 날짜·숙소가 함께 지워진다")
+    @Transactional
+    void deletingTripCascadesToDaysAndStays() {
+        long memberId = insertMember("day-cascade-member");
+        long tripId = insertTrip(memberId, "간사이");
+        long cityId = insertCity(memberId, "오사카");
+        insertDay(tripId, cityId, "2026-10-24");
+        jdbcTemplate.update("""
+                INSERT INTO trip_stay (trip_id, name, check_in_date, check_out_date,
+                                       created_at, updated_at)
+                VALUES (?, '오사카 호텔', '2026-10-24', '2026-10-27', NOW(6), NOW(6))
+                """, tripId);
+
+        jdbcTemplate.update("DELETE FROM trip WHERE id = ?", tripId);
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM trip_day WHERE trip_id = ?", Integer.class, tripId)).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM trip_stay WHERE trip_id = ?", Integer.class, tripId)).isZero();
+    }
+
+    @Test
+    @DisplayName("같은 여행·같은 날짜는 두 번 들어가지 않는다(하루에 기준 도시는 하나)")
+    @Transactional
+    void dayIsUniquePerDate() {
+        long memberId = insertMember("day-unique-member");
+        long tripId = insertTrip(memberId, "간사이");
+        long cityId = insertCity(memberId, "오사카");
+        insertDay(tripId, cityId, "2026-10-24");
+
+        assertThatThrownBy(() -> insertDay(tripId, cityId, "2026-10-24"))
+                .isInstanceOf(DuplicateKeyException.class);
     }
 
     @Test
@@ -92,6 +139,11 @@ class TravelSchemaTest {
                 .containsExactly("member_id", "google_place_id");
         assertThat(indexColumnsOf("travel_place", "idx_place_member_name"))
                 .containsExactly("member_id", "name");
+        // 하루에 기준 도시는 하나다.
+        assertThat(indexColumnsOf("trip_day", "uk_day_trip_date"))
+                .containsExactly("trip_id", "day_date");
+        assertThat(indexColumnsOf("trip_stay", "idx_stay_trip_checkin"))
+                .containsExactly("trip_id", "check_in_date");
     }
 
     @Test
@@ -116,8 +168,13 @@ class TravelSchemaTest {
         assertThat(columnTypeOf("trip_activity", "start_time")).isEqualTo("time");
         assertThat(columnTypeOf("trip", "start_date")).isEqualTo("date");
         assertThat(columnTypeOf("trip", "end_date")).isEqualTo("date");
-        // 여행 타임존은 IANA ID 문자열. 여기서 파생 계산의 기준이 나온다.
-        assertThat(columnTypeOf("trip", "timezone")).isEqualTo("varchar");
+        // 날짜도 숙소 시각도 벽시계 값이다.
+        assertThat(columnTypeOf("trip_day", "day_date")).isEqualTo("date");
+        assertThat(columnTypeOf("trip_stay", "check_in_date")).isEqualTo("date");
+        assertThat(columnTypeOf("trip_stay", "check_in_time")).isEqualTo("time");
+        // 타임존은 IANA ID 문자열. v2.1에서는 여행이 아니라 도시가 갖는다.
+        assertThat(columnTypeOf("travel_place", "timezone")).isEqualTo("varchar");
+        assertThat(columnTypeOf("travel_place", "place_kind")).isEqualTo("varchar");
     }
 
     @Test
@@ -211,14 +268,31 @@ class TravelSchemaTest {
         return jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
-    private long insertTrip(long memberId, String destination) {
+    private long insertTrip(long memberId, String title) {
         jdbcTemplate.update("""
-                INSERT INTO trip (member_id, title, destination_name, start_date, end_date,
-                                  timezone, currency, default_notify_minutes,
-                                  morning_summary_enabled, created_at, updated_at)
-                VALUES (?, ?, ?, '2026-10-24', '2026-10-27', 'Asia/Tokyo', 'JPY', 15, b'0',
-                        NOW(6), NOW(6))
-                """, memberId, destination, destination);
+                INSERT INTO trip (member_id, title, start_date, end_date,
+                                  default_notify_minutes, morning_summary_enabled,
+                                  created_at, updated_at)
+                VALUES (?, ?, '2026-10-24', '2026-10-27', 15, b'0', NOW(6), NOW(6))
+                """, memberId, title);
+        return jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    }
+
+    /** 기준 도시로 쓸 도시 장소. v2.1에서 타임존·통화의 주인이다. */
+    private long insertCity(long memberId, String name) {
+        jdbcTemplate.update("""
+                INSERT INTO travel_place (member_id, name, manual_entry, city_name,
+                                          timezone, currency, place_kind, created_at, updated_at)
+                VALUES (?, ?, b'1', ?, 'Asia/Tokyo', 'JPY', 'CITY', NOW(6), NOW(6))
+                """, memberId, name, name);
+        return jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    }
+
+    private long insertDay(long tripId, long basePlaceId, String date) {
+        jdbcTemplate.update("""
+                INSERT INTO trip_day (trip_id, day_date, base_place_id, created_at, updated_at)
+                VALUES (?, ?, ?, NOW(6), NOW(6))
+                """, tripId, date, basePlaceId);
         return jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
@@ -249,6 +323,13 @@ class TravelSchemaTest {
                 WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?
                 ORDER BY seq_in_index
                 """, String.class, table, indexName);
+    }
+
+    private List<String> columnNamesOf(String table) {
+        return jdbcTemplate.queryForList("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = ?
+                """, String.class, table);
     }
 
     private String columnTypeOf(String table, String column) {

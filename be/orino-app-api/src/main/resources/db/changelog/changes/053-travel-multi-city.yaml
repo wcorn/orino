@@ -1,0 +1,441 @@
+databaseChangeLog:
+  # 여행 v2.1 — 다구간 · 날짜별 기준 도시 · 숙소 (#1119, Epic #1118).
+  #
+  # v2.1의 핵심은 하나다 — 목적지를 여행이 아니라 "날짜"가 갖는다.
+  # 여행은 도시·타임존·통화를 갖지 않고, 날짜마다 기준 도시(trip_day.base_place_id)가
+  # 붙어 타임존·통화·검색 좌표·날씨가 거기서 파생된다.
+  #
+  # 컬럼을 NULL 허용으로 남기지 않고 지운다. 남겨두면 trip.timezone을 읽는 코드가 컴파일도
+  # 테스트도 통과한 채 살아남고, 그 화면만 조용히 틀린다. 지워야 컴파일이 깨지고,
+  # 깨지는 곳이 곧 고쳐야 할 목록이 된다.
+  #
+  # 한 파일에 아래 순서를 담는다. 컬럼 삭제를 백필과 다른 파일로 나누면 중간 상태에서
+  # 배포가 물린다.
+  #   1) travel_place에 v2.1 컬럼 추가
+  #   2) 기존 목적지 장소를 CITY로 승격 + trip의 타임존·통화를 장소로 복사
+  #   3) trip_day · trip_stay 생성
+  #   4) 백필 — 여행 1건당 전 날짜에 trip_day INSERT (기존 여행 = 단일 도시)
+  #   5) trip에서 목적지 6개 컬럼 DROP
+  #
+  # rollback을 반드시 적는다. 5번 이후에는 목적지 정보가 trip_day에만 남으므로,
+  # 롤백은 trip_day에서 되돌려 채우는 방향이어야 한다.
+
+  # 되돌릴 지점. 이 뒤로는 목적지가 여행에서 날짜로 내려가 trip 컬럼이 사라지므로,
+  # 한 changeSet씩 세지 않고 이름으로 되돌릴 수 있어야 한다
+  # (`liquibase rollback pre-travel-multi-city`).
+  - changeSet:
+      id: 053-tag-before-multi-city
+      author: wcorn
+      comment: v2.1 다구간 전환 직전 지점에 이름을 붙인다.
+      changes:
+        - tagDatabase:
+            tag: pre-travel-multi-city
+
+  - changeSet:
+      id: 053-add-travel-place-city-columns
+      author: wcorn
+      comment: 장소에 도시 식별·타임존·통화를 붙인다. 기준 도시로 쓸 수 있는 건 place_kind=CITY 뿐이다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: travel_place
+                columnName: place_kind
+      changes:
+        - addColumn:
+            tableName: travel_place
+            columns:
+              # 이 장소가 속한 도시 표시명.
+              - column:
+                  name: city_name
+                  type: VARCHAR(100)
+              # 도시 식별자(구글 장소 id). 도시 일치 판정은 좌표 거리가 아니라 이 값으로만 한다 —
+              # 거리 임계로 하면 오사카-교토(43km)와 도쿄-요코하마(30km)에서 답이 갈린다(D-23).
+              - column:
+                  name: city_place_ref
+                  type: VARCHAR(255)
+              # ISO 3166-1 alpha-2. 통화·번역 목적 언어 파생에 쓴다.
+              - column:
+                  name: country_code
+                  type: CHAR(2)
+              # IANA ID. 기준 도시로 쓰일 때 필수(애플리케이션 검증).
+              - column:
+                  name: timezone
+                  type: VARCHAR(64)
+              # ISO 4217.
+              - column:
+                  name: currency
+                  type: CHAR(3)
+              # CITY · POI. 기존 행은 전부 POI에서 출발한다.
+              - column:
+                  name: place_kind
+                  type: VARCHAR(20)
+                  defaultValue: POI
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 053-promote-destination-places
+      author: wcorn
+      comment: trip.destination_place_id가 가리키던 장소를 CITY로 승격하고 여행의 타임존·통화를 옮긴다.
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            tableName: trip
+            columnName: destination_place_id
+      changes:
+        - sql:
+            comment: 목적지 장소 = 도시. 타임존·통화의 진짜 주인이 trip에서 장소로 넘어간다.
+            sql: >-
+              UPDATE travel_place p
+                JOIN trip t ON t.destination_place_id = p.id
+                 SET p.place_kind = 'CITY',
+                     p.timezone = t.timezone,
+                     p.currency = t.currency,
+                     p.city_name = COALESCE(p.city_name, t.destination_name),
+                     p.city_place_ref = COALESCE(p.city_place_ref, p.google_place_id)
+      rollback:
+        - sql:
+            sql: >-
+              UPDATE travel_place
+                 SET place_kind = 'POI',
+                     timezone = NULL,
+                     currency = NULL,
+                     city_name = NULL,
+                     city_place_ref = NULL
+               WHERE place_kind = 'CITY'
+
+  - changeSet:
+      id: 053-create-trip-day
+      author: wcorn
+      comment: 여행 기간의 날짜 1건. 기간 내 모든 날짜에 반드시 존재한다 — 빈 날짜는 타임존 없는 날이다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: trip_day
+      changes:
+        - createTable:
+            tableName: trip_day
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: trip_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_trip_day_trip
+                    references: trip(id)
+                    deleteCascade: true
+              # date는 MySQL 함수명과 혼동되므로 쓰지 않는다.
+              - column:
+                  name: day_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              # 기준 도시. place_kind = CITY 인 행만 허용한다(애플리케이션 검증).
+              # 기준 도시가 사라지면 그 날짜는 타임존을 잃으므로 SET NULL도 CASCADE도 아닌
+              # RESTRICT다 — 도시로 쓰이는 장소는 지워지지 않아야 한다.
+              - column:
+                  name: base_place_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_trip_day_base_place
+                    references: travel_place(id)
+              # "체크아웃 후 교토역 코인로커에 짐 보관"
+              - column:
+                  name: city_memo
+                  type: VARCHAR(200)
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        # 하루에 기준 도시는 하나다.
+        - createIndex:
+            tableName: trip_day
+            indexName: uk_day_trip_date
+            unique: true
+            columns:
+              - column:
+                  name: trip_id
+              - column:
+                  name: day_date
+      # 자동 롤백은 인덱스를 먼저 지우려 드는데, (trip_id, ...) 인덱스는 FK가 쓰고 있어
+      # MySQL이 거부한다. 테이블을 지우면 인덱스·FK가 함께 사라진다.
+      rollback:
+        - dropTable:
+            tableName: trip_day
+
+  - changeSet:
+      id: 053-create-trip-stay
+      author: wcorn
+      comment: 숙소 1건. 기준 도시와 무관하다 — 닛코 당일치기 날의 기준 도시는 닛코지만 자는 곳은 도쿄일 수 있다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: trip_stay
+      changes:
+        - createTable:
+            tableName: trip_stay
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: trip_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_trip_stay_trip
+                    references: trip(id)
+                    deleteCascade: true
+              - column:
+                  name: name
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              # 좌표·도시 판정에 쓴다. FK는 아래에서 따로 건다 —
+              # ON DELETE SET NULL은 인라인 제약으로 표현할 수 없다.
+              - column:
+                  name: place_id
+                  type: BIGINT
+              - column:
+                  name: check_in_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              # > check_in_date 는 애플리케이션 검증. 겹침 검증도 애플리케이션에서 한다.
+              - column:
+                  name: check_out_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              # 벽시계 시각. UTC로 변환하지 않는다.
+              - column:
+                  name: check_in_time
+                  type: TIME
+              - column:
+                  name: check_out_time
+                  type: TIME
+              - column:
+                  name: booking_url
+                  type: VARCHAR(500)
+              - column:
+                  name: memo
+                  type: VARCHAR(500)
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: trip_stay
+            baseColumnNames: place_id
+            constraintName: fk_trip_stay_place
+            referencedTableName: travel_place
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - createIndex:
+            tableName: trip_stay
+            indexName: idx_stay_trip_checkin
+            columns:
+              - column:
+                  name: trip_id
+              - column:
+                  name: check_in_date
+      rollback:
+        - dropTable:
+            tableName: trip_stay
+
+  - changeSet:
+      id: 053-backfill-manual-destination-places
+      author: wcorn
+      comment: 목적지를 수동 입력한 여행(1단계 분)에는 붙일 장소가 없다 — 도시 장소를 만들어 잇는다.
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            tableName: trip
+            columnName: destination_name
+      changes:
+        # 같은 멤버가 같은 목적지로 여러 번 갔다면 장소 한 행을 공유한다(장소는 여행에 종속되지 않는다).
+        - sql:
+            sql: >-
+              INSERT INTO travel_place
+                (member_id, name, lat, lng, manual_entry,
+                 city_name, timezone, currency, place_kind, created_at, updated_at)
+              SELECT DISTINCT t.member_id, t.destination_name, t.lat, t.lng, b'1',
+                     t.destination_name, t.timezone, t.currency, 'CITY', NOW(6), NOW(6)
+                FROM trip t
+               WHERE t.destination_place_id IS NULL
+        # NULL 안전 비교(<=>)를 쓴다 — lat/lng가 NULL인 수동 입력 여행이 대부분이라
+        # = 로 비교하면 한 건도 매칭되지 않는다.
+        - sql:
+            sql: >-
+              UPDATE trip t
+                 SET t.destination_place_id = (
+                       SELECT MAX(p.id) FROM travel_place p
+                        WHERE p.member_id = t.member_id
+                          AND p.place_kind = 'CITY'
+                          AND p.manual_entry = b'1'
+                          AND p.google_place_id IS NULL
+                          AND p.name = t.destination_name
+                          AND p.timezone <=> t.timezone
+                          AND p.currency <=> t.currency
+                          AND p.lat <=> t.lat
+                          AND p.lng <=> t.lng)
+               WHERE t.destination_place_id IS NULL
+      rollback:
+        - sql:
+            sql: >-
+              UPDATE trip t
+                JOIN travel_place p ON p.id = t.destination_place_id
+                 SET t.destination_place_id = NULL
+               WHERE p.place_kind = 'CITY'
+                 AND p.manual_entry = b'1'
+                 AND p.google_place_id IS NULL
+        - sql:
+            sql: >-
+              DELETE FROM travel_place
+               WHERE place_kind = 'CITY'
+                 AND manual_entry = b'1'
+                 AND google_place_id IS NULL
+
+  - changeSet:
+      id: 053-backfill-trip-day
+      author: wcorn
+      comment: 여행 1건당 start_date~end_date 전 날짜에 행을 만든다. 기존 여행은 단일 도시라 전 날짜가 같은 도시다.
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            tableName: trip
+            columnName: destination_place_id
+      changes:
+        # 재귀 CTE로 기간을 날짜로 편다. 여행 기간은 길어야 한 달이라
+        # cte_max_recursion_depth(기본 1000)에 닿지 않는다.
+        - sql:
+            sql: >-
+              INSERT INTO trip_day (trip_id, day_date, base_place_id, created_at, updated_at)
+              WITH RECURSIVE expanded (trip_id, day_date, end_date, base_place_id) AS (
+                  SELECT t.id, t.start_date, t.end_date, t.destination_place_id
+                    FROM trip t
+                   WHERE t.destination_place_id IS NOT NULL
+                  UNION ALL
+                  SELECT e.trip_id, e.day_date + INTERVAL 1 DAY, e.end_date, e.base_place_id
+                    FROM expanded e
+                   WHERE e.day_date < e.end_date
+              )
+              SELECT trip_id, day_date, base_place_id, NOW(6), NOW(6) FROM expanded
+      rollback:
+        - delete:
+            tableName: trip_day
+
+  - changeSet:
+      id: 053-drop-trip-destination-columns
+      author: wcorn
+      comment: 여행에서 목적지를 걷어낸다. 여기서부터 목적지의 진실은 trip_day 하나뿐이다.
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            tableName: trip
+            columnName: timezone
+      changes:
+        # FK가 걸린 컬럼은 그대로 못 지운다.
+        - dropForeignKeyConstraint:
+            baseTableName: trip
+            constraintName: fk_trip_destination_place
+        - dropColumn:
+            tableName: trip
+            columns:
+              - column:
+                  name: destination_name
+              - column:
+                  name: destination_place_id
+              - column:
+                  name: timezone
+              - column:
+                  name: currency
+              - column:
+                  name: lat
+              - column:
+                  name: lng
+      rollback:
+        # 되돌릴 때는 NULL 허용으로 먼저 만든다 — 채우기 전에는 NOT NULL을 걸 수 없다.
+        - addColumn:
+            tableName: trip
+            columns:
+              - column:
+                  name: destination_name
+                  type: VARCHAR(100)
+              - column:
+                  name: destination_place_id
+                  type: BIGINT
+              - column:
+                  name: timezone
+                  type: VARCHAR(64)
+              - column:
+                  name: currency
+                  type: CHAR(3)
+              - column:
+                  name: lat
+                  type: DECIMAL(10, 7)
+              - column:
+                  name: lng
+                  type: DECIMAL(10, 7)
+        # 목적지 정보는 trip_day에만 남아 있다. 첫날의 기준 도시가 v2.0의 목적지였다.
+        - sql:
+            sql: >-
+              UPDATE trip t
+                JOIN (SELECT d.trip_id, d.base_place_id
+                        FROM trip_day d
+                        JOIN (SELECT trip_id, MIN(day_date) AS first_date
+                                FROM trip_day GROUP BY trip_id) f
+                          ON f.trip_id = d.trip_id AND f.first_date = d.day_date) first_day
+                  ON first_day.trip_id = t.id
+                JOIN travel_place p ON p.id = first_day.base_place_id
+                 SET t.destination_place_id = p.id,
+                     t.destination_name = COALESCE(p.city_name, p.name),
+                     t.timezone = p.timezone,
+                     t.currency = p.currency,
+                     t.lat = p.lat,
+                     t.lng = p.lng
+        - addNotNullConstraint:
+            tableName: trip
+            columnName: destination_name
+            columnDataType: VARCHAR(100)
+        - addNotNullConstraint:
+            tableName: trip
+            columnName: timezone
+            columnDataType: VARCHAR(64)
+        - addNotNullConstraint:
+            tableName: trip
+            columnName: currency
+            columnDataType: CHAR(3)
+        - addForeignKeyConstraint:
+            baseTableName: trip
+            baseColumnNames: destination_place_id
+            constraintName: fk_trip_destination_place
+            referencedTableName: travel_place
+            referencedColumnNames: id

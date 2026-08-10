@@ -17,6 +17,7 @@ import ds.project.orino.planner.travel.activity.dto.ActivityPlace;
 import ds.project.orino.planner.travel.activity.dto.ActivityResponse;
 import ds.project.orino.planner.travel.activity.dto.ActivityWriteRequest;
 import ds.project.orino.planner.travel.activity.dto.ReorderRequest;
+import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.photo.dto.PhotoResponse;
 import ds.project.orino.planner.travel.photo.service.TravelPhotoService;
 import ds.project.orino.planner.travel.push.service.NotificationScheduleService;
@@ -64,6 +65,7 @@ public class ActivityService {
     private final PlaceService placeService;
     private final LegService legService;
     private final NotificationScheduleService notificationService;
+    private final TripDayService tripDayService;
     private final Clock clock;
 
     public ActivityService(TripActivityRepository activityRepository,
@@ -75,6 +77,7 @@ public class ActivityService {
                            PlaceService placeService,
                            LegService legService,
                            NotificationScheduleService notificationService,
+                           TripDayService tripDayService,
                            Clock clock) {
         this.activityRepository = activityRepository;
         this.logRepository = logRepository;
@@ -85,6 +88,7 @@ public class ActivityService {
         this.placeService = placeService;
         this.legService = legService;
         this.notificationService = notificationService;
+        this.tripDayService = tripDayService;
         this.clock = clock;
     }
 
@@ -255,9 +259,13 @@ public class ActivityService {
 
     // ---------------- helpers ----------------
 
-    /** 기록은 여행 시작일부터다. 기준은 기기 시간대가 아니라 여행 타임존의 오늘이다. */
+    /**
+     * 기록은 여행 시작일부터다. 기준은 기기 시간대가 아니라 <b>첫날 기준 도시</b>의 오늘이다 —
+     * 여행이 시작되는 곳의 날짜가 넘어가야 시작된 것이다.
+     */
     private void requireTripStarted(Trip trip) {
-        if (trip.todayAtDestination(clock).isBefore(trip.getStartDate())) {
+        if (trip.todayIn(clock, tripDayService.primaryZone(trip.getId()))
+                .isBefore(trip.getStartDate())) {
             throw new CustomException(ErrorCode.TRAVEL_LOG_BEFORE_TRIP);
         }
     }

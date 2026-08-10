@@ -11,7 +11,6 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -19,11 +18,18 @@ import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 
 /**
- * 여행 1건. 일정({@link TripActivity})의 소유자이자 타임존·통화의 기준점이다.
+ * 여행 1건. 일정({@link TripActivity})의 소유자이자 기간의 주인이다.
+ *
+ * <p><b>v2.1 — 여행은 도시·타임존·통화를 갖지 않는다.</b> 목적지는 날짜가 갖는다
+ * ({@link TripDay#getBasePlaceId()}). 여행 하나에 타임존 하나라는 가정이 한 군데라도 남으면
+ * 오사카 → 교토 → 나고야를 옮겨 다닐 때 그 화면만 조용히 틀리기 때문에, 컬럼을 NULL 허용으로
+ * 남기지 않고 지웠다.
  *
  * <p><b>상태·D-day·일차 번호를 저장하지 않는다.</b> 셋 다 "오늘"에 의존하는 값이라 컬럼으로 두면
- * 날짜가 넘어가는 순간 어긋난다. 대신 {@link #status(Clock)}·{@link #daysUntilStart(Clock)}으로
- * 조회 시마다 파생하며, 기준은 기기 시간대가 아니라 {@link #timezone}의 오늘이다.
+ * 날짜가 넘어가는 순간 어긋난다. 대신 {@link #status(Clock, ZoneId)}·
+ * {@link #daysUntilStart(Clock, ZoneId)}으로 조회 시마다 파생한다. 기준 타임존은 기기 시간대도
+ * 여행의 것도 아니라 <b>날짜의 기준 도시</b>에서 오므로, 호출부가 어느 날짜의 타임존인지 정해
+ * 넘긴다(어느 날짜를 쓰는지는 값마다 다르다 — #1123).
  */
 @Entity
 @EntityListeners(AuditingEntityListener.class)
@@ -37,17 +43,9 @@ public class Trip {
     @Column(name = "member_id", nullable = false)
     private Long memberId;
 
-    /** 최대 50자. 미입력 시 목적지명으로 채워 저장한다(빈 제목을 만들지 않는다). */
+    /** 최대 50자. v2.1부터 필수다 — 목적지가 여행에 없으니 자동으로 채울 이름도 없다. */
     @Column(nullable = false, length = 50)
     private String title;
-
-    /** 목적지 표시명. 목록 카드 메타에 쓰려고 denormalize한다. */
-    @Column(name = "destination_name", nullable = false, length = 100)
-    private String destinationName;
-
-    /** 검색으로 고른 목적지 도시({@link TravelPlace}). 1단계는 항상 null(수동 입력). */
-    @Column(name = "destination_place_id")
-    private Long destinationPlaceId;
 
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
@@ -55,21 +53,6 @@ public class Trip {
     /** 종료일(당일 포함). 항상 {@code >= startDate} — 애플리케이션에서 검증한다. */
     @Column(name = "end_date", nullable = false)
     private LocalDate endDate;
-
-    /** IANA 타임존 ID(예: {@code Asia/Tokyo}). 상태·D-day·알림 시각 환산의 유일한 기준. */
-    @Column(nullable = false, length = 64)
-    private String timezone;
-
-    /** ISO 4217 통화 코드(예: {@code JPY}). */
-    @Column(nullable = false, length = 3)
-    private String currency;
-
-    /** 목적지 좌표 — 날씨 조회 기준점. */
-    @Column(precision = 10, scale = 7)
-    private BigDecimal lat;
-
-    @Column(precision = 10, scale = 7)
-    private BigDecimal lng;
 
     /** 여행 단위 기본 알림 시점(분 전). 일정이 값을 따로 정하지 않으면 이걸 쓴다. */
     @Column(name = "default_notify_minutes", nullable = false)
@@ -89,33 +72,18 @@ public class Trip {
     protected Trip() {
     }
 
-    public Trip(Long memberId, String title, String destinationName, LocalDate startDate,
-                LocalDate endDate, String timezone, String currency) {
+    public Trip(Long memberId, String title, LocalDate startDate, LocalDate endDate) {
         this.memberId = memberId;
         this.title = title;
-        this.destinationName = destinationName;
         this.startDate = startDate;
         this.endDate = endDate;
-        this.timezone = timezone;
-        this.currency = currency;
     }
 
-    /** 제목·목적지·기간·타임존·통화 등 기본 정보를 갱신한다. */
-    public void update(String title, String destinationName, LocalDate startDate,
-                       LocalDate endDate, String timezone, String currency) {
+    /** 제목·기간을 갱신한다. 목적지는 여행이 아니라 날짜가 갖는다. */
+    public void update(String title, LocalDate startDate, LocalDate endDate) {
         this.title = title;
-        this.destinationName = destinationName;
         this.startDate = startDate;
         this.endDate = endDate;
-        this.timezone = timezone;
-        this.currency = currency;
-    }
-
-    /** 목적지 좌표(날씨 기준점)와 검색으로 고른 목적지 장소를 잇는다. 2단계부터 쓴다. */
-    public void updateDestinationPlace(Long destinationPlaceId, BigDecimal lat, BigDecimal lng) {
-        this.destinationPlaceId = destinationPlaceId;
-        this.lat = lat;
-        this.lng = lng;
     }
 
     public void updateNotificationSettings(int defaultNotifyMinutes, boolean morningSummaryEnabled) {
@@ -123,14 +91,19 @@ public class Trip {
         this.morningSummaryEnabled = morningSummaryEnabled;
     }
 
-    /** 여행 타임존 기준 오늘 날짜. 상태·D-day·일차 계산은 전부 이 값을 기준으로 한다. */
-    public LocalDate todayAtDestination(Clock clock) {
-        return LocalDate.now(clock.withZone(ZoneId.of(timezone)));
+    /**
+     * 주어진 타임존 기준 오늘 날짜. 상태·D-day·일차 계산이 전부 이 값을 쓴다.
+     *
+     * <p>타임존을 인자로 받는 이유 — 여행에는 타임존이 없다. 어느 날짜의 기준 도시를 쓸지는
+     * 값마다 달라서(상태는 오늘 날짜, D-day는 첫날) 호출부가 정한다.
+     */
+    public LocalDate todayIn(Clock clock, ZoneId zone) {
+        return LocalDate.now(clock.withZone(zone));
     }
 
-    /** 여행 타임존의 오늘로 판정한 상태. */
-    public TripStatus status(Clock clock) {
-        return statusOn(todayAtDestination(clock));
+    /** 주어진 타임존의 오늘로 판정한 상태. */
+    public TripStatus status(Clock clock, ZoneId zone) {
+        return statusOn(todayIn(clock, zone));
     }
 
     /** 주어진 날짜를 오늘로 보고 판정한 상태. 목록을 한 번에 훑을 때 오늘을 재사용한다. */
@@ -140,10 +113,10 @@ public class Trip {
 
     /**
      * 시작일까지 남은 일수(D-day). 시작 당일이면 0, 이미 시작했으면 음수다.
-     * 표시 여부(예정 여행에만 노출)는 호출부가 {@link #status(Clock)}로 판단한다.
+     * 표시 여부(예정 여행에만 노출)는 호출부가 {@link #status(Clock, ZoneId)}로 판단한다.
      */
-    public long daysUntilStart(Clock clock) {
-        return ChronoUnit.DAYS.between(todayAtDestination(clock), startDate);
+    public long daysUntilStart(Clock clock, ZoneId zone) {
+        return ChronoUnit.DAYS.between(todayIn(clock, zone), startDate);
     }
 
     /** 여행 총 일수(당일 포함). 하루짜리 여행이면 1. */
@@ -173,36 +146,12 @@ public class Trip {
         return title;
     }
 
-    public String getDestinationName() {
-        return destinationName;
-    }
-
-    public Long getDestinationPlaceId() {
-        return destinationPlaceId;
-    }
-
     public LocalDate getStartDate() {
         return startDate;
     }
 
     public LocalDate getEndDate() {
         return endDate;
-    }
-
-    public String getTimezone() {
-        return timezone;
-    }
-
-    public String getCurrency() {
-        return currency;
-    }
-
-    public BigDecimal getLat() {
-        return lat;
-    }
-
-    public BigDecimal getLng() {
-        return lng;
     }
 
     public int getDefaultNotifyMinutes() {

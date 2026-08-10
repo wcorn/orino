@@ -4,10 +4,12 @@ import ds.project.orino.domain.planner.push.entity.NotificationStatus;
 import ds.project.orino.domain.planner.push.entity.NotificationType;
 import ds.project.orino.domain.planner.push.entity.PushNotification;
 import ds.project.orino.domain.planner.push.repository.PushNotificationRepository;
+import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.entity.Trip;
 import ds.project.orino.domain.planner.travel.entity.TripActivity;
 import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
+import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.route.dto.LegResponse;
 import ds.project.orino.planner.travel.route.service.LegService;
 import org.springframework.stereotype.Service;
@@ -43,15 +45,18 @@ public class NotificationScheduleService {
     private final PushNotificationRepository notificationRepository;
     private final TripActivityRepository activityRepository;
     private final TripRepository tripRepository;
+    private final TripDayService tripDayService;
     private final LegService legService;
 
     public NotificationScheduleService(PushNotificationRepository notificationRepository,
                                        TripActivityRepository activityRepository,
                                        TripRepository tripRepository,
+                                       TripDayService tripDayService,
                                        LegService legService) {
         this.notificationRepository = notificationRepository;
         this.activityRepository = activityRepository;
         this.tripRepository = tripRepository;
+        this.tripDayService = tripDayService;
         this.legService = legService;
     }
 
@@ -74,10 +79,15 @@ public class NotificationScheduleService {
                 .findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(tripId, date);
 
         ordered.forEach(activity -> cancelPending(activity.getId()));
-        notificationRepository.saveAll(build(trip, ordered));
+        notificationRepository.saveAll(build(trip, ordered, tripDayService.zoneOn(tripId, date)));
     }
 
-    /** 여행 전체를 다시 짠다 — 타임존이 바뀌면 모든 날짜의 환산 결과가 달라진다. */
+    /**
+     * 여행 전체를 다시 짠다 — 기준 도시가 바뀌면 그 날짜부터의 환산 결과가 달라진다.
+     *
+     * <p><b>날짜마다 자기 기준 도시의 타임존으로 환산한다.</b> 여행 하나에 타임존 하나라고
+     * 보면, 오사카에서 나고야로 넘어간 날의 09:00 알림이 오사카 시각으로 예약된다.
+     */
     @Transactional
     public void rescheduleTrip(Long tripId) {
         Trip trip = tripRepository.findById(tripId).orElse(null);
@@ -87,11 +97,14 @@ public class NotificationScheduleService {
         cancelAll(notificationRepository.findAllByTripIdAndStatus(
                 tripId, NotificationStatus.PENDING));
 
-        ZoneId zone = ZoneId.of(trip.getTimezone());
+        // 날짜를 하나씩 조회하지 않고 기준 도시를 한 번에 받아 둔다.
+        Map<LocalDate, TravelPlace> cities = tripDayService.baseCitiesOf(tripId);
         for (int dayIndex = 0; dayIndex < trip.totalDays(); dayIndex++) {
             LocalDate date = trip.getStartDate().plusDays(dayIndex);
+            ZoneId zone = zoneOn(cities, date);
             notificationRepository.saveAll(build(trip, activityRepository
-                    .findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(trip.getId(), date)));
+                    .findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(trip.getId(), date),
+                    zone));
 
             if (trip.isMorningSummaryEnabled()) {
                 notificationRepository.save(PushNotification.morningSummary(
@@ -126,9 +139,17 @@ public class NotificationScheduleService {
         notificationRepository.saveAll(notifications);
     }
 
-    /** 그 날짜의 일정들에서 만들 알림을 전부 계산한다. */
-    private List<PushNotification> build(Trip trip, List<TripActivity> ordered) {
-        ZoneId zone = ZoneId.of(trip.getTimezone());
+    /**
+     * 그 날짜의 기준 도시 타임존. 날짜 행이 없으면(있을 수 없는 상태) 기기 타임존으로 버틴다 —
+     * 여기서 터뜨리면 알림 재계산을 부르는 저장 요청이 통째로 실패한다.
+     */
+    private static ZoneId zoneOn(Map<LocalDate, TravelPlace> cities, LocalDate date) {
+        TravelPlace city = cities.get(date);
+        return city == null ? ZoneId.systemDefault() : TripDayService.zoneOf(city);
+    }
+
+    /** 그 날짜의 일정들에서 만들 알림을 전부 계산한다. 시각 환산은 그 날짜의 타임존으로 한다. */
+    private List<PushNotification> build(Trip trip, List<TripActivity> ordered, ZoneId zone) {
         // 이동시간은 출발 알림에만 쓴다. 아무도 켜지 않았으면 조회할 이유가 없다 —
         // 일정을 저장할 때마다 유료 API를 부르게 되고, 저장이 그만큼 느려진다.
         Map<Long, LegResponse> legsByTo = ordered.stream()
