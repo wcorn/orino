@@ -154,6 +154,13 @@ export function ActivityRow({
               <span className="text-muted-foreground flex items-center gap-1 text-xs">
                 <MapPin className="size-3 shrink-0" />
                 <span className="truncate">{activity.place.name}</span>
+                {/* 그날 기준 도시와 다른 도시의 장소다. 막지 않고 알려만 준다 —
+                    오사카 가게를 교토 날짜에 두는 건 사용자의 선택이다. */}
+                {activity.outOfBaseCity && activity.place.cityName && (
+                  <span className="text-warning shrink-0">
+                    · {activity.place.cityName}
+                  </span>
+                )}
               </span>
             )}
           </Link>

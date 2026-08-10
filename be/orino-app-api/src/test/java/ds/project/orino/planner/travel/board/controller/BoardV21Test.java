@@ -4,6 +4,9 @@ import com.jayway.jsonpath.JsonPath;
 import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
+import ds.project.orino.planner.travel.place.StubPlacesClient;
+import ds.project.orino.planner.travel.place.client.PlaceResult;
+import ds.project.orino.planner.travel.place.client.PlacesClient;
 import ds.project.orino.planner.travel.tools.StubWeatherClient;
 import ds.project.orino.planner.travel.tools.client.WeatherClient;
 import ds.project.orino.planner.travel.tools.dto.WeatherIcon;
@@ -26,6 +29,7 @@ import org.springframework.http.MediaType;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -56,6 +60,8 @@ class BoardV21Test extends ApiTestSupport {
     private DbCleaner dbCleaner;
     @Autowired
     private WeatherClient weatherClient;
+    @Autowired
+    private PlacesClient placesClient;
 
     private StubWeatherClient weatherStub;
     private String authHeader;
@@ -79,6 +85,8 @@ class BoardV21Test extends ApiTestSupport {
         dbCleaner.clean();
         weatherStub = (StubWeatherClient) weatherClient;
         weatherStub.reset();
+        placesStub().reset();
+        placesStub().detailResult = Optional.empty();
 
         memberRepository.save(MemberFixture.create());
         authHeader = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc);
@@ -256,9 +264,101 @@ class BoardV21Test extends ApiTestSupport {
         }
     }
 
+    @Nested
+    @DisplayName("기준 도시 변경 — 검색 결과 그대로")
+    class ChangeBaseCityFromSearch {
+
+        @Test
+        @DisplayName("담아 두지 않은 도시로도 하루를 옮긴다 — 서버가 담고 도시로 승격한다")
+        void upsertsCityFromGoogle() throws Exception {
+            long tripId = createTrip(leg(tokyo, 3));
+            placesStub().detailResult = Optional.of(googleCity("ChIJ_kyoto", "교토", "JP"));
+
+            changeCityByGoogleId(dayIdOf(tripId, 1), "ChIJ_kyoto")
+                    .andExpect(jsonPath("$.data[1].baseCity.name").value("교토"))
+                    .andExpect(jsonPath("$.data[1].baseCity.timezone").value("Asia/Tokyo"))
+                    .andExpect(jsonPath("$.data[1].baseCity.currency").value("JPY"))
+                    // 하루만 바꾸면 구간이 셋으로 쪼개진다. 정상이며 확인을 받지 않는다.
+                    .andExpect(jsonPath("$.data[2].legIndex").value(3));
+        }
+
+        /**
+         * 검색으로 고른 도시라야 <b>도시 식별자</b>가 생긴다. 화면이 먼저 장소를 만들어 보내면
+         * 식별자가 없어 그날 일정이 전부 "다른 도시"로 표시된다 — 이 경로가 있는 이유다.
+         */
+        @Test
+        @DisplayName("담긴 도시에 식별자가 붙어 도시 이탈 판정이 성립한다")
+        void keepsCityIdentifier() throws Exception {
+            long tripId = createTrip(leg(tokyo, 3));
+            placesStub().detailResult = Optional.of(googleCity("ChIJ_kyoto", "교토", "JP"));
+            changeCityByGoogleId(dayIdOf(tripId, 1), "ChIJ_kyoto");
+
+            long placeId = poiInCity("오사카성", "ChIJ_osaka");
+            createActivity(tripId, "오사카성", START.plusDays(1).toString(), placeId);
+
+            board(tripId, START.plusDays(1).toString())
+                    .andExpect(jsonPath("$.data.activities[0].outOfBaseCity").value(true));
+        }
+
+        @Test
+        @DisplayName("이미 이 여행이 쓰던 도시를 다시 고르면 아무것도 바뀌지 않는다")
+        void reusesSavedCity() throws Exception {
+            long tripId = createTrip(leg(tokyo, 3));
+            placesStub().reset();
+
+            mockMvc.perform(put("/api/travel/days/" + dayIdOf(tripId, 1))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"baseCityPlaceId\": %d}".formatted(tokyo)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data[1].baseCity.name").value("도쿄"))
+                    .andExpect(jsonPath("$.data[1].cityChanged").value(false));
+            assertThat(placesStub().detailFetches).isEmpty();
+        }
+
+        @Test
+        @DisplayName("도시를 두 방식으로 동시에 지정하면 400 — 어느 쪽이 맞는지 정할 수 없다")
+        void rejectsBothCityInputs() throws Exception {
+            long tripId = createTrip(leg(tokyo, 3));
+
+            mockMvc.perform(put("/api/travel/days/" + dayIdOf(tripId, 1))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"baseCityPlaceId": %d, "baseCityGooglePlaceId": "ChIJ_kyoto"}
+                                    """.formatted(tokyo)))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+
     // ---------------- helpers ----------------
 
     private static final LocalDate START = LocalDate.of(2026, 10, 24);
+
+    private StubPlacesClient placesStub() {
+        return (StubPlacesClient) placesClient;
+    }
+
+    private static PlaceResult googleCity(String googlePlaceId, String name, String countryCode) {
+        return new PlaceResult(googlePlaceId, name, name, new BigDecimal("35.0116"),
+                new BigDecimal("135.7681"), null, null, null, null,
+                "Asia/Tokyo", name, countryCode, List.of());
+    }
+
+    /** 날짜 목록에서 {@code index}번째 날짜의 id. */
+    private long dayIdOf(long tripId, int index) throws Exception {
+        return ((Number) JsonPath.read(boardBody(tripId),
+                "$.data.days[%d].dayId".formatted(index))).longValue();
+    }
+
+    private org.springframework.test.web.servlet.ResultActions changeCityByGoogleId(
+            long dayId, String googlePlaceId) throws Exception {
+        return mockMvc.perform(put("/api/travel/days/" + dayId)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"baseCityGooglePlaceId\": \"%s\"}".formatted(googlePlaceId)))
+                .andExpect(status().isOk());
+    }
 
     private static String startDate() {
         return START.toString();
