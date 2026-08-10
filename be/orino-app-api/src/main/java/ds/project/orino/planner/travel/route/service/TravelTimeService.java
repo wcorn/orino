@@ -83,6 +83,36 @@ public class TravelTimeService {
         return travelTime(from, to, mode);
     }
 
+    /**
+     * 그날 <b>마지막 일정에서 어떤 장소까지</b>의 이동. 숙소 이동 행(§3.5)이 쓴다.
+     *
+     * <p>일정 사이 이동과 같은 규칙·같은 캐시를 탄다 — 좌표 쌍이 키라 숙소든 일정이든 두 지점
+     * 사이 거리는 같은 값이다.
+     *
+     * <p>마지막 일정에 좌표가 없거나 목적지에 좌표가 없으면 <b>비어 있는 값</b>을 준다. 이동이
+     * 성립하지 않는 것을 0분으로 답하면 화면이 "바로 옆"이라고 읽는다.
+     */
+    public Optional<Move> moveToPlace(List<TripActivity> ordered, TravelPlace destination) {
+        if (destination.getLat() == null || destination.getLng() == null) {
+            return Optional.empty();
+        }
+        List<Located> located = locate(ordered);
+        if (located.isEmpty()) {
+            return Optional.empty();
+        }
+        Located from = located.get(located.size() - 1);
+        Located to = new Located(null, destination.getLat(), destination.getLng());
+        TravelMode mode = autoMode(from, to);
+        return Optional.of(route(from, to, mode)
+                .map(r -> new Move(mode, Math.round(r.durationSeconds() / 60f)))
+                // 실패해도 수단은 남긴다 — 거리만 아는 상태와 아무것도 모르는 상태는 다르다.
+                .orElseGet(() -> new Move(mode, null)));
+    }
+
+    /** 이동 한 건의 표시값. 도착지가 일정이 아니라 장소라 일정 id가 없다. */
+    public record Move(TravelMode mode, Integer durationMinutes) {
+    }
+
     /** 좌표를 가진 일정만 순서대로 남긴다. 장소가 있어도 좌표가 없으면(직접 입력) 뺀다. */
     private List<Located> locate(List<TripActivity> ordered) {
         List<Long> placeIds = ordered.stream()

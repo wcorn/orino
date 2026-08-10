@@ -89,9 +89,32 @@ export interface BoardDay {
   cityMemo: string | null;
   /** 예보 범위(16일) 밖이면 null이다 — 오류가 아니라 "아직 모름"이다. */
   weather: DailyWeather | null;
-  /** 숙소는 3단계 — 형태만 확정돼 있고 값은 아직 없다. */
-  stayTonight: null;
-  stayCheckout: null;
+  /** 오늘 밤 자는 곳(`checkIn <= date < checkOut`). 없으면 null. */
+  stayTonight: StayTonight | null;
+  /** 오늘 체크아웃하는 곳. 없으면 null. */
+  stayCheckout: StayCheckout | null;
+}
+
+/**
+ * 오늘 밤 자는 곳.
+ *
+ * <p>`sameCity`는 그날 기준 도시와 같은 도시인가다 — 닛코 당일치기 날 도쿄에서 자면 false.
+ * 식별자가 한쪽이라도 없으면 판정하지 않고 같은 도시로 본다(D-23).
+ */
+export interface StayTonight {
+  stayId: number;
+  name: string;
+  sameCity: boolean;
+  /** 벽시계 시각(`15:00`). 없으면 null. */
+  checkInTime: string | null;
+  /** 오늘 체크인하는 날인가 — 배지에 시각을 함께 보여줄지 가른다. */
+  isCheckInDay: boolean;
+}
+
+export interface StayCheckout {
+  stayId: number;
+  name: string;
+  checkOutTime: string | null;
 }
 
 export interface BoardTrip {
@@ -133,8 +156,20 @@ export interface Board {
   activities: Activity[];
   /** 연속한 두 일정 사이 이동. 장소 없는 일정은 건너뛴 결과다. */
   travelTimes: TravelTime[];
-  /** 마지막 일정 → 숙소 이동. 숙소는 3단계라 아직 null이다. */
-  stayMove: null;
+  /**
+   * 그날 마지막 일정 → 오늘 밤 숙소 이동. 숙소가 없거나 보관함을 보고 있으면 null.
+   *
+   * <p>`sameCity`가 false면 `mode`·`durationMinutes`가 없다 — 도시를 넘는 이동은 계산하지
+   * 않는다(§3.4).
+   */
+  stayMove: StayMove | null;
+}
+
+export interface StayMove {
+  stayId: number;
+  sameCity: boolean;
+  mode: TravelMode | null;
+  durationMinutes: number | null;
 }
 
 /**

@@ -19,6 +19,7 @@ import ds.project.orino.planner.travel.day.service.LegDeriver;
 import ds.project.orino.planner.travel.day.service.TripClock;
 import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.route.service.TravelTimeService;
+import ds.project.orino.planner.travel.stay.service.StayBoardAssembler;
 import ds.project.orino.planner.travel.tools.dto.WeatherResponse;
 import ds.project.orino.planner.travel.tools.service.WeatherService;
 import org.springframework.stereotype.Service;
@@ -53,6 +54,7 @@ public class BoardService {
     private final TripDayService tripDayService;
     private final TravelTimeService travelTimeService;
     private final WeatherService weatherService;
+    private final StayBoardAssembler stayAssembler;
     private final Clock clock;
 
     public BoardService(TripRepository tripRepository,
@@ -62,6 +64,7 @@ public class BoardService {
                         TripDayService tripDayService,
                         TravelTimeService travelTimeService,
                         WeatherService weatherService,
+                        StayBoardAssembler stayAssembler,
                         Clock clock) {
         this.tripRepository = tripRepository;
         this.activityRepository = activityRepository;
@@ -70,6 +73,7 @@ public class BoardService {
         this.tripDayService = tripDayService;
         this.travelTimeService = travelTimeService;
         this.weatherService = weatherService;
+        this.stayAssembler = stayAssembler;
         this.clock = clock;
     }
 
@@ -92,18 +96,21 @@ public class BoardService {
 
         // 선택한 날짜의 기준 도시. 도시 이탈 판정이 이 도시와 견준다.
         TravelPlace selectedCity = selectedDate == null ? null : cities.get(selectedDate);
+        // 숙소는 여행 전체를 한 번에 읽는다 — 날짜 탭마다 조회하면 기간만큼 쿼리가 는다.
+        StayBoardAssembler.Stays stays = stayAssembler.of(tripId);
 
         return new BoardResponse(
                 buildTrip(trip, cities, status),
-                buildDays(trip, cities),
+                buildDays(trip, cities, stays),
                 selectedDate,
                 activityRepository.countUnscheduled(tripId),
                 withBaseCity(activityService.toResponses(activities), selectedCity),
                 // 보관함은 날짜에 배정되지 않은 목록이라 순서에 이동 의미가 없다.
                 // 계산해 봐야 화면에 쓰지 않고, 호출당 과금이라 그냥 낭비다.
                 selectedDate == null ? List.of() : travelTimeService.travelTimes(activities),
-                // 숙소는 3단계다. 형태만 확정해 두고 값은 아직 없다.
-                null);
+                // 보관함에는 "그날 밤"이 없다 — 숙소 이동도 없다.
+                selectedDate == null ? null
+                        : stayAssembler.moveToStay(stays, selectedDate, activities, selectedCity));
     }
 
     /**
@@ -160,7 +167,8 @@ public class BoardService {
      * 며칠씩 이어지는 일정에서 길을 잃지 않는다.
      */
     private List<BoardResponse.BoardDay> buildDays(Trip trip,
-                                                   Map<LocalDate, TravelPlace> cities) {
+                                                   Map<LocalDate, TravelPlace> cities,
+                                                   StayBoardAssembler.Stays stays) {
         Map<LocalDate, Long> counts = activityRepository.countByDate(trip.getId()).stream()
                 .collect(Collectors.toMap(ActivityDateCount::activityDate, ActivityDateCount::count));
         // 날짜 탭이 전부 필요로 하므로 여행 기간을 한 번에 받는다(§S-08).
@@ -188,8 +196,8 @@ public class BoardService {
                     row.getCityMemo(),
                     // 예보 범위(오늘부터 16일) 밖이면 null이다 — 화면이 그 자리를 비운다.
                     weather.get(date),
-                    // 숙소는 3단계다.
-                    null, null));
+                    stayAssembler.tonight(stays, date, city),
+                    stayAssembler.checkout(stays, date)));
             previousCity = row.getBasePlaceId();
         }
         return days;
