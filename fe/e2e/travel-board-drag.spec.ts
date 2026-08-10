@@ -85,7 +85,7 @@ async function mockBoard(page: Page): Promise<Captured> {
         moves: { date: string | null; activityIds: number[] }[];
       };
       captured.orders.push(body.moves);
-      return route.fulfill(ok({ legs: [] }));
+      return route.fulfill(ok({ travelTimes: [] }));
     },
   );
 
@@ -127,7 +127,7 @@ async function mockBoard(page: Page): Promise<Captured> {
                 activity(2, "우에노", 1),
                 activity(3, "디즈니씨", 2),
               ],
-        legs: [],
+        travelTimes: [],
       }),
     );
   });
