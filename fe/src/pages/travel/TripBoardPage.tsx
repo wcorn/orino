@@ -17,6 +17,7 @@ import {
 import {
   ArrowLeft,
   Map as MapIcon,
+  MapPin,
   MoreVertical,
   Plus,
   Search,
@@ -58,6 +59,11 @@ import {
 } from "@/features/travel/hooks/useActivityMutations";
 import { useBoard } from "@/features/travel/hooks/useBoard";
 import { useUpdateDay } from "@/features/travel/hooks/useUpdateDay";
+import {
+  daysForPlace,
+  groupArchiveByCity,
+} from "@/features/travel/lib/archiveGroups";
+import { PickDaySheet } from "@/features/travel/places/PickDaySheet";
 import { toast } from "@/shared/lib/toast";
 import { useOnline } from "@/shared/lib/useOnline";
 
@@ -116,6 +122,8 @@ export function TripBoardPage() {
   const [deletingTrip, setDeletingTrip] = useState(false);
   /** 기준 도시 시트를 연 날짜. null이면 닫혀 있다. */
   const [cityDay, setCityDay] = useState<BoardDay | null>(null);
+  /** 날짜를 고르는 중인 보관함 일정. null이면 시트가 닫혀 있다. */
+  const [pickingDayFor, setPickingDayFor] = useState<Activity | null>(null);
   const [dragMode, setDragMode] = useState(false);
   const [openTravelTime, setOpenTravelTime] = useState<TravelTime | null>(null);
   // 오프라인은 조회 전용이다(§4.6). 편집을 막는 게 아니라 진입 자체를 없앤다.
@@ -180,6 +188,11 @@ export function TripBoardPage() {
         .map((city) => [city.placeId, city]),
     ).values(),
   ];
+
+  /** 보관함은 순서가 아니라 도시로 읽는다. 보고 있지 않으면 계산할 이유가 없다. */
+  const archiveGroups = isArchive
+    ? groupArchiveByCity(activities, board.days)
+    : [];
 
   const selectDay = (date: string) => {
     const index = board.days.findIndex((d) => d.date === date);
@@ -246,6 +259,13 @@ export function TripBoardPage() {
       date: selectedDate,
       activityIds: next.map((a) => a.id),
     });
+  };
+
+  /** 보관함 일정을 고른 날짜로 보낸다. 날짜를 고르지 않으면(보관함) 아무 일도 없다. */
+  const pickDayFor = async (activity: Activity, date: string | null) => {
+    setPickingDayFor(null);
+    if (date === null) return;
+    await moveToDay(activity, date);
   };
 
   /** 날짜 탭에 떨어뜨렸다 — 그 날짜의 맨 뒤로 보낸다. */
@@ -441,7 +461,38 @@ export function TripBoardPage() {
           </p>
         )}
 
-        {activities.length > 0 && (
+        {/* 보관함은 도시별로 묶는다 — 그 도시 날짜를 짜는 동안 볼 것이 한 덩어리가 된다.
+            순서가 없는 목록이라 드래그 정렬도 없다. */}
+        {isArchive &&
+          archiveGroups.map((group) => (
+            <section key={group.key} className="flex flex-col">
+              <h2 className="text-caption text-muted-foreground flex items-center gap-1.5 px-2 pt-2 font-semibold">
+                <MapPin className="size-3" />
+                {group.label}
+              </h2>
+              <ul className="flex flex-col">
+                {group.activities.map((activity) => (
+                  <ActivityRow
+                    key={activity.id}
+                    activity={activity}
+                    inArchive
+                    dragMode={false}
+                    offline={!online}
+                    canMoveUp={false}
+                    canMoveDown={false}
+                    onMoveUp={() => {}}
+                    onMoveDown={() => {}}
+                    onArchive={() => {}}
+                    onPickDay={() => setPickingDayFor(activity)}
+                    onDelete={() => removeActivityDeferred(activity)}
+                    onEnterDragMode={() => {}}
+                  />
+                ))}
+              </ul>
+            </section>
+          ))}
+
+        {!isArchive && activities.length > 0 && (
           <SortableContext
             items={activities.map((a) => a.id)}
             strategy={verticalListSortingStrategy}
@@ -528,6 +579,17 @@ export function TripBoardPage() {
         onPickFromArchive={(a) => void pickFromArchive(a)}
         onSearchPlaces={() => navigate(`/travel/trips/${tripId}/places`)}
         pending={createActivity.isPending || updateActivity.isPending}
+      />
+
+      {/* 담기 시트는 S-06 검색 결과와 같은 것을 쓴다 — 담는 자리마다 다르게 생기면
+          "어느 날에 담을까"라는 같은 질문을 두 번 배워야 한다. */}
+      <PickDaySheet
+        open={pickingDayFor !== null}
+        onOpenChange={(open) => !open && setPickingDayFor(null)}
+        placeName={pickingDayFor?.title ?? null}
+        days={daysForPlace(board.days, pickingDayFor?.place?.cityPlaceRef)}
+        onPick={(date) => pickingDayFor && void pickDayFor(pickingDayFor, date)}
+        pending={updateActivity.isPending}
       />
 
       <BaseCitySheet

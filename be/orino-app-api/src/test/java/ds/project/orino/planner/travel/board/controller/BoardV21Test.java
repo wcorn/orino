@@ -240,6 +240,31 @@ class BoardV21Test extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.activities[0].place.cityName").value("오사카"));
         }
 
+        /**
+         * 화면이 보관함을 도시별로 묶고 담기 시트를 정렬하려면 <b>기준 도시 쪽 식별자</b>가
+         * 있어야 한다. 이름으로 묶으면 같은 글자를 쓰는 다른 도시가 한 덩어리가 된다.
+         */
+        @Test
+        @DisplayName("기준 도시에도 도시 식별자가 실려 온다 — 화면이 같은 값으로 묶는다")
+        void carriesBaseCityIdentifier() throws Exception {
+            long tripId = createTrip(leg(tokyo, 4));
+            withCityRef(tokyo, "ChIJ_tokyo");
+
+            board(tripId)
+                    .andExpect(jsonPath("$.data.days[0].baseCity.cityPlaceRef")
+                            .value("ChIJ_tokyo"));
+        }
+
+        @Test
+        @DisplayName("직접 입력한 도시에는 식별자가 없다 — 그런 장소는 묶지 않는다")
+        void manualCityHasNoIdentifier() throws Exception {
+            long tripId = createTrip(leg(tokyo, 4));
+
+            board(tripId)
+                    .andExpect(jsonPath("$.data.days[0].baseCity.cityPlaceRef")
+                            .doesNotExist());
+        }
+
         @Test
         @DisplayName("같은 도시의 장소면 서지 않는다")
         void sameCityIsNotFlagged() throws Exception {
