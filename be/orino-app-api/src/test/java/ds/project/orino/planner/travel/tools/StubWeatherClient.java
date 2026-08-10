@@ -24,9 +24,19 @@ public class StubWeatherClient implements WeatherClient {
     public Optional<WeatherResponse> result = Optional.of(
             WeatherResponse.empty(Instant.parse("2026-08-08T00:00:00Z")));
 
+    /**
+     * 좌표마다 다른 예보를 주고 싶을 때. 도시별 조회가 정말 도시별인지 보려면 응답이 달라야
+     * 한다 — 같은 값이면 어느 도시 것이 붙었는지 구별되지 않는다.
+     */
+    public java.util.function.Function<String, WeatherResponse> byCoordinates;
+
     @Override
     public Optional<WeatherResponse> forecast(BigDecimal lat, BigDecimal lng, String timezone) {
-        calls.add("%s,%s:%s".formatted(lat, lng, timezone));
+        String key = "%s,%s".formatted(lat, lng);
+        calls.add("%s:%s".formatted(key, timezone));
+        if (byCoordinates != null) {
+            return Optional.of(byCoordinates.apply(key));
+        }
         return result;
     }
 
@@ -39,6 +49,7 @@ public class StubWeatherClient implements WeatherClient {
 
     public void reset() {
         calls.clear();
+        byCoordinates = null;
         result = Optional.of(WeatherResponse.empty(Instant.parse("2026-08-08T00:00:00Z")));
     }
 }

@@ -20,6 +20,8 @@ function activity(id: number, place: Activity["place"] = null): Activity {
     sortOrder: id,
     log: null,
     hasLog: false,
+    outOfBaseCity: false,
+    canDepartureNotify: true,
   };
 }
 
@@ -29,6 +31,8 @@ const SENSOJI = {
   address: "다이토구",
   lat: 35.7147651,
   lng: 139.7966553,
+  cityName: "도쿄",
+  cityPlaceRef: "ChIJ_tokyo",
 };
 const SKYTREE = {
   id: 11,
@@ -36,6 +40,8 @@ const SKYTREE = {
   address: "스미다구",
   lat: 35.7100627,
   lng: 139.8107004,
+  cityName: "도쿄",
+  cityPlaceRef: "ChIJ_tokyo",
 };
 
 describe("지도에 올릴 일정 고르기", () => {
@@ -57,6 +63,8 @@ describe("지도에 올릴 일정 고르기", () => {
       address: null,
       lat: null,
       lng: null,
+      cityName: null,
+      cityPlaceRef: null,
     };
 
     expect(toMapped([activity(1, manual)])).toHaveLength(0);

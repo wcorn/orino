@@ -145,6 +145,8 @@ public class PlaceService {
         place.updateBasics(fresh.address(), fresh.lat(), fresh.lng(),
                 fresh.category(), fresh.rating());
         place.updateDetails(fresh.phone(), fresh.openingHours(), clock.instant());
+        // 어느 도시의 장소인지는 상세 응답에 이미 들어 있다 — 화면의 `· 오사카` 꼬리표가 쓴다.
+        place.updateCityInfo(fresh.cityName(), place.getCityPlaceRef(), fresh.countryCode());
         return placeRepository.save(place);
     }
 

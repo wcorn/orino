@@ -11,20 +11,45 @@ import { expect, type Page, test } from "@playwright/test";
  */
 
 const TRIP_ID = 1;
+
+const TOKYO = {
+  placeId: 21,
+  name: "도쿄",
+  timezone: "Asia/Tokyo",
+  currency: "JPY",
+  countryCode: "JP",
+  lat: null,
+  lng: null,
+};
+
 const DAYS = [
   {
+    dayId: 501,
     dayIndex: 1,
     date: "2026-10-24",
     weekday: "토",
     activityCount: 3,
+    baseCity: TOKYO,
+    cityChanged: false,
+    legIndex: 1,
+    cityMemo: null,
     weather: null,
+    stayTonight: null,
+    stayCheckout: null,
   },
   {
+    dayId: 502,
     dayIndex: 2,
     date: "2026-10-25",
     weekday: "일",
     activityCount: 0,
+    baseCity: TOKYO,
+    cityChanged: false,
+    legIndex: 1,
+    cityMemo: null,
     weather: null,
+    stayTonight: null,
+    stayCheckout: null,
   },
 ];
 
@@ -109,12 +134,13 @@ async function mockBoard(page: Page): Promise<Captured> {
         trip: {
           id: TRIP_ID,
           title: "도쿄 3박 4일",
-          timezone: "Asia/Tokyo",
-          currency: "JPY",
           startDate: DAYS[0].date,
           endDate: DAYS[1].date,
           status: "UPCOMING",
           recordMode: false,
+          cityCount: 1,
+          countryCount: 1,
+          singleCity: true,
         },
         days: DAYS,
         selectedDate: isArchive ? null : date,
@@ -128,6 +154,7 @@ async function mockBoard(page: Page): Promise<Captured> {
                 activity(3, "디즈니씨", 2),
               ],
         travelTimes: [],
+        stayMove: null,
       }),
     );
   });

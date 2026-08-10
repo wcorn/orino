@@ -78,10 +78,15 @@ class BoardControllerTest extends ApiTestSupport {
         mockMvc.perform(get("/api/travel/trips/" + tripId + "/board")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(jsonPath("$.data.trip.title").value("도쿄"))
-                .andExpect(jsonPath("$.data.trip.timezone").value("Asia/Tokyo"))
-                .andExpect(jsonPath("$.data.trip.currency").value("JPY"))
                 .andExpect(jsonPath("$.data.trip.status").value("UPCOMING"))
-                .andExpect(jsonPath("$.data.trip.recordMode").value(false));
+                .andExpect(jsonPath("$.data.trip.recordMode").value(false))
+                // v2.1 — 타임존·통화는 여행이 아니라 날짜의 기준 도시가 갖는다.
+                .andExpect(jsonPath("$.data.trip.timezone").doesNotExist())
+                .andExpect(jsonPath("$.data.trip.currency").doesNotExist())
+                .andExpect(jsonPath("$.data.days[0].baseCity.timezone").value("Asia/Tokyo"))
+                .andExpect(jsonPath("$.data.days[0].baseCity.currency").value("JPY"))
+                .andExpect(jsonPath("$.data.trip.singleCity").value(true))
+                .andExpect(jsonPath("$.data.trip.cityCount").value(1));
     }
 
     @Test

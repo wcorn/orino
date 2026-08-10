@@ -152,6 +152,12 @@ export function TripBoardPage() {
     ]),
   );
 
+  /** 보고 있는 날짜의 기준 도시. 보관함에는 날짜가 없어 첫날로 떨어진다. */
+  const selectedCity =
+    (board.selectedDate
+      ? board.days.find((day) => day.date === board.selectedDate)?.baseCity
+      : board.days[0]?.baseCity) ?? null;
+
   const selectDay = (date: string) => {
     const index = board.days.findIndex((d) => d.date === date);
     setSearchParams({ day: String(index) }, { replace: true });
@@ -289,10 +295,14 @@ export function TripBoardPage() {
             <h1 className="text-heading truncate font-semibold">
               {board.trip.title}
             </h1>
-            <LocalClockLine
-              timezone={board.trip.timezone}
-              recordMode={board.trip.recordMode}
-            />
+            {/* 시계는 <b>보고 있는 날짜</b>의 기준 도시를 따른다 — 도시를 옮겨 다니면
+                날짜 탭을 넘길 때마다 현지 시각이 바뀐다. */}
+            {selectedCity && (
+              <LocalClockLine
+                timezone={selectedCity.timezone}
+                recordMode={board.trip.recordMode}
+              />
+            )}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
