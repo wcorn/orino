@@ -10,6 +10,7 @@ import ds.project.orino.domain.planner.travel.repository.TripDayRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.day.dto.DayUpdateRequest;
 import ds.project.orino.planner.travel.day.dto.TripDayResponse;
+import ds.project.orino.planner.travel.place.service.PlaceService;
 import ds.project.orino.planner.travel.push.service.NotificationScheduleService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,17 +43,20 @@ public class BaseCityChangeService {
     private final TripRepository tripRepository;
     private final TripDayRepository dayRepository;
     private final TravelPlaceRepository placeRepository;
+    private final PlaceService placeService;
     private final NotificationScheduleService notificationService;
     private final TripDayQueryService queryService;
 
     public BaseCityChangeService(TripRepository tripRepository,
                                  TripDayRepository dayRepository,
                                  TravelPlaceRepository placeRepository,
+                                 PlaceService placeService,
                                  NotificationScheduleService notificationService,
                                  TripDayQueryService queryService) {
         this.tripRepository = tripRepository;
         this.dayRepository = dayRepository;
         this.placeRepository = placeRepository;
+        this.placeService = placeService;
         this.notificationService = notificationService;
         this.queryService = queryService;
     }
@@ -73,10 +77,12 @@ public class BaseCityChangeService {
                 // 남의 여행 날짜도 404 — 존재 여부가 새어나가지 않는다.
                 .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_DAY_NOT_FOUND));
 
-        boolean cityChanged = request.baseCityPlaceId() != null
-                && !request.baseCityPlaceId().equals(day.getBasePlaceId());
+        // 검색 결과로 바꾸는 경우, 담긴 도시의 id는 해석한 뒤에야 안다 — 이미 이 여행이 쓰던
+        // 도시를 다시 고른 것일 수도 있어 "바뀌었나"는 그다음에 묻는다.
+        Long newCityId = request.hasCity() ? resolveCity(memberId, request) : null;
+        boolean cityChanged = newCityId != null && !newCityId.equals(day.getBasePlaceId());
         if (cityChanged) {
-            day.changeBaseCity(requireCity(memberId, request.baseCityPlaceId()).getId());
+            day.changeBaseCity(newCityId);
         }
         if (request.cityMemo() != null) {
             day.updateCityMemo(request.cityMemo());
@@ -92,12 +98,29 @@ public class BaseCityChangeService {
     }
 
     /**
+     * 고른 방식 그대로 도시를 해석한다 — 담아 둔 도시면 id로, 검색 결과면 담으면서.
+     *
+     * <p>검색 결과를 그대로 받는 이유는 구간 입력과 같다: 고르기 전에 저장부터 하라고 하면
+     * 저장했다가 취소한 도시가 쌓이고, 화면이 만든 도시에는 <b>도시 식별자가 없어</b> 그날
+     * 일정이 전부 "다른 도시"로 표시된다.
+     */
+    private Long resolveCity(Long memberId, DayUpdateRequest request) {
+        if (request.hasGoogleId()) {
+            return requireCity(placeService
+                    .upsertCityFromGoogle(memberId, request.baseCityGooglePlaceId().trim()))
+                    .getId();
+        }
+        return requireCity(placeRepository
+                .findByIdAndMemberId(request.baseCityPlaceId(), memberId)
+                .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_PLACE_NOT_FOUND)))
+                .getId();
+    }
+
+    /**
      * 도시가 아닌 장소는 기준 도시가 될 수 없다. 타임존은 우연히 맞더라도 도시 일치 판정이
      * 그날 일정을 전부 "다른 도시"로 만든다.
      */
-    private TravelPlace requireCity(Long memberId, Long placeId) {
-        TravelPlace place = placeRepository.findByIdAndMemberId(placeId, memberId)
-                .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_PLACE_NOT_FOUND));
+    private TravelPlace requireCity(TravelPlace place) {
         if (!place.isCity() || place.getTimezone() == null) {
             throw new CustomException(ErrorCode.TRAVEL_NOT_A_CITY);
         }

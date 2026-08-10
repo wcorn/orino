@@ -2,6 +2,11 @@ import { type PointerEvent, useCallback, useEffect, useRef } from "react";
 
 /** 설계가 정한 진입 시간. 스크롤하려던 손짓과 구분되는 최소한의 길이다. */
 const HOLD_MS = 400;
+/**
+ * 날짜 탭의 기준 도시 시트는 450ms다. 일정 행(400ms)과 <b>대상이 달라</b> 충돌하지 않지만,
+ * 탭은 가로 스크롤도 겸하는 자리라 반 박자 길게 잡는다.
+ */
+export const TAB_HOLD_MS = 450;
 /** 이만큼 움직이면 누른 게 아니라 스크롤·스와이프다. */
 const TOLERANCE_PX = 8;
 
@@ -15,7 +20,11 @@ const TOLERANCE_PX = 8;
  *
  * <p>그래서 진입은 이 훅이 맡고, 실제 드래그는 모드에 들어온 뒤에만 활성화한다.
  */
-export function useLongPress(onLongPress: () => void, enabled = true) {
+export function useLongPress(
+  onLongPress: () => void,
+  enabled = true,
+  holdMs: number = HOLD_MS,
+) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const origin = useRef<{ x: number; y: number } | null>(null);
 
@@ -33,7 +42,7 @@ export function useLongPress(onLongPress: () => void, enabled = true) {
     timer.current = setTimeout(() => {
       onLongPress();
       clear();
-    }, HOLD_MS);
+    }, holdMs);
   };
 
   const onPointerMove = (event: PointerEvent<HTMLElement>) => {

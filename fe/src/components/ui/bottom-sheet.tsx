@@ -18,7 +18,11 @@ const POPUP_CLASS = [
 
 interface BottomSheetProps {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  /**
+   * 열림 상태 변경. `reason`은 무엇이 닫았는지다(`outside-press`·`escape-key`…) — 롱프레스로
+   * 연 시트처럼 <b>여는 손짓의 끝이 곧바로 바깥 클릭이 되는</b> 경우를 호출부가 가려낸다.
+   */
+  onOpenChange: (open: boolean, reason?: string) => void;
   /** 제목 — Dialog.Title로 렌더(접근성 필수). */
   title: ReactNode;
   /** 제목 아래 보조 설명(선택). */
@@ -44,7 +48,10 @@ export function BottomSheet({
   children,
 }: BottomSheetProps) {
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next, details) => onOpenChange(next, details.reason)}
+    >
       <Dialog.Portal>
         <Dialog.Backdrop className={BACKDROP_CLASS} />
         <Dialog.Popup className={cn(POPUP_CLASS, className)}>

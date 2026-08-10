@@ -20,6 +20,7 @@ import {
   MoreVertical,
   Plus,
   Search,
+  StickyNote,
   Wrench,
 } from "lucide-react";
 import { Fragment, useState } from "react";
@@ -30,12 +31,18 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingText } from "@/components/ui/loading-text";
 import { Menu, MenuItem } from "@/components/ui/menu";
-import type { Activity, TravelTime } from "@/features/travel/api/activities";
+import type {
+  Activity,
+  BoardDay,
+  TravelTime,
+} from "@/features/travel/api/activities";
 // 삭제는 뮤테이션 훅이 아니라 raw 요청을 쓴다 — 화면을 떠난 뒤에 보낼 수도 있어서다.
 import { deleteActivity as deleteActivityRequest } from "@/features/travel/api/activities";
+import type { DayUpdateRequest } from "@/features/travel/api/days";
 import { deleteTrip } from "@/features/travel/api/travel";
 import { ActivityRow } from "@/features/travel/board/ActivityRow";
 import { AddSheet } from "@/features/travel/board/AddSheet";
+import { BaseCitySheet } from "@/features/travel/board/BaseCitySheet";
 import { DayTabs } from "@/features/travel/board/DayTabs";
 import { DragModeBar } from "@/features/travel/board/DragModeBar";
 import { LocalClockLine } from "@/features/travel/board/LocalClockLine";
@@ -50,6 +57,7 @@ import {
   useUpdateActivity,
 } from "@/features/travel/hooks/useActivityMutations";
 import { useBoard } from "@/features/travel/hooks/useBoard";
+import { useUpdateDay } from "@/features/travel/hooks/useUpdateDay";
 import { toast } from "@/shared/lib/toast";
 import { useOnline } from "@/shared/lib/useOnline";
 
@@ -106,6 +114,8 @@ export function TripBoardPage() {
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [deletingTrip, setDeletingTrip] = useState(false);
+  /** 기준 도시 시트를 연 날짜. null이면 닫혀 있다. */
+  const [cityDay, setCityDay] = useState<BoardDay | null>(null);
   const [dragMode, setDragMode] = useState(false);
   const [openTravelTime, setOpenTravelTime] = useState<TravelTime | null>(null);
   // 오프라인은 조회 전용이다(§4.6). 편집을 막는 게 아니라 진입 자체를 없앤다.
@@ -113,6 +123,7 @@ export function TripBoardPage() {
 
   const createActivity = useCreateActivity(tripId);
   const updateActivity = useUpdateActivity(tripId);
+  const updateDay = useUpdateDay(tripId);
   const reorder = useReorderActivities(tripId);
   const undoable = useUndoableAction(tripId);
   const pendingIds = usePendingActions((state) => state.pendingIds);
@@ -152,11 +163,23 @@ export function TripBoardPage() {
     ]),
   );
 
+  /** 보고 있는 날짜. 보관함을 보고 있으면 없다. */
+  const selectedDay =
+    board.days.find((day) => day.date === board.selectedDate) ?? null;
   /** 보고 있는 날짜의 기준 도시. 보관함에는 날짜가 없어 첫날로 떨어진다. */
-  const selectedCity =
-    (board.selectedDate
-      ? board.days.find((day) => day.date === board.selectedDate)?.baseCity
-      : board.days[0]?.baseCity) ?? null;
+  const selectedCity = (selectedDay ?? board.days[0])?.baseCity ?? null;
+
+  /**
+   * 이 여행에 등장하는 도시들. 기준 도시를 바꿀 때 가장 자주 고르는 후보라 시트 위쪽에
+   * 그대로 올린다 — 도쿄↔닛코를 오가는 변경에 매번 검색을 시킬 이유가 없다.
+   */
+  const tripCities = [
+    ...new Map(
+      board.days
+        .flatMap((day) => (day.baseCity ? [day.baseCity] : []))
+        .map((city) => [city.placeId, city]),
+    ).values(),
+  ];
 
   const selectDay = (date: string) => {
     const index = board.days.findIndex((d) => d.date === date);
@@ -242,6 +265,30 @@ export function TripBoardPage() {
     );
   };
 
+  /**
+   * 기준 도시·도시 메모 저장. 도시가 바뀌면 구간이 다시 나뉘므로 탭 전체가 다시 그려진다
+   * (응답이 기간 전체라 훅이 보드를 통째로 무효화한다).
+   */
+  const saveDay = async (body: DayUpdateRequest) => {
+    if (!cityDay) return;
+    if (Object.keys(body).length === 0) {
+      setCityDay(null);
+      return;
+    }
+    try {
+      await updateDay.mutateAsync({ dayId: cityDay.dayId, body });
+      setCityDay(null);
+      toast(
+        body.baseCityPlaceId || body.baseCityGooglePlaceId
+          ? "기준 도시를 바꿨어요."
+          : "도시 메모를 저장했어요.",
+        "success",
+      );
+    } catch {
+      toast("저장하지 못했어요.", "error");
+    }
+  };
+
   /** 행을 길게 눌렀다 — 드래그 모드로 들어간다. */
   const enterDragMode = () => {
     if (dragMode) return;
@@ -295,13 +342,21 @@ export function TripBoardPage() {
             <h1 className="text-heading truncate font-semibold">
               {board.trip.title}
             </h1>
-            {/* 시계는 <b>보고 있는 날짜</b>의 기준 도시를 따른다 — 도시를 옮겨 다니면
-                날짜 탭을 넘길 때마다 현지 시각이 바뀐다. */}
-            {selectedCity && (
-              <LocalClockLine
-                timezone={selectedCity.timezone}
-                recordMode={board.trip.recordMode}
-              />
+            {/* 부제는 <b>보고 있는 날짜</b>의 기준 도시를 따른다 — 도시를 옮겨 다니면
+                날짜 탭을 넘길 때마다 도시도 현지 시각도 바뀐다. */}
+            {isArchive ? (
+              <p className="text-caption text-muted-foreground">
+                미배정 보관함
+              </p>
+            ) : (
+              selectedCity && (
+                <LocalClockLine
+                  cityName={selectedCity.name}
+                  timezone={selectedCity.timezone}
+                  currency={selectedCity.currency}
+                  recordMode={board.trip.recordMode}
+                />
+              )
             )}
           </div>
         </div>
@@ -337,8 +392,15 @@ export function TripBoardPage() {
               </Button>
             }
           >
+            {/* 롱프레스는 손가락의 길이다. 마우스·키보드로도 같은 곳에 닿아야 한다. */}
+            <MenuItem
+              disabled={selectedDay === null || !online}
+              onClick={() => setCityDay(selectedDay)}
+            >
+              기준 도시 변경
+            </MenuItem>
             <MenuItem onClick={() => navigate(`/travel/trips/${tripId}/edit`)}>
-              여행 수정
+              구간 수정
             </MenuItem>
             <MenuItem disabled>알림 설정</MenuItem>
             <MenuItem
@@ -362,12 +424,22 @@ export function TripBoardPage() {
           days={board.days}
           archiveCount={board.archiveCount}
           selectedDate={selectedDate}
+          singleCity={board.trip.singleCity}
           onSelectDate={selectDay}
           onSelectArchive={selectArchive}
+          onLongPressDay={setCityDay}
           // 드래그가 시작된 뒤에 등록하면 그 드래그의 충돌 판정 대상에 들어가지 못한다.
           // 드래그 중이 아닐 때는 아무 영향도 없으므로 항상 켜 둔다.
           droppable
         />
+
+        {/* 도시 메모는 있을 때만 한 줄. 없는 날짜에 빈 자리를 남기지 않는다. */}
+        {selectedDay?.cityMemo && (
+          <p className="bg-muted flex items-center gap-2 rounded-lg px-3 py-2 text-[13px]">
+            <StickyNote className="size-3.5 shrink-0" />
+            {selectedDay.cityMemo}
+          </p>
+        )}
 
         {activities.length > 0 && (
           <SortableContext
@@ -456,6 +528,14 @@ export function TripBoardPage() {
         onPickFromArchive={(a) => void pickFromArchive(a)}
         onSearchPlaces={() => navigate(`/travel/trips/${tripId}/places`)}
         pending={createActivity.isPending || updateActivity.isPending}
+      />
+
+      <BaseCitySheet
+        day={cityDay}
+        tripCities={tripCities}
+        onOpenChange={(open) => !open && setCityDay(null)}
+        onSubmit={(body) => void saveDay(body)}
+        pending={updateDay.isPending}
       />
 
       <ConfirmDialog

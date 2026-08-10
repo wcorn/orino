@@ -131,6 +131,14 @@ function mockBoard(options: {
   );
 }
 
+/** 날짜 탭을 450ms 길게 눌러 기준 도시 시트를 연다. 손가락이 하는 일 그대로다. */
+async function openCitySheet(tabIndex: number) {
+  const tab = screen.getAllByRole("tab")[tabIndex];
+  fireEvent.pointerDown(tab, { clientX: 10, clientY: 10 });
+  await screen.findByRole("dialog", undefined, { timeout: 2000 });
+  fireEvent.pointerUp(tab);
+}
+
 function renderBoard(path = "/travel/trips/3/board") {
   return renderWithRouter(
     <Providers>
@@ -237,7 +245,282 @@ describe("TripBoardPage", () => {
     });
   });
 
+  describe("탭이 도시를 말한다 (v2.1)", () => {
+    /** 도쿄 → 닛코 → 도쿄. 하루만 다른 도시라 구간이 셋으로 쪼개진 여행이다. */
+    const NIKKO = baseCity(22, "닛코", "Asia/Tokyo");
+    const MULTI_DAYS = [
+      day(1, "2026-10-24", "토", 0),
+      day(2, "2026-10-25", "일", 0, {
+        baseCity: NIKKO,
+        cityChanged: true,
+        legIndex: 2,
+      }),
+      day(3, "2026-10-26", "월", 0, { cityChanged: true, legIndex: 3 }),
+    ];
+
+    function mockMultiCity(overrides: Record<string, unknown> = {}) {
+      mockBoard({
+        byDate: { "2026-10-24": [], "2026-10-25": [], "2026-10-26": [] },
+        trip: { singleCity: false, cityCount: 2, ...overrides },
+        days: MULTI_DAYS,
+      });
+    }
+
+    it("도시가 여럿이면 탭이 `N 도시명`을 쓴다", async () => {
+      mockMultiCity();
+
+      renderBoard();
+
+      const tabs = await screen.findAllByRole("tab");
+      expect(tabs[0]).toHaveTextContent("1 도쿄");
+      expect(tabs[1]).toHaveTextContent("2 닛코");
+      expect(tabs[2]).toHaveTextContent("3 도쿄");
+    });
+
+    it("전 기간 한 도시면 도시명을 감추고 `N일차`로 쓴다 — 반복은 정보가 아니다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [] } });
+
+      renderBoard();
+
+      const tabs = await screen.findAllByRole("tab");
+      expect(tabs[0]).toHaveTextContent("1일차");
+      expect(tabs[0]).not.toHaveTextContent("도쿄");
+    });
+
+    it("도시가 바뀌는 탭 앞에만 구분선이 선다 — 첫날은 비교할 앞 날짜가 없다", async () => {
+      mockMultiCity();
+
+      renderBoard();
+      await screen.findAllByRole("tab");
+
+      // 탭 줄의 자식 순서로 확인한다: 칩 · 선 · 칩 · 선 · 칩 · 보관함 칩.
+      const strip = screen.getByRole("tablist");
+      const roles = [...strip.children].map((el) => el.getAttribute("role"));
+      expect(roles).toEqual(["tab", null, "tab", null, "tab", "tab"]);
+    });
+
+    it("450ms 눌러야 기준 도시 시트가 열린다 — 400ms는 아직 아니다", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      mockMultiCity();
+
+      renderBoard();
+      const tab = (await screen.findAllByRole("tab"))[1];
+
+      // 일정 행의 드래그 진입(400ms)과 같은 길이로는 열리지 않는다.
+      await act(async () => {
+        fireEvent.pointerDown(tab, { clientX: 10, clientY: 10 });
+        vi.advanceTimersByTime(420);
+      });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(60);
+      });
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.getByText(/2일차 10.25 · 지금은 닛코/)).toBeInTheDocument();
+      vi.useRealTimers();
+    });
+
+    it("이 여행의 도시를 고르면 그 날짜만 바꾸는 요청이 나간다", async () => {
+      const seen: { dayId: string; body: Record<string, unknown> }[] = [];
+      mockMultiCity();
+      server.use(
+        http.put(
+          `${API_BASE}/travel/days/:dayId`,
+          async ({ params, request }) => {
+            seen.push({
+              dayId: String(params.dayId),
+              body: (await request.json()) as Record<string, unknown>,
+            });
+            return HttpResponse.json({ code: "OK", data: [] });
+          },
+        ),
+      );
+
+      renderBoard();
+      await screen.findAllByRole("tab");
+      await openCitySheet(1);
+
+      const sheet = screen.getByRole("dialog");
+      await userEvent.click(
+        within(sheet).getByRole("button", { name: "도쿄" }),
+      );
+      await userEvent.click(
+        within(sheet).getByRole("button", { name: "저장" }),
+      );
+
+      await waitFor(() => expect(seen).toHaveLength(1));
+      // 2일차의 dayId. 보고 있던 날짜가 아니라 길게 누른 날짜다.
+      expect(seen[0].dayId).toBe("502");
+      expect(seen[0].body).toEqual({ baseCityPlaceId: 21 });
+    });
+
+    it("검색으로 고른 도시는 고른 그대로 보낸다 — 서버가 담으며 식별자를 붙인다", async () => {
+      const seen: Record<string, unknown>[] = [];
+      mockMultiCity();
+      server.use(
+        http.get(`${API_BASE}/travel/places/cities`, () =>
+          HttpResponse.json({
+            code: "OK",
+            data: [
+              {
+                googlePlaceId: "ChIJ_kyoto",
+                name: "교토",
+                address: "일본 교토부",
+                lat: 35.0116,
+                lng: 135.7681,
+                timezone: "Asia/Tokyo",
+                currency: "JPY",
+              },
+            ],
+          }),
+        ),
+        http.put(`${API_BASE}/travel/days/:dayId`, async ({ request }) => {
+          seen.push((await request.json()) as Record<string, unknown>);
+          return HttpResponse.json({ code: "OK", data: [] });
+        }),
+      );
+
+      renderBoard();
+      await screen.findAllByRole("tab");
+      await openCitySheet(1);
+
+      const sheet = screen.getByRole("dialog");
+      await userEvent.type(within(sheet).getByLabelText("도시 검색"), "교토");
+      await userEvent.click(
+        within(sheet).getByRole("button", { name: "검색" }),
+      );
+      await userEvent.click(
+        await within(sheet).findByRole("button", { name: /교토/ }),
+      );
+      await userEvent.click(
+        within(sheet).getByRole("button", { name: "저장" }),
+      );
+
+      await waitFor(() => expect(seen).toHaveLength(1));
+      expect(seen[0]).toEqual({ baseCityGooglePlaceId: "ChIJ_kyoto" });
+    });
+
+    it("도시 메모는 있을 때만 탭 아래 한 줄로 보인다", async () => {
+      mockBoard({
+        byDate: { "2026-10-24": [], "2026-10-25": [] },
+        days: [
+          day(1, "2026-10-24", "토", 0, { cityMemo: "코인로커에 짐 보관" }),
+          day(2, "2026-10-25", "일", 0),
+        ],
+      });
+
+      renderBoard();
+
+      expect(await screen.findByText("코인로커에 짐 보관")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("tab", { name: /2일차/ }));
+
+      await waitFor(() => {
+        expect(
+          screen.queryByText("코인로커에 짐 보관"),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it("메모만 고치면 도시는 건드리지 않는다", async () => {
+      const seen: Record<string, unknown>[] = [];
+      mockBoard({ byDate: { "2026-10-24": [] } });
+      server.use(
+        http.put(`${API_BASE}/travel/days/:dayId`, async ({ request }) => {
+          seen.push((await request.json()) as Record<string, unknown>);
+          return HttpResponse.json({ code: "OK", data: [] });
+        }),
+      );
+
+      renderBoard();
+      await screen.findAllByRole("tab");
+      await openCitySheet(0);
+
+      const sheet = screen.getByRole("dialog");
+      await userEvent.type(
+        within(sheet).getByLabelText("도시 메모"),
+        "코인로커",
+      );
+      await userEvent.click(
+        within(sheet).getByRole("button", { name: "저장" }),
+      );
+
+      await waitFor(() => expect(seen).toHaveLength(1));
+      expect(seen[0]).toEqual({ cityMemo: "코인로커" });
+    });
+
+    it("메뉴로도 같은 시트를 연다 — 롱프레스는 손가락의 길일 뿐이다", async () => {
+      mockMultiCity();
+
+      renderBoard();
+      await screen.findAllByRole("tab");
+
+      await userEvent.click(screen.getByRole("button", { name: "여행 메뉴" }));
+      await userEvent.click(
+        await screen.findByRole("menuitem", { name: "기준 도시 변경" }),
+      );
+
+      expect(await screen.findByRole("dialog")).toHaveTextContent(
+        "1일차 10.24 · 지금은 도쿄",
+      );
+    });
+  });
+
   describe("일정 행", () => {
+    it("그날 도시가 아닌 장소면 도시명을 덧붙인다 — 막지는 않는다", async () => {
+      mockBoard({
+        byDate: {
+          "2026-10-24": [
+            activity({
+              title: "구로몬 시장",
+              outOfBaseCity: true,
+              place: {
+                id: 7,
+                name: "구로몬 시장",
+                address: null,
+                lat: null,
+                lng: null,
+                cityName: "오사카",
+                cityPlaceRef: "ChIJ_osaka",
+              },
+            }),
+          ],
+        },
+      });
+
+      renderBoard();
+
+      expect(await screen.findByText("· 오사카")).toBeInTheDocument();
+      // 경고일 뿐 일정은 그대로 있다(제목 + 장소명).
+      expect(screen.getAllByText("구로몬 시장")).toHaveLength(2);
+    });
+
+    it("같은 도시의 장소에는 아무것도 붙이지 않는다", async () => {
+      mockBoard({
+        byDate: {
+          "2026-10-24": [
+            activity({
+              place: {
+                id: 8,
+                name: "센소지",
+                address: null,
+                lat: null,
+                lng: null,
+                cityName: "도쿄",
+                cityPlaceRef: "ChIJ_tokyo",
+              },
+            }),
+          ],
+        },
+      });
+
+      renderBoard();
+
+      await screen.findAllByText("센소지");
+      expect(screen.queryByText("· 도쿄")).not.toBeInTheDocument();
+    });
+
     it("시각을 tabular-nums로 보여주고, 없으면 ── 로 자리를 지킨다", async () => {
       mockBoard({
         byDate: {
@@ -590,13 +873,59 @@ describe("TripBoardPage", () => {
 
       expect(await screen.findByText(/Europe\/Paris/)).toBeInTheDocument();
 
-      await userEvent.click(screen.getByRole("tab", { name: /2일차/ }));
+      // 도시가 둘이면 탭이 도시명을 쓴다 — `2일차`가 아니라 `2 호놀룰루`다.
+      await userEvent.click(screen.getByRole("tab", { name: /호놀룰루/ }));
 
       expect(await screen.findByText(/Pacific\/Honolulu/)).toBeInTheDocument();
       expect(screen.queryByText(/Europe\/Paris/)).not.toBeInTheDocument();
     });
 
-    it("메뉴에서 여행 수정으로 간다", async () => {
+    it("부제가 도시·타임존·통화를 함께 말한다 — v2.1에서 이 값들의 주인은 날짜다", async () => {
+      const paris = baseCity(23, "파리", "Europe/Paris", "EUR");
+      mockBoard({
+        byDate: { "2026-10-24": [] },
+        trip: { singleCity: false, cityCount: 2 },
+        days: [day(1, "2026-10-24", "토", 0, { baseCity: paris })],
+      });
+
+      renderBoard();
+
+      expect(
+        await screen.findByText(
+          /현지 \d{2}:\d{2} · 파리 · Europe\/Paris · EUR/,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("기기와 오프셋이 같으면 시각만 감추고 도시·타임존은 남긴다", async () => {
+      // 기기 타임존을 그대로 쓴다 — 어느 환경에서 돌려도 오프셋이 0이다.
+      const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      mockBoard({
+        byDate: { "2026-10-24": [] },
+        days: [
+          day(1, "2026-10-24", "토", 0, {
+            baseCity: baseCity(24, "여기", here, "KRW"),
+          }),
+        ],
+      });
+
+      renderBoard();
+
+      expect(
+        await screen.findByText(`여기 · ${here} · KRW`),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/현지 /)).not.toBeInTheDocument();
+    });
+
+    it("보관함에는 기준 도시가 없다 — 부제도 그렇게 말한다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [] }, archive: [] });
+
+      renderBoard("/travel/trips/3/board?day=archive");
+
+      expect(await screen.findByText("미배정 보관함")).toBeInTheDocument();
+    });
+
+    it("메뉴에서 구간 수정으로 간다", async () => {
       mockBoard({ byDate: { "2026-10-24": [] } });
       server.use(
         http.get(`${API_BASE}/travel/trips/:tripId`, () =>
@@ -623,7 +952,7 @@ describe("TripBoardPage", () => {
 
       await userEvent.click(screen.getByRole("button", { name: "여행 메뉴" }));
       await userEvent.click(
-        await screen.findByRole("menuitem", { name: "여행 수정" }),
+        await screen.findByRole("menuitem", { name: "구간 수정" }),
       );
 
       await waitFor(() => {
