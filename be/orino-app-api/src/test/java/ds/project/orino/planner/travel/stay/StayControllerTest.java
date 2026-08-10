@@ -1,0 +1,365 @@
+package ds.project.orino.planner.travel.stay;
+
+import com.jayway.jsonpath.JsonPath;
+import ds.project.orino.domain.member.repository.MemberRepository;
+import ds.project.orino.domain.planner.travel.entity.TravelPlace;
+import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
+import ds.project.orino.support.ApiTestSupport;
+import ds.project.orino.support.AuthFixture;
+import ds.project.orino.support.DbCleaner;
+import ds.project.orino.support.MemberFixture;
+import ds.project.orino.support.StubExternalsConfig;
+import ds.project.orino.support.TravelCityFixture;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+
+import java.math.BigDecimal;
+import java.util.UUID;
+
+import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * 숙소 CRUD와 보드에 붙는 숙소(§4.5 · §3.5).
+ *
+ * <p>이 테스트의 절반은 <b>겹침 경계</b>다. 체크아웃일과 다음 체크인일이 같은 것은 겹침이
+ * 아니라 이동일의 정상 모양인데, 반열린 구간을 닫힌 구간으로 잘못 다루면 연박 일정을 아예
+ * 만들 수 없게 된다.
+ */
+// 스텁 조합을 새로 만들지 않는다 — 조합이 늘 때마다 Spring 컨텍스트가 하나씩 더 뜨고,
+// 각각이 커넥션 풀을 물고 있어 전체 실행에서 OutOfMemoryError로 무너진다.
+@Import(StubExternalsConfig.class)
+class StayControllerTest extends ApiTestSupport {
+
+    @Autowired
+    private MemberRepository memberRepository;
+    @Autowired
+    private TravelPlaceRepository placeRepository;
+    @Autowired
+    private DbCleaner dbCleaner;
+
+    private String authHeader;
+    private String otherAuthHeader;
+    private long tripId;
+    private long osaka;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        dbCleaner.clean();
+        memberRepository.save(MemberFixture.create());
+        memberRepository.save(MemberFixture.create("other", "password"));
+        authHeader = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc);
+        otherAuthHeader = "Bearer "
+                + AuthFixture.loginAndGetAccessToken(mockMvc, "other", "password");
+
+        osaka = TravelCityFixture.createCity(mockMvc, authHeader, "오사카", "Asia/Tokyo", "JPY");
+        tripId = createTrip();
+    }
+
+    @Nested
+    @DisplayName("등록 · 목록")
+    class Create {
+
+        @Test
+        @DisplayName("숙소를 등록하면 묵는 밤 수와 함께 돌아온다")
+        void createsStay() throws Exception {
+            createStay("도톤보리 호텔", "2026-10-24", "2026-10-27")
+                    .andExpect(jsonPath("$.data.name").value("도톤보리 호텔"))
+                    .andExpect(jsonPath("$.data.checkInDate").value("2026-10-24"))
+                    .andExpect(jsonPath("$.data.checkOutDate").value("2026-10-27"))
+                    // [in, out) 반열린 구간이라 24·25·26 세 밤이다.
+                    .andExpect(jsonPath("$.data.nights").value(3));
+
+            mockMvc.perform(get("/api/travel/trips/" + tripId + "/stays")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data", hasSize(1)));
+        }
+
+        @Test
+        @DisplayName("체크아웃일과 다음 체크인일이 같은 것은 겹침이 아니다 — 이동일의 정상 모양")
+        void allowsBackToBackStays() throws Exception {
+            createStay("오사카 호텔", "2026-10-24", "2026-10-26");
+
+            createStay("교토 게스트하우스", "2026-10-26", "2026-10-27")
+                    .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("묵는 밤이 겹치면 409 — 어느 숙소와 겹치는지 함께 준다")
+        void rejectsOverlap() throws Exception {
+            String body = createStay("오사카 호텔", "2026-10-24", "2026-10-27")
+                    .andReturn().getResponse().getContentAsString();
+            long existing = ((Number) JsonPath.read(body, "$.data.stayId")).longValue();
+
+            mockMvc.perform(post("/api/travel/trips/" + tripId + "/stays")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(stayBody("교토 호텔", "2026-10-26", "2026-10-27")))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-017"))
+                    // "겹칩니다"만 말하면 사용자가 할 수 있는 일이 없다.
+                    .andExpect(jsonPath("$.data.stayId").value((int) existing))
+                    .andExpect(jsonPath("$.data.name").value("오사카 호텔"))
+                    .andExpect(jsonPath("$.data.checkOutDate").value("2026-10-27"));
+        }
+
+        @Test
+        @DisplayName("체크아웃이 체크인보다 뒤가 아니면 400 — 0박은 어느 날짜에도 안 붙는다")
+        void rejectsEmptyPeriod() throws Exception {
+            mockMvc.perform(post("/api/travel/trips/" + tripId + "/stays")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(stayBody("하루도 안 묵는 곳", "2026-10-25", "2026-10-25")))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-002"));
+        }
+
+        @Test
+        @DisplayName("여행 기간 밖이면 400 — 붙을 날짜가 없다")
+        void rejectsOutOfPeriod() throws Exception {
+            mockMvc.perform(post("/api/travel/trips/" + tripId + "/stays")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(stayBody("기간 밖", "2026-11-01", "2026-11-03")))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-007"));
+        }
+
+        @Test
+        @DisplayName("남의 여행에는 숙소를 넣을 수 없다")
+        void scopedByMember() throws Exception {
+            mockMvc.perform(post("/api/travel/trips/" + tripId + "/stays")
+                            .header(HttpHeaders.AUTHORIZATION, otherAuthHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(stayBody("남의 숙소", "2026-10-24", "2026-10-26")))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-001"));
+        }
+    }
+
+    @Nested
+    @DisplayName("수정 · 삭제")
+    class UpdateAndDelete {
+
+        @Test
+        @DisplayName("기간을 그대로 두고 이름만 고칠 수 있다 — 자기 자신과는 겹치지 않는다")
+        void updatesWithoutSelfOverlap() throws Exception {
+            long stayId = stayId(createStay("도톤보리 호텔", "2026-10-24", "2026-10-27"));
+
+            mockMvc.perform(put("/api/travel/stays/" + stayId)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(stayBody("난바 호텔", "2026-10-24", "2026-10-27")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.name").value("난바 호텔"));
+        }
+
+        @Test
+        @DisplayName("다른 숙소 기간으로 밀면 409")
+        void rejectsOverlapOnUpdate() throws Exception {
+            createStay("오사카 호텔", "2026-10-24", "2026-10-26");
+            long stayId = stayId(createStay("교토 호텔", "2026-10-26", "2026-10-27"));
+
+            mockMvc.perform(put("/api/travel/stays/" + stayId)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(stayBody("교토 호텔", "2026-10-25", "2026-10-27")))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-017"));
+        }
+
+        @Test
+        @DisplayName("삭제하면 목록에서 사라진다")
+        void deletesStay() throws Exception {
+            long stayId = stayId(createStay("도톤보리 호텔", "2026-10-24", "2026-10-27"));
+
+            mockMvc.perform(delete("/api/travel/stays/" + stayId)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
+
+            mockMvc.perform(get("/api/travel/trips/" + tripId + "/stays")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data", hasSize(0)));
+        }
+
+        @Test
+        @DisplayName("남의 숙소는 404 — 존재 여부가 새어나가지 않는다")
+        void deleteScopedByMember() throws Exception {
+            long stayId = stayId(createStay("도톤보리 호텔", "2026-10-24", "2026-10-27"));
+
+            mockMvc.perform(delete("/api/travel/stays/" + stayId)
+                            .header(HttpHeaders.AUTHORIZATION, otherAuthHeader))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-020"));
+        }
+    }
+
+    @Nested
+    @DisplayName("보드에 붙는 숙소")
+    class OnBoard {
+
+        @Test
+        @DisplayName("묵는 밤에는 오늘 밤 숙소가, 체크아웃일에는 체크아웃이 붙는다")
+        void fillsDayFields() throws Exception {
+            createStayWithTimes("도톤보리 호텔", "2026-10-24", "2026-10-26", "15:00", "11:00");
+
+            board("2026-10-24")
+                    .andExpect(jsonPath("$.data.days[0].stayTonight.name")
+                            .value("도톤보리 호텔"))
+                    .andExpect(jsonPath("$.data.days[0].stayTonight.isCheckInDay").value(true))
+                    .andExpect(jsonPath("$.data.days[0].stayTonight.checkInTime").value("15:00"))
+                    // 체크아웃일 밤은 이미 다른 곳에서 잔다 — 26일에는 오늘 밤 숙소가 없다.
+                    .andExpect(jsonPath("$.data.days[2].stayTonight").doesNotExist())
+                    .andExpect(jsonPath("$.data.days[2].stayCheckout.name")
+                            .value("도톤보리 호텔"))
+                    .andExpect(jsonPath("$.data.days[2].stayCheckout.checkOutTime")
+                            .value("11:00"));
+        }
+
+        @Test
+        @DisplayName("마지막 일정에서 숙소까지 이동이 붙는다 — 같은 도시일 때만 계산한다")
+        void computesStayMoveInSameCity() throws Exception {
+            long stayPlace = poiInCity("난바 호텔", "ChIJ_osaka");
+            withCityRef(osaka, "ChIJ_osaka");
+            createActivity("구로몬 시장", "2026-10-24", poiInCity("구로몬 시장", "ChIJ_osaka"));
+            createStayWithPlace("난바 호텔", "2026-10-24", "2026-10-26", stayPlace);
+
+            board("2026-10-24")
+                    .andExpect(jsonPath("$.data.stayMove.sameCity").value(true))
+                    .andExpect(jsonPath("$.data.stayMove.mode").exists());
+        }
+
+        @Test
+        @DisplayName("도시가 다르면 계산하지 않고 표시만 한다")
+        void skipsComputationAcrossCities() throws Exception {
+            withCityRef(osaka, "ChIJ_osaka");
+            long stayPlace = poiInCity("교토 게스트하우스", "ChIJ_kyoto");
+            createActivity("구로몬 시장", "2026-10-24", poiInCity("구로몬 시장", "ChIJ_osaka"));
+            createStayWithPlace("교토 게스트하우스", "2026-10-24", "2026-10-26", stayPlace);
+
+            board("2026-10-24")
+                    .andExpect(jsonPath("$.data.stayMove.sameCity").value(false))
+                    .andExpect(jsonPath("$.data.stayMove.mode").doesNotExist())
+                    .andExpect(jsonPath("$.data.stayMove.durationMinutes").doesNotExist());
+        }
+
+        @Test
+        @DisplayName("보관함에는 그날 밤이 없다 — 숙소 이동도 없다")
+        void noStayMoveInArchive() throws Exception {
+            createStay("도톤보리 호텔", "2026-10-24", "2026-10-26");
+
+            mockMvc.perform(get("/api/travel/trips/" + tripId + "/board")
+                            .param("archive", "true")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.stayMove").doesNotExist());
+        }
+    }
+
+    // ---------------- helpers ----------------
+
+    private long createTrip() throws Exception {
+        String body = mockMvc.perform(post("/api/travel/trips")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "오사카", "startDate": "2026-10-24",
+                                 "endDate": "2026-10-27", %s}
+                                """.formatted(TravelCityFixture.singleLeg(osaka, 4))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) JsonPath.read(body, "$.data.id")).longValue();
+    }
+
+    private static String stayBody(String name, String checkIn, String checkOut) {
+        return """
+                {"name": "%s", "checkInDate": "%s", "checkOutDate": "%s"}
+                """.formatted(name, checkIn, checkOut);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions createStay(
+            String name, String checkIn, String checkOut) throws Exception {
+        return mockMvc.perform(post("/api/travel/trips/" + tripId + "/stays")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(stayBody(name, checkIn, checkOut)))
+                .andExpect(status().isOk());
+    }
+
+    private void createStayWithTimes(String name, String checkIn, String checkOut,
+                                     String inTime, String outTime) throws Exception {
+        mockMvc.perform(post("/api/travel/trips/" + tripId + "/stays")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "%s", "checkInDate": "%s", "checkOutDate": "%s",
+                                 "checkInTime": "%s", "checkOutTime": "%s"}
+                                """.formatted(name, checkIn, checkOut, inTime, outTime)))
+                .andExpect(status().isOk());
+    }
+
+    private void createStayWithPlace(String name, String checkIn, String checkOut, long placeId)
+            throws Exception {
+        mockMvc.perform(post("/api/travel/trips/" + tripId + "/stays")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "%s", "checkInDate": "%s", "checkOutDate": "%s",
+                                 "placeId": %d}
+                                """.formatted(name, checkIn, checkOut, placeId)))
+                .andExpect(status().isOk());
+    }
+
+    private static long stayId(org.springframework.test.web.servlet.ResultActions result)
+            throws Exception {
+        return ((Number) JsonPath.read(result.andReturn().getResponse().getContentAsString(),
+                "$.data.stayId")).longValue();
+    }
+
+    private void createActivity(String title, String date, long placeId) throws Exception {
+        mockMvc.perform(post("/api/travel/trips/" + tripId + "/activities")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "%s", "activityDate": "%s", "placeId": %d}
+                                """.formatted(title, date, placeId)))
+                .andExpect(status().isOk());
+    }
+
+    /** 좌표와 도시 식별자를 가진 장소. 도시 일치 판정은 식별자만 본다. */
+    private long poiInCity(String name, String cityPlaceRef) {
+        Long memberId = memberRepository.findAll().get(0).getId();
+        TravelPlace place = placeRepository.save(
+                TravelPlace.fromGoogle(memberId, "g-" + UUID.randomUUID(), name));
+        place.updateBasics(null, new BigDecimal("34.6650"), new BigDecimal("135.5010"),
+                null, null);
+        place.updateCityInfo(name, cityPlaceRef, "JP");
+        return placeRepository.saveAndFlush(place).getId();
+    }
+
+    private void withCityRef(long cityPlaceId, String cityPlaceRef) {
+        TravelPlace city = placeRepository.findById(cityPlaceId).orElseThrow();
+        city.updateCityInfo(city.getName(), cityPlaceRef, "JP");
+        placeRepository.saveAndFlush(city);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions board(String date)
+            throws Exception {
+        return mockMvc.perform(get("/api/travel/trips/" + tripId + "/board")
+                        .param("date", date)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk());
+    }
+}

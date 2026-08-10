@@ -28,7 +28,7 @@ import java.util.List;
  * @param archiveCount  미배정 보관함 일정 수(보관함 칩의 "{n}개")
  * @param activities    선택된 날짜(또는 보관함)의 일정만. {@code sortOrder} 순
  * @param travelTimes   연속한 두 일정 사이 이동시간(§4.4). 장소 없는 일정은 건너뛴다
- * @param stayMove      마지막 일정 → 숙소 이동. 숙소는 3단계라 지금은 항상 {@code null}
+ * @param stayMove      그날 마지막 일정 → 오늘 밤 숙소 이동. 숙소가 없거나 보관함을 보고 있으면 null
  */
 public record BoardResponse(
         BoardTrip trip,
@@ -69,8 +69,8 @@ public record BoardResponse(
      * @param cityChanged   직전 날짜와 도시가 다르다 → 탭 왼쪽에 구분선
      * @param legIndex      이 날짜가 속한 구간 번호(1부터). 저장값이 아니라 파생이다
      * @param weather       날씨 요약. 예보 범위(16일) 밖이면 null이다
-     * @param stayTonight   오늘 밤 자는 곳. 숙소는 3단계라 지금은 항상 null
-     * @param stayCheckout  오늘 체크아웃하는 곳. 3단계까지 null
+     * @param stayTonight   오늘 밤 자는 곳({@code checkIn <= date < checkOut})
+     * @param stayCheckout  오늘 체크아웃하는 곳
      */
     public record BoardDay(
             Long dayId,
@@ -89,10 +89,10 @@ public record BoardResponse(
     }
 
     /**
-     * 오늘 밤 자는 곳. <b>3단계에 테이블이 채워지기 전까지 항상 null</b>이다 —
-     * 형태를 지금 확정해 두면 FE가 두 번 고치지 않는다.
+     * 오늘 밤 자는 곳.
      *
-     * @param sameCity     그날 기준 도시와 같은 도시인가. 닛코 당일치기 날 도쿄에서 자면 false
+     * @param sameCity     그날 기준 도시와 같은 도시인가. 닛코 당일치기 날 도쿄에서 자면 false.
+     *                     <b>식별자가 한쪽이라도 없으면 판정하지 않고 같은 도시로 본다</b>(D-23)
      * @param isCheckInDay 오늘 체크인하는 날인가 — 배지에 시각을 함께 보여줄지 가른다
      */
     public record StayTonight(
@@ -104,7 +104,7 @@ public record BoardResponse(
     ) {
     }
 
-    /** 오늘 체크아웃하는 곳. 3단계까지 null. */
+    /** 오늘 체크아웃하는 곳. 없으면 null. */
     public record StayCheckout(
             Long stayId,
             String name,
@@ -113,7 +113,7 @@ public record BoardResponse(
     }
 
     /**
-     * 리스트 맨 아래 붙는 숙소 이동. 3단계까지 null.
+     * 리스트 맨 아래 붙는 숙소 이동. 오늘 밤 숙소가 없거나 그날 일정이 없으면 null이다.
      *
      * <p>{@code sameCity = false}면 {@code mode}·{@code durationMinutes}가 null이다 —
      * 도시를 넘는 이동은 계산하지 않는다(v2.1 §3.4).
