@@ -10,8 +10,8 @@ import ds.project.orino.domain.planner.travel.entity.TripActivity;
 import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.day.service.TripDayService;
-import ds.project.orino.planner.travel.route.dto.LegResponse;
-import ds.project.orino.planner.travel.route.service.LegService;
+import ds.project.orino.planner.travel.route.dto.TravelTimeResponse;
+import ds.project.orino.planner.travel.route.service.TravelTimeService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,18 +46,18 @@ public class NotificationScheduleService {
     private final TripActivityRepository activityRepository;
     private final TripRepository tripRepository;
     private final TripDayService tripDayService;
-    private final LegService legService;
+    private final TravelTimeService travelTimeService;
 
     public NotificationScheduleService(PushNotificationRepository notificationRepository,
                                        TripActivityRepository activityRepository,
                                        TripRepository tripRepository,
                                        TripDayService tripDayService,
-                                       LegService legService) {
+                                       TravelTimeService travelTimeService) {
         this.notificationRepository = notificationRepository;
         this.activityRepository = activityRepository;
         this.tripRepository = tripRepository;
         this.tripDayService = tripDayService;
-        this.legService = legService;
+        this.travelTimeService = travelTimeService;
     }
 
     /**
@@ -152,10 +152,10 @@ public class NotificationScheduleService {
     private List<PushNotification> build(Trip trip, List<TripActivity> ordered, ZoneId zone) {
         // 이동시간은 출발 알림에만 쓴다. 아무도 켜지 않았으면 조회할 이유가 없다 —
         // 일정을 저장할 때마다 유료 API를 부르게 되고, 저장이 그만큼 느려진다.
-        Map<Long, LegResponse> legsByTo = ordered.stream()
+        Map<Long, TravelTimeResponse> travelTimesByTo = ordered.stream()
                 .anyMatch(TripActivity::isDepartureNotifyEnabled)
-                ? legService.legs(ordered).stream()
-                        .collect(Collectors.toMap(LegResponse::toActivityId, Function.identity()))
+                ? travelTimeService.travelTimes(ordered).stream()
+                        .collect(Collectors.toMap(TravelTimeResponse::toActivityId, Function.identity()))
                 : Map.of();
 
         List<PushNotification> created = new ArrayList<>();
@@ -174,7 +174,7 @@ public class NotificationScheduleService {
                                 * activity.resolveNotifyMinutes(trip.getDefaultNotifyMinutes()))));
             }
 
-            departureAt(activity, legsByTo.get(activity.getId()), startAt)
+            departureAt(activity, travelTimesByTo.get(activity.getId()), startAt)
                     .ifPresent(at -> created.add(PushNotification.forActivity(
                             trip.getMemberId(), trip.getId(), activity.getId(),
                             NotificationType.DEPARTURE, at)));
@@ -188,14 +188,14 @@ public class NotificationScheduleService {
      * <p><b>직전 장소 있는 일정이 없으면 만들지 않는다.</b> 어디서 출발하는지 모르면 언제
      * 나서야 하는지도 모른다 — 화면에서도 그 경우 이 설정이 비활성이다.
      */
-    private Optional<Instant> departureAt(TripActivity activity, LegResponse leg, Instant startAt) {
-        if (!activity.isDepartureNotifyEnabled() || leg == null
-                || leg.durationMinutes() == null) {
+    private Optional<Instant> departureAt(TripActivity activity, TravelTimeResponse travelTime, Instant startAt) {
+        if (!activity.isDepartureNotifyEnabled() || travelTime == null
+                || travelTime.durationMinutes() == null) {
             // fallback(직선거리만 아는 구간)은 소요 시간을 모른다 — 지어내지 않는다.
             return Optional.empty();
         }
         return Optional.of(startAt.minusSeconds(60L
-                * (leg.durationMinutes() + PushNotification.DEPARTURE_BUFFER_MINUTES)));
+                * (travelTime.durationMinutes() + PushNotification.DEPARTURE_BUFFER_MINUTES)));
     }
 
     /**

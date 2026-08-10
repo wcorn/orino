@@ -2,7 +2,7 @@ package ds.project.orino.planner.travel.board.dto;
 
 import ds.project.orino.domain.planner.travel.entity.TripStatus;
 import ds.project.orino.planner.travel.activity.dto.ActivityResponse;
-import ds.project.orino.planner.travel.route.dto.LegResponse;
+import ds.project.orino.planner.travel.route.dto.TravelTimeResponse;
 import ds.project.orino.planner.travel.tools.dto.WeatherResponse;
 
 import java.time.LocalDate;
@@ -19,7 +19,7 @@ import java.util.List;
  *                      요청이 날짜를 생략했을 때 서버가 무엇을 골랐는지 FE가 알아야 탭을 강조할 수 있다
  * @param archiveCount  미배정 보관함 일정 수(보관함 칩의 "{n}개")
  * @param activities    선택된 날짜(또는 보관함)의 일정만. {@code sortOrder} 순
- * @param legs          연속한 두 일정 사이 이동시간(§4.4). 장소 없는 일정은 건너뛴다
+ * @param travelTimes   연속한 두 일정 사이 이동시간(§4.4). 장소 없는 일정은 건너뛴다
  */
 public record BoardResponse(
         BoardTrip trip,
@@ -27,7 +27,7 @@ public record BoardResponse(
         LocalDate selectedDate,
         long archiveCount,
         List<ActivityResponse> activities,
-        List<LegResponse> legs
+        List<TravelTimeResponse> travelTimes
 ) {
 
     /**

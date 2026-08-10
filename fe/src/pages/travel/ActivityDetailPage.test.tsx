@@ -264,7 +264,7 @@ describe("ActivityDetailPage", () => {
             selectedDate: archive ? null : "2026-10-24",
             archiveCount: 1,
             activities: [],
-            legs: [],
+            travelTimes: [],
           },
         });
       }),

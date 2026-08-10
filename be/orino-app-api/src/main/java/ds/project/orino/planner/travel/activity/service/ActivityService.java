@@ -21,8 +21,8 @@ import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.photo.dto.PhotoResponse;
 import ds.project.orino.planner.travel.photo.service.TravelPhotoService;
 import ds.project.orino.planner.travel.push.service.NotificationScheduleService;
-import ds.project.orino.planner.travel.route.dto.LegResponse;
-import ds.project.orino.planner.travel.route.service.LegService;
+import ds.project.orino.planner.travel.route.dto.TravelTimeResponse;
+import ds.project.orino.planner.travel.route.service.TravelTimeService;
 import ds.project.orino.planner.travel.place.service.PlaceService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,7 +63,7 @@ public class ActivityService {
     private final TripRepository tripRepository;
     private final TravelPlaceRepository placeRepository;
     private final PlaceService placeService;
-    private final LegService legService;
+    private final TravelTimeService travelTimeService;
     private final NotificationScheduleService notificationService;
     private final TripDayService tripDayService;
     private final Clock clock;
@@ -75,7 +75,7 @@ public class ActivityService {
                            TripRepository tripRepository,
                            TravelPlaceRepository placeRepository,
                            PlaceService placeService,
-                           LegService legService,
+                           TravelTimeService travelTimeService,
                            NotificationScheduleService notificationService,
                            TripDayService tripDayService,
                            Clock clock) {
@@ -86,7 +86,7 @@ public class ActivityService {
         this.tripRepository = tripRepository;
         this.placeRepository = placeRepository;
         this.placeService = placeService;
-        this.legService = legService;
+        this.travelTimeService = travelTimeService;
         this.notificationService = notificationService;
         this.tripDayService = tripDayService;
         this.clock = clock;
@@ -193,7 +193,7 @@ public class ActivityService {
      * 클라이언트가 실수로 일부만 보내도 순서에 구멍이나 중복이 남지 않게 하기 위한 것이다.
      */
     @Transactional
-    public List<LegResponse> reorder(Long memberId, Long tripId, ReorderRequest request) {
+    public List<TravelTimeResponse> reorder(Long memberId, Long tripId, ReorderRequest request) {
         Trip trip = getOwnedTrip(memberId, tripId);
 
         Map<Long, TripActivity> targets = loadOwnedActivities(tripId, request);
@@ -219,7 +219,7 @@ public class ActivityService {
         // 보관함(null)은 이동 의미가 없어 건너뛴다.
         return touchedDates.stream()
                 .filter(java.util.Objects::nonNull)
-                .flatMap(date -> legService.legs(
+                .flatMap(date -> travelTimeService.travelTimes(
                         activityRepository.findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(
                                 tripId, date)).stream())
                 .toList();

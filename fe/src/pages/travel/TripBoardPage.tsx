@@ -30,7 +30,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingText } from "@/components/ui/loading-text";
 import { Menu, MenuItem } from "@/components/ui/menu";
-import type { Activity, Leg } from "@/features/travel/api/activities";
+import type { Activity, TravelTime } from "@/features/travel/api/activities";
 // 삭제는 뮤테이션 훅이 아니라 raw 요청을 쓴다 — 화면을 떠난 뒤에 보낼 수도 있어서다.
 import { deleteActivity as deleteActivityRequest } from "@/features/travel/api/activities";
 import { deleteTrip } from "@/features/travel/api/travel";
@@ -38,11 +38,11 @@ import { ActivityRow } from "@/features/travel/board/ActivityRow";
 import { AddSheet } from "@/features/travel/board/AddSheet";
 import { DayTabs } from "@/features/travel/board/DayTabs";
 import { DragModeBar } from "@/features/travel/board/DragModeBar";
-import { LegRow } from "@/features/travel/board/LegRow";
 import { LocalClockLine } from "@/features/travel/board/LocalClockLine";
 import { OfflineBanner } from "@/features/travel/board/OfflineBanner";
 import { usePendingActions } from "@/features/travel/board/pendingActions";
 import { TransportSheet } from "@/features/travel/board/TransportSheet";
+import { TravelTimeRow } from "@/features/travel/board/TravelTimeRow";
 import { useUndoableAction } from "@/features/travel/board/useUndoableAction";
 import {
   useCreateActivity,
@@ -107,7 +107,7 @@ export function TripBoardPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [deletingTrip, setDeletingTrip] = useState(false);
   const [dragMode, setDragMode] = useState(false);
-  const [openLeg, setOpenLeg] = useState<Leg | null>(null);
+  const [openTravelTime, setOpenTravelTime] = useState<TravelTime | null>(null);
   // 오프라인은 조회 전용이다(§4.6). 편집을 막는 게 아니라 진입 자체를 없앤다.
   const online = useOnline();
 
@@ -145,7 +145,12 @@ export function TripBoardPage() {
    * 실제로는 점심을 건너뛴 전망대→저녁 구간이다. 도착 앞에 두면 "저녁까지 28분"이 되어
    * 건너뛴 일정이 있어도 가리키는 곳이 분명하다.
    */
-  const legsByTo = new Map(board.legs.map((leg) => [leg.toActivityId, leg]));
+  const travelTimesByTo = new Map(
+    board.travelTimes.map((travelTime) => [
+      travelTime.toActivityId,
+      travelTime,
+    ]),
+  );
 
   const selectDay = (date: string) => {
     const index = board.days.findIndex((d) => d.date === date);
@@ -363,10 +368,10 @@ export function TripBoardPage() {
               {activities.map((activity, index) => (
                 <Fragment key={activity.id}>
                   {/* 드래그 중에는 감춘다 — 순서가 바뀌는 중이라 표시값이 곧 거짓이 된다. */}
-                  {!dragMode && legsByTo.get(activity.id) && (
-                    <LegRow
-                      leg={legsByTo.get(activity.id)!}
-                      onOpen={setOpenLeg}
+                  {!dragMode && travelTimesByTo.get(activity.id) && (
+                    <TravelTimeRow
+                      travelTime={travelTimesByTo.get(activity.id)!}
+                      onOpen={setOpenTravelTime}
                       offline={!online}
                     />
                   )}
@@ -425,10 +430,10 @@ export function TripBoardPage() {
       )}
 
       <TransportSheet
-        open={openLeg !== null}
-        onOpenChange={(open) => !open && setOpenLeg(null)}
+        open={openTravelTime !== null}
+        onOpenChange={(open) => !open && setOpenTravelTime(null)}
         tripId={tripId}
-        leg={openLeg}
+        travelTime={openTravelTime}
         activities={activities}
       />
 

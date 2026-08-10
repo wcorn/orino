@@ -77,7 +77,7 @@ function mockBoard(options: {
   byDate?: Record<string, unknown[]>;
   archive?: unknown[];
   trip?: Record<string, unknown>;
-  legs?: unknown[];
+  travelTimes?: unknown[];
 }) {
   const byDate = options.byDate ?? {};
   const archive = options.archive ?? [];
@@ -94,7 +94,7 @@ function mockBoard(options: {
           selectedDate: isArchive ? null : date,
           archiveCount: archive.length,
           activities: isArchive ? archive : (byDate[date] ?? []),
-          legs: isArchive ? [] : (options.legs ?? []),
+          travelTimes: isArchive ? [] : (options.travelTimes ?? []),
         },
       });
     }),
@@ -595,7 +595,7 @@ describe("TripBoardPage", () => {
   });
 
   describe("이동시간", () => {
-    function leg(overrides: Record<string, unknown> = {}) {
+    function travelTime(overrides: Record<string, unknown> = {}) {
       return {
         fromActivityId: 1,
         toActivityId: 2,
@@ -635,7 +635,10 @@ describe("TripBoardPage", () => {
     }
 
     it("일정 사이에 이동시간을 보여준다", async () => {
-      mockBoard({ byDate: { "2026-10-24": twoActivities() }, legs: [leg()] });
+      mockBoard({
+        byDate: { "2026-10-24": twoActivities() },
+        travelTimes: [travelTime()],
+      });
 
       renderBoard();
 
@@ -647,7 +650,13 @@ describe("TripBoardPage", () => {
     it("계산이 실패하면 시간 대신 거리를 보여준다 — 틀린 분 수는 계획을 망친다", async () => {
       mockBoard({
         byDate: { "2026-10-24": twoActivities() },
-        legs: [leg({ durationMinutes: null, distanceM: 8200, fallback: true })],
+        travelTimes: [
+          travelTime({
+            durationMinutes: null,
+            distanceM: 8200,
+            fallback: true,
+          }),
+        ],
       });
 
       renderBoard();
@@ -659,7 +668,10 @@ describe("TripBoardPage", () => {
 
     it("드래그 모드에서는 감춘다 — 순서가 바뀌는 중이라 표시값이 곧 거짓이 된다", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
-      mockBoard({ byDate: { "2026-10-24": twoActivities() }, legs: [leg()] });
+      mockBoard({
+        byDate: { "2026-10-24": twoActivities() },
+        travelTimes: [travelTime()],
+      });
 
       renderBoard();
       const row = await screen.findByRole("button", { name: "이동시간 12분" });
@@ -675,7 +687,10 @@ describe("TripBoardPage", () => {
     });
 
     it("탭하면 이동수단 시트가 열린다", async () => {
-      mockBoard({ byDate: { "2026-10-24": twoActivities() }, legs: [leg()] });
+      mockBoard({
+        byDate: { "2026-10-24": twoActivities() },
+        travelTimes: [travelTime()],
+      });
 
       const user = userEvent.setup();
       renderBoard();
@@ -696,15 +711,21 @@ describe("TripBoardPage", () => {
     it("자동 판정된 수단은 이미 값이 있어 다시 부르지 않는다", async () => {
       const calls: URL[] = [];
       server.use(
-        http.get(`${API_BASE}/travel/trips/:tripId/legs`, ({ request }) => {
-          calls.push(new URL(request.url));
-          return HttpResponse.json({
-            code: "OK",
-            data: leg({ mode: "DRIVE" }),
-          });
-        }),
+        http.get(
+          `${API_BASE}/travel/trips/:tripId/travel-time`,
+          ({ request }) => {
+            calls.push(new URL(request.url));
+            return HttpResponse.json({
+              code: "OK",
+              data: travelTime({ mode: "DRIVE" }),
+            });
+          },
+        ),
       );
-      mockBoard({ byDate: { "2026-10-24": twoActivities() }, legs: [leg()] });
+      mockBoard({
+        byDate: { "2026-10-24": twoActivities() },
+        travelTimes: [travelTime()],
+      });
 
       const user = userEvent.setup();
       renderBoard();
@@ -722,15 +743,25 @@ describe("TripBoardPage", () => {
     it("다른 수단을 고르면 그때 조회한다", async () => {
       const calls: URL[] = [];
       server.use(
-        http.get(`${API_BASE}/travel/trips/:tripId/legs`, ({ request }) => {
-          calls.push(new URL(request.url));
-          return HttpResponse.json({
-            code: "OK",
-            data: leg({ mode: "DRIVE", durationMinutes: 28, distanceM: 17100 }),
-          });
-        }),
+        http.get(
+          `${API_BASE}/travel/trips/:tripId/travel-time`,
+          ({ request }) => {
+            calls.push(new URL(request.url));
+            return HttpResponse.json({
+              code: "OK",
+              data: travelTime({
+                mode: "DRIVE",
+                durationMinutes: 28,
+                distanceM: 17100,
+              }),
+            });
+          },
+        ),
       );
-      mockBoard({ byDate: { "2026-10-24": twoActivities() }, legs: [leg()] });
+      mockBoard({
+        byDate: { "2026-10-24": twoActivities() },
+        travelTimes: [travelTime()],
+      });
 
       const user = userEvent.setup();
       renderBoard();
@@ -748,7 +779,10 @@ describe("TripBoardPage", () => {
 
     it("길찾기는 항상 대중교통으로 연다", async () => {
       const open = vi.spyOn(window, "open").mockImplementation(() => null);
-      mockBoard({ byDate: { "2026-10-24": twoActivities() }, legs: [leg()] });
+      mockBoard({
+        byDate: { "2026-10-24": twoActivities() },
+        travelTimes: [travelTime()],
+      });
 
       const user = userEvent.setup();
       renderBoard();
@@ -770,7 +804,7 @@ describe("TripBoardPage", () => {
     });
 
     it("보관함에는 이동시간이 없다", async () => {
-      mockBoard({ archive: twoActivities(), legs: [leg()] });
+      mockBoard({ archive: twoActivities(), travelTimes: [travelTime()] });
 
       renderBoard("/travel/trips/3/board?day=archive");
       await screen.findByText("아침 산책");
@@ -864,7 +898,7 @@ describe("TripBoardPage", () => {
             }),
           ],
         },
-        legs: [
+        travelTimes: [
           {
             fromActivityId: 1,
             toActivityId: 2,

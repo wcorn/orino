@@ -301,7 +301,7 @@ describe("TravelToolsPage", () => {
               selectedDate: "2026-10-24",
               archiveCount: 0,
               activities: [],
-              legs: [],
+              travelTimes: [],
             },
           }),
         ),

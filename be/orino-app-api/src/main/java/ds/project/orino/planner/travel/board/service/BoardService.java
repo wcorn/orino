@@ -12,7 +12,7 @@ import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.activity.service.ActivityService;
 import ds.project.orino.planner.travel.board.dto.BoardResponse;
 import ds.project.orino.planner.travel.day.service.TripDayService;
-import ds.project.orino.planner.travel.route.service.LegService;
+import ds.project.orino.planner.travel.route.service.TravelTimeService;
 import ds.project.orino.planner.travel.tools.dto.WeatherResponse;
 import ds.project.orino.planner.travel.tools.service.WeatherService;
 import org.springframework.stereotype.Service;
@@ -43,7 +43,7 @@ public class BoardService {
     private final TripActivityRepository activityRepository;
     private final ActivityService activityService;
     private final TripDayService tripDayService;
-    private final LegService legService;
+    private final TravelTimeService travelTimeService;
     private final WeatherService weatherService;
     private final Clock clock;
 
@@ -51,14 +51,14 @@ public class BoardService {
                         TripActivityRepository activityRepository,
                         ActivityService activityService,
                         TripDayService tripDayService,
-                        LegService legService,
+                        TravelTimeService travelTimeService,
                         WeatherService weatherService,
                         Clock clock) {
         this.tripRepository = tripRepository;
         this.activityRepository = activityRepository;
         this.activityService = activityService;
         this.tripDayService = tripDayService;
-        this.legService = legService;
+        this.travelTimeService = travelTimeService;
         this.weatherService = weatherService;
         this.clock = clock;
     }
@@ -92,7 +92,7 @@ public class BoardService {
                 activityService.toResponses(activities),
                 // 보관함은 날짜에 배정되지 않은 목록이라 순서에 이동 의미가 없다.
                 // 계산해 봐야 화면에 쓰지 않고, 호출당 과금이라 그냥 낭비다.
-                selectedDate == null ? List.of() : legService.legs(activities));
+                selectedDate == null ? List.of() : travelTimeService.travelTimes(activities));
     }
 
     /**

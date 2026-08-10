@@ -471,7 +471,7 @@ class ActivityControllerTest extends ApiTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.legs").isArray());
+                .andExpect(jsonPath("$.data.travelTimes").isArray());
     }
 
     private void assertOrder(String date, List<Long> expectedIds) {

@@ -36,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 캐시가 정말 호출을 줄이는지는 실제 Redis 없이 확인되지 않는다.
  */
 @Import(StubExternalsConfig.class)
-class LegIntegrationTest extends ApiTestSupport {
+class TravelTimeIntegrationTest extends ApiTestSupport {
 
 
     /** 센소지. */
@@ -77,7 +77,7 @@ class LegIntegrationTest extends ApiTestSupport {
 
     /**
      * 좌표를 조금씩 흔들어 테스트마다 다른 캐시 키를 쓴다 — Redis 컨테이너는 테스트 사이에
-     * 살아 있어, 앞 테스트가 캐시해 둔 구간이 새어 들어오면 호출 횟수 검증이 무너진다.
+     * 살아 있어, 앞 테스트가 캐시해 둔 이동시간이 새어 들어오면 호출 횟수 검증이 무너진다.
      */
     private static BigDecimal jitter(BigDecimal base) {
         int nudge = Math.abs(UUID.randomUUID().hashCode() % 9000) + 1000;
@@ -161,9 +161,9 @@ class LegIntegrationTest extends ApiTestSupport {
                 .andExpect(status().isOk());
     }
 
-    private org.springframework.test.web.servlet.ResultActions legBetween(
+    private org.springframework.test.web.servlet.ResultActions travelTimeBetween(
             int from, int to, String mode) throws Exception {
-        return mockMvc.perform(get("/api/travel/trips/" + tripId + "/legs")
+        return mockMvc.perform(get("/api/travel/trips/" + tripId + "/travel-time")
                 .param("from", String.valueOf(from))
                 .param("to", String.valueOf(to))
                 .param("mode", mode)
@@ -171,7 +171,7 @@ class LegIntegrationTest extends ApiTestSupport {
     }
 
     @Nested
-    @DisplayName("어디에 구간이 생기나")
+    @DisplayName("어디에 이동시간이 생기나")
     class Which {
 
         @Test
@@ -181,10 +181,10 @@ class LegIntegrationTest extends ApiTestSupport {
             addActivity("스카이트리", placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
 
             board()
-                    .andExpect(jsonPath("$.data.legs", hasSize(1)))
-                    .andExpect(jsonPath("$.data.legs[0].durationMinutes").value(12))
-                    .andExpect(jsonPath("$.data.legs[0].distanceM").value(900))
-                    .andExpect(jsonPath("$.data.legs[0].fallback").value(false));
+                    .andExpect(jsonPath("$.data.travelTimes", hasSize(1)))
+                    .andExpect(jsonPath("$.data.travelTimes[0].durationMinutes").value(12))
+                    .andExpect(jsonPath("$.data.travelTimes[0].distanceM").value(900))
+                    .andExpect(jsonPath("$.data.travelTimes[0].fallback").value(false));
         }
 
         @Test
@@ -195,28 +195,28 @@ class LegIntegrationTest extends ApiTestSupport {
             addActivity("점심", null);
             addActivity("스카이트리", placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
 
-            board().andExpect(jsonPath("$.data.legs", hasSize(1)));
+            board().andExpect(jsonPath("$.data.travelTimes", hasSize(1)));
             assertThat(stub.calls).hasSize(1);
         }
 
         @Test
-        @DisplayName("장소가 하나뿐이면 구간이 없다 — 외부를 부르지도 않는다")
-        void noLegWithSinglePlace() throws Exception {
+        @DisplayName("장소가 하나뿐이면 이동시간이 없다 — 외부를 부르지도 않는다")
+        void noTravelTimeWithSinglePlace() throws Exception {
             addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
             addActivity("점심", null);
 
-            board().andExpect(jsonPath("$.data.legs", hasSize(0)));
+            board().andExpect(jsonPath("$.data.travelTimes", hasSize(0)));
             assertThat(stub.calls).isEmpty();
         }
 
         @Test
-        @DisplayName("좌표 없는 장소(직접 입력)는 구간에 들어가지 않는다")
+        @DisplayName("좌표 없는 장소(직접 입력)는 이동시간에 들어가지 않는다")
         void ignoresPlacesWithoutCoordinates() throws Exception {
             TravelPlace manual = placeRepository.save(TravelPlace.manual(memberId, "골목 카페"));
             addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
             addActivity("골목 카페", manual.getId());
 
-            board().andExpect(jsonPath("$.data.legs", hasSize(0)));
+            board().andExpect(jsonPath("$.data.travelTimes", hasSize(0)));
         }
     }
 
@@ -230,7 +230,7 @@ class LegIntegrationTest extends ApiTestSupport {
             addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
             addActivity("스카이트리", placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
 
-            board().andExpect(jsonPath("$.data.legs[0].mode").value("WALK"));
+            board().andExpect(jsonPath("$.data.travelTimes[0].mode").value("WALK"));
             assertThat(stub.calls.get(0).mode()).isEqualTo(TravelMode.WALK);
         }
 
@@ -240,7 +240,7 @@ class LegIntegrationTest extends ApiTestSupport {
             addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
             addActivity("신주쿠", placeAt("신주쿠", jitter(SHINJUKU_LAT), jitter(SHINJUKU_LNG)));
 
-            board().andExpect(jsonPath("$.data.legs[0].mode").value("DRIVE"));
+            board().andExpect(jsonPath("$.data.travelTimes[0].mode").value("DRIVE"));
             assertThat(stub.calls.get(0).mode()).isEqualTo(TravelMode.DRIVE);
         }
     }
@@ -250,19 +250,19 @@ class LegIntegrationTest extends ApiTestSupport {
     class Fallback {
 
         @Test
-        @DisplayName("구간은 남기고 직선거리로 대체한다 — 거리만이라도 알면 계획이 선다")
+        @DisplayName("이동시간 행은 남기고 직선거리로 대체한다 — 거리만이라도 알면 계획이 선다")
         void fallsBackToStraightLine() throws Exception {
             stub.result = Optional.empty();
             addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
             addActivity("신주쿠", placeAt("신주쿠", jitter(SHINJUKU_LAT), jitter(SHINJUKU_LNG)));
 
             board()
-                    .andExpect(jsonPath("$.data.legs", hasSize(1)))
-                    .andExpect(jsonPath("$.data.legs[0].fallback").value(true))
-                    .andExpect(jsonPath("$.data.legs[0].durationMinutes").doesNotExist())
+                    .andExpect(jsonPath("$.data.travelTimes", hasSize(1)))
+                    .andExpect(jsonPath("$.data.travelTimes[0].fallback").value(true))
+                    .andExpect(jsonPath("$.data.travelTimes[0].durationMinutes").doesNotExist())
                     // 수단은 여전히 정해진다(직선거리로 판정하므로).
-                    .andExpect(jsonPath("$.data.legs[0].mode").value("DRIVE"))
-                    .andExpect(jsonPath("$.data.legs[0].distanceM").isNumber());
+                    .andExpect(jsonPath("$.data.travelTimes[0].mode").value("DRIVE"))
+                    .andExpect(jsonPath("$.data.travelTimes[0].distanceM").isNumber());
         }
 
         @Test
@@ -274,10 +274,10 @@ class LegIntegrationTest extends ApiTestSupport {
             addActivity("스카이트리", to);
 
             stub.result = Optional.empty();
-            board().andExpect(jsonPath("$.data.legs[0].fallback").value(true));
+            board().andExpect(jsonPath("$.data.travelTimes[0].fallback").value(true));
 
             stub.result = Optional.of(new RoutesClient.Route(720, 900));
-            board().andExpect(jsonPath("$.data.legs[0].fallback").value(false));
+            board().andExpect(jsonPath("$.data.travelTimes[0].fallback").value(false));
 
             assertThat(stub.calls).hasSize(2);
         }
@@ -289,20 +289,20 @@ class LegIntegrationTest extends ApiTestSupport {
 
         @Test
         @DisplayName("보드를 다시 열어도 외부 호출이 늘지 않는다 — 탭을 넘길 때마다 과금될 순 없다")
-        void reusesCachedLeg() throws Exception {
+        void reusesCachedTravelTime() throws Exception {
             addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
             addActivity("스카이트리", placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
 
             for (int i = 0; i < 3; i++) {
-                board().andExpect(jsonPath("$.data.legs[0].durationMinutes").value(12));
+                board().andExpect(jsonPath("$.data.travelTimes[0].durationMinutes").value(12));
             }
 
             assertThat(stub.calls).hasSize(1);
         }
 
         @Test
-        @DisplayName("순서를 뒤집으면 다른 구간이라 새로 부른다 — 일방통행이면 경로가 다르다")
-        void reversedOrderIsDifferentLeg() throws Exception {
+        @DisplayName("순서를 뒤집으면 다른 이동이라 새로 부른다 — 일방통행이면 경로가 다르다")
+        void reversedOrderIsDifferentTravelTime() throws Exception {
             BigDecimal aLat = jitter(SENSOJI_LAT);
             BigDecimal aLng = jitter(SENSOJI_LNG);
             addActivity("센소지", placeAt("센소지", aLat, aLng));
@@ -325,30 +325,30 @@ class LegIntegrationTest extends ApiTestSupport {
                     .andExpect(status().isOk());
             board();
 
-            // 캐시 키에 방향이 들어 있어야 반대 구간을 따로 잡는다.
+            // 캐시 키에 방향이 들어 있어야 반대 방향 이동을 따로 잡는다.
             assertThat(stub.calls).hasSize(2);
             assertThat(stub.calls.get(1).destination().lat()).isEqualByComparingTo(aLat);
         }
     }
 
     @Nested
-    @DisplayName("여러 구간")
+    @DisplayName("여러 이동시간")
     class Multiple {
 
         @Test
-        @DisplayName("일정이 셋이면 구간은 둘 — 리스트 사이사이에 들어간다")
+        @DisplayName("일정이 셋이면 이동시간은 둘 — 리스트 사이사이에 들어간다")
         void chainsAcrossActivities() throws Exception {
             addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
             addActivity("스카이트리", placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
             addActivity("신주쿠", placeAt("신주쿠", jitter(SHINJUKU_LAT), jitter(SHINJUKU_LNG)));
 
             String body = board()
-                    .andExpect(jsonPath("$.data.legs", hasSize(2)))
+                    .andExpect(jsonPath("$.data.travelTimes", hasSize(2)))
                     .andReturn().getResponse().getContentAsString();
 
-            List<Integer> froms = com.jayway.jsonpath.JsonPath.read(body, "$.data.legs[*].fromActivityId");
-            List<Integer> tos = com.jayway.jsonpath.JsonPath.read(body, "$.data.legs[*].toActivityId");
-            // 앞 구간의 도착이 뒤 구간의 출발이다.
+            List<Integer> froms = com.jayway.jsonpath.JsonPath.read(body, "$.data.travelTimes[*].fromActivityId");
+            List<Integer> tos = com.jayway.jsonpath.JsonPath.read(body, "$.data.travelTimes[*].toActivityId");
+            // 앞 이동의 도착이 뒤 이동의 출발이다.
             assertThat(tos.get(0)).isEqualTo(froms.get(1));
         }
     }
@@ -358,8 +358,8 @@ class LegIntegrationTest extends ApiTestSupport {
     class Archive {
 
         @Test
-        @DisplayName("보관함에는 구간이 없다 — 순서에 이동 의미가 없는데 유료 호출을 낼 이유가 없다")
-        void archiveHasNoLegs() throws Exception {
+        @DisplayName("보관함에는 이동시간이 없다 — 순서에 이동 의미가 없는데 유료 호출을 낼 이유가 없다")
+        void archiveHasNoTravelTimes() throws Exception {
             Long a = placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG));
             Long b = placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG));
             addUnscheduled("센소지", a);
@@ -370,7 +370,7 @@ class LegIntegrationTest extends ApiTestSupport {
                             .header(HttpHeaders.AUTHORIZATION, authHeader))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.activities", hasSize(2)))
-                    .andExpect(jsonPath("$.data.legs", hasSize(0)));
+                    .andExpect(jsonPath("$.data.travelTimes", hasSize(0)));
 
             assertThat(stub.calls).isEmpty();
         }
@@ -381,28 +381,28 @@ class LegIntegrationTest extends ApiTestSupport {
     class Reorder {
 
         @Test
-        @DisplayName("재계산된 구간을 함께 돌려준다 — 드래그는 손을 뗀 순간 결과가 보여야 한다")
-        void returnsRecomputedLegs() throws Exception {
+        @DisplayName("재계산된 이동시간을 함께 돌려준다 — 드래그는 손을 뗀 순간 결과가 보여야 한다")
+        void returnsRecomputedTravelTimes() throws Exception {
             addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
             addActivity("스카이트리", placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
             List<Integer> ids = activityIds();
 
             reorder(ids.get(1), ids.get(0))
-                    .andExpect(jsonPath("$.data.legs", hasSize(1)))
+                    .andExpect(jsonPath("$.data.travelTimes", hasSize(1)))
                     // 뒤집었으니 출발·도착도 뒤집혀야 한다.
-                    .andExpect(jsonPath("$.data.legs[0].fromActivityId").value(ids.get(1)))
-                    .andExpect(jsonPath("$.data.legs[0].toActivityId").value(ids.get(0)));
+                    .andExpect(jsonPath("$.data.travelTimes[0].fromActivityId").value(ids.get(1)))
+                    .andExpect(jsonPath("$.data.travelTimes[0].toActivityId").value(ids.get(0)));
         }
 
         @Test
-        @DisplayName("구간이 없어도 빈 배열로 온다")
-        void emptyWhenNoLegs() throws Exception {
+        @DisplayName("이동시간이 없어도 빈 배열로 온다")
+        void emptyWhenNoTravelTimes() throws Exception {
             addActivity("점심", null);
             addActivity("저녁", null);
             List<Integer> ids = activityIds();
 
             reorder(ids.get(1), ids.get(0))
-                    .andExpect(jsonPath("$.data.legs", hasSize(0)));
+                    .andExpect(jsonPath("$.data.travelTimes", hasSize(0)));
         }
     }
 
@@ -418,8 +418,8 @@ class LegIntegrationTest extends ApiTestSupport {
             List<Integer> ids = activityIds();
 
             // 8km라 보드는 DRIVE로 준다. 시트에서 도보를 물으면 그때 계산한다.
-            board().andExpect(jsonPath("$.data.legs[0].mode").value("DRIVE"));
-            legBetween(ids.get(0), ids.get(1), "WALK")
+            board().andExpect(jsonPath("$.data.travelTimes[0].mode").value("DRIVE"));
+            travelTimeBetween(ids.get(0), ids.get(1), "WALK")
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.mode").value("WALK"))
                     .andExpect(jsonPath("$.data.durationMinutes").value(12));
@@ -439,21 +439,21 @@ class LegIntegrationTest extends ApiTestSupport {
 
             board();
             int afterBoard = stub.calls.size();
-            // 보드가 이미 WALK로 계산해 둔 구간이다.
-            legBetween(ids.get(0), ids.get(1), "WALK").andExpect(status().isOk());
-            legBetween(ids.get(0), ids.get(1), "WALK").andExpect(status().isOk());
+            // 보드가 이미 WALK로 계산해 둔 이동이다.
+            travelTimeBetween(ids.get(0), ids.get(1), "WALK").andExpect(status().isOk());
+            travelTimeBetween(ids.get(0), ids.get(1), "WALK").andExpect(status().isOk());
 
             assertThat(stub.calls).hasSize(afterBoard);
         }
 
         @Test
-        @DisplayName("좌표 없는 일정 사이는 400 — 화면에도 그 구간이 없다")
+        @DisplayName("좌표 없는 일정 사이는 400 — 화면에도 그 이동시간 행이 없다")
         void rejectsWhenNoCoordinates() throws Exception {
             addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
             addActivity("점심", null);
             List<Integer> ids = activityIds();
 
-            legBetween(ids.get(0), ids.get(1), "WALK")
+            travelTimeBetween(ids.get(0), ids.get(1), "WALK")
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("TRAVEL-ERR-009"));
         }
@@ -467,7 +467,7 @@ class LegIntegrationTest extends ApiTestSupport {
             addUnscheduled("스카이트리", b);
             List<Integer> ids = archivedActivityIds();
 
-            legBetween(ids.get(0), ids.get(1), "WALK")
+            travelTimeBetween(ids.get(0), ids.get(1), "WALK")
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("TRAVEL-ERR-009"));
         }
@@ -483,7 +483,7 @@ class LegIntegrationTest extends ApiTestSupport {
             String otherAuth = "Bearer "
                     + AuthFixture.loginAndGetAccessToken(mockMvc, "other", "password");
 
-            mockMvc.perform(get("/api/travel/trips/" + tripId + "/legs")
+            mockMvc.perform(get("/api/travel/trips/" + tripId + "/travel-time")
                             .param("from", String.valueOf(ids.get(0)))
                             .param("to", String.valueOf(ids.get(1)))
                             .param("mode", "WALK")
