@@ -14,39 +14,65 @@ import { renderWithRouter } from "@/test/render";
 
 const API_BASE = "https://api.orino.dev/api";
 
+function baseCity(
+  placeId: number,
+  name: string,
+  timezone: string,
+  currency = "JPY",
+) {
+  return {
+    placeId,
+    name,
+    timezone,
+    currency,
+    countryCode: "JP",
+    lat: null,
+    lng: null,
+  };
+}
+
+const TOKYO = baseCity(21, "도쿄", "Asia/Tokyo");
+
+function day(
+  dayIndex: number,
+  date: string,
+  weekday: string,
+  activityCount: number,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    dayId: 500 + dayIndex,
+    dayIndex,
+    date,
+    weekday,
+    activityCount,
+    baseCity: TOKYO,
+    cityChanged: false,
+    legIndex: 1,
+    cityMemo: null,
+    weather: null,
+    stayTonight: null,
+    stayCheckout: null,
+    ...overrides,
+  };
+}
+
 const DAYS = [
-  {
-    dayIndex: 1,
-    date: "2026-10-24",
-    weekday: "토",
-    activityCount: 2,
-    weather: null,
-  },
-  {
-    dayIndex: 2,
-    date: "2026-10-25",
-    weekday: "일",
-    activityCount: 0,
-    weather: null,
-  },
-  {
-    dayIndex: 3,
-    date: "2026-10-26",
-    weekday: "월",
-    activityCount: 1,
-    weather: null,
-  },
+  day(1, "2026-10-24", "토", 2),
+  day(2, "2026-10-25", "일", 0),
+  day(3, "2026-10-26", "월", 1),
 ];
 
 const TRIP = {
   id: 3,
   title: "도쿄 3박 4일",
-  timezone: "Asia/Tokyo",
-  currency: "JPY",
   startDate: "2026-10-24",
   endDate: "2026-10-26",
   status: "UPCOMING",
   recordMode: false,
+  cityCount: 1,
+  countryCount: 1,
+  singleCity: true,
 };
 
 function activity(overrides: Record<string, unknown> = {}) {
@@ -65,6 +91,8 @@ function activity(overrides: Record<string, unknown> = {}) {
     sortOrder: 0,
     log: null,
     hasLog: false,
+    outOfBaseCity: false,
+    canDepartureNotify: true,
     ...overrides,
   };
 }
@@ -78,6 +106,7 @@ function mockBoard(options: {
   archive?: unknown[];
   trip?: Record<string, unknown>;
   travelTimes?: unknown[];
+  days?: unknown[];
 }) {
   const byDate = options.byDate ?? {};
   const archive = options.archive ?? [];
@@ -90,11 +119,12 @@ function mockBoard(options: {
         code: "OK",
         data: {
           trip: { ...TRIP, ...options.trip },
-          days: DAYS,
+          days: options.days ?? DAYS,
           selectedDate: isArchive ? null : date,
           archiveCount: archive.length,
           activities: isArchive ? archive : (byDate[date] ?? []),
           travelTimes: isArchive ? [] : (options.travelTimes ?? []),
+          stayMove: null,
         },
       });
     }),
@@ -537,6 +567,35 @@ describe("TripBoardPage", () => {
   });
 
   describe("헤더", () => {
+    it("현지 시계가 보고 있는 날짜의 기준 도시를 따른다", async () => {
+      // 1일차는 파리, 2일차는 호놀룰루. 같은 여행인데 탭을 넘기면 시계가 바뀐다.
+      // 둘 다 기기와 오프셋이 다른 도시로 고른다 — 같으면 줄 자체를 숨기는 것이 규칙이다.
+      const paris = baseCity(23, "파리", "Europe/Paris", "EUR");
+      const honolulu = baseCity(22, "호놀룰루", "Pacific/Honolulu", "USD");
+      mockBoard({
+        byDate: { "2026-10-24": [], "2026-10-25": [] },
+        trip: { singleCity: false, cityCount: 2 },
+        days: [
+          day(1, "2026-10-24", "토", 0, { baseCity: paris }),
+          day(2, "2026-10-25", "일", 0, {
+            baseCity: honolulu,
+            cityChanged: true,
+            legIndex: 2,
+          }),
+          day(3, "2026-10-26", "월", 0, { baseCity: paris }),
+        ],
+      });
+
+      renderBoard();
+
+      expect(await screen.findByText(/Europe\/Paris/)).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("tab", { name: /2일차/ }));
+
+      expect(await screen.findByText(/Pacific\/Honolulu/)).toBeInTheDocument();
+      expect(screen.queryByText(/Europe\/Paris/)).not.toBeInTheDocument();
+    });
+
     it("메뉴에서 여행 수정으로 간다", async () => {
       mockBoard({ byDate: { "2026-10-24": [] } });
       server.use(

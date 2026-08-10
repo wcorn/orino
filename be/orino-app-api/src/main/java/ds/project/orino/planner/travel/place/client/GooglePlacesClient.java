@@ -206,6 +206,7 @@ public class GooglePlacesClient implements PlacesClient {
                 text(node, "nationalPhoneNumber"),
                 rawJson(node.get("regularOpeningHours")),
                 nestedText(node, "timeZone", "id"),
+                cityName(node.get("addressComponents")),
                 countryCode(node.get("addressComponents")),
                 types(node.get("types")));
     }
@@ -222,6 +223,33 @@ public class GooglePlacesClient implements PlacesClient {
     }
 
     /** 주소 구성요소에서 국가 코드(alpha-2)를 뽑는다. 통화를 여기서 유도한다. */
+    /**
+     * 이 장소가 속한 도시 이름. {@code locality}가 없으면 한 단계 넓은 행정구역으로 떨어진다 —
+     * 도쿄 23구처럼 {@code locality}가 안 붙는 곳이 있다.
+     */
+    private String cityName(JsonNode components) {
+        String fallback = null;
+        if (components == null || !components.isArray()) {
+            return null;
+        }
+        for (JsonNode component : components) {
+            JsonNode types = component.get("types");
+            if (types == null) {
+                continue;
+            }
+            for (JsonNode type : types) {
+                String name = type.asString();
+                if ("locality".equals(name)) {
+                    return text(component, "longText");
+                }
+                if ("administrative_area_level_1".equals(name) && fallback == null) {
+                    fallback = text(component, "longText");
+                }
+            }
+        }
+        return fallback;
+    }
+
     private String countryCode(JsonNode components) {
         if (components == null || !components.isArray()) {
             return null;

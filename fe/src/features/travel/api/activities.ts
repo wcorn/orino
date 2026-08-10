@@ -15,6 +15,10 @@ export interface ActivityPlace {
   address: string | null;
   lat: number | null;
   lng: number | null;
+  /** 이 장소가 속한 도시 표시명. 도시를 벗어난 일정의 `· 오사카` 꼬리표. */
+  cityName: string | null;
+  /** 도시 식별자. 도시 일치 판정은 이 값으로만 한다(좌표 거리로 추측하지 않는다). */
+  cityPlaceRef: string | null;
 }
 
 /**
@@ -45,31 +49,62 @@ export interface Activity {
   notifyEnabled: boolean;
   notifyMinutes: number | null;
   departureNotifyEnabled: boolean;
+  /** 그날 기준 도시와 다른 도시의 장소다 → 도시명을 경고색으로 덧붙인다. */
+  outOfBaseCity: boolean;
+  /** 도시를 넘는 이동은 계산 대상이 아니라 출발 알림을 켤 수 없다(3단계에서 판정이 붙는다). */
+  canDepartureNotify: boolean;
   sortOrder: number;
   /** 아직 기록이 없으면 null. */
   log: ActivityLog | null;
   hasLog: boolean;
 }
 
+/**
+ * 그 날짜의 기준 도시. **타임존·통화·날씨 좌표가 전부 여기서 나온다** — v2.1에서 여행은
+ * 타임존을 갖지 않는다.
+ */
+export interface BaseCity {
+  placeId: number;
+  name: string;
+  timezone: string;
+  currency: string;
+  countryCode: string | null;
+  lat: number | null;
+  lng: number | null;
+}
+
 export interface BoardDay {
+  dayId: number;
   dayIndex: number;
   date: string;
   weekday: string;
   activityCount: number;
+  baseCity: BaseCity | null;
+  /** 직전 날짜와 도시가 다르다 → 탭 왼쪽에 구분선. */
+  cityChanged: boolean;
+  /** 이 날짜가 속한 구간 번호(1부터). 저장값이 아니라 파생이다. */
+  legIndex: number;
+  cityMemo: string | null;
   /** 예보 범위(16일) 밖이면 null이다 — 오류가 아니라 "아직 모름"이다. */
   weather: DailyWeather | null;
+  /** 숙소는 3단계 — 형태만 확정돼 있고 값은 아직 없다. */
+  stayTonight: null;
+  stayCheckout: null;
 }
 
 export interface BoardTrip {
   id: number;
   title: string;
-  timezone: string;
-  currency: string;
   startDate: string;
   endDate: string;
   status: TripStatus;
   /** 완료된 여행이면 true — 계획 편집 대신 기록을 보여준다(4단계). */
   recordMode: boolean;
+  /** 기간에 등장하는 서로 다른 도시 수. 같은 도시를 다시 방문해도 1이다. */
+  cityCount: number;
+  countryCount: number;
+  /** 전 기간이 한 도시 — 날짜 탭을 `N일차`로 그린다. */
+  singleCity: boolean;
 }
 
 /** 앱이 계산하는 이동수단. 대중교통은 계산하지 않는다 — 구글 지도 딥링크가 맡는다. */
@@ -96,6 +131,8 @@ export interface Board {
   activities: Activity[];
   /** 연속한 두 일정 사이 이동. 장소 없는 일정은 건너뛴 결과다. */
   travelTimes: TravelTime[];
+  /** 마지막 일정 → 숙소 이동. 숙소는 3단계라 아직 null이다. */
+  stayMove: null;
 }
 
 /**

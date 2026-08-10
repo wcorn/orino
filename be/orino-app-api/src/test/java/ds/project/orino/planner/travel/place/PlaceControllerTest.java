@@ -77,7 +77,7 @@ class PlaceControllerTest extends ApiTestSupport {
 
     private static PlaceResult city(String id, String name, String tz, String country) {
         return new PlaceResult(id, name, "일본 도쿄도", new BigDecimal("35.6762"),
-                new BigDecimal("139.6503"), null, null, null, null, tz, country,
+                new BigDecimal("139.6503"), null, null, null, null, tz, name, country,
                 List.of("locality", "political"));
     }
 
@@ -85,7 +85,7 @@ class PlaceControllerTest extends ApiTestSupport {
         return new PlaceResult(id, name, "도쿄도 다이토구", new BigDecimal("35.7147"),
                 new BigDecimal("139.7966"), "사찰", new BigDecimal("4.5"),
                 "+81 3-3842-0181", "{\"weekdayDescriptions\":[\"월: 06:00~17:00\"]}",
-                "Asia/Tokyo", "JP", List.of("tourist_attraction"));
+                "Asia/Tokyo", "도쿄", "JP", List.of("tourist_attraction"));
     }
 
     @Nested

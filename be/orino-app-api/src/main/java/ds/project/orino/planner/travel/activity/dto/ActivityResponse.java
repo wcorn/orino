@@ -14,6 +14,10 @@ import java.time.LocalTime;
  * @param sortOrder    같은 날짜(또는 보관함) 안에서의 순서. 정렬의 유일한 기준이다
  * @param log          사후 기록(평점·메모). 아직 기록이 없으면 null
  * @param hasLog       기록 존재 여부. 목록은 {@code log}를 다 펼치지 않고 이 표시만 쓴다
+ * @param outOfBaseCity      (v2.1) 그날 기준 도시와 <b>다른 도시</b>의 장소다 → 화면이 경고색으로
+ *                           도시명을 덧붙인다. 판정은 {@code place.cityPlaceRef}로만 한다
+ * @param canDepartureNotify (v2.1) 출발 알림을 켤 수 있는가. 도시를 넘는 이동은 계산 대상이
+ *                           아니라 켤 수 없다(3단계에서 판정이 붙는다)
  */
 public record ActivityResponse(
         Long id,
@@ -32,7 +36,9 @@ public record ActivityResponse(
         boolean departureNotifyEnabled,
         int sortOrder,
         ActivityLogResponse log,
-        boolean hasLog
+        boolean hasLog,
+        boolean outOfBaseCity,
+        boolean canDepartureNotify
 ) {
 
     public static ActivityResponse of(TripActivity activity, ActivityPlace place,
@@ -41,11 +47,32 @@ public record ActivityResponse(
                 activity.getActivityDate(), activity.getStartTime(), place,
                 activity.getMemo(), activity.getUrl(), activity.isNotifyEnabled(),
                 activity.getNotifyMinutes(), activity.isDepartureNotifyEnabled(),
-                activity.getSortOrder(), log, log != null);
+                activity.getSortOrder(), log, log != null, false, true);
     }
 
     /** 기록이 아직 없는(또는 필요 없는) 자리에서 쓴다. */
     public static ActivityResponse of(TripActivity activity, ActivityPlace place) {
         return of(activity, place, null);
+    }
+
+    /**
+     * 그날 기준 도시와 견줘 도시 이탈 여부를 붙인다. 보드만 아는 값이라(상세 화면에는 "그날"이
+     * 없다) 조립을 마친 뒤 덧씌운다.
+     */
+    public ActivityResponse withBaseCity(String baseCityPlaceRef) {
+        return new ActivityResponse(id, tripId, title, activityDate, startTime, place,
+                memo, url, notifyEnabled, notifyMinutes, departureNotifyEnabled,
+                sortOrder, log, hasLog, isOutOf(baseCityPlaceRef), canDepartureNotify);
+    }
+
+    /**
+     * <b>식별자가 둘 다 있고 서로 다를 때만</b> 다른 도시로 본다. 한쪽이라도 모르면 판정하지
+     * 않는다 — 모르는 것을 "다르다"로 답하면 멀쩡한 일정에 경고가 붙는다.
+     */
+    private boolean isOutOf(String baseCityPlaceRef) {
+        if (place == null || place.cityPlaceRef() == null || baseCityPlaceRef == null) {
+            return false;
+        }
+        return !place.cityPlaceRef().equals(baseCityPlaceRef);
     }
 }

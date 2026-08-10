@@ -11,6 +11,16 @@ import { expect, type Page, test } from "@playwright/test";
 const TRIP_ID = 1;
 const DAY = "2026-10-24";
 
+const TOKYO = {
+  placeId: 21,
+  name: "도쿄",
+  timezone: "Asia/Tokyo",
+  currency: "JPY",
+  countryCode: "JP",
+  lat: null,
+  lng: null,
+};
+
 const ok = (data: unknown) => ({
   status: 200,
   contentType: "application/json",
@@ -80,20 +90,28 @@ async function mockBoard(page: Page): Promise<Captured> {
         trip: {
           id: TRIP_ID,
           title: "도쿄",
-          timezone: "Asia/Tokyo",
-          currency: "JPY",
           startDate: DAY,
           endDate: DAY,
           status: "UPCOMING",
           recordMode: false,
+          cityCount: 1,
+          countryCount: 1,
+          singleCity: true,
         },
         days: [
           {
+            dayId: 501,
             dayIndex: 1,
             date: DAY,
             weekday: "토",
             activityCount: 2,
+            baseCity: TOKYO,
+            cityChanged: false,
+            legIndex: 1,
+            cityMemo: null,
             weather: null,
+            stayTonight: null,
+            stayCheckout: null,
           },
         ],
         selectedDate: isArchive === "true" ? null : DAY,
@@ -103,6 +121,7 @@ async function mockBoard(page: Page): Promise<Captured> {
             ? []
             : [activity(1, "센소지", 0), activity(2, "우에노", 1)],
         travelTimes: [],
+        stayMove: null,
       }),
     );
   });
