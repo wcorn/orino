@@ -9,10 +9,11 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { LoadingText } from "@/components/ui/loading-text";
 import { Select } from "@/components/ui/select";
-import type { City } from "@/features/travel/api/places";
+import { type City, createManualPlace } from "@/features/travel/api/places";
 import {
   fetchShrinkPreview,
   type TripDetail,
+  type TripLegRequest,
   type TripWriteRequest,
 } from "@/features/travel/api/travel";
 import { useTrip } from "@/features/travel/hooks/useTrip";
@@ -41,6 +42,10 @@ interface FormState {
   /** 목적지 검색으로만 채워진다. 직접 입력에는 좌표가 없다. */
   lat: number | null;
   lng: number | null;
+  /** 검색으로 고른 도시. 서버가 담아 도시로 승격한다. */
+  cityGooglePlaceId: string | null;
+  /** 수정 모드에서 이미 저장돼 있는 기준 도시. */
+  cityPlaceId: number | null;
   notifyMinutes: string;
 }
 
@@ -53,6 +58,8 @@ const EMPTY: FormState = {
   currency: "JPY",
   lat: null,
   lng: null,
+  cityGooglePlaceId: null,
+  cityPlaceId: null,
   notifyMinutes: String(DEFAULT_NOTIFY_MINUTES),
 };
 
@@ -115,6 +122,21 @@ export function TripFormPage() {
       currency: city.currency,
       lat: city.lat,
       lng: city.lng,
+      // 검색으로 고른 도시는 서버가 담아 승격한다 — 고르기 전에 저장하지 않는다.
+      cityGooglePlaceId: city.googlePlaceId,
+      cityPlaceId: null,
+    }));
+
+  /**
+   * 직접 입력으로 이름을 고쳤다 = 검색으로 고른 도시가 아니다. 구글 id를 그대로 두면
+   * 화면에는 새로 친 이름이 보이는데 저장은 전에 고른 도시로 된다.
+   */
+  const typeCityName = (name: string) =>
+    setForm((prev) => ({
+      ...prev,
+      destinationName: name,
+      cityGooglePlaceId: null,
+      cityPlaceId: null,
     }));
 
   /** 저장 직전 검증. 서버도 같은 규칙을 보지만 왕복 없이 바로 알려주는 편이 낫다. */
@@ -160,8 +182,8 @@ export function TripFormPage() {
   };
 
   const save = async (confirmArchive: boolean) => {
-    const body = toRequest(form, confirmArchive);
     try {
+      const body = await toRequest(form, editingId !== null, confirmArchive);
       const saved =
         editingId !== null
           ? await updateMutation.mutateAsync(body)
@@ -201,7 +223,7 @@ export function TripFormPage() {
               <Input
                 id="destinationName"
                 value={form.destinationName}
-                onChange={(e) => set("destinationName", e.target.value)}
+                onChange={(e) => typeCityName(e.target.value)}
                 placeholder="도쿄"
                 maxLength={100}
               />
@@ -345,6 +367,8 @@ function isShrinking(trip: TripDetail, form: FormState): boolean {
 function toFormState(trip: TripDetail): FormState {
   return {
     destinationName: trip.destinationName,
+    cityGooglePlaceId: null,
+    cityPlaceId: trip.destinationPlaceId,
     // 제목이 목적지명으로 자동 저장된 경우 폼을 비워 둔다 — 다시 저장해도 같은 값이 유지되고,
     // 사용자에겐 "안 정했다"는 원래 상태로 보인다.
     title: trip.title === trip.destinationName ? "" : trip.title,
@@ -358,17 +382,57 @@ function toFormState(trip: TripDetail): FormState {
   };
 }
 
-function toRequest(form: FormState, confirmArchive: boolean): TripWriteRequest {
+/**
+ * 화면은 목적지 하나를 받지만 서버는 구간 목록을 받는다 — 그 하나를 구간 1개로 보낸다.
+ * 다구간 편집기(S-03)는 2단계에서 이 자리를 대신한다.
+ *
+ * <p>직접 입력한 도시는 검색 결과가 아니라 id가 없다. 저장 직전에 도시로 만들어 id를 얻는다 —
+ * 도시가 없으면 그 여행의 어느 날짜도 타임존을 갖지 못한다.
+ */
+async function toRequest(
+  form: FormState,
+  editing: boolean,
+  confirmArchive: boolean,
+): Promise<TripWriteRequest> {
   return {
-    title: form.title.trim() || undefined,
-    destinationName: form.destinationName.trim(),
+    // 서버는 제목을 필수로 받는다. 비워 두면 목적지 이름으로 채우는 건 이 화면의 몫이다.
+    title: form.title.trim() || form.destinationName.trim(),
     startDate: form.startDate,
     endDate: form.endDate,
+    legs: await toLegs(form, editing),
+    defaultNotifyMinutes: Number(form.notifyMinutes),
+    ...(confirmArchive ? { confirmArchive: true } : {}),
+  };
+}
+
+async function toLegs(
+  form: FormState,
+  editing: boolean,
+): Promise<TripLegRequest[] | undefined> {
+  const days = periodDays(form.startDate, form.endDate);
+
+  if (form.cityGooglePlaceId) {
+    return [{ cityGooglePlaceId: form.cityGooglePlaceId, days }];
+  }
+  // 수정 중이고 목적지를 새로 고르지 않았으면 구간을 보내지 않는다 —
+  // 도시 배치를 건드리지 않고 기간·알림만 바뀐다.
+  if (editing && form.cityPlaceId !== null) {
+    return undefined;
+  }
+  const city = await createManualPlace({
+    name: form.destinationName.trim(),
+    kind: "CITY",
     timezone: form.timezone,
     currency: form.currency,
     lat: form.lat,
     lng: form.lng,
-    defaultNotifyMinutes: Number(form.notifyMinutes),
-    ...(confirmArchive ? { confirmArchive: true } : {}),
-  };
+  });
+  return [{ cityPlaceId: city.id, days }];
+}
+
+/** 기간의 일수(당일 포함). 구간이 하나라 합계가 기간과 늘 같다. */
+function periodDays(startDate: string, endDate: string): number {
+  const start = new Date(startDate).getTime();
+  const end = new Date(endDate).getTime();
+  return Math.max(1, Math.round((end - start) / 86_400_000) + 1);
 }

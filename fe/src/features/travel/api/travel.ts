@@ -104,21 +104,30 @@ export async function fetchTrip(tripId: number): Promise<TripDetail> {
   return data.data;
 }
 
-/** 여행 생성·수정 요청. 전체 수정이라 두 경로가 같은 형태를 쓴다. */
+/**
+ * 구간 하나 — 도시 + 머무는 일수. 목록 순서가 곧 방문 순서다.
+ *
+ * 도시는 담아 둔 장소(`cityPlaceId`)나 검색 결과(`cityGooglePlaceId`) 중 하나로 지정한다.
+ */
+export interface TripLegRequest {
+  cityPlaceId?: number;
+  cityGooglePlaceId?: string;
+  days: number;
+}
+
+/**
+ * 여행 생성·수정 요청. 전체 수정이라 두 경로가 같은 형태를 쓴다.
+ *
+ * 타임존·통화·좌표는 보내지 않는다 — 도시가 그 값들의 주인이라(v2.1), 여행이 따로 들고
+ * 있으면 도시를 옮겨 다닐 때 서로 어긋난다.
+ */
 export interface TripWriteRequest {
-  /** 비우면 서버가 `destinationName`으로 채운다. */
-  title?: string;
-  destinationName: string;
+  /** v2.1부터 필수 — 목적지가 여행에 없으니 자동으로 채울 이름도 없다. */
+  title: string;
   startDate: string;
   endDate: string;
-  timezone: string;
-  currency: string;
-  /**
-   * 목적지 좌표. 장소 검색이 이 값으로 목적지 주변을 편향시킨다 —
-   * 없으면 현지 대신 사는 곳 근처 가게가 나온다.
-   */
-  lat?: number | null;
-  lng?: number | null;
+  /** 생성에는 필수. 수정에서 생략하면 날짜별 기준 도시를 건드리지 않는다. */
+  legs?: TripLegRequest[];
   defaultNotifyMinutes?: number;
   morningSummaryEnabled?: boolean;
   /** 기간 단축으로 잘리는 일정을 보관함으로 옮겨도 좋다는 확인. */
@@ -127,6 +136,10 @@ export interface TripWriteRequest {
 
 export interface ShrinkPreview {
   movedActivityCount: number;
+  /** 체크아웃일이 당겨질 숙소 수. */
+  shrunkStayCount: number;
+  /** 묵는 밤이 없어져 지워질 숙소 수. */
+  removedStayCount: number;
 }
 
 export async function createTrip(body: TripWriteRequest): Promise<TripDetail> {

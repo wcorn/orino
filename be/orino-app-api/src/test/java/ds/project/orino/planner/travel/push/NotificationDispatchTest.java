@@ -12,6 +12,7 @@ import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.StubExternalsConfig;
+import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -70,14 +71,16 @@ class NotificationDispatchTest extends ApiTestSupport {
         subscriptionRepository.save(
                 new PushSubscription(memberId, ENDPOINT, "p256dh", "auth", "Android"));
 
+        long cityId = TravelCityFixture.createCity(mockMvc, authHeader, "도쿄",
+                "Asia/Tokyo", "JPY");
         String body = mockMvc.perform(post("/api/travel/trips")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"title": "도쿄", "destinationName": "도쿄",
+                                {"title": "도쿄",
                                  "startDate": "2020-01-01", "endDate": "2020-01-02",
-                                 "timezone": "Asia/Tokyo", "currency": "JPY"}
-                                """))
+                                 %s}
+                                """.formatted(TravelCityFixture.singleLeg(cityId, 2))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         tripId = ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();
@@ -151,14 +154,17 @@ class NotificationDispatchTest extends ApiTestSupport {
             addPastActivity("지금 갈 것");
 
             // 먼 미래 여행을 따로 만들어 예약만 잡아 둔다.
+            long futureCity = TravelCityFixture.createCity(mockMvc, authHeader, "도쿄",
+                    "Asia/Tokyo", "JPY");
             String future = mockMvc.perform(post("/api/travel/trips")
                             .header(HttpHeaders.AUTHORIZATION, authHeader)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"title": "먼 여행", "destinationName": "도쿄",
+                                    {"title": "먼 여행",
                                      "startDate": "2090-01-01", "endDate": "2090-01-02",
-                                     "timezone": "Asia/Tokyo", "currency": "JPY"}
-                                    """))
+                                     %s}
+                                    """.formatted(
+                                            TravelCityFixture.singleLeg(futureCity, 2))))
                     .andExpect(status().isOk())
                     .andReturn().getResponse().getContentAsString();
             long futureTripId =

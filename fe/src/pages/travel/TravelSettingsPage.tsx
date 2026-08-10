@@ -52,15 +52,11 @@ export function TravelSettingsPage() {
   ) => {
     if (!trip) return;
     try {
+      // 구간을 보내지 않는다 — 알림 설정만 바꾸는 요청이 날짜별 기준 도시를 되감으면 안 된다.
       await updateTrip.mutateAsync({
         title: trip.title,
-        destinationName: trip.destinationName,
         startDate: trip.startDate,
         endDate: trip.endDate,
-        timezone: trip.timezone,
-        currency: trip.currency,
-        lat: trip.lat,
-        lng: trip.lng,
         defaultNotifyMinutes,
         morningSummaryEnabled,
       });

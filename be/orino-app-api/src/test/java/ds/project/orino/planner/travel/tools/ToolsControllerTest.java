@@ -11,6 +11,7 @@ import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.StubExternalsConfig;
+import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -74,17 +75,19 @@ class ToolsControllerTest extends ApiTestSupport {
     }
 
     private long createTrip(boolean withCoordinates) throws Exception {
-        String coords = withCoordinates
-                ? ", \"lat\": %s, \"lng\": %s".formatted(jitter("35.6764"), jitter("139.6500"))
-                : "";
+        // 날씨 좌표는 여행이 아니라 기준 도시가 갖는다. 좌표가 없는 도시면 날씨도 없다.
+        long cityId = withCoordinates
+                ? TravelCityFixture.createCity(mockMvc, authHeader, "도쿄", "Asia/Tokyo", "JPY",
+                        jitter("35.6764").toPlainString(), jitter("139.6500").toPlainString())
+                : TravelCityFixture.createCity(mockMvc, authHeader, "도쿄", "Asia/Tokyo", "JPY");
         String body = mockMvc.perform(post("/api/travel/trips")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"title": "도쿄", "destinationName": "도쿄",
+                                {"title": "도쿄",
                                  "startDate": "2026-10-24", "endDate": "2026-10-26",
-                                 "timezone": "Asia/Tokyo", "currency": "JPY"%s}
-                                """.formatted(coords)))
+                                 %s}
+                                """.formatted(TravelCityFixture.singleLeg(cityId, 3))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();

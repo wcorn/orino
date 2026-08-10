@@ -55,7 +55,11 @@ public enum ErrorCode {
             "여행이 시작된 뒤에 기록할 수 있습니다.", 400),
     TRAVEL_PHOTO_LIMIT_EXCEEDED("TRAVEL-ERR-013",
             "사진은 일정당 10장까지 올릴 수 있습니다.", 400),
-    TRAVEL_PHOTO_NOT_FOUND("TRAVEL-ERR-014", "존재하지 않는 사진입니다.", 404);
+    TRAVEL_PHOTO_NOT_FOUND("TRAVEL-ERR-014", "존재하지 않는 사진입니다.", 404),
+    // 015는 도시 경계 이동시간(3단계) 자리다 — 번호를 당기지 않고 비워 둔다.
+    // 도시가 아닌 장소를 기준 도시로 지정하면 타임존은 우연히 맞아도 도시 일치 판정이
+    // 그날 일정을 전부 "다른 도시"로 만든다.
+    TRAVEL_NOT_A_CITY("TRAVEL-ERR-016", "도시로 등록된 장소만 기준 도시가 될 수 있습니다.", 400);
 
     private final String code;
     private final String message;

@@ -184,10 +184,12 @@ describe("TravelSettingsPage", () => {
       await waitFor(() => expect(bodies).toHaveLength(1));
       expect(bodies[0]).toMatchObject({
         morningSummaryEnabled: true,
-        // 다른 값을 덮어쓰지 않는다 — 전체 수정 API라 전부 실어 보내야 한다.
-        timezone: "Asia/Tokyo",
+        // 제목·기간은 덮어쓰지 않도록 그대로 실어 보낸다(전체 수정 API).
+        title: "도쿄 3박 4일",
         startDate: "2026-10-24",
       });
+      // 구간은 보내지 않는다 — 알림 스위치 하나가 날짜별 기준 도시를 되감으면 안 된다.
+      expect(bodies[0]).not.toHaveProperty("legs");
     });
 
     it("여행이 없으면 설정할 것이 없다고 알린다", async () => {

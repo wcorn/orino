@@ -10,7 +10,9 @@ import ds.project.orino.domain.planner.travel.repository.TripActivityCount;
 import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.day.service.BaseCityResolver;
+import ds.project.orino.planner.travel.day.service.LegExpander;
 import ds.project.orino.planner.travel.day.service.TripDayService;
+import ds.project.orino.planner.travel.day.service.TripStayShrinkService;
 import ds.project.orino.planner.travel.trip.dto.ShrinkPreviewResponse;
 import ds.project.orino.planner.travel.trip.dto.TravelSummaryResponse;
 import ds.project.orino.planner.travel.trip.dto.TripDetail;
@@ -25,9 +27,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Comparator;
-import java.util.Currency;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -52,6 +52,7 @@ public class TripService {
     private final NotificationScheduleService notificationService;
     private final TripDayService tripDayService;
     private final BaseCityResolver baseCityResolver;
+    private final TripStayShrinkService stayShrinkService;
     private final Clock clock;
 
     public TripService(TripRepository tripRepository,
@@ -59,25 +60,27 @@ public class TripService {
                        NotificationScheduleService notificationService,
                        TripDayService tripDayService,
                        BaseCityResolver baseCityResolver,
+                       TripStayShrinkService stayShrinkService,
                        Clock clock) {
         this.tripRepository = tripRepository;
         this.activityRepository = activityRepository;
         this.notificationService = notificationService;
         this.tripDayService = tripDayService;
         this.baseCityResolver = baseCityResolver;
+        this.stayShrinkService = stayShrinkService;
         this.clock = clock;
     }
 
     @Transactional
     public TripDetail create(Long memberId, TripWriteRequest request) {
-        validate(request);
-        Trip trip = new Trip(memberId, request.resolvedTitle(),
+        requireValidPeriod(request.startDate(), request.endDate());
+        Trip trip = new Trip(memberId, request.title().trim(),
                 request.startDate(), request.endDate());
         applyOptionalSettings(trip, request);
         Trip saved = tripRepository.save(trip);
         tripRepository.flush();
         // 날짜 행이 없으면 타임존이 없는 여행이 된다 — 같은 트랜잭션에서 반드시 채운다.
-        tripDayService.syncPeriod(saved, resolveBaseCity(memberId, request).getId());
+        tripDayService.applyPlan(saved, expandLegs(memberId, saved, request));
         // 아침 요약은 일정이 아니라 날짜에 매달려 있어, 일정이 하나도 없어도 지금 잡힌다(§4.3).
         notificationService.rescheduleTrip(saved.getId());
         return detailOf(saved);
@@ -113,33 +116,35 @@ public class TripService {
      */
     @Transactional
     public TripDetail update(Long memberId, Long tripId, TripWriteRequest request) {
-        validate(request);
+        requireValidPeriod(request.startDate(), request.endDate());
         Trip trip = getOwned(memberId, tripId);
 
         long movedCount = activityRepository.countOutsidePeriod(
                 tripId, request.startDate(), request.endDate());
         if (movedCount > 0 && !request.archiveConfirmed()) {
+            TripStayShrinkService.Impact stays =
+                    stayShrinkService.preview(tripId, request.endDate());
             throw CustomException.withData(ErrorCode.TRAVEL_ARCHIVE_CONFIRM_REQUIRED,
-                    new ShrinkPreviewResponse(movedCount));
+                    new ShrinkPreviewResponse(movedCount,
+                            stays.shrunkCount(), stays.removedCount()));
         }
 
-        // 타임존이 바뀌어도 일정의 벽시계 시각은 건드리지 않는다 — 09:00은 어디서든 09:00이다.
-        trip.update(request.resolvedTitle(), request.startDate(), request.endDate());
+        // 기준 도시가 바뀌어도 일정의 벽시계 시각은 건드리지 않는다 — 09:00은 어디서든 09:00이다.
+        trip.update(request.title().trim(), request.startDate(), request.endDate());
         applyOptionalSettings(trip, request);
 
         if (movedCount > 0) {
             archiveActivitiesOutsidePeriod(trip);
         }
-        // 기간이 바뀌었으면 날짜 집합도 같이 움직여야 한다. 새로 생긴 날짜는 앞 날짜의
-        // 도시를 물려받고, 남아 있는 날짜의 도시 메모는 그대로다.
-        TravelPlace city = resolveBaseCity(memberId, request);
-        tripDayService.syncPeriod(trip, city.getId());
-        // 이 화면은 여행 전체의 목적지 <b>하나</b>를 보낸다(v2.0 폼). 목적지를 바꿨다면 전
-        // 날짜가 따라 바뀌는 게 그 화면의 뜻이다. 날짜마다 다른 도시를 두는 길은 구간 입력
-        // (#1121)과 기준 도시 변경 API(#1122)로 따로 열린다.
-        if (!city.getId().equals(tripDayService.primaryCity(trip.getId()).getId())) {
-            tripDayService.rebaseAll(trip.getId(), city.getId());
+        // 기간이 바뀌었으면 날짜 집합도 같이 움직여야 한다. 구간을 보냈으면 그대로 다시 펴고,
+        // 생략했으면 도시 배치는 두고 기간만 맞춘다(새 날짜는 앞 날짜 도시를 상속).
+        if (request.hasLegs()) {
+            tripDayService.applyPlan(trip, expandLegs(memberId, trip, request));
+        } else {
+            tripDayService.syncPeriod(trip, tripDayService.primaryCity(tripId).getId());
         }
+        // 걸쳐 있던 숙소는 체크아웃일을 새 종료일로 당기고, 묵는 밤이 없어지면 지운다.
+        stayShrinkService.apply(tripId, request.endDate());
         tripRepository.flush();
         // §4.2 — 타임존이 바뀌면 벽시계 시각은 그대로고 알림 시각만 전부 다시 계산된다.
         // 기본 알림 시점·기간 변경도 같은 재계산으로 흡수된다.
@@ -147,15 +152,17 @@ public class TripService {
         return detailOf(trip);
     }
 
-    /** 기간을 이렇게 바꾸면 몇 개가 보관함으로 가는지. 생략한 날짜는 현재 값을 쓴다. */
+    /** 기간을 이렇게 바꾸면 무엇이 밀려나는지. 생략한 날짜는 현재 값을 쓴다. */
     public ShrinkPreviewResponse shrinkPreview(Long memberId, Long tripId,
                                                LocalDate startDate, LocalDate endDate) {
         Trip trip = getOwned(memberId, tripId);
         LocalDate newStart = startDate != null ? startDate : trip.getStartDate();
         LocalDate newEnd = endDate != null ? endDate : trip.getEndDate();
         requireValidPeriod(newStart, newEnd);
+        TripStayShrinkService.Impact stays = stayShrinkService.preview(tripId, newEnd);
         return new ShrinkPreviewResponse(
-                activityRepository.countOutsidePeriod(tripId, newStart, newEnd));
+                activityRepository.countOutsidePeriod(tripId, newStart, newEnd),
+                stays.shrunkCount(), stays.removedCount());
     }
 
     /** 여행 삭제 — 일정은 FK CASCADE로 함께 정리된다. */
@@ -220,13 +227,16 @@ public class TripService {
     }
 
     /**
-     * 요청의 목적지를 기준 도시로 바꾼다. 이름·타임존·통화가 여행이 아니라 도시에 붙는
-     * 것이 v2.1이라, 저장 전에 도시 행을 확보해야 한다.
+     * 구간을 날짜로 편다. 도시 해석과 전개를 한 곳에 묶어 두는 이유는, 둘 사이에 다른 일이
+     * 끼면 "저장은 됐는데 어떤 날짜에는 도시가 없는" 중간 상태가 생기기 때문이다.
      */
-    private TravelPlace resolveBaseCity(Long memberId, TripWriteRequest request) {
-        return baseCityResolver.resolve(memberId, request.destinationPlaceId(),
-                request.destinationName().trim(), request.timezone(),
-                normalizedCurrency(request.currency()), request.lat(), request.lng());
+    private Map<LocalDate, Long> expandLegs(Long memberId, Trip trip, TripWriteRequest request) {
+        List<TravelPlace> cities = baseCityResolver.resolveAll(memberId, request.legs());
+        List<LegExpander.Leg> legs = new java.util.ArrayList<>();
+        for (int i = 0; i < cities.size(); i++) {
+            legs.add(new LegExpander.Leg(cities.get(i).getId(), request.legs().get(i).days()));
+        }
+        return LegExpander.expand(trip.getStartDate(), trip.getEndDate(), legs);
     }
 
     private void applyOptionalSettings(Trip trip, TripWriteRequest request) {
@@ -238,38 +248,10 @@ public class TripService {
         trip.updateNotificationSettings(notifyMinutes, morningSummary);
     }
 
-    private void validate(TripWriteRequest request) {
-        requireValidPeriod(request.startDate(), request.endDate());
-        requireValidTimezone(request.timezone());
-        requireValidCurrency(request.currency());
-    }
-
     private void requireValidPeriod(LocalDate startDate, LocalDate endDate) {
         if (endDate.isBefore(startDate)) {
             throw new CustomException(ErrorCode.TRAVEL_INVALID_PERIOD);
         }
-    }
-
-    /**
-     * IANA 지역 ID만 받는다. {@code ZoneId.of}는 {@code "UTC+09:00"} 같은 오프셋도 통과시키는데,
-     * 오프셋은 서머타임을 모르므로 알림 시각 환산이 계절에 따라 어긋난다.
-     */
-    private void requireValidTimezone(String timezone) {
-        if (!ZoneId.getAvailableZoneIds().contains(timezone)) {
-            throw new CustomException(ErrorCode.TRAVEL_INVALID_TIMEZONE);
-        }
-    }
-
-    private void requireValidCurrency(String currency) {
-        try {
-            Currency.getInstance(normalizedCurrency(currency));
-        } catch (IllegalArgumentException e) {
-            throw new CustomException(ErrorCode.TRAVEL_INVALID_CURRENCY);
-        }
-    }
-
-    private String normalizedCurrency(String currency) {
-        return currency.trim().toUpperCase(Locale.ROOT);
     }
 
     /** 여행별 첫날 기준 도시. 상태·D-day·목적지 표시가 전부 여기서 나온다. */

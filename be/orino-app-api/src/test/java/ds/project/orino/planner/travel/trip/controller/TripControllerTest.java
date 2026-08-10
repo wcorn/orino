@@ -9,6 +9,7 @@ import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.FixedClockConfig;
 import ds.project.orino.support.MemberFixture;
+import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -82,33 +83,53 @@ class TripControllerTest extends ApiTestSupport {
         }
 
         @Test
-        @DisplayName("제목을 비우면 목적지명으로 채워 저장한다")
-        void fallsBackToDestinationName() throws Exception {
+        @DisplayName("제목은 필수다 — 목적지가 여행에 없으니 채울 이름도 없다")
+        void rejectsBlankTitle() throws Exception {
+            long cityId = TravelCityFixture.createCity(mockMvc, authHeader, "오사카",
+                    "Asia/Tokyo", "JPY");
             mockMvc.perform(post("/api/travel/trips")
                             .header(HttpHeaders.AUTHORIZATION, authHeader)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"title": "  ", "destinationName": "오사카",
-                                     "startDate": "2026-10-24", "endDate": "2026-10-27",
-                                     "timezone": "Asia/Tokyo", "currency": "JPY"}
-                                    """))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.title").value("오사카"));
+                                    {"title": "  ",
+                                     "startDate": "2026-10-24", "endDate": "2026-10-27", %s}
+                                    """.formatted(TravelCityFixture.singleLeg(cityId, 4))))
+                    .andExpect(status().isBadRequest());
         }
 
         @Test
-        @DisplayName("통화는 소문자로 보내도 대문자로 저장된다")
-        void normalizesCurrency() throws Exception {
+        @DisplayName("구간이 없으면 400 — 어느 날짜도 기준 도시를 갖지 못한다")
+        void rejectsMissingLegs() throws Exception {
             mockMvc.perform(post("/api/travel/trips")
                             .header(HttpHeaders.AUTHORIZATION, authHeader)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"destinationName": "도쿄", "startDate": "2026-10-24",
-                                     "endDate": "2026-10-27", "timezone": "Asia/Tokyo",
-                                     "currency": "jpy"}
+                                    {"title": "도쿄", "startDate": "2026-10-24",
+                                     "endDate": "2026-10-27"}
                                     """))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("도시가 아닌 장소를 구간에 넣으면 400")
+        void rejectsNonCityPlace() throws Exception {
+            String place = mockMvc.perform(post("/api/travel/places")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"name\": \"센소지\"}"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.currency").value("JPY"));
+                    .andReturn().getResponse().getContentAsString();
+            long poiId = ((Number) JsonPath.read(place, "$.data.id")).longValue();
+
+            mockMvc.perform(post("/api/travel/trips")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"title": "도쿄", "startDate": "2026-10-24",
+                                     "endDate": "2026-10-27", %s}
+                                    """.formatted(TravelCityFixture.singleLeg(poiId, 4))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-016"));
         }
 
         @Test
@@ -120,36 +141,6 @@ class TripControllerTest extends ApiTestSupport {
                             .content(tripBody("도쿄", "도쿄", "2026-10-27", "2026-10-24")))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("TRAVEL-ERR-002"));
-        }
-
-        @Test
-        @DisplayName("IANA ID가 아닌 시간대는 400 — 오프셋 표기도 거부한다")
-        void rejectsNonIanaTimezone() throws Exception {
-            mockMvc.perform(post("/api/travel/trips")
-                            .header(HttpHeaders.AUTHORIZATION, authHeader)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"destinationName": "도쿄", "startDate": "2026-10-24",
-                                     "endDate": "2026-10-27", "timezone": "UTC+09:00",
-                                     "currency": "JPY"}
-                                    """))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-003"));
-        }
-
-        @Test
-        @DisplayName("ISO 4217이 아닌 통화는 400")
-        void rejectsUnknownCurrency() throws Exception {
-            mockMvc.perform(post("/api/travel/trips")
-                            .header(HttpHeaders.AUTHORIZATION, authHeader)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"destinationName": "도쿄", "startDate": "2026-10-24",
-                                     "endDate": "2026-10-27", "timezone": "Asia/Tokyo",
-                                     "currency": "ZZZ"}
-                                    """))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-004"));
         }
 
         @Test
@@ -288,9 +279,8 @@ class TripControllerTest extends ApiTestSupport {
                             .header(HttpHeaders.AUTHORIZATION, authHeader)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"title": "도쿄", "destinationName": "도쿄",
+                                    {"title": "도쿄",
                                      "startDate": "2026-10-24", "endDate": "2026-10-25",
-                                     "timezone": "Asia/Tokyo", "currency": "JPY",
                                      "confirmArchive": true}
                                     """))
                     .andExpect(status().isOk())
@@ -355,8 +345,8 @@ class TripControllerTest extends ApiTestSupport {
         }
 
         @Test
-        @DisplayName("타임존을 바꿔도 일정의 벽시계 시각은 그대로다")
-        void timezoneChangeKeepsWallClockTimes() throws Exception {
+        @DisplayName("기준 도시를 바꿔도 일정의 벽시계 시각은 그대로다")
+        void baseCityChangeKeepsWallClockTimes() throws Exception {
             long tripId = createTrip("도쿄", "도쿄", "2026-10-24", "2026-10-27");
             long activityId = addActivity(tripId, "09시 출발", LocalDate.of(2026, 10, 24),
                     LocalTime.of(9, 0));
@@ -364,11 +354,8 @@ class TripControllerTest extends ApiTestSupport {
             mockMvc.perform(put("/api/travel/trips/" + tripId)
                             .header(HttpHeaders.AUTHORIZATION, authHeader)
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"title": "하와이", "destinationName": "호놀룰루",
-                                     "startDate": "2026-10-24", "endDate": "2026-10-27",
-                                     "timezone": "Pacific/Honolulu", "currency": "USD"}
-                                    """))
+                            .content(tripBody("하와이", "호놀룰루", "2026-10-24", "2026-10-27",
+                                    "Pacific/Honolulu", "USD")))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.timezone").value("Pacific/Honolulu"));
 
@@ -537,11 +524,19 @@ class TripControllerTest extends ApiTestSupport {
 
     // ---------------- helpers ----------------
 
-    private static String tripBody(String title, String destination, String start, String end) {
+    /** 구간 하나짜리 요청 본문. 도시는 미리 만들어 둔 것을 쓴다. */
+    private String tripBody(String title, String destination, String start, String end)
+            throws Exception {
+        return tripBody(title, destination, start, end, "Asia/Tokyo", "JPY");
+    }
+
+    private String tripBody(String title, String destination, String start, String end,
+                            String timezone, String currency) throws Exception {
+        long cityId = TravelCityFixture.createCity(mockMvc, authHeader, destination,
+                timezone, currency);
         return """
-                {"title": "%s", "destinationName": "%s", "startDate": "%s", "endDate": "%s",
-                 "timezone": "Asia/Tokyo", "currency": "JPY"}
-                """.formatted(title, destination, start, end);
+                {"title": "%s", "startDate": "%s", "endDate": "%s", %s}
+                """.formatted(title, start, end, TravelCityFixture.singleLeg(cityId, 1));
     }
 
     private long createTrip(String title, String destination, String start, String end)
@@ -554,10 +549,7 @@ class TripControllerTest extends ApiTestSupport {
         String body = mockMvc.perform(post("/api/travel/trips")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"title": "%s", "destinationName": "%s", "startDate": "%s",
-                                 "endDate": "%s", "timezone": "%s", "currency": "%s"}
-                                """.formatted(title, destination, start, end, timezone, currency)))
+                        .content(tripBody(title, destination, start, end, timezone, currency)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) JsonPath.read(body, "$.data.id")).longValue();
@@ -579,9 +571,8 @@ class TripControllerTest extends ApiTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"title": "도쿄", "destinationName": "도쿄",
+                                {"title": "도쿄",
                                  "startDate": "%s", "endDate": "%s",
-                                 "timezone": "Asia/Tokyo", "currency": "JPY",
                                  "confirmArchive": true}
                                 """.formatted(start, end)))
                 .andExpect(status().isOk());

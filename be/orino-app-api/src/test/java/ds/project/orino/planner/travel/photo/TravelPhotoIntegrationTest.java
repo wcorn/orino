@@ -9,6 +9,7 @@ import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.FixedClockConfig;
 import ds.project.orino.support.MemberFixture;
+import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -274,14 +275,17 @@ class TravelPhotoIntegrationTest extends ApiTestSupport {
     }
 
     private long createTrip(String startDate, String endDate) throws Exception {
+        long cityId = TravelCityFixture.createCity(mockMvc, authHeader, "도쿄",
+                "Asia/Tokyo", "JPY");
         String body = mockMvc.perform(post("/api/travel/trips")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"title": "도쿄", "destinationName": "도쿄",
+                                {"title": "도쿄",
                                  "startDate": "%s", "endDate": "%s",
-                                 "timezone": "Asia/Tokyo", "currency": "JPY"}
-                                """.formatted(startDate, endDate)))
+                                 %s}
+                                """.formatted(startDate, endDate,
+                                        TravelCityFixture.singleLeg(cityId, 1))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) JsonPath.read(body, "$.data.id")).longValue();

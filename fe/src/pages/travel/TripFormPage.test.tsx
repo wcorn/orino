@@ -15,7 +15,8 @@ const TOKYO = {
   id: 3,
   title: "도쿄 3박 4일",
   destinationName: "도쿄",
-  destinationPlaceId: null,
+  // v2.1부터 목적지는 첫날 기준 도시다 — 상세 응답에 그 장소 id가 늘 들어 있다.
+  destinationPlaceId: 21,
   startDate: "2026-10-24",
   endDate: "2026-10-27",
   timezone: "Asia/Tokyo",
@@ -72,6 +73,18 @@ const TOKYO_CITY = {
   timezone: "Asia/Tokyo",
   currency: "JPY",
 };
+
+/** 직접 입력한 도시 저장 요청을 잡아 둔다. 검색이 막혔을 때만 지나는 길이다. */
+function captureManualPlaces() {
+  const seen: Record<string, unknown>[] = [];
+  server.use(
+    http.post(`${API_BASE}/travel/places`, async ({ request }) => {
+      seen.push((await request.json()) as Record<string, unknown>);
+      return HttpResponse.json({ code: "OK", data: { id: 77, name: "도쿄" } });
+    }),
+  );
+  return seen;
+}
 
 /** 목적지 검색 응답. 호출된 검색어를 모아 둔다. */
 function mockCities(cities: unknown[] = [TOKYO_CITY]) {
@@ -142,7 +155,7 @@ describe("TripFormPage", () => {
       );
     });
 
-    it("제목을 비우면 요청에서 빼서 서버가 목적지명으로 채우게 한다", async () => {
+    it("제목을 비우면 목적지 이름으로 채워 보낸다 — 서버는 제목을 필수로 받는다", async () => {
       const seen = captureWrite("post");
       renderApp("/travel/trips/new");
       await screen.findByLabelText("목적지 도시");
@@ -151,13 +164,10 @@ describe("TripFormPage", () => {
       await userEvent.click(screen.getByRole("button", { name: "만들기" }));
 
       await waitFor(() => expect(seen).toHaveLength(1));
-      expect(seen[0].title).toBeUndefined();
       expect(seen[0]).toMatchObject({
-        destinationName: "도쿄",
+        title: "도쿄",
         startDate: "2026-10-24",
         endDate: "2026-10-27",
-        timezone: "Asia/Tokyo",
-        currency: "JPY",
         defaultNotifyMinutes: 15,
       });
     });
@@ -219,7 +229,7 @@ describe("TripFormPage", () => {
       expect(screen.getByText(/Asia\/Tokyo · JPY/)).toBeInTheDocument();
     });
 
-    it("고른 도시의 좌표를 함께 보낸다 — 장소 검색이 이걸로 목적지 주변을 편향시킨다", async () => {
+    it("고른 도시를 구간으로 보낸다 — 타임존·통화·좌표는 도시가 갖는다", async () => {
       const seen = captureWrite("post");
       renderApp("/travel/trips/new");
       await screen.findByLabelText("목적지 도시");
@@ -228,13 +238,13 @@ describe("TripFormPage", () => {
       await userEvent.click(screen.getByRole("button", { name: "만들기" }));
 
       await waitFor(() => expect(seen).toHaveLength(1));
-      expect(seen[0]).toMatchObject({
-        destinationName: "도쿄",
-        timezone: "Asia/Tokyo",
-        currency: "JPY",
-        lat: 35.6764225,
-        lng: 139.650027,
-      });
+      // 검색 결과를 그대로 보낸다 — 서버가 담아 도시로 승격한다.
+      expect(seen[0].legs).toEqual([
+        { cityGooglePlaceId: "ChIJ_tokyo", days: 4 },
+      ]);
+      expect(seen[0]).not.toHaveProperty("timezone");
+      expect(seen[0]).not.toHaveProperty("currency");
+      expect(seen[0]).not.toHaveProperty("lat");
     });
 
     it("검색어를 서버로 보낸다", async () => {
@@ -270,6 +280,7 @@ describe("TripFormPage", () => {
         ),
       );
       const seen = captureWrite("post");
+      const cities = captureManualPlaces();
       renderApp("/travel/trips/new");
       await screen.findByLabelText("목적지 도시");
 
@@ -286,7 +297,16 @@ describe("TripFormPage", () => {
       await userEvent.click(screen.getByRole("button", { name: "만들기" }));
 
       await waitFor(() => expect(seen).toHaveLength(1));
-      expect(seen[0]).toMatchObject({ destinationName: "도쿄" });
+      // 검색으로 고른 도시가 아니면 id가 없다 — 저장 직전에 도시로 만들어 붙인다.
+      expect(cities).toEqual([
+        expect.objectContaining({
+          name: "도쿄",
+          kind: "CITY",
+          timezone: "Asia/Tokyo",
+          currency: "JPY",
+        }),
+      ]);
+      expect(seen[0].legs).toEqual([{ cityPlaceId: 77, days: 4 }]);
     });
 
     it("직접 입력에서는 타임존·통화를 고를 수 있다 — 정해 줄 사람이 없다", async () => {
