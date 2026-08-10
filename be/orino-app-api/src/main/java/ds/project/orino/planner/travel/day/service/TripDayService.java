@@ -142,6 +142,34 @@ public class TripDayService {
     }
 
     /**
+     * 여행 여럿의 <b>날짜별</b> 기준 도시를 한 번에. 상태 판정은 오늘에 해당하는 날짜의
+     * 타임존으로 하므로 첫날만으로는 부족하다.
+     *
+     * <p>여행 하나는 길어야 한 달이라 전 날짜를 들고 와도 몇십 행이다 — 여행 수만큼 따로
+     * 조회하는 쪽이 훨씬 비싸다.
+     */
+    public Map<Long, Map<LocalDate, TravelPlace>> baseCitiesByTrip(Collection<Long> tripIds) {
+        if (tripIds.isEmpty()) {
+            return Map.of();
+        }
+        List<TripDay> days = dayRepository.findAllByTripIdInOrderByTripIdAscDayDateAsc(tripIds);
+        Map<Long, TravelPlace> places = placeRepository
+                .findAllById(days.stream().map(TripDay::getBasePlaceId).distinct().toList())
+                .stream()
+                .collect(Collectors.toMap(TravelPlace::getId, Function.identity()));
+
+        Map<Long, Map<LocalDate, TravelPlace>> byTrip = new LinkedHashMap<>();
+        for (TripDay day : days) {
+            TravelPlace city = places.get(day.getBasePlaceId());
+            if (city != null) {
+                byTrip.computeIfAbsent(day.getTripId(), id -> new LinkedHashMap<>())
+                        .put(day.getDayDate(), city);
+            }
+        }
+        return byTrip;
+    }
+
+    /**
      * 여행 여럿의 첫날 기준 도시를 한 번에. 목록·요약 화면이 여행 수만큼 조회하지 않게 한다.
      *
      * <p>날짜 행이 없는 여행은 지도에서 빠진다 — 목록 전체를 죽이는 대신 호출부가 그 한 건만

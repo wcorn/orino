@@ -14,6 +14,7 @@ import type {
 import { useTravelSummary } from "@/features/travel/hooks/useTravelSummary";
 import { useTrip } from "@/features/travel/hooks/useTrip";
 import {
+  constantZone,
   dayChips,
   daysUntil,
   formatPeriod,
@@ -77,7 +78,7 @@ function describeState(
   if (summary?.ongoing) return `${summary.ongoing.title} 여행 중이에요.`;
   if (!featured) return undefined;
 
-  const days = daysUntil(featured.startDate, featured.timezone);
+  const days = daysUntil(featured.startDate, constantZone(featured.timezone));
   if (days <= 0) return "오늘 출발이에요.";
   return `진행 중인 여행이 없어요. 다음 여행까지 ${days}일.`;
 }
@@ -86,7 +87,7 @@ function FeaturedTripCard({ trip }: { trip: TripDetail }) {
   const ongoing = trip.status === "ONGOING";
   // 서버가 준 dDay를 그대로 쓰지 않고 여행 타임존으로 다시 계산한다 —
   // 오프라인 캐시(4단계)로 어제 응답이 돌아와도 숫자가 맞아야 한다.
-  const days = daysUntil(trip.startDate, trip.timezone);
+  const days = daysUntil(trip.startDate, constantZone(trip.timezone));
   const chips = dayChips(trip.startDate, trip.endDate);
 
   return (

@@ -11,6 +11,7 @@ import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.activity.service.ActivityService;
 import ds.project.orino.planner.travel.board.dto.BoardResponse;
+import ds.project.orino.planner.travel.day.service.TripClock;
 import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.route.service.TravelTimeService;
 import ds.project.orino.planner.travel.tools.dto.WeatherResponse;
@@ -20,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
 import java.util.List;
@@ -70,21 +70,26 @@ public class BoardService {
     public BoardResponse board(Long memberId, Long tripId, LocalDate date, boolean archive) {
         Trip trip = tripRepository.findByIdAndMemberId(tripId, memberId)
                 .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_TRIP_NOT_FOUND));
-        // 헤더의 타임존·통화는 아직 첫날 기준 도시에서 온다. 선택한 날짜의 도시로 갈라내는 건
-        // 파생 재작성(#1123)·보드 응답 v2.1(#1124)의 몫이다.
-        TravelPlace city = tripDayService.primaryCity(tripId);
-        TripStatus status = trip.status(clock, TripDayService.zoneOf(city));
+        Map<LocalDate, TravelPlace> cities = tripDayService.baseCitiesOf(tripId);
+        TripStatus status = TripClock.status(trip, cities, clock);
 
         LocalDate selectedDate = archive ? null
-                : resolveSelectedDate(trip, status, date, TripDayService.zoneOf(city));
+                : resolveSelectedDate(trip, status, date, cities);
         List<TripActivity> activities = selectedDate == null
                 ? activityRepository.findUnscheduled(tripId)
                 : activityRepository.findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(
                         tripId, selectedDate);
 
+        // 헤더의 `현지 09:42`는 <b>보고 있는 날짜</b>의 시계다. 보관함에는 날짜가 없으므로
+        // 첫날로 떨어뜨린다 — 그 화면에는 시각이 걸린 것이 없다.
+        TravelPlace headerCity = cities.get(
+                selectedDate != null ? selectedDate : trip.getStartDate());
+
         return new BoardResponse(
-                new BoardResponse.BoardTrip(trip.getId(), trip.getTitle(), city.getTimezone(),
-                        city.getCurrency(), trip.getStartDate(), trip.getEndDate(), status,
+                new BoardResponse.BoardTrip(trip.getId(), trip.getTitle(),
+                        headerCity == null ? null : headerCity.getTimezone(),
+                        headerCity == null ? null : headerCity.getCurrency(),
+                        trip.getStartDate(), trip.getEndDate(), status,
                         status == TripStatus.COMPLETED),
                 buildDays(trip),
                 selectedDate,
@@ -100,14 +105,16 @@ public class BoardService {
      * 현지에서 앱을 열자마자 오늘 일정이 보여야 하고, 그 "오늘"은 기기 시간대가 아니다.
      */
     private LocalDate resolveSelectedDate(Trip trip, TripStatus status, LocalDate requested,
-                                          ZoneId zone) {
+                                          Map<LocalDate, TravelPlace> cities) {
         if (requested != null) {
             if (!trip.covers(requested)) {
                 throw new CustomException(ErrorCode.TRAVEL_DATE_OUT_OF_RANGE);
             }
             return requested;
         }
-        return status == TripStatus.ONGOING ? trip.todayIn(clock, zone) : trip.getStartDate();
+        // 진행 중이면 "오늘"을 연다 — 그 오늘은 날짜마다 다른 시계로 정해진 값이다.
+        return status == TripStatus.ONGOING
+                ? TripClock.today(trip, cities, clock) : trip.getStartDate();
     }
 
     /** 기간에서 날짜 탭을 만든다. 일정이 하나도 없는 날짜도 탭은 나와야 한다. */
