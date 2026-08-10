@@ -11,7 +11,7 @@ import ds.project.orino.planner.travel.route.client.TravelMode;
  * @param distanceM       거리(m). 경로 거리이고, {@code fallback}이면 직선거리다
  * @param fallback        Routes를 못 얻어 직선거리로 대체했다. FE는 {@code 약 N.Nkm}로 보여준다
  */
-public record LegResponse(
+public record TravelTimeResponse(
         Long fromActivityId,
         Long toActivityId,
         TravelMode mode,

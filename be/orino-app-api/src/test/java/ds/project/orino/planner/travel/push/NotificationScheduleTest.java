@@ -92,7 +92,7 @@ class NotificationScheduleTest extends ApiTestSupport {
     }
 
     /**
-     * 구간 캐시(Redis)는 테스트 사이에 살아 있다. 좌표가 같으면 앞 테스트가 캐시해 둔
+     * 이동시간 캐시(Redis)는 테스트 사이에 살아 있다. 좌표가 같으면 앞 테스트가 캐시해 둔
      * 이동시간이 새어 들어와, 스텁을 비워도 값이 나온다.
      */
     private static BigDecimal jitter(BigDecimal base) {
@@ -392,7 +392,7 @@ class NotificationScheduleTest extends ApiTestSupport {
                     """.formatted(placeAt("스카이트리", SKYTREE_LAT, SKYTREE_LNG)));
 
             long before = pending().size();
-            // 장소 없는 일정을 사이에 넣어도 구간은 그대로라 개수가 유지돼야 한다.
+            // 장소 없는 일정을 사이에 넣어도 이동시간은 그대로라 개수가 유지돼야 한다.
             addActivity("""
                     {"title": "점심", "activityDate": "2026-10-24", "startTime": "10:00"}
                     """);

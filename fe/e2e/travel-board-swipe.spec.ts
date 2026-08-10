@@ -102,7 +102,7 @@ async function mockBoard(page: Page): Promise<Captured> {
           isArchive === "true"
             ? []
             : [activity(1, "센소지", 0), activity(2, "우에노", 1)],
-        legs: [],
+        travelTimes: [],
       }),
     );
   });

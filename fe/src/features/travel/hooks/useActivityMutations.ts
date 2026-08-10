@@ -99,10 +99,10 @@ export function useReorderActivities(tripId: number) {
 
     // 서버가 재계산해 준 이동시간을 곧바로 반영한다. onSettled의 재조회를 기다리면
     // 순서만 먼저 바뀌고 이동시간이 뒤늦게 따라붙어 화면이 두 번 움직인다.
-    onSuccess: (legs, { date }) => {
+    onSuccess: (travelTimes, { date }) => {
       const key = travelKeys.board(tripId, date ?? "archive");
       queryClient.setQueryData<Board>(key, (old) =>
-        old ? { ...old, legs } : old,
+        old ? { ...old, travelTimes } : old,
       );
     },
 

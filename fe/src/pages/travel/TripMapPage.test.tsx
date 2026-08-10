@@ -78,7 +78,7 @@ function mockBoard(byDate: Record<string, unknown[]>) {
           selectedDate: date,
           archiveCount: 0,
           activities: byDate[date] ?? [],
-          legs: [],
+          travelTimes: [],
         },
       });
     }),

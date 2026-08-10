@@ -75,7 +75,7 @@ export interface BoardTrip {
 /** 앱이 계산하는 이동수단. 대중교통은 계산하지 않는다 — 구글 지도 딥링크가 맡는다. */
 export type TravelMode = "WALK" | "DRIVE";
 
-export interface Leg {
+export interface TravelTime {
   fromActivityId: number;
   toActivityId: number;
   mode: TravelMode;
@@ -95,7 +95,7 @@ export interface Board {
   archiveCount: number;
   activities: Activity[];
   /** 연속한 두 일정 사이 이동. 장소 없는 일정은 건너뛴 결과다. */
-  legs: Leg[];
+  travelTimes: TravelTime[];
 }
 
 /**
@@ -190,14 +190,14 @@ export async function saveActivityLog(
  * 이동수단 시트가 여는 단건 조회. 자동 판정되지 않은 수단은 **고른 순간에만** 부른다 —
  * 미리 둘 다 받아두면 아무도 안 열어 볼 값까지 사게 된다(호출당 과금).
  */
-export async function fetchLeg(
+export async function fetchTravelTime(
   tripId: number,
   from: number,
   to: number,
   mode: TravelMode,
-): Promise<Leg> {
-  const { data } = await client.get<ApiEnvelope<Leg>>(
-    `/travel/trips/${tripId}/legs`,
+): Promise<TravelTime> {
+  const { data } = await client.get<ApiEnvelope<TravelTime>>(
+    `/travel/trips/${tripId}/travel-time`,
     { params: { from, to, mode } },
   );
   return data.data;
@@ -211,7 +211,7 @@ export interface ReorderMove {
 }
 
 /**
- * 드래그 결과를 한 번에 반영한다. 응답에 **재계산된 `legs`가 담겨** 온다 —
+ * 드래그 결과를 한 번에 반영한다. 응답에 **재계산된 `travelTimes`가 담겨** 온다 —
  * 드래그는 손을 뗀 순간 결과가 보여야 해서, 이동시간 때문에 한 번 더 왕복하지 않는다.
  *
  * <p>다른 날짜로 옮기는 것은 이 엔드포인트가 아니라 {@link updateActivity}로 한다 —
@@ -221,10 +221,10 @@ export interface ReorderMove {
 export async function reorderActivities(
   tripId: number,
   moves: ReorderMove[],
-): Promise<Leg[]> {
-  const { data } = await client.put<ApiEnvelope<{ legs: Leg[] }>>(
+): Promise<TravelTime[]> {
+  const { data } = await client.put<ApiEnvelope<{ travelTimes: TravelTime[] }>>(
     `/travel/trips/${tripId}/activities/order`,
     { moves },
   );
-  return data.data.legs;
+  return data.data.travelTimes;
 }

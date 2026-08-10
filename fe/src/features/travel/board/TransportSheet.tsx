@@ -5,12 +5,12 @@ import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Button } from "@/components/ui/button";
 import type {
   Activity,
-  Leg,
   TravelMode,
+  TravelTime,
 } from "@/features/travel/api/activities";
-import { fetchLeg } from "@/features/travel/api/activities";
-import { legLabel } from "@/features/travel/lib/legLabel";
+import { fetchTravelTime } from "@/features/travel/api/activities";
 import { directionsUrl } from "@/features/travel/lib/mapsLink";
+import { travelTimeLabel } from "@/features/travel/lib/travelTimeLabel";
 import { toast } from "@/shared/lib/toast";
 
 interface TransportSheetProps {
@@ -18,7 +18,7 @@ interface TransportSheetProps {
   onOpenChange: (open: boolean) => void;
   tripId: number;
   /** 탭한 구간. 서버가 자동 판정한 수단의 값이 들어 있다. */
-  leg: Leg | null;
+  travelTime: TravelTime | null;
   /** 딥링크 좌표를 얻으려면 양 끝 일정이 필요하다. */
   activities: Activity[];
 }
@@ -38,25 +38,27 @@ export function TransportSheet({
   open,
   onOpenChange,
   tripId,
-  leg,
+  travelTime,
   activities,
 }: TransportSheetProps) {
   /** 수단별로 받아 둔 값. 시트를 닫았다 열어도 같은 구간이면 다시 부르지 않는다. */
-  const [byMode, setByMode] = useState<Partial<Record<TravelMode, Leg>>>({});
+  const [byMode, setByMode] = useState<Partial<Record<TravelMode, TravelTime>>>(
+    {},
+  );
   const [selected, setSelected] = useState<TravelMode | null>(null);
   const [loading, setLoading] = useState<TravelMode | null>(null);
 
   // 다른 구간을 탭하면 이전 구간의 값이 남아 있으면 안 된다.
   useEffect(() => {
-    if (!leg) return;
-    setByMode({ [leg.mode]: leg });
-    setSelected(leg.mode);
-  }, [leg]);
+    if (!travelTime) return;
+    setByMode({ [travelTime.mode]: travelTime });
+    setSelected(travelTime.mode);
+  }, [travelTime]);
 
-  if (!leg) return null;
+  if (!travelTime) return null;
 
-  const from = activities.find((a) => a.id === leg.fromActivityId);
-  const to = activities.find((a) => a.id === leg.toActivityId);
+  const from = activities.find((a) => a.id === travelTime.fromActivityId);
+  const to = activities.find((a) => a.id === travelTime.toActivityId);
   const mapsUrl =
     from?.place && to?.place ? directionsUrl(from.place, to.place) : null;
 
@@ -66,17 +68,17 @@ export function TransportSheet({
 
     setLoading(mode);
     try {
-      const fetched = await fetchLeg(
+      const fetched = await fetchTravelTime(
         tripId,
-        leg.fromActivityId,
-        leg.toActivityId,
+        travelTime.fromActivityId,
+        travelTime.toActivityId,
         mode,
       );
       setByMode((prev) => ({ ...prev, [mode]: fetched }));
     } catch {
       // 못 받아도 시트는 열려 있어야 한다 — 딥링크는 여전히 쓸 수 있다.
       toast("이동시간을 가져오지 못했어요", "error");
-      setSelected(leg.mode);
+      setSelected(travelTime.mode);
     } finally {
       setLoading(null);
     }
@@ -107,7 +109,11 @@ export function TransportSheet({
               <Icon className="text-muted-foreground size-4 shrink-0" />
               <span className="flex-1">{label}</span>
               <span className="text-muted-foreground text-xs">
-                {loading === mode ? "…" : value ? legLabel(value) : "확인"}
+                {loading === mode
+                  ? "…"
+                  : value
+                    ? travelTimeLabel(value)
+                    : "확인"}
               </span>
             </button>
           );
