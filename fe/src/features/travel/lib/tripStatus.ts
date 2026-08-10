@@ -5,13 +5,11 @@ export type TripStatus = "UPCOMING" | "ONGOING" | "COMPLETED";
  *
  * v2.1에서 **여행은 타임존을 갖지 않는다.** 날짜마다 기준 도시가 있고 타임존은 거기서
  * 나오므로, 파생 계산은 "여행의 타임존" 대신 이 조회 함수를 받는다.
+ *
+ * 만드는 쪽은 `lib/baseCity.ts`에 있다 — 날짜별 조회는 `zoneByDate(days)`,
+ * D-day처럼 첫날 하나면 되는 자리는 `firstDayZone(timezone)`.
  */
 export type ZoneByDate = (date: string) => string;
-
-/** 전 기간이 한 도시인 여행. 다구간 데이터가 오기 전(#1124)까지 대부분 이 모양이다. */
-export function constantZone(timezone: string): ZoneByDate {
-  return () => timezone;
-}
 
 /**
  * 주어진 타임존 기준 오늘 날짜("YYYY-MM-DD").
