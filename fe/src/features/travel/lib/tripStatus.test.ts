@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  constantZone,
   dayChips,
   daysUntil,
   deriveStatus,
   formatPeriod,
   formatShortDate,
   todayIn,
+  todayOfTrip,
   totalDays,
+  type ZoneByDate,
 } from "./tripStatus";
 
 /** 2026-10-23 16:00 UTC — 도쿄는 이미 10/24 01:00, 호놀룰루는 아직 10/23 06:00. */
@@ -30,47 +33,81 @@ describe("deriveStatus", () => {
 
   it("시작 전이면 예정, 기간 안이면 진행 중, 끝나면 완료", () => {
     expect(
-      deriveStatus(...period, "Asia/Tokyo", new Date("2026-10-20T03:00:00Z")),
+      deriveStatus(
+        ...period,
+        constantZone("Asia/Tokyo"),
+        new Date("2026-10-20T03:00:00Z"),
+      ),
     ).toBe("UPCOMING");
     expect(
-      deriveStatus(...period, "Asia/Tokyo", new Date("2026-10-25T03:00:00Z")),
+      deriveStatus(
+        ...period,
+        constantZone("Asia/Tokyo"),
+        new Date("2026-10-25T03:00:00Z"),
+      ),
     ).toBe("ONGOING");
     expect(
-      deriveStatus(...period, "Asia/Tokyo", new Date("2026-10-28T03:00:00Z")),
+      deriveStatus(
+        ...period,
+        constantZone("Asia/Tokyo"),
+        new Date("2026-10-28T03:00:00Z"),
+      ),
     ).toBe("COMPLETED");
   });
 
   it("시작일·종료일 당일도 진행 중이다(경계 포함)", () => {
     expect(
-      deriveStatus(...period, "Asia/Tokyo", new Date("2026-10-24T03:00:00Z")),
+      deriveStatus(
+        ...period,
+        constantZone("Asia/Tokyo"),
+        new Date("2026-10-24T03:00:00Z"),
+      ),
     ).toBe("ONGOING");
     expect(
-      deriveStatus(...period, "Asia/Tokyo", new Date("2026-10-27T03:00:00Z")),
+      deriveStatus(
+        ...period,
+        constantZone("Asia/Tokyo"),
+        new Date("2026-10-27T03:00:00Z"),
+      ),
     ).toBe("ONGOING");
   });
 
-  it("기기 시간대가 아니라 여행 타임존으로 판정한다", () => {
+  it("기기 시간대가 아니라 기준 도시 타임존으로 판정한다", () => {
     // 같은 순간·같은 기간인데 목적지에 따라 갈린다.
-    expect(deriveStatus(...period, "Asia/Tokyo", CROSSING)).toBe("ONGOING");
-    expect(deriveStatus(...period, "Pacific/Honolulu", CROSSING)).toBe(
-      "UPCOMING",
+    expect(deriveStatus(...period, constantZone("Asia/Tokyo"), CROSSING)).toBe(
+      "ONGOING",
     );
+    expect(
+      deriveStatus(...period, constantZone("Pacific/Honolulu"), CROSSING),
+    ).toBe("UPCOMING");
   });
 });
 
 describe("daysUntil", () => {
   it("남은 일수를 준다 — 당일 0, 시작 후 음수", () => {
-    expect(daysUntil("2026-10-24", "Asia/Tokyo", CROSSING)).toBe(0);
+    expect(daysUntil("2026-10-24", constantZone("Asia/Tokyo"), CROSSING)).toBe(
+      0,
+    );
     expect(
-      daysUntil("2026-10-24", "Asia/Tokyo", new Date("2026-10-20T03:00:00Z")),
+      daysUntil(
+        "2026-10-24",
+        constantZone("Asia/Tokyo"),
+        new Date("2026-10-20T03:00:00Z"),
+      ),
     ).toBe(4);
     expect(
-      daysUntil("2026-10-24", "Asia/Tokyo", new Date("2026-10-26T03:00:00Z")),
+      daysUntil(
+        "2026-10-24",
+        constantZone("Asia/Tokyo"),
+        new Date("2026-10-26T03:00:00Z"),
+      ),
     ).toBe(-2);
   });
 
   it("호놀룰루는 같은 순간에도 하루가 더 남는다", () => {
-    expect(daysUntil("2026-10-24", "Pacific/Honolulu", CROSSING)).toBe(1);
+    expect(
+      daysUntil("2026-10-24", constantZone("Pacific/Honolulu"), CROSSING),
+    ).toBe(1);
   });
 
   it("서머타임 경계를 넘어도 일수가 어긋나지 않는다", () => {
@@ -78,7 +115,7 @@ describe("daysUntil", () => {
     expect(
       daysUntil(
         "2026-11-05",
-        "America/New_York",
+        constantZone("America/New_York"),
         new Date("2026-10-29T16:00:00Z"),
       ),
     ).toBe(7);
@@ -122,5 +159,61 @@ describe("포맷", () => {
   it("짧은 날짜는 월의 0을 떼고 일은 두 자리로 둔다", () => {
     expect(formatShortDate("2026-10-24")).toBe("10.24");
     expect(formatShortDate("2026-05-03")).toBe("5.03");
+  });
+});
+
+describe("다구간 — 날짜마다 타임존이 다를 때", () => {
+  const period = ["2026-10-24", "2026-10-27"] as const;
+
+  /** 10/25만 호놀룰루(UTC-10), 나머지는 도쿄(UTC+9). */
+  const mixed: ZoneByDate = (date) =>
+    date === "2026-10-25" ? "Pacific/Honolulu" : "Asia/Tokyo";
+
+  it("아직 지나지 않은 첫 날짜가 오늘이다", () => {
+    // 10/25 05:00 UTC — 도쿄로 10/24는 이미 지났고(10/25 14:00),
+    // 호놀룰루로 10/25는 아직이다(10/24 19:00).
+    expect(
+      todayOfTrip(...period, mixed, new Date("2026-10-25T05:00:00Z")),
+    ).toBe("2026-10-25");
+  });
+
+  it('어느 날짜도 "내가 오늘"이라 답하지 않는 순간이 있다 — 그래서 "지나갔나"로 묻는다', () => {
+    const now = new Date("2026-10-25T05:00:00Z");
+    const claimsToday = [
+      "2026-10-24",
+      "2026-10-25",
+      "2026-10-26",
+      "2026-10-27",
+    ].filter((date) => todayIn(mixed(date), now) === date);
+
+    expect(claimsToday).toEqual([]);
+    expect(todayOfTrip(...period, mixed, now)).toBe("2026-10-25");
+  });
+
+  it("마지막 날 도시가 늦은 시간대면 그 도시에서 끝날 때까지 진행 중이다", () => {
+    // 마지막 날만 호놀룰루. 10/28 03:00 UTC면 도쿄는 10/28이지만 호놀룰루는 아직 10/27 17:00이다.
+    const lastDayBehind: ZoneByDate = (date) =>
+      date === "2026-10-27" ? "Pacific/Honolulu" : "Asia/Tokyo";
+
+    expect(
+      deriveStatus(...period, lastDayBehind, new Date("2026-10-28T03:00:00Z")),
+    ).toBe("ONGOING");
+    expect(
+      deriveStatus(
+        ...period,
+        constantZone("Asia/Tokyo"),
+        new Date("2026-10-28T03:00:00Z"),
+      ),
+    ).toBe("COMPLETED");
+  });
+
+  it("D-day는 첫날 도시로 센다 — 뒷날 도시가 달라도 흔들리지 않는다", () => {
+    const firstDayBehind: ZoneByDate = (date) =>
+      date === "2026-10-24" ? "Pacific/Honolulu" : "Asia/Tokyo";
+
+    // 10/24 05:00 UTC — 호놀룰루는 아직 10/23 19:00이라 하루 남았다.
+    expect(
+      daysUntil("2026-10-24", firstDayBehind, new Date("2026-10-24T05:00:00Z")),
+    ).toBe(1);
   });
 });

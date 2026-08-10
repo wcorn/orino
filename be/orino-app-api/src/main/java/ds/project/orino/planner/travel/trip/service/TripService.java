@@ -11,6 +11,7 @@ import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.day.service.BaseCityResolver;
 import ds.project.orino.planner.travel.day.service.LegExpander;
+import ds.project.orino.planner.travel.day.service.TripClock;
 import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.day.service.TripStayShrinkService;
 import ds.project.orino.planner.travel.trip.dto.ShrinkPreviewResponse;
@@ -25,7 +26,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -90,7 +90,7 @@ public class TripService {
         List<Trip> all = tripRepository.findAllByMemberIdOrderByStartDateDescIdDesc(memberId);
         // 여행마다 자기 기준 도시의 오늘로 판정한다 — 도쿄 여행과 하와이 여행이 같은 순간에
         // 서로 다른 "오늘"을 갖는다. 도시는 여행 수만큼 조회하지 않고 한 번에 받아 둔다.
-        Map<Long, TravelPlace> cities = primaryCitiesOf(all);
+        TripCities cities = citiesOf(all);
         // 건수는 필터와 무관하게 전체 기준으로 센다 — 탭을 옮길 때마다 다른 탭 숫자가 0이 되면 안 된다.
         TripListResponse.TripCounts counts = countByStatus(all, cities);
 
@@ -174,7 +174,7 @@ public class TripService {
     /** `/select` 카드와 여행 홈(S-01)이 함께 쓰는 요약. 셋 다 없으면 전부 null이다. */
     public TravelSummaryResponse summary(Long memberId) {
         List<Trip> all = tripRepository.findAllByMemberIdOrderByStartDateDescIdDesc(memberId);
-        Map<Long, TravelPlace> cities = primaryCitiesOf(all);
+        TripCities cities = citiesOf(all);
 
         Trip ongoing = all.stream()
                 .filter(trip -> statusOf(trip, cities) == TripStatus.ONGOING)
@@ -198,7 +198,7 @@ public class TripService {
                 next == null ? null : new TravelSummaryResponse.NextTrip(
                         next.getId(), next.getTitle(), cityNameOf(next, cities),
                         next.getStartDate(), next.getEndDate(),
-                        next.daysUntilStart(clock, zoneOf(next, cities)),
+                        daysUntilStart(next, cities),
                         counts.getOrDefault(next.getId(), 0L)),
                 completed == null ? null : new TravelSummaryResponse.CompletedTrip(
                         completed.getId(), completed.getTitle(), completed.getEndDate(),
@@ -254,28 +254,37 @@ public class TripService {
         }
     }
 
-    /** 여행별 첫날 기준 도시. 상태·D-day·목적지 표시가 전부 여기서 나온다. */
-    private Map<Long, TravelPlace> primaryCitiesOf(List<Trip> trips) {
-        return tripDayService.primaryCitiesOf(trips.stream().map(Trip::getId).toList());
-    }
-
     /**
-     * 판정에 쓸 타임존. 날짜 행이 없는 여행은 v2.1에서 만들어질 수 없지만, 목록 한복판에서
-     * 터뜨리는 대신 기기 타임존으로 넘긴다 — 한 건의 데이터 문제로 목록 전체가 사라지면
-     * 사용자는 원인을 볼 방법이 없다.
+     * 목록·요약이 한 번에 받아 두는 도시 지도.
+     *
+     * @param byDate 여행 → (날짜 → 기준 도시). <b>상태</b>는 오늘에 해당하는 날짜로 판정한다
+     * @param first  여행 → 첫날 기준 도시. <b>D-day·목적지 표시</b>가 쓴다
      */
-    private ZoneId zoneOf(Trip trip, Map<Long, TravelPlace> cities) {
-        TravelPlace city = cities.get(trip.getId());
-        return city == null ? ZoneId.systemDefault() : TripDayService.zoneOf(city);
+    private record TripCities(Map<Long, Map<LocalDate, TravelPlace>> byDate,
+                              Map<Long, TravelPlace> first) {
+
+        Map<LocalDate, TravelPlace> of(Trip trip) {
+            return byDate.getOrDefault(trip.getId(), Map.of());
+        }
     }
 
-    private String cityNameOf(Trip trip, Map<Long, TravelPlace> cities) {
-        TravelPlace city = cities.get(trip.getId());
+    private TripCities citiesOf(List<Trip> trips) {
+        List<Long> ids = trips.stream().map(Trip::getId).toList();
+        return new TripCities(tripDayService.baseCitiesByTrip(ids),
+                tripDayService.primaryCitiesOf(ids));
+    }
+
+    private String cityNameOf(Trip trip, TripCities cities) {
+        TravelPlace city = cities.first().get(trip.getId());
         return city == null ? null : city.getName();
     }
 
-    private TripStatus statusOf(Trip trip, Map<Long, TravelPlace> cities) {
-        return trip.status(clock, zoneOf(trip, cities));
+    private TripStatus statusOf(Trip trip, TripCities cities) {
+        return TripClock.status(trip, cities.of(trip), clock);
+    }
+
+    private long daysUntilStart(Trip trip, TripCities cities) {
+        return TripClock.daysUntilStart(trip, cities.of(trip), clock);
     }
 
     /**
@@ -283,7 +292,7 @@ public class TripService {
      * 방향이 반대라 하나의 Comparator로 묶지 않고 두 덩어리로 나눠 이어 붙인다.
      * 필터 없이 전체를 볼 때는 앞으로 갈 여행이 먼저, 지나간 여행이 뒤로 온다.
      */
-    private List<Trip> sortForDisplay(List<Trip> trips, Map<Long, TravelPlace> cities) {
+    private List<Trip> sortForDisplay(List<Trip> trips, TripCities cities) {
         Stream<Trip> upcoming = trips.stream()
                 .filter(trip -> statusOf(trip, cities) != TripStatus.COMPLETED)
                 .sorted(Comparator.comparing(Trip::getStartDate).thenComparing(Trip::getId));
@@ -303,10 +312,10 @@ public class TripService {
                 .collect(Collectors.toMap(TripActivityCount::tripId, TripActivityCount::count));
     }
 
-    private TripSummary summaryOf(Trip trip, Map<Long, TravelPlace> cities, long activityCount) {
+    private TripSummary summaryOf(Trip trip, TripCities cities, long activityCount) {
         return new TripSummary(trip.getId(), trip.getTitle(), cityNameOf(trip, cities),
                 trip.getStartDate(), trip.getEndDate(), statusOf(trip, cities),
-                trip.daysUntilStart(clock, zoneOf(trip, cities)), activityCount);
+                daysUntilStart(trip, cities), activityCount);
     }
 
     /**
@@ -315,18 +324,18 @@ public class TripService {
      * 단일 도시 여행에서는 응답이 전과 같다.
      */
     private TripDetail detailOf(Trip trip) {
+        Map<LocalDate, TravelPlace> byDate = tripDayService.baseCitiesOf(trip.getId());
         TravelPlace city = tripDayService.primaryCity(trip.getId());
-        ZoneId zone = TripDayService.zoneOf(city);
         return new TripDetail(trip.getId(), trip.getTitle(), city.getName(),
                 city.getId(), trip.getStartDate(), trip.getEndDate(),
                 city.getTimezone(), city.getCurrency(), city.getLat(), city.getLng(),
                 trip.getDefaultNotifyMinutes(), trip.isMorningSummaryEnabled(),
-                trip.status(clock, zone), trip.daysUntilStart(clock, zone), trip.totalDays(),
+                TripClock.status(trip, byDate, clock),
+                TripClock.daysUntilStart(trip, byDate, clock), trip.totalDays(),
                 activityRepository.countByTripId(trip.getId()));
     }
 
-    private TripListResponse.TripCounts countByStatus(List<Trip> trips,
-                                                      Map<Long, TravelPlace> cities) {
+    private TripListResponse.TripCounts countByStatus(List<Trip> trips, TripCities cities) {
         Map<TripStatus, Long> byStatus = trips.stream()
                 .collect(Collectors.groupingBy(trip -> statusOf(trip, cities),
                         Collectors.counting()));
