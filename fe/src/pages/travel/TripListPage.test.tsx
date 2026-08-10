@@ -23,6 +23,21 @@ function trip(overrides: Record<string, unknown> = {}) {
     status: "UPCOMING",
     dDay: 78,
     activityCount: 13,
+    cities: cities(["도쿄"]),
+    ...overrides,
+  };
+}
+
+/** 여행이 거쳐 가는 도시. 오늘 값은 진행 중일 때만 채운다. */
+function cities(names: string[], overrides: Record<string, unknown> = {}) {
+  return {
+    names,
+    count: new Set(names).size,
+    today: null,
+    movedFrom: null,
+    todayDayIndex: null,
+    todayTimezone: null,
+    todayCurrency: null,
     ...overrides,
   };
 }
@@ -77,10 +92,65 @@ describe("TripListPage", () => {
 
     renderApp();
 
-    // "도쿄 · 10.24 – 10.27 · 일정 6개"가 통째로 한 노드여야 한다.
+    // "10.24 – 10.27 · 일정 6개"가 통째로 한 노드여야 한다.
     expect(
-      await screen.findByText("도쿄 · 10.24 – 10.27 · 일정 6개"),
+      await screen.findByText("10.24 – 10.27 · 일정 6개"),
     ).toBeInTheDocument();
+  });
+
+  it("구간 순서대로 도시를 나열하고 4개를 넘으면 줄인다", async () => {
+    mockTripsByStatus({
+      UPCOMING: [
+        trip({
+          cities: cities(["오사카", "교토", "나라", "고베", "나고야", "도쿄"]),
+        }),
+      ],
+    });
+
+    renderApp();
+
+    expect(
+      await screen.findByText("오사카 → 교토 → … → 도쿄 (6개 도시)"),
+    ).toBeInTheDocument();
+  });
+
+  it("도쿄 → 닛코 → 도쿄에서 마지막 도쿄가 남는다 — 연속 중복만 접는다", async () => {
+    mockTripsByStatus({
+      UPCOMING: [trip({ cities: cities(["도쿄", "닛코", "도쿄"]) })],
+    });
+
+    renderApp();
+
+    expect(
+      await screen.findByText("도쿄 → 닛코 → 도쿄 (2개 도시)"),
+    ).toBeInTheDocument();
+  });
+
+  it("단일 도시 여행은 이름만 — 나열이 소음이 되지 않는다", async () => {
+    mockTripsByStatus({ UPCOMING: [trip()] });
+
+    renderApp();
+
+    expect(await screen.findByText("도쿄")).toBeInTheDocument();
+  });
+
+  it("진행 중 여행은 오늘의 도시를 앞세워 강조한다", async () => {
+    mockTripsByStatus({
+      ONGOING: [
+        trip({
+          status: "ONGOING",
+          cities: cities(["오사카", "교토"], {
+            today: "교토",
+            movedFrom: "오사카",
+          }),
+        }),
+      ],
+    });
+
+    renderApp();
+    await userEvent.click(await screen.findByRole("tab", { name: /진행 중/ }));
+
+    expect(await screen.findByText("오늘 오사카 → 교토")).toBeInTheDocument();
   });
 
   it("카드를 누르면 그 여행의 보드로 간다", async () => {

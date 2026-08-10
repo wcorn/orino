@@ -23,6 +23,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -223,6 +224,91 @@ class TripControllerTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.trips[1].title").value("나중예정"))
                     .andExpect(jsonPath("$.data.trips[2].title").value("최근완료"))
                     .andExpect(jsonPath("$.data.trips[3].title").value("오래된완료"));
+        }
+    }
+
+    @Nested
+    @DisplayName("도시 요약 (v2.1)")
+    class Cities {
+
+        /**
+         * 목록이 <b>여행마다 city-legs를 부르지 않는다.</b> 상태 판정을 위해 이미 모든 여행의
+         * 날짜별 기준 도시를 한 번에 받아 두었고, 도시 나열은 그 지도를 접기만 한 값이다.
+         */
+        @Test
+        @DisplayName("목록 카드에 구간 순서의 도시가 실려 온다")
+        void listCarriesCityPath() throws Exception {
+            long osaka = city("오사카");
+            long kyoto = city("교토");
+            createTripWithLegs("일본", "2026-10-24", "2026-10-27",
+                    leg(osaka, 2), leg(kyoto, 2));
+
+            mockMvc.perform(get("/api/travel/trips")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.trips[0].cities.names",
+                            contains("오사카", "교토")))
+                    .andExpect(jsonPath("$.data.trips[0].cities.count").value(2));
+        }
+
+        @Test
+        @DisplayName("도쿄 → 닛코 → 도쿄는 셋으로 남고 도시 수는 둘이다")
+        void keepsRevisitButCountsDistinct() throws Exception {
+            long tokyo = city("도쿄");
+            long nikko = city("닛코");
+            createTripWithLegs("일본", "2026-10-24", "2026-10-27",
+                    leg(tokyo, 1), leg(nikko, 1), leg(tokyo, 2));
+
+            mockMvc.perform(get("/api/travel/trips")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.trips[0].cities.names",
+                            contains("도쿄", "닛코", "도쿄")))
+                    .andExpect(jsonPath("$.data.trips[0].cities.count").value(2));
+        }
+
+        /** 고정 시각은 2026-01-15T02:00Z — 도쿄는 1/15 11:00이라 둘째 날을 지나는 중이다. */
+        @Test
+        @DisplayName("진행 중이면 오늘의 도시와 그날 타임존·통화가 함께 온다")
+        void ongoingCarriesTodayCity() throws Exception {
+            long osaka = city("오사카");
+            long kyoto = city("교토");
+            createTripWithLegs("일본", "2026-01-14", "2026-01-17",
+                    leg(osaka, 1), leg(kyoto, 3));
+
+            mockMvc.perform(get("/api/travel/summary")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.ongoing.cities.today").value("교토"))
+                    // 어제(오사카)와 다르니 오늘이 옮기는 날이다.
+                    .andExpect(jsonPath("$.data.ongoing.cities.movedFrom").value("오사카"))
+                    .andExpect(jsonPath("$.data.ongoing.cities.todayDayIndex").value(2))
+                    .andExpect(jsonPath("$.data.ongoing.cities.todayTimezone")
+                            .value("Asia/Tokyo"))
+                    .andExpect(jsonPath("$.data.ongoing.cities.todayCurrency").value("JPY"));
+        }
+
+        @Test
+        @DisplayName("같은 도시에 머무는 날이면 movedFrom이 없다")
+        void staysInSameCity() throws Exception {
+            long osaka = city("오사카");
+            createTripWithLegs("일본", "2026-01-14", "2026-01-17", leg(osaka, 4));
+
+            mockMvc.perform(get("/api/travel/summary")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.ongoing.cities.today").value("오사카"))
+                    .andExpect(jsonPath("$.data.ongoing.cities.movedFrom").doesNotExist());
+        }
+
+        @Test
+        @DisplayName("예정 여행에는 오늘의 도시가 없다 — 첫날 도시가 오늘인 것처럼 보이면 안 된다")
+        void upcomingHasNoToday() throws Exception {
+            long tokyo = city("도쿄");
+            createTripWithLegs("도쿄", "2026-10-24", "2026-10-27", leg(tokyo, 4));
+
+            mockMvc.perform(get("/api/travel/summary")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.next.cities.names", contains("도쿄")))
+                    .andExpect(jsonPath("$.data.next.cities.today").doesNotExist());
         }
     }
 
@@ -537,6 +623,28 @@ class TripControllerTest extends ApiTestSupport {
         return """
                 {"title": "%s", "startDate": "%s", "endDate": "%s", %s}
                 """.formatted(title, start, end, TravelCityFixture.singleLeg(cityId, 1));
+    }
+
+    private long city(String name) throws Exception {
+        return TravelCityFixture.createCity(mockMvc, authHeader, name, "Asia/Tokyo", "JPY");
+    }
+
+    private static String leg(long cityPlaceId, int days) {
+        return "{\"cityPlaceId\": %d, \"days\": %d}".formatted(cityPlaceId, days);
+    }
+
+    private long createTripWithLegs(String title, String start, String end, String... legs)
+            throws Exception {
+        String body = mockMvc.perform(post("/api/travel/trips")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "%s", "startDate": "%s", "endDate": "%s",
+                                 "legs": [%s]}
+                                """.formatted(title, start, end, String.join(", ", legs))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) JsonPath.read(body, "$.data.id")).longValue();
     }
 
     private long createTrip(String title, String destination, String start, String end)

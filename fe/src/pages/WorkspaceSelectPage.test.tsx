@@ -11,6 +11,33 @@ import { renderWithRouter } from "@/test/render";
 
 const API_BASE = "https://api.orino.dev/api";
 
+/** 여행이 거쳐 가는 도시. 오늘 값은 진행 중일 때만 채운다. */
+function cities(names: string[], overrides: Record<string, unknown> = {}) {
+  return {
+    names,
+    count: new Set(names).size,
+    today: null,
+    movedFrom: null,
+    todayDayIndex: null,
+    todayTimezone: null,
+    todayCurrency: null,
+    ...overrides,
+  };
+}
+
+function ongoingTrip(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 3,
+    title: "일본 9박 10일",
+    boardPath: "/travel/trips/3/board",
+    startDate: "2026-10-24",
+    endDate: "2026-11-02",
+    activityCount: 27,
+    cities: cities(["오사카", "교토"]),
+    ...overrides,
+  };
+}
+
 function mockTravelSummary(data: unknown) {
   server.use(
     http.get(`${API_BASE}/travel/summary`, () =>
@@ -65,17 +92,18 @@ describe("WorkspaceSelectPage", () => {
     expect(travelCard).not.toHaveTextContent(/D-/);
   });
 
-  it("다음 여행이 있으면 D-day 배지와 기간 메타를 보여준다", async () => {
+  it("다음 여행이 있으면 D-day 배지와 기간·도시 메타를 보여준다", async () => {
     mockTravelSummary({
       ongoing: null,
       next: {
         id: 3,
-        title: "도쿄 3박 4일",
-        destinationName: "도쿄",
+        title: "일본 9박 10일",
+        destinationName: "오사카",
         startDate: "2026-10-24",
-        endDate: "2026-10-27",
+        endDate: "2026-11-02",
         dDay: 78,
         activityCount: 13,
+        cities: cities(["오사카", "교토", "나라", "고베", "나고야", "도쿄"]),
       },
       recentCompleted: null,
     });
@@ -86,16 +114,39 @@ describe("WorkspaceSelectPage", () => {
     await waitFor(() => {
       expect(travelCard).toHaveTextContent("D-78");
     });
-    expect(travelCard).toHaveTextContent("도쿄 3박 4일 · 10.24 – 10.27");
+    expect(travelCard).toHaveTextContent(
+      "일본 9박 10일 · 10.24 – 11.02 · 오사카 → 교토 → … → 도쿄 (6개 도시)",
+    );
+  });
+
+  it("진행 중 여행은 오늘 어디인지 말한다 — 옮기는 날이면 어디서 어디로", async () => {
+    mockTravelSummary({
+      ongoing: ongoingTrip({
+        cities: cities(["오사카", "교토"], {
+          today: "교토",
+          movedFrom: "오사카",
+          todayDayIndex: 4,
+          todayTimezone: "Asia/Tokyo",
+          todayCurrency: "JPY",
+        }),
+      }),
+      next: null,
+      recentCompleted: null,
+    });
+
+    renderApp(["/select"]);
+
+    const travelCard = await screen.findByRole("button", { name: /여행/ });
+    await waitFor(() => {
+      expect(travelCard).toHaveTextContent(
+        "일본 9박 10일 · 오늘 오사카 → 교토",
+      );
+    });
   });
 
   it("진행 중 여행이 있으면 '진행 중' 배지를 보여주고 눌렀을 때 보드로 간다", async () => {
     mockTravelSummary({
-      ongoing: {
-        id: 3,
-        title: "도쿄 3박 4일",
-        boardPath: "/travel/trips/3/board",
-      },
+      ongoing: ongoingTrip({ title: "도쿄 3박 4일" }),
       next: null,
       recentCompleted: null,
     });

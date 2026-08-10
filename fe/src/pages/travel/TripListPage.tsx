@@ -9,6 +9,7 @@ import { LoadingText } from "@/components/ui/loading-text";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { TripCounts, TripSummary } from "@/features/travel/api/travel";
 import { useTrips } from "@/features/travel/hooks/useTrips";
+import { formatCities, formatTodayCity } from "@/features/travel/lib/cityPath";
 import type { TripStatus } from "@/features/travel/lib/tripStatus";
 import { formatShortDate } from "@/features/travel/lib/tripStatus";
 
@@ -110,6 +111,8 @@ function TripRow({ trip }: { trip: TripSummary }) {
         <span className="block truncate text-[15px] font-medium">
           {trip.title}
         </span>
+        {/* 도시 나열은 별도 줄이다 — 6개 도시가 기간·일정과 한 줄에 들어가지 않는다. */}
+        <span className="block truncate text-[13px]">{cityLine(trip)}</span>
         {/* 메타는 한 문자열이다 — 조각으로 나누면 "일정 6" / "개"처럼 숫자와 단위가 갈라진다. */}
         <span className="text-muted-foreground block text-[13px]">
           {metaLine(trip)}
@@ -122,5 +125,23 @@ function TripRow({ trip }: { trip: TripSummary }) {
 
 function metaLine(trip: TripSummary): string {
   const period = `${formatShortDate(trip.startDate)} – ${formatShortDate(trip.endDate)}`;
-  return `${trip.destinationName} · ${period} · 일정 ${trip.activityCount}개`;
+  return `${period} · 일정 ${trip.activityCount}개`;
+}
+
+/**
+ * 구간 순서대로 도시를 나열한다 — `오사카 → 교토 → … → 도쿄 (6개 도시)`.
+ *
+ * <p>진행 중 여행은 <b>오늘의 도시를 강조한다.</b> 그 카드에서 가장 급한 정보는 전체 경로가
+ * 아니라 "지금 어디"라서, 나열 앞에 오늘 도시를 세우고 굵게 남긴다.
+ */
+function cityLine(trip: TripSummary) {
+  const path = formatCities(trip.cities) || trip.destinationName;
+  const today = formatTodayCity(trip.cities);
+  if (!today) return path;
+  return (
+    <>
+      <span className="text-foreground font-medium">오늘 {today}</span>
+      <span className="text-muted-foreground"> · {path}</span>
+    </>
+  );
 }

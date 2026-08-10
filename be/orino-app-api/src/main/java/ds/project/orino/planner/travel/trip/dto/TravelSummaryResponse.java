@@ -17,11 +17,21 @@ public record TravelSummaryResponse(
         CompletedTrip recentCompleted
 ) {
 
-    /** 진행 중 여행 — 탭하면 곧장 보드로 간다. */
-    public record OngoingTrip(Long id, String title, String boardPath) {
+    /**
+     * 진행 중 여행 — 탭하면 곧장 보드로 간다.
+     *
+     * <p>(v2.1) <b>오늘의 도시</b>가 함께 온다. `/select` 카드가 `오늘 오사카 → 교토`를
+     * 쓰고 S-01이 `오늘 · 교토`와 그날 타임존·통화를 쓴다 — 둘 다 이 응답 하나로 끝난다.
+     */
+    public record OngoingTrip(Long id, String title, String boardPath,
+                              LocalDate startDate, LocalDate endDate,
+                              long activityCount, TripCitySummary cities) {
 
-        public static OngoingTrip of(Long id, String title) {
-            return new OngoingTrip(id, title, "/travel/trips/%d/board".formatted(id));
+        public static OngoingTrip of(Long id, String title, LocalDate startDate,
+                                     LocalDate endDate, long activityCount,
+                                     TripCitySummary cities) {
+            return new OngoingTrip(id, title, "/travel/trips/%d/board".formatted(id),
+                    startDate, endDate, activityCount, cities);
         }
     }
 
@@ -33,7 +43,8 @@ public record TravelSummaryResponse(
             LocalDate startDate,
             LocalDate endDate,
             long dDay,
-            long activityCount
+            long activityCount,
+            TripCitySummary cities
     ) {
     }
 

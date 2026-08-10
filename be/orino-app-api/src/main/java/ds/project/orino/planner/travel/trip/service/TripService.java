@@ -16,6 +16,7 @@ import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.day.service.TripStayShrinkService;
 import ds.project.orino.planner.travel.trip.dto.ShrinkPreviewResponse;
 import ds.project.orino.planner.travel.trip.dto.TravelSummaryResponse;
+import ds.project.orino.planner.travel.trip.dto.TripCitySummary;
 import ds.project.orino.planner.travel.trip.dto.TripDetail;
 import ds.project.orino.planner.travel.trip.dto.TripListResponse;
 import ds.project.orino.planner.travel.trip.dto.TripSummary;
@@ -190,16 +191,21 @@ public class TripService {
                 .orElse(null);
 
         Map<Long, Long> counts = activityCountsOf(
-                Stream.of(next, completed).filter(Objects::nonNull).toList());
+                Stream.of(ongoing, next, completed).filter(Objects::nonNull).toList());
 
         return new TravelSummaryResponse(
                 ongoing == null ? null
-                        : TravelSummaryResponse.OngoingTrip.of(ongoing.getId(), ongoing.getTitle()),
+                        : TravelSummaryResponse.OngoingTrip.of(ongoing.getId(),
+                                ongoing.getTitle(), ongoing.getStartDate(),
+                                ongoing.getEndDate(),
+                                counts.getOrDefault(ongoing.getId(), 0L),
+                                citySummaryOf(ongoing, cities)),
                 next == null ? null : new TravelSummaryResponse.NextTrip(
                         next.getId(), next.getTitle(), cityNameOf(next, cities),
                         next.getStartDate(), next.getEndDate(),
                         daysUntilStart(next, cities),
-                        counts.getOrDefault(next.getId(), 0L)),
+                        counts.getOrDefault(next.getId(), 0L),
+                        citySummaryOf(next, cities)),
                 completed == null ? null : new TravelSummaryResponse.CompletedTrip(
                         completed.getId(), completed.getTitle(), completed.getEndDate(),
                         counts.getOrDefault(completed.getId(), 0L)));
@@ -315,7 +321,25 @@ public class TripService {
     private TripSummary summaryOf(Trip trip, TripCities cities, long activityCount) {
         return new TripSummary(trip.getId(), trip.getTitle(), cityNameOf(trip, cities),
                 trip.getStartDate(), trip.getEndDate(), statusOf(trip, cities),
-                daysUntilStart(trip, cities), activityCount);
+                daysUntilStart(trip, cities), activityCount, citySummaryOf(trip, cities));
+    }
+
+    /**
+     * 도시 나열과 오늘의 도시. <b>추가 조회가 없다</b> — 목록·요약은 상태 판정을 위해 이미
+     * 모든 여행의 날짜별 기준 도시를 한 번에 받아 두었고, 여기서는 그 지도를 접기만 한다.
+     * 여행마다 {@code /city-legs}를 부르면 그때부터 N+1이다.
+     *
+     * <p>오늘 관련 값은 <b>진행 중일 때만</b> 채운다. 예정 여행에 "오늘의 도시"를 주면 첫날
+     * 도시가 오늘인 것처럼 보인다.
+     */
+    private TripCitySummary citySummaryOf(Trip trip, TripCities cities) {
+        Map<LocalDate, TravelPlace> byDate = cities.of(trip);
+        if (byDate.isEmpty()) {
+            return TripCitySummary.empty();
+        }
+        LocalDate today = statusOf(trip, cities) == TripStatus.ONGOING
+                ? TripClock.today(trip, byDate, clock) : null;
+        return TripCitySummary.of(trip.getStartDate(), trip.getEndDate(), byDate, today);
     }
 
     /**
