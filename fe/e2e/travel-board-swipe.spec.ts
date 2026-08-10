@@ -17,6 +17,7 @@ const TOKYO = {
   timezone: "Asia/Tokyo",
   currency: "JPY",
   countryCode: "JP",
+  cityPlaceRef: null,
   lat: null,
   lng: null,
 };

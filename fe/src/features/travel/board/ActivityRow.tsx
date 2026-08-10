@@ -3,6 +3,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Archive,
   Bell,
+  CalendarPlus,
   ChevronDown,
   ChevronUp,
   GripVertical,
@@ -33,6 +34,8 @@ interface ActivityRowProps {
   canMoveUp: boolean;
   canMoveDown: boolean;
   onArchive: () => void;
+  /** 보관함에서만 — 담을 날짜를 고르는 시트를 연다. */
+  onPickDay?: () => void;
   onDelete: () => void;
   /** 400ms 길게 눌러 드래그 모드로 들어간다. */
   onEnterDragMode: () => void;
@@ -54,6 +57,7 @@ export function ActivityRow({
   canMoveUp,
   canMoveDown,
   onArchive,
+  onPickDay,
   onDelete,
   onEnterDragMode,
 }: ActivityRowProps) {
@@ -208,6 +212,18 @@ export function ActivityRow({
                   aria-label="기록 있음"
                   className="text-muted-foreground size-3.5"
                 />
+              )}
+              {/* 보관함 일정은 "언제 갈지"가 남은 유일한 질문이라 그 버튼을 준다. */}
+              {!offline && inArchive && onPickDay && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`${activity.title} 날짜에 담기`}
+                  onClick={onPickDay}
+                  {...stopDrag}
+                >
+                  <CalendarPlus className="size-4" />
+                </Button>
               )}
               {/* 오프라인이면 액션을 감춘다 — 눌러도 실패할 버튼을 두지 않는다. */}
               {!offline && !inArchive && (

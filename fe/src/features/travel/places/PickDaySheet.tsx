@@ -15,10 +15,13 @@ interface PickDaySheetProps {
 }
 
 /**
- * 담을 날짜를 고르는 시트(§S-06). `1일차`~`N일차` 또는 `보관함`.
+ * 담을 날짜를 고르는 시트(§S-06). `3일차 · 교토` 또는 `보관함`.
  *
  * <p>보관함이 선택지에 있어야 하는 이유: 여행 계획은 "가고 싶다"가 "언제 갈지"보다 먼저 정해진다.
  * 날짜를 강제하면 정하지 못한 곳을 아예 담지 못하게 된다.
+ *
+ * <p><b>목록 순서는 호출부가 정한다</b>(`daysForPlace`) — 오사카 가게를 담을 때 오사카가 기준
+ * 도시인 날짜가 위에 온다. 시트는 받은 순서를 그대로 그린다.
  */
 export function PickDaySheet({
   open,
@@ -45,7 +48,12 @@ export function PickDaySheet({
             className="border-border hover:bg-accent flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm disabled:opacity-50"
           >
             <CalendarDays className="text-muted-foreground size-4 shrink-0" />
-            <span className="flex-1">{day.dayIndex}일차</span>
+            {/* 어느 도시의 날짜인지가 몇 일차인지만큼 중요하다 — 다구간 여행에서
+                "3일차"는 어디인지 말해 주지 않는다. */}
+            <span className="flex-1 truncate">
+              {day.dayIndex}일차
+              {day.baseCity && ` · ${day.baseCity.name}`}
+            </span>
             <span className="text-muted-foreground text-xs">
               {day.date.slice(5)} ({day.weekday})
             </span>

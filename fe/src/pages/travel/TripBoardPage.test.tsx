@@ -26,6 +26,7 @@ function baseCity(
     timezone,
     currency,
     countryCode: "JP",
+    cityPlaceRef: null,
     lat: null,
     lng: null,
   };
@@ -242,6 +243,114 @@ describe("TripBoardPage", () => {
       expect(await screen.findByText("가고 싶은 라멘집")).toBeInTheDocument();
       const tabs = await screen.findAllByRole("tab");
       expect(tabs[3]).toHaveAttribute("aria-selected", "true");
+    });
+  });
+
+  describe("보관함 — 도시별 그룹 (v2.1)", () => {
+    const OSAKA = baseCity(21, "오사카", "Asia/Tokyo");
+    const KYOTO = baseCity(22, "교토", "Asia/Tokyo");
+    const TWO_CITY_DAYS = [
+      day(1, "2026-10-24", "토", 0, {
+        baseCity: { ...OSAKA, cityPlaceRef: "ChIJ_osaka" },
+      }),
+      day(2, "2026-10-25", "일", 0, {
+        baseCity: { ...KYOTO, cityPlaceRef: "ChIJ_kyoto" },
+        cityChanged: true,
+        legIndex: 2,
+      }),
+    ];
+
+    /** 도시 식별자를 가진 장소가 붙은 보관함 일정. */
+    function archived(id: number, title: string, city: string | null) {
+      return activity({
+        id,
+        title,
+        activityDate: null,
+        place: {
+          id: 100 + id,
+          name: title,
+          address: null,
+          lat: null,
+          lng: null,
+          cityName: city === "ChIJ_kyoto" ? "교토" : "오사카",
+          cityPlaceRef: city,
+        },
+      });
+    }
+
+    function mockArchive(archive: unknown[]) {
+      mockBoard({
+        byDate: { "2026-10-24": [], "2026-10-25": [] },
+        trip: { singleCity: false, cityCount: 2 },
+        days: TWO_CITY_DAYS,
+        archive,
+      });
+    }
+
+    it("도시별로 묶어 구간 순서대로 보여주고, 모르는 도시는 맨 뒤로 보낸다", async () => {
+      mockArchive([
+        archived(9, "니시키 시장", "ChIJ_kyoto"),
+        archived(10, "이름만 아는 곳", null),
+        archived(11, "구로몬 시장", "ChIJ_osaka"),
+      ]);
+
+      renderBoard("/travel/trips/3/board?day=archive");
+
+      await screen.findAllByText("구로몬 시장");
+      const headings = screen.getAllByRole("heading", { level: 2 });
+      expect(headings.map((h) => h.textContent)).toEqual([
+        "오사카",
+        "교토",
+        "도시 없음",
+      ]);
+    });
+
+    it("담기 버튼을 누르면 그 장소의 도시 날짜가 목록 위에 온다", async () => {
+      mockArchive([archived(9, "니시키 시장", "ChIJ_kyoto")]);
+
+      renderBoard("/travel/trips/3/board?day=archive");
+      await userEvent.click(
+        await screen.findByRole("button", { name: "니시키 시장 날짜에 담기" }),
+      );
+
+      const sheet = await screen.findByRole("dialog");
+      const options = within(sheet).getAllByRole("button");
+      // 교토 장소라 교토 날짜(2일차)가 오사카 날짜보다 위에 있다.
+      expect(options[0]).toHaveTextContent("2일차 · 교토");
+      expect(options[1]).toHaveTextContent("1일차 · 오사카");
+    });
+
+    it("고른 날짜로 옮긴다", async () => {
+      const seen: Record<string, unknown>[] = [];
+      mockArchive([archived(9, "니시키 시장", "ChIJ_kyoto")]);
+      server.use(
+        http.put(`${API_BASE}/travel/activities/:id`, async ({ request }) => {
+          seen.push((await request.json()) as Record<string, unknown>);
+          return HttpResponse.json({ code: "OK", data: activity() });
+        }),
+      );
+
+      renderBoard("/travel/trips/3/board?day=archive");
+      await userEvent.click(
+        await screen.findByRole("button", { name: "니시키 시장 날짜에 담기" }),
+      );
+      const sheet = await screen.findByRole("dialog");
+      await userEvent.click(
+        within(sheet).getByRole("button", { name: /2일차 · 교토/ }),
+      );
+
+      await waitFor(() => expect(seen).toHaveLength(1));
+      expect(seen[0]).toMatchObject({ activityDate: "2026-10-25" });
+    });
+
+    it("빈 보관함 문구는 그대로다", async () => {
+      mockArchive([]);
+
+      renderBoard("/travel/trips/3/board?day=archive");
+
+      expect(
+        await screen.findByText("가고 싶은 곳을 미리 담아두세요"),
+      ).toBeInTheDocument();
     });
   });
 

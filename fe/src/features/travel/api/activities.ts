@@ -69,6 +69,8 @@ export interface BaseCity {
   timezone: string;
   currency: string;
   countryCode: string | null;
+  /** 도시 식별자. 장소의 같은 값과 맞춰 도시 일치를 판정한다(이름으로 묶지 않는다). */
+  cityPlaceRef: string | null;
   lat: number | null;
   lng: number | null;
 }

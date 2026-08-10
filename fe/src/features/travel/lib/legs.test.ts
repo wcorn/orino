@@ -20,6 +20,7 @@ function city(placeId: number, name: string) {
     timezone: "Asia/Tokyo",
     currency: "JPY",
     countryCode: "JP",
+    cityPlaceRef: null,
     lat: null,
     lng: null,
   };
