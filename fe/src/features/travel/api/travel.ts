@@ -7,12 +7,36 @@ interface ApiEnvelope<T> {
   data: T;
 }
 
+/**
+ * 여행이 거쳐 가는 도시. **줄이는 규칙은 화면이 갖고, 서버는 줄이기 전의 사실만 준다.**
+ *
+ * <p>목록·요약이 이미 읽어 둔 날짜별 기준 도시에서 나오므로 추가 조회가 없다 — 여행마다
+ * `/city-legs`를 부르면 그때부터 N+1이다.
+ */
+export interface TripCitySummary {
+  /** 구간 순서의 도시 이름. 연속으로 같은 도시는 이미 한 번으로 접혀 있다. */
+  names: string[];
+  /** 서로 다른 도시 수. 같은 도시를 다시 방문해도 하나로 센다. */
+  count: number;
+  /** 오늘의 기준 도시. 진행 중이 아니면 null. */
+  today: string | null;
+  /** 오늘 도시가 바뀌었다면 어제의 도시. 아니면 null. */
+  movedFrom: string | null;
+  todayDayIndex: number | null;
+  todayTimezone: string | null;
+  todayCurrency: string | null;
+}
+
 /** 진행 중 여행 — 탭하면 곧바로 보드로 간다. */
 export interface OngoingTripSummary {
   id: number;
   title: string;
   /** 서버가 조립해 주는 보드 경로. 프론트가 경로를 다시 만들지 않는다. */
   boardPath: string;
+  startDate: string;
+  endDate: string;
+  activityCount: number;
+  cities: TripCitySummary;
 }
 
 /** 다음 예정 여행 — D-day 카운트다운 카드. */
@@ -25,6 +49,7 @@ export interface NextTripSummary {
   /** 시작일까지 남은 일수. 여행 타임존 기준이라 프론트에서 다시 계산하지 않는다. */
   dDay: number;
   activityCount: number;
+  cities: TripCitySummary;
 }
 
 /** 가장 최근에 끝난 여행. */
@@ -61,6 +86,7 @@ export interface TripSummary {
   status: TripStatus;
   dDay: number;
   activityCount: number;
+  cities: TripCitySummary;
 }
 
 export interface TripCounts {

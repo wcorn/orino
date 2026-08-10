@@ -1,4 +1,4 @@
-import { CalendarDays, CheckSquare, LayoutGrid, Plane } from "lucide-react";
+import { CheckSquare, LayoutGrid, MapPin, Plane } from "lucide-react";
 import type { ComponentType } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -9,6 +9,7 @@ import { usePlannerCalendar } from "@/features/planner/hooks/usePlannerCalendar"
 import { useReviewSummary } from "@/features/review/hooks/useReviewSummary";
 import type { TravelSummary } from "@/features/travel/api/travel";
 import { useTravelSummary } from "@/features/travel/hooks/useTravelSummary";
+import { formatCities, formatTodayCity } from "@/features/travel/lib/cityPath";
 import { cn } from "@/lib/utils";
 
 /** "2026-10-24" → "10.24" */
@@ -23,25 +24,44 @@ function shortDate(isoDate: string): string {
  */
 function travelCardContent(summary: TravelSummary | undefined) {
   if (summary?.ongoing) {
+    // 진행 중 여행에서 궁금한 것은 제목이 아니라 "오늘 어디"다. 옮기는 날이면 `오사카 → 교토`.
+    const today = formatTodayCity(summary.ongoing.cities);
     return {
       badge: "진행 중",
-      meta: summary.ongoing.title,
+      badgeVariant: "success" as const,
+      meta: today
+        ? `${summary.ongoing.title} · 오늘 ${today}`
+        : summary.ongoing.title,
       to: summary.ongoing.boardPath,
     };
   }
   if (summary?.next) {
-    const { title, startDate, endDate, dDay } = summary.next;
+    const { title, startDate, endDate, dDay, cities } = summary.next;
+    // 아직 떠나지 않은 여행은 "언제"와 "어디"가 같이 궁금하다.
+    const where = formatCities(cities);
+    const period = `${shortDate(startDate)} – ${shortDate(endDate)}`;
     return {
       badge: `D-${dDay}`,
-      meta: `${title} · ${shortDate(startDate)} – ${shortDate(endDate)}`,
+      badgeVariant: "secondary" as const,
+      meta: where ? `${title} · ${period} · ${where}` : `${title} · ${period}`,
       to: "/travel",
     };
   }
   if (summary?.recentCompleted) {
-    return { badge: null, meta: "여행 만들기", to: "/travel" };
+    return {
+      badge: null,
+      badgeVariant: "secondary" as const,
+      meta: "여행 만들기",
+      to: "/travel",
+    };
   }
   // 아직 못 받았거나 여행이 하나도 없는 상태 — 둘 다 메타를 비운다.
-  return { badge: null, meta: null, to: "/travel" };
+  return {
+    badge: null,
+    badgeVariant: "secondary" as const,
+    meta: null,
+    to: "/travel",
+  };
 }
 
 /** 기기 시간대 기준 오늘. 일상 워크스페이스는 여행 타임존과 무관하다. */
@@ -63,7 +83,7 @@ export function WorkspaceSelectPage() {
   const reviewCount = review?.counts.now ?? 0;
   const routineCount =
     feed?.events.filter((event) => event.routine).length ?? 0;
-  const { badge, meta, to } = travelCardContent(travel);
+  const { badge, badgeVariant, meta, to } = travelCardContent(travel);
 
   const dailyMeta = routineCount > 0 ? `오늘 루틴 ${routineCount}개` : null;
 
@@ -85,7 +105,9 @@ export function WorkspaceSelectPage() {
               icon={Plane}
               iconClassName="bg-accent text-accent-foreground"
               badge={badge}
-              metaIcon={CalendarDays}
+              badgeVariant={badgeVariant}
+              // 여행 카드가 말하는 것은 날짜가 아니라 장소다(v2.1).
+              metaIcon={MapPin}
               meta={meta}
               onClick={() => navigate(to)}
             />
@@ -113,6 +135,7 @@ interface WorkspaceCardProps {
   icon: ComponentType<{ className?: string }>;
   iconClassName: string;
   badge: string | null;
+  badgeVariant?: "secondary" | "success";
   metaIcon: ComponentType<{ className?: string }>;
   meta: string | null;
   onClick: () => void;
@@ -124,6 +147,7 @@ function WorkspaceCard({
   icon: Icon,
   iconClassName,
   badge,
+  badgeVariant = "secondary",
   metaIcon: MetaIcon,
   meta,
   onClick,
@@ -146,7 +170,7 @@ function WorkspaceCard({
         >
           <Icon className="size-5" />
         </span>
-        {badge && <Badge variant="secondary">{badge}</Badge>}
+        {badge && <Badge variant={badgeVariant}>{badge}</Badge>}
       </div>
       <div>
         <p className="text-heading font-medium">{title}</p>

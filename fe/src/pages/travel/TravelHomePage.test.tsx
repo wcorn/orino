@@ -26,6 +26,20 @@ function mockTrip(trip: Record<string, unknown>) {
   );
 }
 
+/** 여행이 거쳐 가는 도시. 오늘 값은 진행 중일 때만 채운다. */
+function cities(names: string[], overrides: Record<string, unknown> = {}) {
+  return {
+    names,
+    count: new Set(names).size,
+    today: null,
+    movedFrom: null,
+    todayDayIndex: null,
+    todayTimezone: null,
+    todayCurrency: null,
+    ...overrides,
+  };
+}
+
 const TOKYO = {
   id: 3,
   title: "도쿄 3박 4일",
@@ -82,6 +96,7 @@ describe("TravelHomePage", () => {
         endDate: "2026-10-27",
         dDay: 78,
         activityCount: 13,
+        cities: cities(["도쿄"]),
       },
       recentCompleted: null,
     });
@@ -101,10 +116,101 @@ describe("TravelHomePage", () => {
     expect(screen.getByText("Asia/Tokyo · JPY")).toBeInTheDocument();
   });
 
+  it("도시가 여럿이면 요약에 도시 수를 넣는다", async () => {
+    mockSummary({
+      ongoing: null,
+      next: {
+        ...TOKYO,
+        title: "일본 9박 10일",
+        endDate: "2026-11-02",
+        dDay: 78,
+        activityCount: 27,
+        cities: cities(["오사카", "교토", "나라", "고베", "나고야", "도쿄"]),
+      },
+      recentCompleted: null,
+    });
+    mockTrip({
+      ...TOKYO,
+      title: "일본 9박 10일",
+      endDate: "2026-11-02",
+      activityCount: 27,
+    });
+
+    renderApp();
+
+    expect(
+      await screen.findByText("10월 24일 – 11월 2일 · 6개 도시 · 일정 27개"),
+    ).toBeInTheDocument();
+  });
+
+  it("진행 중이면 오늘 어디인지와 그날 타임존·통화를 말한다", async () => {
+    mockSummary({
+      ongoing: {
+        id: 3,
+        title: "일본 9박 10일",
+        boardPath: "/travel/trips/3/board",
+        startDate: "2026-10-24",
+        endDate: "2026-11-02",
+        activityCount: 27,
+        cities: cities(["오사카", "교토"], {
+          today: "교토",
+          movedFrom: "오사카",
+          todayDayIndex: 4,
+          // 첫날(오사카)이 아니라 오늘 도시의 값이다 — v2.1에서 타임존의 주인은 날짜다.
+          todayTimezone: "Asia/Tokyo",
+          todayCurrency: "JPY",
+        }),
+      },
+      next: null,
+      recentCompleted: null,
+    });
+    mockTrip({
+      ...TOKYO,
+      status: "ONGOING",
+      timezone: "Asia/Seoul",
+      currency: "KRW",
+    });
+
+    renderApp();
+
+    expect(await screen.findByText("오늘 · 오사카 → 교토")).toBeInTheDocument();
+    expect(screen.getByText("4일차")).toBeInTheDocument();
+    expect(screen.getByText("Asia/Tokyo · JPY")).toBeInTheDocument();
+  });
+
+  it("진행 중 여행에 가려진 다음 여행은 첫 구간 도시와 D-day로 남는다", async () => {
+    mockSummary({
+      ongoing: {
+        id: 3,
+        title: "도쿄 3박 4일",
+        boardPath: "/travel/trips/3/board",
+        startDate: "2026-10-24",
+        endDate: "2026-10-27",
+        activityCount: 13,
+        cities: cities(["도쿄"], { today: "도쿄", todayDayIndex: 1 }),
+      },
+      next: {
+        ...TOKYO,
+        id: 4,
+        title: "유럽 2주",
+        dDay: 120,
+        cities: cities(["파리", "로마"]),
+      },
+      recentCompleted: null,
+    });
+    mockTrip({ ...TOKYO, status: "ONGOING" });
+
+    renderApp();
+
+    expect(await screen.findByText("다음 여행")).toBeInTheDocument();
+    expect(screen.getByText("파리 → 로마 (2개 도시)")).toBeInTheDocument();
+    expect(screen.getByText("D-120")).toBeInTheDocument();
+  });
+
   it("일자 칩을 기간만큼 만든다(1단계는 일차·요일만)", async () => {
     mockSummary({
       ongoing: null,
-      next: { ...TOKYO, dDay: 78 },
+      next: { ...TOKYO, dDay: 78, cities: cities(["도쿄"]) },
       recentCompleted: null,
     });
     mockTrip(TOKYO);
@@ -125,6 +231,15 @@ describe("TravelHomePage", () => {
         id: 3,
         title: "도쿄 3박 4일",
         boardPath: "/travel/trips/3/board",
+        startDate: "2026-10-24",
+        endDate: "2026-10-27",
+        activityCount: 13,
+        cities: cities(["도쿄"], {
+          today: "도쿄",
+          todayDayIndex: 2,
+          todayTimezone: "Asia/Tokyo",
+          todayCurrency: "JPY",
+        }),
       },
       next: null,
       recentCompleted: null,
@@ -142,7 +257,7 @@ describe("TravelHomePage", () => {
   it("보드 열기 링크가 그 여행의 보드를 가리킨다", async () => {
     mockSummary({
       ongoing: null,
-      next: { ...TOKYO, dDay: 78 },
+      next: { ...TOKYO, dDay: 78, cities: cities(["도쿄"]) },
       recentCompleted: null,
     });
     mockTrip(TOKYO);
