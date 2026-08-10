@@ -59,7 +59,9 @@ public enum ErrorCode {
     // 015는 도시 경계 이동시간(3단계) 자리다 — 번호를 당기지 않고 비워 둔다.
     // 도시가 아닌 장소를 기준 도시로 지정하면 타임존은 우연히 맞아도 도시 일치 판정이
     // 그날 일정을 전부 "다른 도시"로 만든다.
-    TRAVEL_NOT_A_CITY("TRAVEL-ERR-016", "도시로 등록된 장소만 기준 도시가 될 수 있습니다.", 400);
+    TRAVEL_NOT_A_CITY("TRAVEL-ERR-016", "도시로 등록된 장소만 기준 도시가 될 수 있습니다.", 400),
+    // 017(숙소 기간 겹침)·018(도시 간 이동의 출발 알림)은 3·4단계 자리다 — 비워 둔다.
+    TRAVEL_DAY_NOT_FOUND("TRAVEL-ERR-019", "존재하지 않는 여행 날짜입니다.", 404);
 
     private final String code;
     private final String message;
