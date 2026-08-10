@@ -12,6 +12,8 @@ public class DbCleaner {
             "trip_activity_photo",
             "trip_activity_log",
             "trip_activity",
+            "trip_stay",
+            "trip_day",
             "trip",
             "travel_place",
             "push_subscription",

@@ -43,8 +43,8 @@ class TripActivityRepositoryTest {
     @BeforeEach
     void setUp() {
         Long memberId = memberRepository.save(new Member("traveler", "pw")).getId();
-        tripId = tripRepository.save(new Trip(memberId, "도쿄", "도쿄", DAY1,
-                LocalDate.of(2026, 10, 27), "Asia/Tokyo", "JPY")).getId();
+        tripId = tripRepository.save(new Trip(memberId, "도쿄", DAY1,
+                LocalDate.of(2026, 10, 27))).getId();
     }
 
     @Test
@@ -161,8 +161,8 @@ class TripActivityRepositoryTest {
     @DisplayName("보드·보관함 조회는 다른 여행의 일정을 섞지 않는다")
     void scopedByTrip() {
         Long otherMember = memberRepository.save(new Member("other", "pw")).getId();
-        Long otherTrip = tripRepository.save(new Trip(otherMember, "오사카", "오사카", DAY1,
-                DAY2, "Asia/Tokyo", "JPY")).getId();
+        Long otherTrip = tripRepository.save(new Trip(otherMember, "오사카", DAY1,
+                DAY2)).getId();
         activityRepository.save(new TripActivity(otherTrip, "남의 일정", DAY1, 0, null));
         activityRepository.save(new TripActivity(otherTrip, "남의 후보", null, 0, null));
         Long mine = activityRepository.save(new TripActivity(tripId, "센소지", DAY1, 0, null)).getId();
@@ -178,8 +178,8 @@ class TripActivityRepositoryTest {
     @DisplayName("findByIdAndTripId는 다른 여행의 일정을 넘겨주지 않는다")
     void findByIdScopedByTrip() {
         Long otherMember = memberRepository.save(new Member("other", "pw")).getId();
-        Long otherTrip = tripRepository.save(new Trip(otherMember, "오사카", "오사카", DAY1,
-                DAY2, "Asia/Tokyo", "JPY")).getId();
+        Long otherTrip = tripRepository.save(new Trip(otherMember, "오사카", DAY1,
+                DAY2)).getId();
         Long id = activityRepository.save(new TripActivity(tripId, "센소지", DAY1, 0, null)).getId();
 
         assertThat(activityRepository.findByIdAndTripId(id, tripId)).isPresent();
