@@ -23,6 +23,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
+import java.time.ZoneId;
 import java.util.Currency;
 import java.util.List;
 import java.util.Locale;
@@ -147,12 +148,67 @@ public class PlaceService {
         return placeRepository.save(place);
     }
 
-    /** 직접 입력. 검색에 안 나오는 곳도 일정에 넣을 수 있어야 한다. */
+    /**
+     * 구글 도시를 담고 <b>기준 도시로 쓸 수 있게 승격</b>한다. 구간 입력이 검색 결과를 그대로
+     * 보내면 여기서 id로 바뀐다.
+     *
+     * <p>타임존은 도시로 쓰이는 장소의 필수 조건이라, 이미 담아 둔 장소인데 타임존이 비어
+     * 있으면(일정 장소로 먼저 담긴 경우) 상세를 한 번 더 불러 채운다.
+     */
+    @Transactional
+    public TravelPlace upsertCityFromGoogle(Long memberId, String googlePlaceId) {
+        TravelPlace place = upsertFromGoogle(memberId, googlePlaceId);
+        if (place.getTimezone() != null) {
+            place.promoteToCity(place.getCityName() != null ? place.getCityName() : place.getName(),
+                    place.getTimezone(), place.getCurrency());
+            return place;
+        }
+        PlaceResult fresh = placesClient.fetchDetails(googlePlaceId)
+                .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_PLACE_NOT_FOUND));
+        place.promoteToCity(place.getName(), fresh.timezone(), currencyOf(fresh.countryCode()));
+        place.updateCityInfo(place.getName(), googlePlaceId, fresh.countryCode());
+        return place;
+    }
+
+    /**
+     * 직접 입력. 검색에 안 나오는 곳도 일정에 넣을 수 있어야 한다.
+     *
+     * <p>{@code kind = CITY}면 도시로 저장한다 — 도시 검색이 못 찾는 곳으로 여행을 갈 때도
+     * 기준 도시는 있어야 한다(그때는 타임존·통화를 사용자가 고른다).
+     */
     @Transactional
     public PlaceDetail createManual(Long memberId, PlaceCreateRequest request) {
         TravelPlace place = TravelPlace.manual(memberId, request.name().trim());
         place.updateBasics(request.address(), request.lat(), request.lng(), null, null);
+        if (request.isCity()) {
+            requireValidTimezone(request.timezone());
+            String currency = normalizedCurrency(request.currency());
+            requireValidCurrency(currency);
+            place.promoteToCity(request.name().trim(), request.timezone(), currency);
+        }
         return PlaceDetail.from(placeRepository.save(place));
+    }
+
+    /**
+     * IANA 지역 ID만 받는다. {@code ZoneId.of}는 {@code "UTC+09:00"} 같은 오프셋도 통과시키는데,
+     * 오프셋은 서머타임을 모르므로 알림 시각 환산이 계절에 따라 어긋난다.
+     */
+    private void requireValidTimezone(String timezone) {
+        if (timezone == null || !ZoneId.getAvailableZoneIds().contains(timezone)) {
+            throw new CustomException(ErrorCode.TRAVEL_INVALID_TIMEZONE);
+        }
+    }
+
+    private void requireValidCurrency(String currency) {
+        try {
+            Currency.getInstance(currency);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new CustomException(ErrorCode.TRAVEL_INVALID_CURRENCY);
+        }
+    }
+
+    private String normalizedCurrency(String currency) {
+        return currency == null ? null : currency.trim().toUpperCase(Locale.ROOT);
     }
 
     // ---------------- helpers ----------------

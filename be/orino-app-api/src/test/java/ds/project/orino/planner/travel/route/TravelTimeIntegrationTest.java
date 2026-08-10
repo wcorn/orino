@@ -10,6 +10,7 @@ import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.StubExternalsConfig;
+import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -96,10 +97,11 @@ class TravelTimeIntegrationTest extends ApiTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"title": "도쿄", "destinationName": "도쿄",
+                                {"title": "도쿄",
                                  "startDate": "2026-10-24", "endDate": "2026-10-27",
-                                 "timezone": "Asia/Tokyo", "currency": "JPY"}
-                                """))
+                                 %s}
+                                """.formatted(TravelCityFixture.singleLeg(
+                                        cityId("도쿄"), 4))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();
@@ -490,6 +492,12 @@ class TravelTimeIntegrationTest extends ApiTestSupport {
                             .header(HttpHeaders.AUTHORIZATION, otherAuth))
                     .andExpect(status().isNotFound());
         }
+    }
+
+
+    /** 여행에는 기준 도시가 있어야 한다(v2.1). 같은 이름이어도 매번 새로 만든다. */
+    private long cityId(String name) throws Exception {
+        return TravelCityFixture.createCity(mockMvc, authHeader, name, "Asia/Tokyo", "JPY");
     }
 
 }

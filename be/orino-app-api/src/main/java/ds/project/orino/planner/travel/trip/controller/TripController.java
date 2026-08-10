@@ -9,6 +9,8 @@ import ds.project.orino.planner.travel.trip.dto.TripListResponse;
 import ds.project.orino.planner.travel.trip.dto.TripWriteRequest;
 import ds.project.orino.planner.travel.trip.service.TripService;
 import jakarta.validation.Valid;
+import jakarta.validation.groups.Default;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -46,9 +48,12 @@ public class TripController {
         return ApiResponse.success(tripService.list(memberId, status));
     }
 
+    /** 생성은 구간이 필수라 {@link TripWriteRequest.OnCreate} 그룹까지 함께 검증한다. */
     @PostMapping("/trips")
-    public ApiResponse<TripDetail> create(@AuthenticationPrincipal Long memberId,
-                                          @Valid @RequestBody TripWriteRequest request) {
+    public ApiResponse<TripDetail> create(
+            @AuthenticationPrincipal Long memberId,
+            @Validated({Default.class, TripWriteRequest.OnCreate.class})
+            @RequestBody TripWriteRequest request) {
         return ApiResponse.success(tripService.create(memberId, request));
     }
 

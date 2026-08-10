@@ -10,6 +10,7 @@ import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.StubExternalsConfig;
+import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -258,6 +259,51 @@ class PlaceControllerTest extends ApiTestSupport {
         }
 
         @Test
+        @DisplayName("kind=CITY면 기준 도시로 쓸 수 있는 도시 장소가 된다")
+        void createsManualCity() throws Exception {
+            // 도시 검색이 못 찾는 곳으로 가는 여행도 기준 도시는 있어야 한다.
+            mockMvc.perform(post("/api/travel/places")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"name": "울란바토르", "kind": "CITY",
+                                     "timezone": "Asia/Ulaanbaatar", "currency": "mnt"}
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.name").value("울란바토르"))
+                    .andExpect(jsonPath("$.data.manualEntry").value(true));
+        }
+
+        @Test
+        @DisplayName("도시의 시간대는 IANA ID만 받는다 — 오프셋 표기는 400")
+        void rejectsNonIanaTimezoneForCity() throws Exception {
+            // 오프셋은 서머타임을 모르므로 알림 환산이 계절에 따라 어긋난다.
+            mockMvc.perform(post("/api/travel/places")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"name": "도쿄", "kind": "CITY",
+                                     "timezone": "UTC+09:00", "currency": "JPY"}
+                                    """))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-003"));
+        }
+
+        @Test
+        @DisplayName("도시의 통화가 ISO 4217이 아니면 400")
+        void rejectsUnknownCurrencyForCity() throws Exception {
+            mockMvc.perform(post("/api/travel/places")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"name": "도쿄", "kind": "CITY",
+                                     "timezone": "Asia/Tokyo", "currency": "ZZZ"}
+                                    """))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-004"));
+        }
+
+        @Test
         @DisplayName("이름이 없으면 400")
         void rejectsBlankName() throws Exception {
             mockMvc.perform(post("/api/travel/places")
@@ -371,15 +417,17 @@ class PlaceControllerTest extends ApiTestSupport {
 
     /** 편향 검증용 — 목적지 좌표가 있는 여행. */
     private long createTripWithCoordinates() throws Exception {
+        // 편향 좌표는 이제 기준 도시가 갖는다.
+        long cityId = TravelCityFixture.createCity(mockMvc, authHeader, "도쿄",
+                "Asia/Tokyo", "JPY", "35.6762", "139.6503");
         String body = mockMvc.perform(post("/api/travel/trips")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"title": "도쿄", "destinationName": "도쿄",
+                                {"title": "도쿄",
                                  "startDate": "2026-10-24", "endDate": "2026-10-27",
-                                 "timezone": "Asia/Tokyo", "currency": "JPY",
-                                 "lat": 35.6762, "lng": 139.6503}
-                                """))
+                                 %s}
+                                """.formatted(TravelCityFixture.singleLeg(cityId, 4))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();

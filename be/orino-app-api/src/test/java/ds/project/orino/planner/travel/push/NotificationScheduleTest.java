@@ -13,6 +13,7 @@ import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.StubExternalsConfig;
+import ds.project.orino.support.TravelCityFixture;
 import ds.project.orino.planner.travel.route.StubRoutesClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -77,15 +78,16 @@ class NotificationScheduleTest extends ApiTestSupport {
     }
 
     private long createTrip(String timezone) throws Exception {
+        long cityId = TravelCityFixture.createCity(mockMvc, authHeader, "도쿄", timezone, "JPY");
         String body = mockMvc.perform(post("/api/travel/trips")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"title": "도쿄", "destinationName": "도쿄",
+                                {"title": "도쿄",
                                  "startDate": "2026-10-24", "endDate": "2026-10-27",
-                                 "timezone": "%s", "currency": "JPY",
+                                 %s,
                                  "defaultNotifyMinutes": 15}
-                                """.formatted(timezone)))
+                                """.formatted(TravelCityFixture.singleLeg(cityId, 4))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();
@@ -271,14 +273,17 @@ class NotificationScheduleTest extends ApiTestSupport {
             assertThat(pending()).singleElement().satisfies(n ->
                     assertThat(n.getScheduledAt()).isEqualTo(Instant.parse("2026-10-23T23:45:00Z")));
 
+            // v2.1에서 타임존을 바꾸는 길은 기준 도시를 바꾸는 것 하나뿐이다.
+            long bangkok = TravelCityFixture.createCity(mockMvc, authHeader, "방콕",
+                    "Asia/Bangkok", "THB");
             mockMvc.perform(put("/api/travel/trips/" + tripId)
                             .header(HttpHeaders.AUTHORIZATION, authHeader)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"title": "도쿄", "destinationName": "방콕",
+                                    {"title": "도쿄",
                                      "startDate": "2026-10-24", "endDate": "2026-10-27",
-                                     "timezone": "Asia/Bangkok", "currency": "THB"}
-                                    """))
+                                     %s}
+                                    """.formatted(TravelCityFixture.singleLeg(bangkok, 4))))
                     .andExpect(status().isOk());
 
             // 09:00은 어디서든 09:00이지만, 방콕(UTC+7) 09:00은 도쿄(UTC+9) 09:00보다 2시간 늦다.

@@ -7,6 +7,7 @@ import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.FixedClockConfig;
 import ds.project.orino.support.MemberFixture;
+import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -209,13 +210,16 @@ class BoardControllerTest extends ApiTestSupport {
 
     private long createTrip(String title, String start, String end,
                             String timezone, String currency) throws Exception {
+        // 타임존·통화는 여행이 아니라 기준 도시가 갖는다(v2.1).
+        long cityId = TravelCityFixture.createCity(mockMvc, authHeader, title,
+                timezone, currency);
         String body = mockMvc.perform(post("/api/travel/trips")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"title": "%s", "destinationName": "%s", "startDate": "%s",
-                                 "endDate": "%s", "timezone": "%s", "currency": "%s"}
-                                """.formatted(title, title, start, end, timezone, currency)))
+                                {"title": "%s", "startDate": "%s", "endDate": "%s", %s}
+                                """.formatted(title, start, end,
+                                        TravelCityFixture.singleLeg(cityId, 1))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) JsonPath.read(body, "$.data.id")).longValue();

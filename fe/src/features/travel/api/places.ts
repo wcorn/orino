@@ -74,6 +74,13 @@ export async function fetchPlaceDetail(placeId: number): Promise<PlaceDetail> {
 export interface ManualPlaceRequest {
   name: string;
   address?: string | null;
+  /** `CITY`면 기준 도시로 쓸 수 있는 도시 장소가 된다. 생략하면 일반 장소(POI). */
+  kind?: "CITY" | "POI";
+  /** 도시일 때만. 검색이 못 찾는 도시는 사용자가 시간대·통화를 고른다. */
+  timezone?: string;
+  currency?: string;
+  lat?: number | null;
+  lng?: number | null;
 }
 
 /** 검색으로 안 나오는 곳(골목 카페, 숙소)을 직접 만든다. */

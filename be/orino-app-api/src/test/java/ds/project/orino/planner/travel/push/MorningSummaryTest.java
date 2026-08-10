@@ -14,6 +14,7 @@ import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.StubExternalsConfig;
+import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -75,15 +76,17 @@ class MorningSummaryTest extends ApiTestSupport {
 
     /** 과거 날짜로 만든다 — 08:00이 이미 지나 있어야 발송 대상이 된다. */
     private long createTrip(boolean morningSummary) throws Exception {
+        long cityId = tokyoCityId();
         String body = mockMvc.perform(post("/api/travel/trips")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"title": "도쿄", "destinationName": "도쿄",
+                                {"title": "도쿄",
                                  "startDate": "2020-01-01", "endDate": "2020-01-03",
-                                 "timezone": "Asia/Tokyo", "currency": "JPY",
+                                 %s,
                                  "morningSummaryEnabled": %s}
-                                """.formatted(morningSummary)))
+                                """.formatted(TravelCityFixture.singleLeg(cityId, 3),
+                                        morningSummary)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();
@@ -151,9 +154,8 @@ class MorningSummaryTest extends ApiTestSupport {
                             .header(HttpHeaders.AUTHORIZATION, authHeader)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"title": "도쿄", "destinationName": "도쿄",
+                                    {"title": "도쿄",
                                      "startDate": "2020-01-01", "endDate": "2020-01-03",
-                                     "timezone": "Asia/Tokyo", "currency": "JPY",
                                      "morningSummaryEnabled": true}
                                     """))
                     .andExpect(status().isOk());
@@ -171,9 +173,8 @@ class MorningSummaryTest extends ApiTestSupport {
                             .header(HttpHeaders.AUTHORIZATION, authHeader)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"title": "도쿄", "destinationName": "도쿄",
+                                    {"title": "도쿄",
                                      "startDate": "2020-01-01", "endDate": "2020-01-02",
-                                     "timezone": "Asia/Tokyo", "currency": "JPY",
                                      "morningSummaryEnabled": true, "confirmArchive": true}
                                     """))
                     .andExpect(status().isOk());
@@ -251,4 +252,9 @@ class MorningSummaryTest extends ApiTestSupport {
                     .contains("/travel/trips/" + tripId + "/board?date=2020-01-01"));
         }
     }
+
+    private long tokyoCityId() throws Exception {
+        return TravelCityFixture.createCity(mockMvc, authHeader, "도쿄", "Asia/Tokyo", "JPY");
+    }
+
 }

@@ -89,14 +89,35 @@ public class TripDayService {
     }
 
     /**
-     * 전 날짜의 기준 도시를 하나로 맞춘다. 여행 전체의 목적지를 한 번에 바꾸는 화면(v2.0 폼)만
-     * 쓴다 — 날짜별로 다르게 두는 길은 기준 도시 변경 API(#1122)다.
+     * 구간을 편 결과({@code 날짜 → 기준 도시})를 그대로 반영한다. 기간과 도시 배치를 한 번에
+     * 맞추므로 여행 생성·구간 재전개가 이걸 쓴다.
+     *
+     * <p><b>{@code cityMemo}는 날짜 기준으로 살아남는다.</b> 행을 지웠다 새로 만들지 않고
+     * 남아 있는 날짜의 기준 도시만 바꾼다 — 도시가 바뀌어도 그 날짜에 적어 둔 메모("체크아웃 후
+     * 코인로커에 짐 보관")는 여전히 그 날짜의 일이다.
      */
     @Transactional
-    public void rebaseAll(Long tripId, Long basePlaceId) {
-        List<TripDay> days = dayRepository.findAllByTripIdOrderByDayDateAsc(tripId);
-        days.forEach(day -> day.changeBaseCity(basePlaceId));
-        dayRepository.saveAll(days);
+    public void applyPlan(Trip trip, Map<LocalDate, Long> baseCityByDate) {
+        Map<LocalDate, TripDay> existing = dayRepository
+                .findAllByTripIdOrderByDayDateAsc(trip.getId()).stream()
+                .collect(Collectors.toMap(TripDay::getDayDate, Function.identity(),
+                        (first, second) -> first, LinkedHashMap::new));
+
+        dayRepository.deleteAll(existing.entrySet().stream()
+                .filter(entry -> !baseCityByDate.containsKey(entry.getKey()))
+                .map(Map.Entry::getValue)
+                .toList());
+
+        List<TripDay> created = new ArrayList<>();
+        baseCityByDate.forEach((date, basePlaceId) -> {
+            TripDay day = existing.get(date);
+            if (day == null) {
+                created.add(new TripDay(trip.getId(), date, basePlaceId));
+            } else {
+                day.changeBaseCity(basePlaceId);
+            }
+        });
+        dayRepository.saveAll(created);
     }
 
     /** 여행 전체의 날짜 → 기준 도시. 도시는 여러 날짜가 공유하므로 장소는 한 번씩만 읽는다. */

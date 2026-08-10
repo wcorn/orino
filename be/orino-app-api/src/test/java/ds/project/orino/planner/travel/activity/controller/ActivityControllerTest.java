@@ -9,6 +9,7 @@ import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.FixedClockConfig;
 import ds.project.orino.support.MemberFixture;
+import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -431,10 +432,11 @@ class ActivityControllerTest extends ApiTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, header)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"title": "도쿄", "destinationName": "도쿄",
+                                {"title": "도쿄",
                                  "startDate": "2026-10-24", "endDate": "2026-10-27",
-                                 "timezone": "Asia/Tokyo", "currency": "JPY"}
-                                """))
+                                 %s}
+                                """.formatted(TravelCityFixture.singleLeg(
+                                        cityId(header), 4))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) JsonPath.read(body, "$.data.id")).longValue();
@@ -482,4 +484,9 @@ class ActivityControllerTest extends ApiTestSupport {
         assertThat(ordered).extracting(TripActivity::getSortOrder)
                 .containsExactlyElementsOf(IntStream.range(0, expectedIds.size()).boxed().toList());
     }
+
+    private long cityId(String header) throws Exception {
+        return TravelCityFixture.createCity(mockMvc, header, "도쿄", "Asia/Tokyo", "JPY");
+    }
+
 }
