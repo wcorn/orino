@@ -1,12 +1,15 @@
 package ds.project.orino.planner.travel.route.client;
 
+import ds.project.orino.planner.travel.external.ExternalApiRejectedException;
 import ds.project.orino.planner.travel.route.config.RoutesProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 
@@ -56,6 +59,16 @@ public class GoogleRoutesClient implements RoutesClient {
                     .retrieve()
                     .body(JsonNode.class);
             return parse(root);
+        } catch (HttpClientErrorException e) {
+            // 429·403은 갈라낸다. 이동시간은 어차피 직선거리로 대체되지만, 대시보드에서
+            // "경로를 못 찾는 구간이 많다"와 "캡에 걸렸다"가 같아 보이면 안 된다.
+            HttpStatusCode status = e.getStatusCode();
+            if (status.value() == 429 || status.value() == 403) {
+                log.warn("Routes 거절: status={}, {}", status.value(), e.getMessage());
+                throw new ExternalApiRejectedException("Routes 거절 (" + status.value() + ")");
+            }
+            log.warn("Routes 조회 실패: mode={}, {}", mode, e.getMessage());
+            return Optional.empty();
         } catch (Exception e) {
             // 경로를 못 얻는 건 흔한 일이다(섬·해외 구간). 직선거리로 대체된다.
             log.warn("Routes 조회 실패: mode={}, {}", mode, e.getMessage());

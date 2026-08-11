@@ -1,5 +1,6 @@
 package ds.project.orino.planner.travel.route;
 
+import ds.project.orino.planner.travel.external.ExternalApiRejectedException;
 import ds.project.orino.planner.travel.route.client.RoutesClient;
 import ds.project.orino.planner.travel.route.client.TravelMode;
 
@@ -23,14 +24,21 @@ public class StubRoutesClient implements RoutesClient {
     /** 비우면 경로 없음 — fallback 경로를 탄다. */
     public Optional<Route> result = Optional.of(new Route(720, 900));
 
+    /** 켜면 구글이 429·403으로 거절한 것처럼 군다(#1159). */
+    public boolean reject = false;
+
     @Override
     public Optional<Route> route(Coordinates origin, Coordinates destination, TravelMode mode) {
         calls.add(new Call(origin, destination, mode));
+        if (reject) {
+            throw new ExternalApiRejectedException("stub 거절");
+        }
         return result;
     }
 
     public void reset() {
         calls.clear();
         result = Optional.of(new Route(720, 900));
+        reject = false;
     }
 }

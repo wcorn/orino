@@ -1,12 +1,15 @@
 package ds.project.orino.planner.travel.place.client;
 
+import ds.project.orino.planner.travel.external.ExternalApiRejectedException;
 import ds.project.orino.planner.travel.place.config.PlacesProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -157,9 +160,27 @@ public class GooglePlacesClient implements PlacesClient {
                     .retrieve()
                     .body(JsonNode.class);
             return Optional.ofNullable(node).map(this::toResult);
+        } catch (HttpClientErrorException e) {
+            rejectIfRefused(e, "Places 상세");
+            log.warn("Places 상세 조회 실패: placeId={}, {}", googlePlaceId, e.getMessage());
+            return Optional.empty();
         } catch (Exception e) {
             log.warn("Places 상세 조회 실패: placeId={}, {}", googlePlaceId, e.getMessage());
             return Optional.empty();
+        }
+    }
+
+    /**
+     * 429·403이면 예외로 올린다. 나머지 4xx는 호출한 쪽에서 평소처럼 빈 값으로 떨어진다.
+     *
+     * <p>거절만 갈라내는 이유는 {@link ExternalApiRejectedException}에 있다 — 결과가 없는 것과
+     * 지금 못 부르는 것은 사용자에게 할 말이 다르다.
+     */
+    private static void rejectIfRefused(HttpClientErrorException e, String what) {
+        HttpStatusCode status = e.getStatusCode();
+        if (status.value() == 429 || status.value() == 403) {
+            log.warn("{} 거절: status={}, {}", what, status.value(), e.getMessage());
+            throw new ExternalApiRejectedException(what + " 거절 (" + status.value() + ")");
         }
     }
 
@@ -187,6 +208,10 @@ public class GooglePlacesClient implements PlacesClient {
                 results.add(toResult(place));
             }
             return results;
+        } catch (HttpClientErrorException e) {
+            rejectIfRefused(e, "Places 검색");
+            log.warn("Places 검색 실패: {}", e.getMessage());
+            return List.of();
         } catch (Exception e) {
             log.warn("Places 검색 실패: {}", e.getMessage());
             return List.of();

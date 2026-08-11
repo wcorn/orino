@@ -6,6 +6,11 @@ import { Input } from "@/components/ui/input";
 import type { BaseCity } from "@/features/travel/api/activities";
 import type { PlaceSearchResult } from "@/features/travel/api/places";
 import { searchPlaces } from "@/features/travel/api/places";
+import {
+  failureOf,
+  type SearchFailure,
+} from "@/features/travel/lib/searchFailure";
+import { SearchUnavailable } from "@/features/travel/places/SearchUnavailable";
 
 /** 고른 숙소 장소. 저장할 때 `googlePlaceId`로 넘어간다. */
 export interface PickedPlace {
@@ -44,19 +49,19 @@ export function StayPlacePicker({
   const [draft, setDraft] = useState("");
   const [results, setResults] = useState<PlaceSearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<SearchFailure>(null);
 
   const search = async (event: FormEvent) => {
     event.preventDefault();
     const q = draft.trim();
     if (!q) return;
     setSearching(true);
-    setFailed(false);
+    setFailure(null);
     try {
       setResults(await searchPlaces(q, tripId, city?.placeId));
-    } catch {
+    } catch (error) {
       setResults(null);
-      setFailed(true);
+      setFailure(failureOf(error));
     } finally {
       setSearching(false);
     }
@@ -134,11 +139,8 @@ export function StayPlacePicker({
         </Button>
       </div>
 
-      {failed && (
-        <p className="text-muted-foreground text-xs">
-          검색하지 못했어요. 잠시 후 다시 시도해 주세요.
-        </p>
-      )}
+      {/* 숙소는 장소 없이도 저장된다 — 거절당해도 이 폼은 끝까지 쓸 수 있다. */}
+      <SearchUnavailable failure={failure} />
       {results !== null && results.length === 0 && !searching && (
         // 장소 없이도 숙소는 저장된다 — 이동시간과 길찾기만 없다.
         <p className="text-muted-foreground text-xs">

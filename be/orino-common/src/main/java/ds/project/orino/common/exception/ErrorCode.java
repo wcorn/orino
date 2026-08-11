@@ -65,7 +65,15 @@ public enum ErrorCode {
     TRAVEL_STAY_OVERLAP("TRAVEL-ERR-017", "이미 숙소가 잡힌 기간입니다.", 409),
     // 018(도시 간 이동의 출발 알림)은 4단계 자리다 — 비워 둔다.
     TRAVEL_DAY_NOT_FOUND("TRAVEL-ERR-019", "존재하지 않는 여행 날짜입니다.", 404),
-    TRAVEL_STAY_NOT_FOUND("TRAVEL-ERR-020", "존재하지 않는 숙소입니다.", 404);
+    TRAVEL_STAY_NOT_FOUND("TRAVEL-ERR-020", "존재하지 않는 숙소입니다.", 404),
+
+    /**
+     * 구글이 호출을 거절했다(할당량·키·과금). 503인 이유는 <b>사용자가 잘못한 게 없기</b>
+     * 때문이다 — 검색어를 바꾸면 될 것처럼 400을 주면 바꿀 때마다 또 거절당한다.
+     */
+    TRAVEL_EXTERNAL_REJECTED("TRAVEL-ERR-021",
+            "지금은 장소 정보를 새로 가져올 수 없어요. 이미 담아 둔 장소는 그대로 쓸 수 있어요.",
+            503);
 
     private final String code;
     private final String message;

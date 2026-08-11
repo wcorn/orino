@@ -1,5 +1,6 @@
 package ds.project.orino.planner.travel.place;
 
+import ds.project.orino.planner.travel.external.ExternalApiRejectedException;
 import ds.project.orino.planner.travel.place.client.PlaceResult;
 import ds.project.orino.planner.travel.place.client.PlacesClient;
 
@@ -24,9 +25,13 @@ public class StubPlacesClient implements PlacesClient {
     public List<PlaceResult> placeResults = List.of();
     public Optional<PlaceResult> detailResult = Optional.empty();
 
+    /** 켜면 구글이 429·403으로 거절한 것처럼 군다(#1159). 호출은 그대로 기록된다. */
+    public boolean reject = false;
+
     @Override
     public List<PlaceResult> searchCities(String query) {
         citySearches.add(query);
+        rejectIfAsked();
         return cityResults;
     }
 
@@ -34,13 +39,21 @@ public class StubPlacesClient implements PlacesClient {
     public List<PlaceResult> searchPlaces(String query, Coordinates bias) {
         placeSearches.add(query);
         biases.add(bias);
+        rejectIfAsked();
         return placeResults;
     }
 
     @Override
     public Optional<PlaceResult> fetchDetails(String googlePlaceId) {
         detailFetches.add(googlePlaceId);
+        rejectIfAsked();
         return detailResult;
+    }
+
+    private void rejectIfAsked() {
+        if (reject) {
+            throw new ExternalApiRejectedException("stub 거절");
+        }
     }
 
     public void reset() {
@@ -48,5 +61,6 @@ public class StubPlacesClient implements PlacesClient {
         placeSearches.clear();
         biases.clear();
         detailFetches.clear();
+        reject = false;
     }
 }

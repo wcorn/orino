@@ -9,8 +9,13 @@ import { LoadingText } from "@/components/ui/loading-text";
 import type { BoardDay } from "@/features/travel/api/activities";
 import type { DayUpdateRequest } from "@/features/travel/api/days";
 import { type City, searchCities } from "@/features/travel/api/places";
+import {
+  failureOf,
+  type SearchFailure,
+} from "@/features/travel/lib/searchFailure";
 import { formatShortDate } from "@/features/travel/lib/tripStatus";
 import { GoogleAttribution } from "@/features/travel/places/GoogleAttribution";
+import { SearchUnavailable } from "@/features/travel/places/SearchUnavailable";
 import { cn } from "@/lib/utils";
 
 const MEMO_MAX = 200;
@@ -64,7 +69,7 @@ export function BaseCitySheet({
   const [draft, setDraft] = useState("");
   const [results, setResults] = useState<City[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<SearchFailure>(null);
 
   const openedAt = useRef(0);
 
@@ -75,7 +80,7 @@ export function BaseCitySheet({
     setMemo(day?.cityMemo ?? "");
     setDraft("");
     setResults(null);
-    setFailed(false);
+    setFailure(null);
     if (day) openedAt.current = performance.now();
   }, [day?.dayId, day?.cityMemo, day]);
 
@@ -95,12 +100,12 @@ export function BaseCitySheet({
     const q = draft.trim();
     if (!q) return;
     setSearching(true);
-    setFailed(false);
+    setFailure(null);
     try {
       setResults(await searchCities(q));
-    } catch {
+    } catch (error) {
       setResults(null);
-      setFailed(true);
+      setFailure(failureOf(error));
     } finally {
       setSearching(false);
     }
@@ -188,11 +193,7 @@ export function BaseCitySheet({
         </FormField>
 
         {searching && <LoadingText />}
-        {failed && (
-          <p className="text-muted-foreground text-sm">
-            도시를 검색하지 못했어요.
-          </p>
-        )}
+        <SearchUnavailable failure={failure} subject="도시" />
 
         {results !== null && !searching && (
           <ul className="bg-popover border-border overflow-hidden rounded-lg border">

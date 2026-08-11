@@ -7,6 +7,7 @@ import ds.project.orino.domain.planner.travel.entity.Trip;
 import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.day.service.TripDayService;
+import ds.project.orino.planner.travel.external.ExternalApiRejectedException;
 import ds.project.orino.planner.travel.place.client.PlaceResult;
 import ds.project.orino.planner.travel.place.client.PlacesClient;
 import ds.project.orino.planner.travel.place.config.PlacesProperties;
@@ -126,8 +127,8 @@ public class PlaceService {
                 .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_PLACE_NOT_FOUND));
 
         if (place.getGooglePlaceId() != null && place.needsDetailsRefresh(clock.instant())) {
-            Optional<PlaceResult> refreshed = placesClient.fetchDetails(place.getGooglePlaceId());
-            metrics.recordFetch(ExternalApiMetrics.Api.PLACES_DETAILS, refreshed.isPresent());
+            // 갱신에 실패해도 저장된 값으로 답한다 — 30일 지난 영업시간이 빈 화면보다 낫다.
+            Optional<PlaceResult> refreshed = fetchDetailsOrEmpty(place.getGooglePlaceId());
             refreshed.ifPresent(fresh -> {
                 place.updateBasics(fresh.address(), fresh.lat(), fresh.lng(),
                         fresh.category(), fresh.rating());
@@ -167,10 +168,7 @@ public class PlaceService {
             metrics.record(ExternalApiMetrics.Api.PLACES_DETAILS, ExternalApiMetrics.Result.HIT);
             return existing.get();
         }
-        Optional<PlaceResult> detail = placesClient.fetchDetails(googlePlaceId);
-        metrics.recordFetch(ExternalApiMetrics.Api.PLACES_DETAILS, detail.isPresent());
-        PlaceResult fresh = detail
-                .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_PLACE_NOT_FOUND));
+        PlaceResult fresh = requireDetails(googlePlaceId);
 
         TravelPlace place = TravelPlace.fromGoogle(memberId, googlePlaceId, fresh.name());
         place.updateBasics(fresh.address(), fresh.lat(), fresh.lng(),
@@ -203,10 +201,8 @@ public class PlaceService {
             return place;
         }
         // 같은 경로에서 상세를 두 번째로 부르는 자리다 — 계측이 없으면 이 한 번이 안 보인다.
-        Optional<PlaceResult> detail = placesClient.fetchDetails(googlePlaceId);
-        metrics.recordFetch(ExternalApiMetrics.Api.PLACES_DETAILS, detail.isPresent());
-        PlaceResult fresh = detail
-                .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_PLACE_NOT_FOUND));
+        // 타임존 없이는 도시로 쓸 수 없으므로 여기서는 저장된 값으로 버틸 수가 없다.
+        PlaceResult fresh = requireDetails(googlePlaceId);
         place.promoteToCity(place.getName(), fresh.timezone(), currencyOf(fresh.countryCode()));
         place.updateCityInfo(place.getName(), googlePlaceId, fresh.countryCode());
         return place;
@@ -278,12 +274,52 @@ public class PlaceService {
                 log.warn("장소 캐시 역직렬화 실패, 새로 조회한다: {}", e.getMessage());
             }
         }
-        List<PlaceResult> fresh = fetch.get();
+        List<PlaceResult> fresh;
+        try {
+            fresh = fetch.get();
+        } catch (ExternalApiRejectedException e) {
+            // 캐시에 있는 검색어는 위에서 이미 답했다 — 여기 온 건 캐시가 없는 검색어다.
+            // 빈 목록으로 돌려주면 화면이 "결과 없음"이라고 거짓말을 한다.
+            metrics.recordRejected(api);
+            throw new CustomException(ErrorCode.TRAVEL_EXTERNAL_REJECTED);
+        }
         metrics.recordFetch(api, !fresh.isEmpty());
         if (!fresh.isEmpty()) {
             write.accept(objectMapper.writeValueAsString(fresh));
         }
         return fresh;
+    }
+
+    /**
+     * 상세를 받아 온다. 거절당하면 <b>비어 있는 것으로 친다</b> — 담아 둔 장소 정보로 화면이
+     * 성립하는 자리에서만 쓴다({@link #detail}).
+     */
+    private Optional<PlaceResult> fetchDetailsOrEmpty(String googlePlaceId) {
+        try {
+            Optional<PlaceResult> detail = placesClient.fetchDetails(googlePlaceId);
+            metrics.recordFetch(ExternalApiMetrics.Api.PLACES_DETAILS, detail.isPresent());
+            return detail;
+        } catch (ExternalApiRejectedException e) {
+            metrics.recordRejected(ExternalApiMetrics.Api.PLACES_DETAILS);
+            log.warn("장소 상세 갱신을 거절당해 저장된 값으로 답한다: placeId={}", googlePlaceId);
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * 상세를 받아 온다. 거절당하면 503으로 올린다 — <b>보여 줄 값이 아예 없는</b> 자리다
+     * (처음 담는 장소). 여기서 404를 주면 "존재하지 않는 장소"라고 잘못 말하게 된다.
+     */
+    private PlaceResult requireDetails(String googlePlaceId) {
+        Optional<PlaceResult> detail;
+        try {
+            detail = placesClient.fetchDetails(googlePlaceId);
+        } catch (ExternalApiRejectedException e) {
+            metrics.recordRejected(ExternalApiMetrics.Api.PLACES_DETAILS);
+            throw new CustomException(ErrorCode.TRAVEL_EXTERNAL_REJECTED);
+        }
+        metrics.recordFetch(ExternalApiMetrics.Api.PLACES_DETAILS, detail.isPresent());
+        return detail.orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_PLACE_NOT_FOUND));
     }
 
     /** 국가 코드 → ISO 4217. 매핑 테이블을 만들지 않고 JDK가 아는 값을 쓴다. */

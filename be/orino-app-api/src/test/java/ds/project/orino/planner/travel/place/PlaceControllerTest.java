@@ -522,6 +522,109 @@ class PlaceControllerTest extends ApiTestSupport {
     }
 
     @Nested
+    @DisplayName("할당량 초과 시 degradation (#1159)")
+    class Degradation {
+
+        private double rejected(String api) {
+            return meterRegistry.find("orino.external.api.calls")
+                    .tag("api", api).tag("result", "rejected")
+                    .counters().stream().mapToDouble(c -> c.count()).sum();
+        }
+
+        @Test
+        @DisplayName("검색을 거절당하면 503 — 빈 목록으로 '결과 없음'이라고 말하지 않는다")
+        void rejectedSearchIsNotEmptyResult() throws Exception {
+            // 캡에 걸린 사용자가 "결과 없음"을 보면 검색어를 계속 바꾼다 — 바꿀 때마다 또 거절된다.
+            stub.reject = true;
+            double before = rejected("places_search");
+
+            mockMvc.perform(get("/api/travel/places/search").param("q", uniqueQuery("라멘"))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-021"));
+
+            assertThat(rejected("places_search") - before).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("거절 중에도 캐시된 검색어는 그대로 나온다")
+        void cachedSearchSurvivesRejection() throws Exception {
+            String query = uniqueQuery("센소지");
+            stub.placeResults = List.of(place("ChIJ_senso", "센소지"));
+            mockMvc.perform(get("/api/travel/places/search").param("q", query)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
+
+            stub.reject = true;
+
+            mockMvc.perform(get("/api/travel/places/search").param("q", query)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data", hasSize(1)));
+
+            // 캐시가 답했으므로 두 번째는 나가지도 않았다 — 거절이 닿을 자리가 아니다.
+            assertThat(stub.placeSearches).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("거절은 캐시하지 않는다 — 캡이 풀리면 바로 다시 검색된다")
+        void rejectionIsNotCached() throws Exception {
+            String query = uniqueQuery("복구");
+            stub.reject = true;
+            mockMvc.perform(get("/api/travel/places/search").param("q", query)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isServiceUnavailable());
+
+            stub.reject = false;
+            stub.placeResults = List.of(place("ChIJ_senso", "센소지"));
+
+            mockMvc.perform(get("/api/travel/places/search").param("q", query)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data", hasSize(1)));
+        }
+
+        @Test
+        @DisplayName("상세 갱신을 거절당해도 담아 둔 장소 정보로 답한다")
+        void detailFallsBackToStoredValues() throws Exception {
+            Long memberId = memberRepository.findAll().get(0).getId();
+            TravelPlace saved = placeRepository.save(
+                    TravelPlace.fromGoogle(memberId, "ChIJ_senso", "센소지"));
+            saved.updateBasics("도쿄도 다이토구", new BigDecimal("35.7147"),
+                    new BigDecimal("139.7966"), "사찰", new BigDecimal("4.5"));
+            placeRepository.saveAndFlush(saved);
+            // 상세를 받은 적이 없어 갱신 대상인데, 그 갱신이 거절당한다.
+            stub.reject = true;
+            double before = rejected("places_details");
+
+            mockMvc.perform(get("/api/travel/places/" + saved.getId())
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.name").value("센소지"))
+                    .andExpect(jsonPath("$.data.address").value("도쿄도 다이토구"));
+
+            assertThat(rejected("places_details") - before).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("처음 담는 장소를 거절당하면 503 — '존재하지 않는 장소'가 아니다")
+        void firstTimeSaveReportsRejection() throws Exception {
+            long tripId = createTripWithCoordinates();
+            stub.reject = true;
+
+            mockMvc.perform(post("/api/travel/trips/" + tripId + "/activities")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"title": "센소지", "activityDate": "2026-10-24",
+                                     "googlePlaceId": "ChIJ_senso"}
+                                    """))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-021"));
+        }
+    }
+
+    @Nested
     @DisplayName("일정에 담기")
     class AddToActivity {
 

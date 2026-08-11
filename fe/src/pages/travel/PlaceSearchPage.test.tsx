@@ -217,6 +217,25 @@ describe("PlaceSearchPage", () => {
 
       expect(await screen.findByText(/검색하지 못했어요/)).toBeInTheDocument();
     });
+
+    it("할당량에 걸리면 '결과 없음'이 아니라 지금 못 찾는다고 말한다 (#1159)", async () => {
+      // "검색 결과가 없어요"를 보면 사용자는 검색어를 계속 바꾼다 — 바꿀 때마다 또 거절된다.
+      server.use(
+        http.get(`${API_BASE}/travel/places/search`, () =>
+          HttpResponse.json({ code: "TRAVEL-ERR-021" }, { status: 503 }),
+        ),
+      );
+      renderSearch("/travel/trips/3/places?q=%EC%84%BC%EC%86%8C%EC%A7%80");
+
+      expect(
+        await screen.findByText(/지금은 새 장소를 검색할 수 없어요/),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("검색 결과가 없어요.")).not.toBeInTheDocument();
+      // 직접 입력은 구글을 부르지 않는다 — 검색이 막혀도 일정은 채울 수 있어야 한다.
+      expect(
+        screen.getByRole("button", { name: /직접 입력/ }),
+      ).toBeInTheDocument();
+    });
   });
 
   describe("최근 검색어", () => {
