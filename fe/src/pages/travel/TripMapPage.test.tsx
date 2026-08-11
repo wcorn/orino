@@ -11,22 +11,97 @@ import { renderWithRouter } from "@/test/render";
 
 const API_BASE = "https://api.orino.dev/api";
 
+function city(placeId: number, name: string) {
+  return {
+    placeId,
+    name,
+    timezone: "Asia/Tokyo",
+    currency: "JPY",
+    countryCode: "JP",
+    cityPlaceRef: `ChIJ_${placeId}`,
+    lat: 35.68,
+    lng: 139.76,
+  };
+}
+
+const TOKYO = city(21, "도쿄");
+const NIKKO = city(22, "닛코");
+
 const DAYS = [
   {
+    dayId: 501,
     dayIndex: 1,
     date: "2026-10-24",
     weekday: "토",
     activityCount: 2,
+    baseCity: TOKYO,
+    cityChanged: false,
+    legIndex: 1,
+    cityMemo: null,
     weather: null,
+    stayTonight: null,
+    stayCheckout: null,
   },
   {
+    dayId: 502,
     dayIndex: 2,
     date: "2026-10-25",
     weekday: "일",
     activityCount: 1,
+    baseCity: NIKKO,
+    cityChanged: true,
+    legIndex: 2,
+    cityMemo: null,
     weather: null,
+    stayTonight: null,
+    stayCheckout: null,
   },
 ];
+
+/** 도쿄 → 닛코 → 도쿄. 구간은 셋인데 도시는 둘이다 — `전체` 모드의 핵심 사례다. */
+const CITY_LEGS = [
+  {
+    legIndex: 1,
+    cityPlaceId: 21,
+    cityName: "도쿄",
+    days: 3,
+    startDate: "2026-10-24",
+    endDate: "2026-10-26",
+    timezone: "Asia/Tokyo",
+    lat: 35.68,
+    lng: 139.76,
+  },
+  {
+    legIndex: 2,
+    cityPlaceId: 22,
+    cityName: "닛코",
+    days: 1,
+    startDate: "2026-10-25",
+    endDate: "2026-10-25",
+    timezone: "Asia/Tokyo",
+    lat: 36.75,
+    lng: 139.6,
+  },
+  {
+    legIndex: 3,
+    cityPlaceId: 21,
+    cityName: "도쿄",
+    days: 2,
+    startDate: "2026-10-26",
+    endDate: "2026-10-27",
+    timezone: "Asia/Tokyo",
+    lat: 35.68,
+    lng: 139.76,
+  },
+];
+
+function mockCityLegs(legs: unknown[] = CITY_LEGS) {
+  server.use(
+    http.get(`${API_BASE}/travel/trips/:tripId/city-legs`, () =>
+      HttpResponse.json({ code: "OK", data: legs }),
+    ),
+  );
+}
 
 function activity(overrides: Record<string, unknown> = {}) {
   return {
@@ -44,6 +119,8 @@ function activity(overrides: Record<string, unknown> = {}) {
     sortOrder: 0,
     log: null,
     hasLog: false,
+    outOfBaseCity: false,
+    canDepartureNotify: false,
     ...overrides,
   };
 }
@@ -54,6 +131,8 @@ const SENSOJI = {
   address: "다이토구",
   lat: 35.7147651,
   lng: 139.7966553,
+  cityName: "도쿄",
+  cityPlaceRef: "ChIJ_21",
 };
 
 function mockBoard(byDate: Record<string, unknown[]>) {
@@ -79,6 +158,7 @@ function mockBoard(byDate: Record<string, unknown[]>) {
           archiveCount: 0,
           activities: byDate[date] ?? [],
           travelTimes: [],
+          stayMove: null,
         },
       });
     }),
@@ -193,6 +273,111 @@ describe("TripMapPage", () => {
       expect(
         screen.getAllByRole("button", { name: /리스트로 전환/ }),
       ).toHaveLength(2);
+    });
+  });
+
+  describe("`전체` 모드 (§2.6)", () => {
+    it("도시를 다시 방문해도 마커는 하나이고 첫 방문 구간 번호를 쓴다", async () => {
+      mockBoard({ "2026-10-24": [activity({ id: 1, place: SENSOJI })] });
+      mockCityLegs();
+
+      renderMap("/travel/trips/3/map?mode=all");
+
+      // 구간은 셋인데 도시는 둘이다.
+      expect(
+        await screen.findByRole("heading", { name: "여행 전체" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("도시 2곳 · 구간 순서")).toBeInTheDocument();
+
+      // 구간 리스트는 접지 않는다 — 며칠씩 어디에 머무는지가 구간별 사실이다.
+      const legRows = screen.getAllByRole("button", { name: /일 · 10\./ });
+      expect(legRows).toHaveLength(3);
+      expect(legRows[0]).toHaveTextContent("도쿄");
+      expect(legRows[0]).toHaveTextContent("3일 · 10.24–10.26");
+    });
+
+    it("기본값은 `이 날짜`다 — 하루가 본체다", async () => {
+      mockBoard({ "2026-10-24": [activity({ id: 1, place: SENSOJI })] });
+
+      renderMap();
+
+      expect(
+        await screen.findByRole("heading", { name: "1일차 동선" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "이 날짜" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    it("토글로 모드를 바꾸면 보던 날짜는 그대로 둔다", async () => {
+      mockBoard({ "2026-10-25": [activity({ id: 2, place: SENSOJI })] });
+      mockCityLegs();
+
+      const user = userEvent.setup();
+      renderMap("/travel/trips/3/map?day=1");
+      await screen.findByRole("heading", { name: "2일차 동선" });
+
+      await user.click(screen.getByRole("button", { name: "전체" }));
+      expect(
+        await screen.findByRole("heading", { name: "여행 전체" }),
+      ).toBeInTheDocument();
+
+      // 돌아오면 보던 날짜여야 한다 — 모드만 바꾼 것이지 날짜를 버린 게 아니다.
+      await user.click(screen.getByRole("button", { name: "이 날짜" }));
+      expect(
+        await screen.findByRole("heading", { name: "2일차 동선" }),
+      ).toBeInTheDocument();
+    });
+
+    it("구간 행을 누르면 그 구간 첫날 보드로 간다", async () => {
+      mockBoard({
+        "2026-10-24": [activity({ id: 1, place: SENSOJI })],
+        "2026-10-25": [
+          activity({ id: 2, activityDate: "2026-10-25", place: SENSOJI }),
+        ],
+      });
+      mockCityLegs();
+
+      const user = userEvent.setup();
+      renderMap("/travel/trips/3/map?mode=all");
+
+      const legRows = await screen.findAllByRole("button", {
+        name: /일 · 10\./,
+      });
+      // 2번째 구간(닛코)의 첫날은 2일차다.
+      await user.click(legRows[1]);
+
+      const tabs = await screen.findAllByRole("tab");
+      await waitFor(() =>
+        expect(tabs[1]).toHaveAttribute("aria-selected", "true"),
+      );
+    });
+
+    it("좌표를 아는 도시가 없으면 그렇게 말한다 — 장소 검색으로 보내지 않는다", async () => {
+      mockBoard({ "2026-10-24": [activity({ id: 1, place: SENSOJI })] });
+      mockCityLegs([
+        {
+          legIndex: 1,
+          cityPlaceId: 23,
+          cityName: "하코네",
+          days: 2,
+          startDate: "2026-10-24",
+          endDate: "2026-10-25",
+          timezone: "Asia/Tokyo",
+          lat: null,
+          lng: null,
+        },
+      ]);
+
+      renderMap("/travel/trips/3/map?mode=all");
+
+      expect(
+        await screen.findByText("좌표를 아는 도시가 없어요."),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /장소 검색/ }),
+      ).not.toBeInTheDocument();
     });
   });
 

@@ -2,8 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetGoogleMapsLoader } from "./googleMaps";
-import type { MappedActivity } from "./toMapped";
-import { TripDayMap } from "./TripDayMap";
+import type { MapPoint } from "./TripMap";
+import { TripMap } from "./TripMap";
 
 /**
  * jsdom에는 구글 지도가 없다. <b>브라우저가 주는 것</b>이라 대역을 세운다 —
@@ -77,16 +77,17 @@ function stubGoogleMaps() {
   };
 }
 
-function activity(id: number, title: string, order: number): MappedActivity {
+function point(key: number, title: string, order: number): MapPoint {
   return {
+    key,
     order,
-    lat: 35.7 + id / 100,
-    lng: 139.7 + id / 100,
-    activity: { id, title } as MappedActivity["activity"],
+    title,
+    lat: 35.7 + key / 100,
+    lng: 139.7 + key / 100,
   };
 }
 
-describe("TripDayMap", () => {
+describe("TripMap", () => {
   beforeEach(() => {
     resetGoogleMapsLoader();
   });
@@ -101,10 +102,11 @@ describe("TripDayMap", () => {
     it("키가 없으면 안내를 대신 보여준다 — 빈 회색 상자로 두지 않는다", async () => {
       delete (window as { google?: unknown }).google;
       render(
-        <TripDayMap
-          mapped={[activity(1, "센소지", 1)]}
-          selectedId={null}
+        <TripMap
+          points={[point(1, "센소지", 1)]}
+          selectedKey={null}
           onSelect={() => {}}
+          label="하루 동선 지도"
         />,
       );
 
@@ -119,12 +121,13 @@ describe("TripDayMap", () => {
       stubGoogleMaps();
     });
 
-    it("일정마다 번호 핀을 찍는다", async () => {
+    it("점마다 번호 핀을 찍는다", async () => {
       render(
-        <TripDayMap
-          mapped={[activity(1, "센소지", 1), activity(2, "시부야", 2)]}
-          selectedId={null}
+        <TripMap
+          points={[point(1, "센소지", 1), point(2, "시부야", 2)]}
+          selectedKey={null}
           onSelect={() => {}}
+          label="하루 동선 지도"
         />,
       );
 
@@ -133,13 +136,14 @@ describe("TripDayMap", () => {
       expect(markers[0].title).toBe("1. 센소지");
     });
 
-    it("핀을 누르면 그 일정을 고른다", async () => {
+    it("핀을 누르면 그 점을 고른다", async () => {
       const onSelect = vi.fn();
       render(
-        <TripDayMap
-          mapped={[activity(7, "센소지", 1)]}
-          selectedId={null}
+        <TripMap
+          points={[point(7, "센소지", 1)]}
+          selectedKey={null}
           onSelect={onSelect}
+          label="하루 동선 지도"
         />,
       );
 
@@ -151,14 +155,11 @@ describe("TripDayMap", () => {
 
     it("두 곳 이상이면 순서대로 직선을 잇는다 — 실제 경로가 아니라 순서다", async () => {
       render(
-        <TripDayMap
-          mapped={[
-            activity(1, "a", 1),
-            activity(2, "b", 2),
-            activity(3, "c", 3),
-          ]}
-          selectedId={null}
+        <TripMap
+          points={[point(1, "a", 1), point(2, "b", 2), point(3, "c", 3)]}
+          selectedKey={null}
           onSelect={() => {}}
+          label="하루 동선 지도"
         />,
       );
 
@@ -166,12 +167,34 @@ describe("TripDayMap", () => {
       expect(polylines[0].path).toHaveLength(3);
     });
 
+    it("경로를 따로 주면 점이 아니라 그 경로로 잇는다 — 오간 자취가 선에 남는다", async () => {
+      // 도쿄 → 닛코 → 도쿄: 점은 둘, 획은 둘이다.
+      render(
+        <TripMap
+          points={[point(1, "도쿄", 1), point(2, "닛코", 2)]}
+          path={[
+            { lat: 35.68, lng: 139.76 },
+            { lat: 36.75, lng: 139.6 },
+            { lat: 35.68, lng: 139.76 },
+          ]}
+          selectedKey={null}
+          onSelect={() => {}}
+          label="여행 전체 지도"
+        />,
+      );
+
+      await waitFor(() => expect(polylines).toHaveLength(1));
+      expect(polylines[0].path).toHaveLength(3);
+      expect(markers).toHaveLength(2);
+    });
+
     it("한 곳뿐이면 선을 긋지 않는다", async () => {
       render(
-        <TripDayMap
-          mapped={[activity(1, "a", 1)]}
-          selectedId={null}
+        <TripMap
+          points={[point(1, "a", 1)]}
+          selectedKey={null}
           onSelect={() => {}}
+          label="하루 동선 지도"
         />,
       );
 
@@ -181,10 +204,11 @@ describe("TripDayMap", () => {
 
     it("핀이 전부 들어오게 범위를 맞춘다", async () => {
       render(
-        <TripDayMap
-          mapped={[activity(1, "a", 1), activity(2, "b", 2)]}
-          selectedId={null}
+        <TripMap
+          points={[point(1, "a", 1), point(2, "b", 2)]}
+          selectedKey={null}
           onSelect={() => {}}
+          label="하루 동선 지도"
         />,
       );
 
@@ -194,10 +218,11 @@ describe("TripDayMap", () => {
 
     it("고른 핀은 크게 그린다 — 어느 것을 보고 있는지 알아야 한다", async () => {
       render(
-        <TripDayMap
-          mapped={[activity(1, "a", 1), activity(2, "b", 2)]}
-          selectedId={2}
+        <TripMap
+          points={[point(1, "a", 1), point(2, "b", 2)]}
+          selectedKey={2}
           onSelect={() => {}}
+          label="하루 동선 지도"
         />,
       );
 
