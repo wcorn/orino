@@ -51,6 +51,12 @@ resource "google_project_iam_member" "terraform_apply" {
     "roles/iam.workloadIdentityPoolAdmin",   # WIF 풀·provider
     "roles/iam.serviceAccountAdmin",         # 서비스 계정과 그 IAM 정책
     "roles/resourcemanager.projectIamAdmin", # 프로젝트 역할 바인딩
+    # 결제 내보내기 데이터셋(#1157). dataOwner 는 datasets create·get·update·delete 를
+    # 다 주면서 bigquery.jobs.create 는 주지 않는다 — 즉 쿼리를 못 돌린다.
+    # bigquery.user 를 쓰면 create 는 되지만 jobs.create 가 딸려오는데, BigQuery
+    # 쿼리는 스캔 GB 당 과금이다. CI 가 실수로 유료 쿼리를 돌 수 있게 만들 이유가 없다
+    # (#1149 에서 ce:GetCostAndUsage 를 주지 않은 것과 같은 판단). #1186
+    "roles/bigquery.dataOwner",
   ])
 
   project = var.gcp_project_id
@@ -75,6 +81,9 @@ resource "google_project_iam_member" "terraform_plan" {
     "roles/iam.workloadIdentityPoolViewer",
     # 서비스 계정과 프로젝트 IAM 정책 읽기. 이게 없으면 plan이 403으로 깨진다.
     "roles/iam.securityReviewer",
+    # 결제 내보내기 데이터셋 refresh 용 datasets.get. 이 역할에도 jobs.create 는
+    # 없어서 미신뢰 PR 이 유료 쿼리를 돌릴 수 없다. #1186
+    "roles/bigquery.metadataViewer",
   ])
 
   project = var.gcp_project_id
