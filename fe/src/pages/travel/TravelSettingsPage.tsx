@@ -181,8 +181,11 @@ export function TravelSettingsPage() {
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium">아침 요약 알림</p>
+                {/* 언제 오는지가 도시마다 다르다(§3.6) — "매일 현지 08:00"만으로는
+                    이동일에 왜 일찍 오는지 알 수 없다. */}
                 <p className="text-muted-foreground text-xs">
-                  여행 기간 중 매일 현지 08:00
+                  그날 기준 도시의 현지 08:00 · 도시가 바뀌는 날은 전날 도시
+                  08:00
                 </p>
               </div>
               <Switch
@@ -193,6 +196,14 @@ export function TravelSettingsPage() {
                 aria-label="아침 요약 알림"
               />
             </div>
+
+            {/* 켜 두면 무엇이 오는지 보여준다 — 문구만으로는 두 형태가 그려지지 않는다. */}
+            {trip.morningSummaryEnabled && (
+              <div className="bg-muted text-muted-foreground flex flex-col gap-1 rounded-lg px-3 py-2 text-xs">
+                <p>교토 · 오늘 일정 4개 · 첫 일정 09:00</p>
+                <p>오사카 → 교토 · 오늘 일정 3개</p>
+              </div>
+            )}
             <p className="text-muted-foreground text-xs">
               {trip.title}에 적용됩니다
             </p>

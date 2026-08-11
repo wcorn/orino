@@ -93,9 +93,30 @@ class ToolsControllerTest extends ApiTestSupport {
         return ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();
     }
 
+    /** 도쿄 1일 → 닛코 1일. 날짜마다 도시가 다른 가장 작은 여행이다. */
+    private long createTwoCityTrip() throws Exception {
+        long tokyo = TravelCityFixture.createCity(mockMvc, authHeader, "도쿄", "Asia/Tokyo", "JPY",
+                jitter("35.6764").toPlainString(), jitter("139.6500").toPlainString());
+        long nikko = TravelCityFixture.createCity(mockMvc, authHeader, "닛코", "Asia/Tokyo", "JPY",
+                jitter("36.7500").toPlainString(), jitter("139.6000").toPlainString());
+        String body = mockMvc.perform(post("/api/travel/trips")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "도쿄",
+                                 "startDate": "2026-10-24", "endDate": "2026-10-25",
+                                 "legs": [{"cityPlaceId": %d, "days": 1},
+                                          {"cityPlaceId": %d, "days": 1}]}
+                                """.formatted(tokyo, nikko)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();
+    }
+
     private static WeatherResponse.DailyWeather day(String date, WeatherIcon icon,
                                                     int max, int min, int precip) {
-        return new WeatherResponse.DailyWeather(LocalDate.parse(date), icon, max, min, precip);
+        return new WeatherResponse.DailyWeather(
+                LocalDate.parse(date), null, icon, max, min, precip);
     }
 
     @Nested
@@ -112,6 +133,42 @@ class ToolsControllerTest extends ApiTestSupport {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.source").value("Open-Meteo"))
                     .andExpect(jsonPath("$.data.license").value("CC BY 4.0"));
+        }
+
+        @Test
+        @DisplayName("날짜마다 그날 기준 도시로 본다 — 첫날 도시 하나로 보지 않는다(v2.1 §3.7)")
+        void looksUpEachDaysOwnCity() throws Exception {
+            long tripId = createTwoCityTrip();
+            // 좌표마다 다른 예보를 준다 — 같은 값이면 어느 도시 것이 붙었는지 알 수 없다.
+            weatherStub.byCoordinates = key -> new WeatherResponse(
+                    WeatherResponse.SOURCE, WeatherResponse.LICENSE,
+                    java.time.Instant.parse("2026-08-08T00:00:00Z"),
+                    List.of(day("2026-10-24", WeatherIcon.CLEAR, 20, 10, 0),
+                            day("2026-10-25", WeatherIcon.RAIN,
+                                    key.startsWith("36.") ? 9 : 25, 5, 80)),
+                    java.util.Map.of());
+
+            mockMvc.perform(get("/api/travel/trips/" + tripId + "/weather")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.daily", hasSize(2)))
+                    // 2일차는 닛코(36.x) 예보여야 한다. 도쿄 것이면 25도가 온다.
+                    .andExpect(jsonPath("$.data.daily[1].tempMax").value(9))
+                    .andExpect(jsonPath("$.data.daily[0].cityName").value("도쿄"))
+                    .andExpect(jsonPath("$.data.daily[1].cityName").value("닛코"));
+        }
+
+        @Test
+        @DisplayName("같은 도시를 오가면 조회는 도시 수만큼만 한다")
+        void asksOncePerCity() throws Exception {
+            long tripId = createTwoCityTrip();
+
+            mockMvc.perform(get("/api/travel/trips/" + tripId + "/weather")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
+
+            // 이틀짜리 여행이지만 도시는 둘이다 — 날짜마다 부르면 여기서 어긋난다.
+            assertThat(weatherStub.calls).hasSize(2);
         }
 
         @Test

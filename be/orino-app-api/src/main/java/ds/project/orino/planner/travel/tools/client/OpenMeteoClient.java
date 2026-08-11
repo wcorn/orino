@@ -96,6 +96,8 @@ public class OpenMeteoClient implements WeatherClient {
         for (int i = 0; i < times.size(); i++) {
             days.add(new WeatherResponse.DailyWeather(
                     LocalDate.parse(times.get(i).asString()),
+                    // 어느 도시의 예보인지는 부르는 쪽이 안다 — 클라이언트는 좌표만 받았다.
+                    null,
                     icon(node.get("weather_code"), i),
                     rounded(node.get("temperature_2m_max"), i),
                     rounded(node.get("temperature_2m_min"), i),
