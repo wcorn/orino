@@ -368,6 +368,26 @@ class TravelTimeIntegrationTest extends ApiTestSupport {
             assertThat(stub.calls).hasSize(2);
             assertThat(stub.calls.get(1).destination().lat()).isEqualByComparingTo(aLat);
         }
+
+        @Test
+        @DisplayName("다른 여행이 같은 두 장소를 이어도 새로 부르지 않는다 — 키에 여행 id가 없다")
+        void sharesCacheAcrossTrips() throws Exception {
+            // 이 설계 덕분에 같은 일정을 다시 만들어도 비용이 다시 들지 않는다(#1160).
+            // 좌표 쌍이 키라, 여행을 지우고 다시 짜는 흔한 행동이 공짜가 된다.
+            Long from = placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG));
+            Long to = placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG));
+            addActivity("센소지", from);
+            addActivity("스카이트리", to);
+            board().andExpect(jsonPath("$.data.travelTimes[0].durationMinutes").value(12));
+            assertThat(stub.calls).hasSize(1);
+
+            tripId = createTrip();
+            addActivity("센소지", from);
+            addActivity("스카이트리", to);
+
+            board().andExpect(jsonPath("$.data.travelTimes[0].durationMinutes").value(12));
+            assertThat(stub.calls).hasSize(1);
+        }
     }
 
     @Nested
