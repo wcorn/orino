@@ -3,6 +3,7 @@ import type {
   BaseCity,
   BoardDay,
 } from "@/features/travel/api/activities";
+import { cityLabelOf } from "@/features/travel/lib/cityLabel";
 
 export interface ArchiveGroup {
   /** 목록 key. 도시 식별자이거나 `other`·`none`이다. */
@@ -44,7 +45,12 @@ export function groupArchiveByCity(
     const ref = activity.place?.cityPlaceRef ?? null;
     const city = ref === null ? undefined : cities.get(ref);
     const key = city ? ref! : ref === null ? NONE : OTHER;
-    const label = city ? city.name : ref === null ? "도시 없음" : "기타";
+    // 그룹 이름도 같은 규칙을 탄다 — 여기만 맞고 일정 행이 어긋나면 그게 더 헷갈린다.
+    const label = city
+      ? (cityLabelOf(activity.place, [city]) ?? city.name)
+      : ref === null
+        ? "도시 없음"
+        : "기타";
     const group = groups.get(key) ?? { key, label, activities: [] };
     group.activities.push(activity);
     groups.set(key, group);

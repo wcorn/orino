@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingText } from "@/components/ui/loading-text";
 import { useBoard } from "@/features/travel/hooks/useBoard";
 import { useCityLegs } from "@/features/travel/hooks/useCityLegs";
+import { cityLabelOfDays } from "@/features/travel/lib/cityLabel";
 import { cityMarkers, legPath } from "@/features/travel/lib/cityMarkers";
 import { formatShortDate } from "@/features/travel/lib/tripStatus";
 import { toMapped } from "@/features/travel/map/toMapped";
@@ -227,7 +228,10 @@ export function TripMapPage() {
                 <p className="text-muted-foreground text-xs tabular-nums">
                   {[
                     selectedActivity.activity.startTime,
-                    selectedActivity.activity.place?.cityName,
+                    cityLabelOfDays(
+                      selectedActivity.activity.place,
+                      board.days,
+                    ),
                   ]
                     .filter(Boolean)
                     .join(" · ")}
