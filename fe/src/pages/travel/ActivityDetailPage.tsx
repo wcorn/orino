@@ -35,6 +35,7 @@ import { useBoard } from "@/features/travel/hooks/useBoard";
 import { usePlaceDetail } from "@/features/travel/hooks/usePlaceDetail";
 import { useTrip } from "@/features/travel/hooks/useTrip";
 import { cityOn } from "@/features/travel/lib/baseCity";
+import { cityLabelOf } from "@/features/travel/lib/cityLabel";
 import { NOTIFY_MINUTES_OPTIONS } from "@/features/travel/lib/destinations";
 import { placeDirectionsUrl } from "@/features/travel/lib/mapsLink";
 import { todayOpeningHours } from "@/features/travel/lib/openingHours";
@@ -163,11 +164,21 @@ export function ActivityDetailPage() {
       : undefined;
   /** 도시 경계를 넘어 들어오는가. 판정은 읽어 오기만 한다(D-23). */
   const crossCity = incoming?.crossCity === true;
-  /** 그 경계의 출발 쪽 도시 — 안내 문구의 `오사카 → 교토`에서 앞자리다. */
+  /**
+   * 경계 양쪽 도시 이름 — 안내 문구의 `오사카시 → 교토시`.
+   *
+   * <p>날짜 탭·부제와 <b>같은 이름</b>을 쓴다. 장소가 들고 온 이름을 그대로 쓰면 부제는
+   * `교토시`인데 안내는 `Kyoto`가 되어, 같은 도시를 가리키는지 붙지 않는다.
+   */
+  const tripCityList =
+    board?.days.flatMap((d) => (d.baseCity ? [d.baseCity] : [])) ?? [];
   const fromCityName = crossCity
-    ? (board?.activities.find((a) => a.id === incoming?.fromActivityId)?.place
-        ?.cityName ?? null)
+    ? cityLabelOf(
+        board?.activities.find((a) => a.id === incoming?.fromActivityId)?.place,
+        tripCityList,
+      )
     : null;
+  const toCityName = cityLabelOf(activity.place, tripCityList);
   /** 이 날짜의 기준 도시. 부제·알림 타임존이 쓴다. */
   const dayCity = cityOn(board?.days ?? [], activity.activityDate ?? "");
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
@@ -336,8 +347,8 @@ export function ActivityDetailPage() {
             {crossCity && (
               <p className="bg-muted text-muted-foreground flex items-center gap-2 rounded-lg px-2.5 py-[7px] text-xs">
                 <TrainFront className="size-[13px] shrink-0" />
-                {fromCityName && activity.place.cityName
-                  ? `${fromCityName} → ${activity.place.cityName} · 도시 경계를 넘어 이동시간을 계산하지 않아요`
+                {fromCityName && toCityName
+                  ? `${fromCityName} → ${toCityName} · 도시 경계를 넘어 이동시간을 계산하지 않아요`
                   : "도시 경계를 넘어 이동시간을 계산하지 않아요"}
               </p>
             )}

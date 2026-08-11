@@ -645,6 +645,7 @@ export function TripBoardPage() {
                   <ActivityRow
                     key={activity.id}
                     activity={activity}
+                    cities={cities}
                     inArchive
                     dragMode={false}
                     offline={!online}
@@ -680,6 +681,7 @@ export function TripBoardPage() {
                   )}
                   <ActivityRow
                     activity={activity}
+                    cities={cities}
                     inArchive={selectedDate === null}
                     dragMode={dragMode}
                     offline={!online}

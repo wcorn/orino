@@ -15,7 +15,8 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
-import type { Activity } from "@/features/travel/api/activities";
+import type { Activity, BaseCity } from "@/features/travel/api/activities";
+import { cityLabelOf } from "@/features/travel/lib/cityLabel";
 import { cn } from "@/lib/utils";
 
 import { useLongPress } from "./useLongPress";
@@ -23,6 +24,11 @@ import { useSwipeAction } from "./useSwipeAction";
 
 interface ActivityRowProps {
   activity: Activity;
+  /**
+   * 이 여행에 등장하는 도시들. 도시 이탈 꼬리표를 <b>날짜 탭과 같은 이름</b>으로 쓰기 위해
+   * 받는다 — 장소가 들고 온 이름은 다른 Google 필드에서 와서 표기가 갈린다.
+   */
+  cities: BaseCity[];
   /** 보관함을 보고 있으면 "보관함으로"를 감춘다(이미 거기 있다). */
   inArchive: boolean;
   dragMode: boolean;
@@ -49,6 +55,7 @@ interface ActivityRowProps {
  */
 export function ActivityRow({
   activity,
+  cities,
   inArchive,
   dragMode,
   offline,
@@ -61,6 +68,8 @@ export function ActivityRow({
   onDelete,
   onEnterDragMode,
 }: ActivityRowProps) {
+  // 날짜 탭이 쓰는 것과 같은 이름으로 — 같은 도시가 화면마다 다른 글자면 안 된다.
+  const cityLabel = cityLabelOf(activity.place, cities);
   // 드래그는 모드에 들어온 뒤에만 활성화한다 — 그 전에는 목록을 세로로 스크롤해야 한다.
   const {
     attributes,
@@ -160,10 +169,8 @@ export function ActivityRow({
                 <span className="truncate">{activity.place.name}</span>
                 {/* 그날 기준 도시와 다른 도시의 장소다. 막지 않고 알려만 준다 —
                     오사카 가게를 교토 날짜에 두는 건 사용자의 선택이다. */}
-                {activity.outOfBaseCity && activity.place.cityName && (
-                  <span className="text-warning shrink-0">
-                    · {activity.place.cityName}
-                  </span>
+                {activity.outOfBaseCity && cityLabel && (
+                  <span className="text-warning shrink-0">· {cityLabel}</span>
                 )}
               </span>
             )}
