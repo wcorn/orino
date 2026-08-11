@@ -8,11 +8,14 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { LoadingText } from "@/components/ui/loading-text";
+import type { BaseCity } from "@/features/travel/api/activities";
 import type { PlaceSearchResult } from "@/features/travel/api/places";
 import { createManualPlace } from "@/features/travel/api/places";
 import { useCreateActivity } from "@/features/travel/hooks/useActivityMutations";
 import { useBoard } from "@/features/travel/hooks/useBoard";
 import { usePlaceSearch } from "@/features/travel/hooks/usePlaceSearch";
+import { daysForPlace } from "@/features/travel/lib/archiveGroups";
+import { cityOn, tripCities } from "@/features/travel/lib/baseCity";
 import {
   addRecentSearch,
   clearRecentSearches,
@@ -21,6 +24,7 @@ import {
 import { GoogleAttribution } from "@/features/travel/places/GoogleAttribution";
 import { PickDaySheet } from "@/features/travel/places/PickDaySheet";
 import { PlaceCard } from "@/features/travel/places/PlaceCard";
+import { SearchCityChip } from "@/features/travel/places/SearchCityChip";
 import { toast } from "@/shared/lib/toast";
 
 /** 담기 대상 — 검색 결과이거나, 직접 입력해서 방금 만든 장소. */
@@ -45,6 +49,9 @@ export function PlaceSearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") ?? "";
   const [draft, setDraft] = useState(query);
+  /** 기준 도시도 URL이 소유한다(§9.7) — 새로고침·뒤로가기에서 살아남아야 한다. */
+  const cityParam = Number(searchParams.get("city"));
+  const [citySheetOpen, setCitySheetOpen] = useState(false);
 
   const [recent, setRecent] = useState<string[]>(() =>
     Number.isFinite(tripId) ? getRecentSearches(tripId) : [],
@@ -57,21 +64,50 @@ export function PlaceSearchPage() {
   // 뒤로 가기로 검색어가 바뀌면 입력창도 따라가야 한다.
   useEffect(() => setDraft(query), [query]);
 
-  const { data: places, isPending, isError } = usePlaceSearch(query, tripId);
-  const { data: board } = useBoard(tripId, {});
+  const { data: board, isPending: boardPending } = useBoard(tripId, {});
+  const cities = tripCities(board?.days ?? []);
+  /**
+   * 검색이 기준으로 삼는 도시. `?city=`가 있으면 그 도시, 없으면 <b>보고 있던 날짜의</b>
+   * 도시다 — 교토 날짜를 보다가 검색으로 들어왔으면 교토가 기준이어야 한다.
+   */
+  const city =
+    cities.find((c) => c.placeId === cityParam) ??
+    cityOn(board?.days ?? [], board?.selectedDate ?? "") ??
+    cities[0] ??
+    null;
+
+  const {
+    data: places,
+    isPending,
+    isError,
+    // 보드가 오기 전에 부르면 편향 없는 결과를 한 번 사게 된다(호출당 과금).
+  } = usePlaceSearch(query, tripId, city?.placeId, !boardPending);
   const createActivity = useCreateActivity(tripId);
+
+  /** 검색어·도시가 한 URL에 같이 산다 — 한쪽을 바꿀 때 다른 쪽을 지우면 안 된다. */
+  const setParams = (next: { q?: string; city?: number }) => {
+    const merged = new URLSearchParams(searchParams);
+    if (next.q !== undefined) merged.set("q", next.q);
+    if (next.city !== undefined) merged.set("city", String(next.city));
+    setSearchParams(merged, { replace: true });
+  };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const trimmed = draft.trim();
     if (!trimmed) return;
     setRecent(addRecentSearch(tripId, trimmed));
-    setSearchParams({ q: trimmed });
+    setParams({ q: trimmed });
   };
 
   const searchFor = (q: string) => {
     setRecent(addRecentSearch(tripId, q));
-    setSearchParams({ q });
+    setParams({ q });
+  };
+
+  const selectCity = (next: BaseCity) => {
+    setCitySheetOpen(false);
+    setParams({ city: next.placeId });
   };
 
   const add = (date: string | null) => {
@@ -81,7 +117,9 @@ export function PlaceSearchPage() {
         title: target.name,
         activityDate: date,
         ...(target.kind === "google"
-          ? { googlePlaceId: target.googlePlaceId }
+          ? // 어느 도시를 기준으로 찾았는지 함께 보낸다 — 그래야 담은 장소가 보관함
+            // 도시 그룹과 도시 이탈 표시에서 `도시 없음`으로 떨어지지 않는다.
+            { googlePlaceId: target.googlePlaceId, cityPlaceId: city?.placeId }
           : { placeId: target.placeId }),
       },
       {
@@ -136,12 +174,20 @@ export function PlaceSearchPage() {
         <Input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="장소 검색"
+          placeholder={city ? `${city.name} 주변 장소 검색` : "장소 검색"}
           aria-label="장소 검색"
           maxLength={100}
           autoFocus
         />
       </form>
+
+      <SearchCityChip
+        city={city}
+        cities={cities}
+        open={citySheetOpen}
+        onOpenChange={setCitySheetOpen}
+        onSelect={selectCity}
+      />
 
       {query === "" ? (
         recent.length === 0 ? (
@@ -225,7 +271,8 @@ export function PlaceSearchPage() {
         open={target !== null}
         onOpenChange={(open) => !open && setTarget(null)}
         placeName={target?.name ?? null}
-        days={board?.days ?? []}
+        // 기준 도시가 곧 그 장소의 도시다 — 그 도시인 날짜를 위로 올린다(#1134).
+        days={daysForPlace(board?.days ?? [], city?.cityPlaceRef)}
         onPick={add}
         pending={createActivity.isPending}
       />

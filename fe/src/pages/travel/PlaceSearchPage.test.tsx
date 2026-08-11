@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -12,20 +12,50 @@ import { renderWithRouter } from "@/test/render";
 
 const API_BASE = "https://api.orino.dev/api";
 
+function city(placeId: number, name: string, cityPlaceRef: string) {
+  return {
+    placeId,
+    name,
+    timezone: "Asia/Tokyo",
+    currency: "JPY",
+    countryCode: "JP",
+    cityPlaceRef,
+    lat: 35.6762,
+    lng: 139.6503,
+  };
+}
+
+const OSAKA = city(21, "오사카", "ChIJ_osaka");
+const KYOTO = city(22, "교토", "ChIJ_kyoto");
+
 const DAYS = [
   {
+    dayId: 501,
     dayIndex: 1,
     date: "2026-10-24",
     weekday: "토",
     activityCount: 0,
+    baseCity: OSAKA,
+    cityChanged: false,
+    legIndex: 1,
+    cityMemo: null,
     weather: null,
+    stayTonight: null,
+    stayCheckout: null,
   },
   {
+    dayId: 502,
     dayIndex: 2,
     date: "2026-10-25",
     weekday: "일",
     activityCount: 0,
+    baseCity: KYOTO,
+    cityChanged: true,
+    legIndex: 2,
+    cityMemo: null,
     weather: null,
+    stayTonight: null,
+    stayCheckout: null,
   },
 ];
 
@@ -45,8 +75,10 @@ function place(overrides: Record<string, unknown> = {}) {
 
 function mockBoard() {
   server.use(
-    http.get(`${API_BASE}/travel/trips/:tripId/board`, () =>
-      HttpResponse.json({
+    http.get(`${API_BASE}/travel/trips/:tripId/board`, ({ request }) => {
+      // 서버처럼 요청한 날짜를 그대로 돌려준다 — 날짜를 무시하면 탭을 옮겨도 같은 날이다.
+      const date = new URL(request.url).searchParams.get("date");
+      return HttpResponse.json({
         code: "OK",
         data: {
           trip: {
@@ -60,13 +92,14 @@ function mockBoard() {
             recordMode: false,
           },
           days: DAYS,
-          selectedDate: DAYS[0].date,
+          selectedDate: date ?? DAYS[0].date,
           archiveCount: 0,
           activities: [],
           travelTimes: [],
+          stayMove: null,
         },
-      }),
-    ),
+      });
+    }),
   );
 }
 
@@ -360,6 +393,118 @@ describe("PlaceSearchPage", () => {
       );
 
       expect(await screen.findByLabelText("장소 검색")).toBeInTheDocument();
+    });
+
+    it("보던 날짜의 도시를 들고 온다 — 이 화면의 기본 조회로는 알 수 없는 값이다", async () => {
+      mockSearch();
+      const user = userEvent.setup();
+      // 2일차(교토)를 보는 중. 검색 화면의 기본 보드 조회는 1일차(오사카)를 돌려주므로,
+      // 들고 오지 않으면 교토에서 검색했는데 오사카로 편향되는 그 상태가 된다.
+      renderWithRouter(
+        <Providers>
+          <AppRouter />
+        </Providers>,
+        { initialEntries: ["/travel/trips/3/board?day=1"] },
+      );
+
+      await user.click(
+        await screen.findByRole("button", { name: "장소 검색" }),
+      );
+
+      expect(
+        await screen.findByRole("button", { name: "검색 기준 도시 교토" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("검색 기준 도시 (§2.7)", () => {
+    it("보던 날짜의 도시가 기준이 되고, placeholder도 따라간다", async () => {
+      const calls = mockSearch();
+      const user = userEvent.setup();
+      // 서버가 고른 날짜(1일차)는 오사카다.
+      renderSearch();
+
+      expect(
+        await screen.findByRole("button", { name: "검색 기준 도시 오사카" }),
+      ).toBeInTheDocument();
+      const input = screen.getByLabelText("장소 검색");
+      expect(input).toHaveAttribute("placeholder", "오사카 주변 장소 검색");
+
+      await user.type(input, "라멘{Enter}");
+
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].searchParams.get("city")).toBe("21");
+    });
+
+    it("`?city=`가 있으면 그 도시로 연다 — 보드에서 들고 온 값이다", async () => {
+      mockSearch();
+      renderSearch("/travel/trips/3/places?city=22");
+
+      expect(
+        await screen.findByRole("button", { name: "검색 기준 도시 교토" }),
+      ).toBeInTheDocument();
+    });
+
+    it("칩으로 도시를 바꾸면 그 자리에서 다시 검색하고 검색어는 남는다", async () => {
+      const calls = mockSearch();
+      const user = userEvent.setup();
+      renderSearch("/travel/trips/3/places?q=라멘");
+
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].searchParams.get("city")).toBe("21");
+
+      await user.click(
+        screen.getByRole("button", { name: "검색 기준 도시 오사카" }),
+      );
+      const sheet = await screen.findByRole("dialog");
+      await user.click(within(sheet).getByRole("button", { name: "교토" }));
+
+      // 도시가 바뀌면 다시 부른다 — 편향이 다르면 다른 결과다.
+      await waitFor(() => expect(calls).toHaveLength(2));
+      expect(calls[1].searchParams.get("city")).toBe("22");
+      // 검색어를 지우지 않는다 — 한 URL에 같이 산다.
+      expect(calls[1].searchParams.get("q")).toBe("라멘");
+      expect(screen.getByLabelText("장소 검색")).toHaveValue("라멘");
+    });
+
+    it("담을 때 기준 도시를 함께 보낸다 — 그래야 보관함에서 그 도시로 묶인다", async () => {
+      const created: Record<string, unknown>[] = [];
+      server.use(
+        http.post(
+          `${API_BASE}/travel/trips/:tripId/activities`,
+          async ({ request }) => {
+            created.push((await request.json()) as Record<string, unknown>);
+            return HttpResponse.json({ code: "OK", data: { id: 1 } });
+          },
+        ),
+      );
+      mockSearch();
+      const user = userEvent.setup();
+      renderSearch("/travel/trips/3/places?q=센소지&city=22");
+
+      await user.click(await screen.findByRole("button", { name: "담기" }));
+      const sheet = await screen.findByRole("dialog");
+      await user.click(within(sheet).getByRole("button", { name: /1일차/ }));
+
+      await waitFor(() => expect(created).toHaveLength(1));
+      expect(created[0].googlePlaceId).toBe("ChIJ_senso");
+      expect(created[0].cityPlaceId).toBe(22);
+    });
+
+    it("담기 시트는 기준 도시인 날짜를 위로 올린다 (#1134)", async () => {
+      mockSearch();
+      const user = userEvent.setup();
+      // 교토 기준이면 교토 날짜(2일차)가 먼저 나와야 한다.
+      renderSearch("/travel/trips/3/places?q=센소지&city=22");
+
+      await user.click(await screen.findByRole("button", { name: "담기" }));
+      const sheet = await screen.findByRole("dialog");
+
+      const dayButtons = within(sheet)
+        .getAllByRole("button")
+        .map((button) => button.textContent ?? "")
+        .filter((text) => text.includes("일차"));
+      expect(dayButtons[0]).toContain("2일차");
     });
   });
 });
