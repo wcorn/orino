@@ -5,6 +5,7 @@ import ds.project.orino.common.exception.ErrorCode;
 import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.entity.TripActivity;
 import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
+import ds.project.orino.planner.travel.metrics.ExternalApiMetrics;
 import ds.project.orino.planner.travel.route.client.RoutesClient;
 import ds.project.orino.planner.travel.route.client.TravelMode;
 import ds.project.orino.planner.travel.route.config.RoutesProperties;
@@ -37,17 +38,20 @@ public class TravelTimeService {
     private final RouteCacheRepository cacheRepository;
     private final RoutesProperties props;
     private final ObjectMapper objectMapper;
+    private final ExternalApiMetrics metrics;
 
     public TravelTimeService(TravelPlaceRepository placeRepository,
                              RoutesClient routesClient,
                              RouteCacheRepository cacheRepository,
                              RoutesProperties props,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper,
+                             ExternalApiMetrics metrics) {
         this.placeRepository = placeRepository;
         this.routesClient = routesClient;
         this.cacheRepository = cacheRepository;
         this.props = props;
         this.objectMapper = objectMapper;
+        this.metrics = metrics;
     }
 
     /**
@@ -243,12 +247,14 @@ public class TravelTimeService {
         String key = travelTimeKey(from, to, mode);
         Optional<String> hit = cacheRepository.find(key);
         if (hit.isPresent()) {
+            metrics.record(ExternalApiMetrics.Api.ROUTES, ExternalApiMetrics.Result.HIT);
             return Optional.of(objectMapper.readValue(hit.get(), RoutesClient.Route.class));
         }
         Optional<RoutesClient.Route> fresh = routesClient.route(
                 new RoutesClient.Coordinates(from.lat(), from.lng()),
                 new RoutesClient.Coordinates(to.lat(), to.lng()),
                 mode);
+        metrics.recordFetch(ExternalApiMetrics.Api.ROUTES, fresh.isPresent());
         // 실패는 캐시하지 않는다 — 일시적 실패를 붙들고 있으면 복구된 뒤에도 계속 fallback이다.
         fresh.ifPresent(r ->
                 cacheRepository.save(key, objectMapper.writeValueAsString(r), props.cacheTtl()));

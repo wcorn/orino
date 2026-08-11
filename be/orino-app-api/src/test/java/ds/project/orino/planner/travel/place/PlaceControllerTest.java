@@ -5,6 +5,7 @@ import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
 import ds.project.orino.planner.travel.place.client.PlaceResult;
 import ds.project.orino.planner.travel.place.client.PlacesClient;
+import io.micrometer.core.instrument.MeterRegistry;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
@@ -55,6 +56,8 @@ class PlaceControllerTest extends ApiTestSupport {
     private DbCleaner dbCleaner;
     @Autowired
     private PlacesClient placesClient;
+    @Autowired
+    private MeterRegistry meterRegistry;
 
     private StubPlacesClient stub;
     private String authHeader;
@@ -435,6 +438,86 @@ class PlaceControllerTest extends ApiTestSupport {
                             .header(HttpHeaders.AUTHORIZATION, otherAuthHeader))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("TRAVEL-ERR-008"));
+        }
+    }
+
+    @Nested
+    @DisplayName("호출 계측 (#1158)")
+    class Metrics {
+
+        private double count(String api, String result) {
+            return meterRegistry.find("orino.external.api.calls")
+                    .tag("api", api).tag("result", result)
+                    .counters().stream()
+                    .mapToDouble(c -> c.count())
+                    .sum();
+        }
+
+        @Test
+        @DisplayName("같은 검색 3회면 miss 1 · hit 2 — 스텁 호출 수와 맞는다")
+        void countsHitAndMiss() throws Exception {
+            String query = uniqueQuery("라멘");
+            stub.placeResults = List.of(place("ChIJ_senso", "센소지"));
+            double missBefore = count("places_search", "miss");
+            double hitBefore = count("places_search", "hit");
+
+            for (int i = 0; i < 3; i++) {
+                mockMvc.perform(get("/api/travel/places/search").param("q", query)
+                                .header(HttpHeaders.AUTHORIZATION, authHeader))
+                        .andExpect(status().isOk());
+            }
+
+            assertThat(count("places_search", "miss") - missBefore).isEqualTo(1);
+            assertThat(count("places_search", "hit") - hitBefore).isEqualTo(2);
+            // 계측과 실제 호출이 어긋나면 그래프가 거짓말을 한다.
+            assertThat(stub.placeSearches).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("빈 결과는 캐시하지 않으므로 error가 쌓인다 — 히트로 감춰지지 않는다")
+        void countsEmptyAsError() throws Exception {
+            String query = uniqueQuery("없는곳");
+            stub.placeResults = List.of();
+            double before = count("places_search", "error");
+
+            for (int i = 0; i < 2; i++) {
+                mockMvc.perform(get("/api/travel/places/search").param("q", query)
+                                .header(HttpHeaders.AUTHORIZATION, authHeader))
+                        .andExpect(status().isOk());
+            }
+
+            // 두 번 다 나갔다 — 빈 결과를 캐시하지 않는다는 설계가 비용으로 보이는 자리다.
+            assertThat(count("places_search", "error") - before).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("도시 검색은 장소 검색과 다른 계열로 센다")
+        void separatesCityFromPlaceSearch() throws Exception {
+            String query = uniqueQuery("도쿄");
+            stub.cityResults = List.of(city("ChIJ_tokyo", "도쿄", "Asia/Tokyo", "JP"));
+            double before = count("places_city", "miss");
+
+            mockMvc.perform(get("/api/travel/places/cities").param("q", query)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
+
+            assertThat(count("places_city", "miss") - before).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("이미 담긴 장소를 다시 담으면 상세를 사지 않는다 — hit으로 센다")
+        void countsPlaceReuseAsHit() throws Exception {
+            long tripId = createTripWithCoordinates();
+            stub.detailResult = Optional.of(place("ChIJ_senso", "센소지"));
+            double missBefore = count("places_details", "miss");
+            double hitBefore = count("places_details", "hit");
+
+            for (String title : List.of("아침 센소지", "저녁 센소지")) {
+                addPlaceToTrip(tripId, "ChIJ_senso", ", \"title\": \"%s\"".formatted(title));
+            }
+
+            assertThat(count("places_details", "miss") - missBefore).isEqualTo(1);
+            assertThat(count("places_details", "hit") - hitBefore).isEqualTo(1);
         }
     }
 

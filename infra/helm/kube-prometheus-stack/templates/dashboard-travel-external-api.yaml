@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-travel-external-api
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  travel-external-api.json: |-
+{{ .Files.Get "grafana-dashboards/travel-external-api.json" | indent 4 }}

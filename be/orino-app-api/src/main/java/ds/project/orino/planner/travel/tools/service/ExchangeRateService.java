@@ -2,6 +2,7 @@ package ds.project.orino.planner.travel.tools.service;
 
 import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
+import ds.project.orino.planner.travel.metrics.ExternalApiMetrics;
 import ds.project.orino.planner.travel.tools.client.EcbRates;
 import ds.project.orino.planner.travel.tools.client.EcbRatesClient;
 import ds.project.orino.planner.travel.tools.config.ToolsProperties;
@@ -32,17 +33,20 @@ public class ExchangeRateService {
     private final ToolsProperties props;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final ExternalApiMetrics metrics;
 
     public ExchangeRateService(EcbRatesClient ratesClient,
                                ToolsCacheRepository cacheRepository,
                                ToolsProperties props,
                                ObjectMapper objectMapper,
-                               Clock clock) {
+                               Clock clock,
+                               ExternalApiMetrics metrics) {
         this.ratesClient = ratesClient;
         this.cacheRepository = cacheRepository;
         this.props = props;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     public ExchangeRateResponse rate(String base, String quote) {
@@ -63,9 +67,11 @@ public class ExchangeRateService {
     private Optional<EcbRates> cached() {
         Optional<String> hit = cacheRepository.findRates();
         if (hit.isPresent()) {
+            metrics.record(ExternalApiMetrics.Api.FX, ExternalApiMetrics.Result.HIT);
             return Optional.of(objectMapper.readValue(hit.get(), EcbRates.class));
         }
         Optional<EcbRates> fresh = ratesClient.latest();
+        metrics.recordFetch(ExternalApiMetrics.Api.FX, fresh.isPresent());
         fresh.ifPresent(rates -> cacheRepository.saveRates(
                 objectMapper.writeValueAsString(rates), props.fxTtl()));
         return fresh;

@@ -12,6 +12,7 @@ import ds.project.orino.planner.travel.place.client.PlacesClient;
 import ds.project.orino.planner.travel.place.config.PlacesProperties;
 import ds.project.orino.planner.travel.place.dto.CityResponse;
 import ds.project.orino.planner.travel.place.dto.PlaceCreateRequest;
+import ds.project.orino.planner.travel.metrics.ExternalApiMetrics;
 import ds.project.orino.planner.travel.place.dto.PlaceDetail;
 import ds.project.orino.planner.travel.place.dto.PlaceSearchResult;
 import ds.project.orino.redis.planner.travel.PlaceSearchCacheRepository;
@@ -50,6 +51,7 @@ public class PlaceService {
     private final PlacesProperties props;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final ExternalApiMetrics metrics;
 
     public PlaceService(PlacesClient placesClient,
                         PlaceSearchCacheRepository cache,
@@ -58,7 +60,8 @@ public class PlaceService {
                         TripDayService tripDayService,
                         PlacesProperties props,
                         ObjectMapper objectMapper,
-                        Clock clock) {
+                        Clock clock,
+                        ExternalApiMetrics metrics) {
         this.placesClient = placesClient;
         this.cache = cache;
         this.placeRepository = placeRepository;
@@ -67,13 +70,14 @@ public class PlaceService {
         this.props = props;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     /**
      * S-03 목적지 검색. 도시와 함께 <b>타임존·통화를 확정해서</b> 준다.
      */
     public List<CityResponse> searchCities(String query) {
-        List<PlaceResult> results = cached(
+        List<PlaceResult> results = cached(ExternalApiMetrics.Api.PLACES_CITY,
                 () -> cache.findCity(query),
                 json -> cache.saveCity(query, json, props.searchTtl()),
                 () -> placesClient.searchCities(query));
@@ -97,7 +101,7 @@ public class PlaceService {
         PlacesClient.Coordinates bias = biasOf(memberId, tripId, cityPlaceId);
         String biasKey = bias == null ? "none" : bias.lat() + "," + bias.lng();
 
-        List<PlaceResult> results = cached(
+        List<PlaceResult> results = cached(ExternalApiMetrics.Api.PLACES_SEARCH,
                 () -> cache.findSearch(query, biasKey),
                 json -> cache.saveSearch(query, biasKey, json, props.searchTtl()),
                 () -> placesClient.searchPlaces(query, bias));
@@ -122,11 +126,17 @@ public class PlaceService {
                 .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_PLACE_NOT_FOUND));
 
         if (place.getGooglePlaceId() != null && place.needsDetailsRefresh(clock.instant())) {
-            placesClient.fetchDetails(place.getGooglePlaceId()).ifPresent(fresh -> {
+            Optional<PlaceResult> refreshed = placesClient.fetchDetails(place.getGooglePlaceId());
+            metrics.recordFetch(ExternalApiMetrics.Api.PLACES_DETAILS, refreshed.isPresent());
+            refreshed.ifPresent(fresh -> {
                 place.updateBasics(fresh.address(), fresh.lat(), fresh.lng(),
                         fresh.category(), fresh.rating());
                 place.updateDetails(fresh.phone(), fresh.openingHours(), clock.instant());
             });
+        } else if (place.getGooglePlaceId() != null) {
+            // 상세 캐시는 Redis가 아니라 행의 갱신 시각이다(30일, §4.7) — 갱신이 필요 없었다는
+            // 것이 곧 히트다. 세지 않으면 이 계열의 히트율이 영영 0으로 보인다.
+            metrics.record(ExternalApiMetrics.Api.PLACES_DETAILS, ExternalApiMetrics.Result.HIT);
         }
         return PlaceDetail.from(place);
     }
@@ -153,9 +163,13 @@ public class PlaceService {
         if (existing.isPresent()) {
             // 이미 담긴 장소의 도시는 덮지 않는다 — 나중에 다른 도시 칩으로 다시 담았다고
             // 처음 알던 도시가 바뀌면, 그 장소가 붙은 다른 날짜의 판정까지 조용히 흔들린다.
+            // 행 하나로 호출 한 번을 아낀 것이라 히트로 센다.
+            metrics.record(ExternalApiMetrics.Api.PLACES_DETAILS, ExternalApiMetrics.Result.HIT);
             return existing.get();
         }
-        PlaceResult fresh = placesClient.fetchDetails(googlePlaceId)
+        Optional<PlaceResult> detail = placesClient.fetchDetails(googlePlaceId);
+        metrics.recordFetch(ExternalApiMetrics.Api.PLACES_DETAILS, detail.isPresent());
+        PlaceResult fresh = detail
                 .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_PLACE_NOT_FOUND));
 
         TravelPlace place = TravelPlace.fromGoogle(memberId, googlePlaceId, fresh.name());
@@ -188,7 +202,10 @@ public class PlaceService {
                     place.getTimezone(), place.getCurrency());
             return place;
         }
-        PlaceResult fresh = placesClient.fetchDetails(googlePlaceId)
+        // 같은 경로에서 상세를 두 번째로 부르는 자리다 — 계측이 없으면 이 한 번이 안 보인다.
+        Optional<PlaceResult> detail = placesClient.fetchDetails(googlePlaceId);
+        metrics.recordFetch(ExternalApiMetrics.Api.PLACES_DETAILS, detail.isPresent());
+        PlaceResult fresh = detail
                 .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_PLACE_NOT_FOUND));
         place.promoteToCity(place.getName(), fresh.timezone(), currencyOf(fresh.countryCode()));
         place.updateCityInfo(place.getName(), googlePlaceId, fresh.countryCode());
@@ -244,19 +261,25 @@ public class PlaceService {
      * <p>빈 결과는 캐시하지 않는다 — 일시적 실패(타임아웃·쿼터)도 빈 목록으로 떨어지는데,
      * 그걸 한 시간 동안 물고 있으면 복구된 뒤에도 계속 빈 화면이 된다.
      */
-    private List<PlaceResult> cached(Supplier<Optional<String>> read,
+    private List<PlaceResult> cached(ExternalApiMetrics.Api api,
+                                     Supplier<Optional<String>> read,
                                      java.util.function.Consumer<String> write,
                                      Supplier<List<PlaceResult>> fetch) {
         Optional<String> hit = read.get();
         if (hit.isPresent()) {
             try {
-                return objectMapper.readValue(hit.get(), new TypeReference<List<PlaceResult>>() {
-                });
+                List<PlaceResult> cachedResults =
+                        objectMapper.readValue(hit.get(), new TypeReference<List<PlaceResult>>() {
+                        });
+                metrics.record(api, ExternalApiMetrics.Result.HIT);
+                return cachedResults;
             } catch (Exception e) {
+                // 히트로 세지 않는다 — 아래에서 실제로 나가므로 miss가 뒤따른다.
                 log.warn("장소 캐시 역직렬화 실패, 새로 조회한다: {}", e.getMessage());
             }
         }
         List<PlaceResult> fresh = fetch.get();
+        metrics.recordFetch(api, !fresh.isEmpty());
         if (!fresh.isEmpty()) {
             write.accept(objectMapper.writeValueAsString(fresh));
         }
