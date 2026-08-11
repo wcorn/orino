@@ -256,6 +256,22 @@ class StayControllerTest extends ApiTestSupport {
         }
 
         @Test
+        @DisplayName("견주는 대상은 기준 도시가 아니라 마지막 일정이다 — 닛코에서 도쿄 숙소로 가는 날")
+        void comparesAgainstLastActivityNotBaseCity() throws Exception {
+            // 기준 도시는 오사카인데 그날 마지막 일정만 교토에 있고 숙소는 오사카다.
+            // 기준 도시로 견주면 "같은 도시"라 교토→오사카를 자동차로 계산해 버린다.
+            withCityRef(osaka, "ChIJ_osaka");
+            long stayPlace = poiInCity("난바 호텔", "ChIJ_osaka");
+            createActivity("기요미즈데라", "2026-10-24", poiInCity("기요미즈데라", "ChIJ_kyoto"));
+            createStayWithPlace("난바 호텔", "2026-10-24", "2026-10-26", stayPlace);
+
+            board("2026-10-24")
+                    .andExpect(jsonPath("$.data.stayMove.sameCity").value(false))
+                    .andExpect(jsonPath("$.data.stayMove.mode").doesNotExist())
+                    .andExpect(jsonPath("$.data.stayMove.durationMinutes").doesNotExist());
+        }
+
+        @Test
         @DisplayName("보관함에는 그날 밤이 없다 — 숙소 이동도 없다")
         void noStayMoveInArchive() throws Exception {
             createStay("도톤보리 호텔", "2026-10-24", "2026-10-26");

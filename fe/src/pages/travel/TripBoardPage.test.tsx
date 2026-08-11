@@ -1100,6 +1100,7 @@ describe("TripBoardPage", () => {
         durationMinutes: 12,
         distanceM: 900,
         fallback: false,
+        crossCity: false,
         ...overrides,
       };
     }
@@ -1310,6 +1311,71 @@ describe("TripBoardPage", () => {
         screen.queryByRole("button", { name: /이동시간/ }),
       ).not.toBeInTheDocument();
     });
+
+    describe("도시 경계 (§3.4)", () => {
+      /** 서버가 계산하지 않은 구간 — 수단도 소요 시간도 없이 온다. */
+      function crossCityTime() {
+        return travelTime({
+          mode: null,
+          durationMinutes: null,
+          distanceM: 402_000,
+          crossCity: true,
+        });
+      }
+
+      it("시간 대신 `도시 이동`만 보여준다 — 거리도 말하지 않는다", async () => {
+        mockBoard({
+          byDate: { "2026-10-24": twoActivities() },
+          travelTimes: [crossCityTime()],
+        });
+
+        renderBoard();
+
+        expect(
+          await screen.findByRole("button", { name: "이동시간 도시 이동" }),
+        ).toBeInTheDocument();
+        // "약 402.0km"는 계획에 쓸 수 없는 숫자다.
+        expect(screen.queryByText(/km/)).not.toBeInTheDocument();
+      });
+
+      it("탭하면 이동수단 시트 없이 곧바로 대중교통 길찾기로 나간다", async () => {
+        const open = vi.spyOn(window, "open").mockImplementation(() => null);
+        mockBoard({
+          byDate: { "2026-10-24": twoActivities() },
+          travelTimes: [crossCityTime()],
+        });
+
+        const user = userEvent.setup();
+        renderBoard();
+        await user.click(
+          await screen.findByRole("button", { name: "이동시간 도시 이동" }),
+        );
+
+        expect(open).toHaveBeenCalledWith(
+          expect.stringContaining("travelmode=transit"),
+          "_blank",
+          "noopener",
+        );
+        // 도보/자동차를 물어볼 이유가 없다 — 시트가 열리면 안 된다.
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        open.mockRestore();
+      });
+
+      it("같은 도시 구간은 그대로 시트가 열린다", async () => {
+        mockBoard({
+          byDate: { "2026-10-24": twoActivities() },
+          travelTimes: [travelTime()],
+        });
+
+        const user = userEvent.setup();
+        renderBoard();
+        await user.click(
+          await screen.findByRole("button", { name: "이동시간 12분" }),
+        );
+
+        expect(await screen.findByRole("dialog")).toBeInTheDocument();
+      });
+    });
   });
 
   describe("오프라인 (§4.6)", () => {
@@ -1403,6 +1469,7 @@ describe("TripBoardPage", () => {
             durationMinutes: 12,
             distanceM: 900,
             fallback: false,
+            crossCity: false,
           },
         ],
       });

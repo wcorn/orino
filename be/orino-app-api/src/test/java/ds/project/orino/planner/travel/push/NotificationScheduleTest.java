@@ -109,6 +109,13 @@ class NotificationScheduleTest extends ApiTestSupport {
         return placeRepository.saveAndFlush(place).getId();
     }
 
+    /** 도시 식별자를 가진 장소. 도시 경계 판정은 좌표가 아니라 이 값으로만 한다(D-23). */
+    private Long placeIn(String name, String cityPlaceRef, BigDecimal lat, BigDecimal lng) {
+        TravelPlace place = placeRepository.findById(placeAt(name, lat, lng)).orElseThrow();
+        place.updateCityInfo(cityPlaceRef, cityPlaceRef, "JP");
+        return placeRepository.saveAndFlush(place).getId();
+    }
+
     private long addActivity(String json) throws Exception {
         String body = mockMvc.perform(post("/api/travel/trips/" + tripId + "/activities")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
@@ -229,6 +236,21 @@ class NotificationScheduleTest extends ApiTestSupport {
                     {"title": "스카이트리", "activityDate": "2026-10-24", "startTime": "11:00",
                      "placeId": %d, "departureNotifyEnabled": true}
                     """.formatted(placeAt("스카이트리", SKYTREE_LAT, SKYTREE_LNG)));
+
+            assertThat(pending()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("도시를 넘는 이동에는 만들지 않는다 — 이동시간을 모르는데 언제 나서라고 할 수 없다")
+        void skipsAcrossCityBoundary() throws Exception {
+            addActivity("""
+                    {"title": "오사카 가게", "activityDate": "2026-10-24", "startTime": "09:00",
+                     "placeId": %d}
+                    """.formatted(placeIn("오사카 가게", "ChIJ_osaka", SENSOJI_LAT, SENSOJI_LNG)));
+            addActivity("""
+                    {"title": "교토 가게", "activityDate": "2026-10-24", "startTime": "11:00",
+                     "placeId": %d, "departureNotifyEnabled": true}
+                    """.formatted(placeIn("교토 가게", "ChIJ_kyoto", SKYTREE_LAT, SKYTREE_LNG)));
 
             assertThat(pending()).isEmpty();
         }

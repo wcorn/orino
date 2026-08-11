@@ -347,10 +347,29 @@ public class ActivityService {
 
     private ActivityResponse toResponse(TripActivity activity) {
         return ActivityResponse.of(activity, placeOf(activity.getPlaceId()),
-                logRepository.findByActivityId(activity.getId())
-                        .map(log -> ActivityLogResponse.from(log,
-                                photoService.photosOf(log.getId())))
-                        .orElse(null));
+                        logRepository.findByActivityId(activity.getId())
+                                .map(log -> ActivityLogResponse.from(log,
+                                        photoService.photosOf(log.getId())))
+                                .orElse(null))
+                .withCanDepartureNotify(canDepartureNotify(activity));
+    }
+
+    /**
+     * 상세·저장 응답에도 출발 알림 가능 여부를 채운다 — <b>스위치가 있는 화면이 여기다</b>.
+     * 보드만 채우면 목록에선 못 켠다고 하고 상세에선 켤 수 있다고 하는, 화면마다 다른 답이 된다.
+     *
+     * <p>판정에 그날 목록이 필요해 조회가 한 번 더 나간다. 그래도 <b>외부 호출은 없다</b> —
+     * 도시 판정은 저장된 식별자만 본다.
+     */
+    private boolean canDepartureNotify(TripActivity activity) {
+        // 보관함 일정은 날짜가 없어 알림 시각 자체가 서지 않는다(§1.2).
+        if (activity.getActivityDate() == null) {
+            return false;
+        }
+        return travelTimeService.departureNotifiable(
+                activityRepository.findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(
+                        activity.getTripId(), activity.getActivityDate()))
+                .contains(activity.getId());
     }
 
     private ActivityPlace placeOf(Long placeId) {

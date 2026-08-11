@@ -92,6 +92,16 @@ class TravelTimeIntegrationTest extends ApiTestSupport {
         return placeRepository.saveAndFlush(place).getId();
     }
 
+    /**
+     * 도시 식별자를 가진 장소. 도시 경계 판정은 <b>이 값으로만</b> 하고 좌표 거리는 보지
+     * 않는다(D-23) — 그래서 아래 테스트들은 좌표를 바꾸지 않고 식별자만 바꿔 경계를 만든다.
+     */
+    private Long placeIn(String name, String cityPlaceRef, BigDecimal lat, BigDecimal lng) {
+        TravelPlace place = placeRepository.findById(placeAt(name, lat, lng)).orElseThrow();
+        place.updateCityInfo(cityPlaceRef, cityPlaceRef, "JP");
+        return placeRepository.saveAndFlush(place).getId();
+    }
+
     private long createTrip() throws Exception {
         String body = mockMvc.perform(post("/api/travel/trips")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
@@ -375,6 +385,158 @@ class TravelTimeIntegrationTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.travelTimes", hasSize(0)));
 
             assertThat(stub.calls).isEmpty();
+        }
+    }
+
+    /**
+     * 목적은 비용이 아니라 <b>오답 제거</b>다 — 오사카에서 도쿄에 "자동차 6시간"이 뜨면 그
+     * 화면은 신뢰를 잃는다. 호출이 주는 것은 부수 효과다.
+     */
+    @Nested
+    @DisplayName("도시 경계(§3.4)")
+    class CityBoundary {
+
+        @Test
+        @DisplayName("같은 도시 안 두 장소는 v2.0 그대로 계산한다")
+        void computesWithinSameCity() throws Exception {
+            addActivity("센소지", placeIn("센소지", "ChIJ_tokyo",
+                    jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("스카이트리", placeIn("스카이트리", "ChIJ_tokyo",
+                    jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+
+            board()
+                    .andExpect(jsonPath("$.data.travelTimes", hasSize(1)))
+                    .andExpect(jsonPath("$.data.travelTimes[0].crossCity").value(false))
+                    .andExpect(jsonPath("$.data.travelTimes[0].mode").value("WALK"))
+                    .andExpect(jsonPath("$.data.travelTimes[0].durationMinutes").value(12));
+            assertThat(stub.calls).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("도시를 넘으면 계산하지 않는다 — 외부 호출이 0회다")
+        void skipsAcrossCities() throws Exception {
+            // 좌표는 둘 다 도쿄 안이다. 그래도 도시 식별자가 다르면 경계다 —
+            // 판정이 좌표 거리로 새면 이 테스트가 통과하지 않는다.
+            addActivity("오사카 가게", placeIn("오사카 가게", "ChIJ_osaka",
+                    jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("교토 가게", placeIn("교토 가게", "ChIJ_kyoto",
+                    jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+
+            board()
+                    // 행 자체는 남는다 — 사라지면 "이동이 없다"로 읽힌다.
+                    .andExpect(jsonPath("$.data.travelTimes", hasSize(1)))
+                    .andExpect(jsonPath("$.data.travelTimes[0].crossCity").value(true))
+                    .andExpect(jsonPath("$.data.travelTimes[0].mode").doesNotExist())
+                    .andExpect(jsonPath("$.data.travelTimes[0].durationMinutes").doesNotExist())
+                    .andExpect(jsonPath("$.data.travelTimes[0].fallback").value(false));
+
+            assertThat(stub.calls).isEmpty();
+        }
+
+        @Test
+        @DisplayName("도시 식별자를 모르는 장소는 경계로 판정하지 않는다 — 모르는 것을 경고로 바꾸지 않는다")
+        void unknownCityIsNotABoundary() throws Exception {
+            addActivity("교토 가게", placeIn("교토 가게", "ChIJ_kyoto",
+                    jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            // 직접 입력한 장소처럼 도시를 모르는 경우.
+            addActivity("골목 카페", placeAt("골목 카페",
+                    jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+
+            board()
+                    .andExpect(jsonPath("$.data.travelTimes[0].crossCity").value(false))
+                    .andExpect(jsonPath("$.data.travelTimes[0].durationMinutes").value(12));
+            assertThat(stub.calls).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("이동수단 시트도 도시를 넘으면 계산하지 않는다 — 보드와 답이 갈리면 안 된다")
+        void sheetAlsoRefusesAcrossCities() throws Exception {
+            addActivity("오사카 가게", placeIn("오사카 가게", "ChIJ_osaka",
+                    jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("교토 가게", placeIn("교토 가게", "ChIJ_kyoto",
+                    jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+            List<Integer> ids = activityIds();
+
+            travelTimeBetween(ids.get(0), ids.get(1), "WALK")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.crossCity").value(true))
+                    .andExpect(jsonPath("$.data.durationMinutes").doesNotExist());
+
+            assertThat(stub.calls).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("출발 알림을 켤 수 있는가")
+    class DepartureNotifiable {
+
+        @Test
+        @DisplayName("도시를 넘어 들어오는 일정은 켤 수 없다 — 언제 나서야 할지 모른다")
+        void blockedWhenIncomingCrossesCity() throws Exception {
+            addActivity("오사카 가게", placeIn("오사카 가게", "ChIJ_osaka",
+                    jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("교토 가게", placeIn("교토 가게", "ChIJ_kyoto",
+                    jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+
+            board()
+                    .andExpect(jsonPath("$.data.activities[1].canDepartureNotify").value(false));
+        }
+
+        @Test
+        @DisplayName("같은 도시 안이면 켤 수 있다")
+        void allowedWithinSameCity() throws Exception {
+            addActivity("센소지", placeIn("센소지", "ChIJ_tokyo",
+                    jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("스카이트리", placeIn("스카이트리", "ChIJ_tokyo",
+                    jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+
+            board()
+                    .andExpect(jsonPath("$.data.activities[1].canDepartureNotify").value(true));
+        }
+
+        @Test
+        @DisplayName("그날 첫 일정은 켤 수 없다 — 어디서 출발하는지가 없다")
+        void blockedForFirstActivity() throws Exception {
+            addActivity("센소지", placeIn("센소지", "ChIJ_tokyo",
+                    jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("스카이트리", placeIn("스카이트리", "ChIJ_tokyo",
+                    jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+
+            board()
+                    .andExpect(jsonPath("$.data.activities[0].canDepartureNotify").value(false));
+        }
+
+        @Test
+        @DisplayName("상세 응답도 보드와 같은 답을 준다 — 스위치가 있는 화면이 상세다")
+        void detailAgreesWithBoard() throws Exception {
+            addActivity("오사카 가게", placeIn("오사카 가게", "ChIJ_osaka",
+                    jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("교토 가게", placeIn("교토 가게", "ChIJ_kyoto",
+                    jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+            List<Integer> ids = activityIds();
+
+            mockMvc.perform(get("/api/travel/activities/" + ids.get(1))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.canDepartureNotify").value(false));
+
+            // 판정에 외부 호출이 끼면 일정을 열 때마다 과금된다.
+            assertThat(stub.calls).isEmpty();
+        }
+
+        @Test
+        @DisplayName("보관함 일정은 켤 수 없다 — 날짜가 없어 알림 시각 자체가 서지 않는다")
+        void blockedInArchive() throws Exception {
+            addUnscheduled("센소지", placeIn("센소지", "ChIJ_tokyo",
+                    jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addUnscheduled("스카이트리", placeIn("스카이트리", "ChIJ_tokyo",
+                    jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+
+            mockMvc.perform(get("/api/travel/trips/" + tripId + "/board")
+                            .param("archive", "true")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.activities[1].canDepartureNotify").value(false));
         }
     }
 

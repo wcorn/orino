@@ -15,9 +15,11 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -53,6 +55,9 @@ public class TravelTimeService {
      *
      * <p><b>장소 없는 일정은 건너뛴다</b>(§4.4) — "점심"처럼 장소를 안 정한 일정이 사이에 끼어도
      * 앞뒤 장소 사이 이동은 여전히 알고 싶다. 그걸 끊으면 정작 필요한 이동시간이 사라진다.
+     *
+     * <p><b>도시 경계를 넘는 구간은 계산하지 않는다</b>(§3.4) — 표시용 값만 만들고 외부 호출도
+     * 하지 않는다.
      */
     public List<TravelTimeResponse> travelTimes(List<TripActivity> ordered) {
         List<Located> located = locate(ordered);
@@ -87,7 +92,8 @@ public class TravelTimeService {
      * 그날 <b>마지막 일정에서 어떤 장소까지</b>의 이동. 숙소 이동 행(§3.5)이 쓴다.
      *
      * <p>일정 사이 이동과 같은 규칙·같은 캐시를 탄다 — 좌표 쌍이 키라 숙소든 일정이든 두 지점
-     * 사이 거리는 같은 값이다.
+     * 사이 거리는 같은 값이다. <b>도시 경계 규칙도 같다</b> — 마지막 일정과 목적지가 다른
+     * 도시면 계산하지 않는다(§3.4).
      *
      * <p>마지막 일정에 좌표가 없거나 목적지에 좌표가 없으면 <b>비어 있는 값</b>을 준다. 이동이
      * 성립하지 않는 것을 0분으로 답하면 화면이 "바로 옆"이라고 읽는다.
@@ -101,16 +107,50 @@ public class TravelTimeService {
             return Optional.empty();
         }
         Located from = located.get(located.size() - 1);
-        Located to = new Located(null, destination.getLat(), destination.getLng());
+        Located to = new Located(null, destination.getLat(), destination.getLng(),
+                destination.getCityPlaceRef());
+        if (crossesCity(from, to)) {
+            return Optional.of(Move.crossingCity());
+        }
         TravelMode mode = autoMode(from, to);
         return Optional.of(route(from, to, mode)
-                .map(r -> new Move(mode, Math.round(r.durationSeconds() / 60f)))
+                .map(r -> new Move(mode, Math.round(r.durationSeconds() / 60f), false))
                 // 실패해도 수단은 남긴다 — 거리만 아는 상태와 아무것도 모르는 상태는 다르다.
-                .orElseGet(() -> new Move(mode, null)));
+                .orElseGet(() -> new Move(mode, null, false)));
+    }
+
+    /**
+     * 출발 알림을 켤 수 있는 일정 id.
+     *
+     * <p>두 조건을 다 넘어야 한다 — <b>직전에 장소 있는 일정이 있고</b>(어디서 출발하는지 모르면
+     * 언제 나서야 하는지도 모른다), <b>그 사이가 도시를 넘지 않는다</b>(도시를 넘는 이동은
+     * 계산하지 않으므로 알림 시각을 정할 수 없다, §3.4).
+     *
+     * <p><b>외부 호출이 없다</b> — 도시 판정은 저장된 식별자만 보고, 소요 시간은 여기서 묻지
+     * 않는다. 일정을 열 때마다 유료 호출이 나가면 안 된다.
+     *
+     * <p>계산이 일시적으로 실패한 구간({@code fallback})은 <b>켤 수 있다고 본다</b>. 스위치는
+     * 저장되는 설정이라, 잠깐의 외부 장애로 끄면 복구된 뒤에도 사용자가 꺼 둔 것과 구분되지
+     * 않는다.
+     */
+    public Set<Long> departureNotifiable(List<TripActivity> ordered) {
+        List<Located> located = locate(ordered);
+        Set<Long> ids = new HashSet<>();
+        for (int i = 0; i + 1 < located.size(); i++) {
+            if (!crossesCity(located.get(i), located.get(i + 1))) {
+                ids.add(located.get(i + 1).activityId());
+            }
+        }
+        return ids;
     }
 
     /** 이동 한 건의 표시값. 도착지가 일정이 아니라 장소라 일정 id가 없다. */
-    public record Move(TravelMode mode, Integer durationMinutes) {
+    public record Move(TravelMode mode, Integer durationMinutes, boolean crossCity) {
+
+        /** 도시를 넘는 이동 — 수단도 소요 시간도 없다. */
+        static Move crossingCity() {
+            return new Move(null, null, true);
+        }
     }
 
     /** 좌표를 가진 일정만 순서대로 남긴다. 장소가 있어도 좌표가 없으면(직접 입력) 뺀다. */
@@ -135,9 +175,15 @@ public class TravelTimeService {
             if (place == null || place.getLat() == null || place.getLng() == null) {
                 continue;
             }
-            located.add(new Located(activity.getId(), place.getLat(), place.getLng()));
+            located.add(new Located(activity.getId(), place.getLat(), place.getLng(),
+                    place.getCityPlaceRef()));
         }
         return located;
+    }
+
+    /** 도시 판정은 장소에 저장된 식별자로만 한다(D-23) — 좌표 거리로 추측하지 않는다. */
+    private static boolean crossesCity(Located from, Located to) {
+        return TravelPlace.crossesCity(from.cityPlaceRef(), to.cityPlaceRef());
     }
 
     private TravelTimeResponse travelTime(Located from, Located to) {
@@ -154,12 +200,18 @@ public class TravelTimeService {
     private TravelTimeResponse travelTime(Located from, Located to, TravelMode mode) {
         int straightM = Haversine.distanceM(from.lat(), from.lng(), to.lat(), to.lng());
 
+        // 도시를 넘으면 여기서 끝낸다(§3.4). 이동수단 시트가 수단을 지정해 물어와도 마찬가지다 —
+        // 판정이 갈리면 시트가 보드에 없는 값을 보여주게 된다.
+        if (crossesCity(from, to)) {
+            return TravelTimeResponse.crossCity(from.activityId(), to.activityId(), straightM);
+        }
+
         return route(from, to, mode)
                 .map(r -> new TravelTimeResponse(from.activityId(), to.activityId(), mode,
-                        Math.round(r.durationSeconds() / 60f), r.distanceM(), false))
+                        Math.round(r.durationSeconds() / 60f), r.distanceM(), false, false))
                 // 실패해도 이동시간 행 자체는 남긴다 — 거리만이라도 알면 계획을 세울 수 있다.
                 .orElseGet(() -> new TravelTimeResponse(from.activityId(), to.activityId(), mode,
-                        null, straightM, true));
+                        null, straightM, true, false));
     }
 
     /**
@@ -196,6 +248,6 @@ public class TravelTimeService {
         return value.setScale(5, java.math.RoundingMode.HALF_UP).stripTrailingZeros();
     }
 
-    private record Located(Long activityId, BigDecimal lat, BigDecimal lng) {
+    private record Located(Long activityId, BigDecimal lat, BigDecimal lng, String cityPlaceRef) {
     }
 }
