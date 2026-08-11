@@ -1,0 +1,101 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: orino-s3-cost
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    # 세 컴포넌트가 서로 다른 이름·라벨로 S3 요청을 센다. 대시보드·알림·#1156 차분식이
+    # 매번 이 차이를 다시 쓰지 않도록 (component, tier) 두 라벨로 정규화해 둔다.
+    #
+    # 메트릭명은 실측으로 확인했다 — Epic #1148 이 전제한
+    # *_objstore_bucket_operations_total 을 내는 건 Thanos 뿐이다:
+    #   Thanos  thanos_objstore_bucket_operations_total{operation="upload|iter|get|..."}
+    #   Loki    loki_s3_request_duration_seconds_count{operation="S3.PutObject|S3.List|..."}
+    #   Tempo   tempodb_backend_request_duration_seconds_count{operation="PUT|GET|..."}
+    #
+    # 티어는 청구 기준이다: PUT/POST/LIST = Tier1, GET/HEAD = Tier2.
+    # DELETE 는 무과금이라 셀렉터에서 뺀다(넣으면 Loki 의 S3.DeleteObject 51k 가
+    # 요청 수를 통째로 왜곡한다).
+    #
+    # ⚠️ 이 카운터는 클라이언트 라이브러리 호출 수고 청구는 HTTP 요청 수다.
+    # 멀티파트 업로드 1회는 PUT 여러 건, 페이지네이션 LIST 1회도 여러 건으로 과금된다
+    # — 실측 Tier1 15.8k/day vs CE 51.7k/day 차이의 일부가 이 증폭이다(#1156).
+    - name: s3-cost-recording
+      interval: 1m
+      rules:
+        - record: orino:s3_ops:rate30m
+          expr: |
+            sum by (component, tier) (
+              label_replace(label_replace(label_replace(
+                rate(thanos_objstore_bucket_operations_total{operation=~"upload|iter|get|get_range|exists"}[30m]),
+                "component", "thanos", "", ""),
+                "tier", "tier1", "operation", "upload|iter"),
+                "tier", "tier2", "operation", "get|get_range|exists")
+            )
+            or
+            sum by (component, tier) (
+              label_replace(label_replace(label_replace(
+                rate(loki_s3_request_duration_seconds_count{operation=~"S3\\.(PutObject|List|GetObject)"}[30m]),
+                "component", "loki", "", ""),
+                "tier", "tier1", "operation", "S3\\.(PutObject|List)"),
+                "tier", "tier2", "operation", "S3\\.GetObject")
+            )
+            or
+            sum by (component, tier) (
+              label_replace(label_replace(label_replace(
+                rate(tempodb_backend_request_duration_seconds_count{operation=~"PUT|POST|GET"}[30m]),
+                "component", "tempo", "", ""),
+                "tier", "tier1", "operation", "PUT|POST"),
+                "tier", "tier2", "operation", "GET")
+            )
+
+    # 7일 기준선.
+    #
+    # ⚠️ rate(...[7d]) 를 쓰지 않는다. 그렇게 짜면 배포 직후 오탐이 확정이다 —
+    # 실제로 배포 전에 두 식을 라이브 Prometheus 에 던져 확인했다:
+    #   loki tier1  현재 0.1741 ops/s vs rate[7d] 기준선 0.0017 ops/s (100배)
+    # Loki·Tempo 스크랩은 2026-08-11 에 켰는데(#1152) rate 는 7일 창 전체로 나누므로
+    # "데이터가 없던 기간 = 요청이 없던 기간"으로 계산된다. 반대로 Thanos tier2 는
+    # 창에 ELOG-027 조치 이전(277k/day)이 남아 기준선이 부풀어 오탐이 아니라
+    # 미탐(놓침)을 만든다. 양방향으로 틀린다.
+    #
+    # avg_over_time 은 존재하는 표본만 평균한다 — 이력이 4시간뿐이면 4시간 평균이라
+    # 비율이 1 근처가 되어 조용하고, 날이 지나며 진짜 7일 평균으로 자란다.
+    # 세 번의 7d rate 스캔이 레코딩 룰 1개 참조로 바뀌어 비용도 훨씬 싸다.
+    #
+    # 대가: 배포 후 첫 일주일은 기준선이 짧아 민감도가 낮다. 그 기간에 새 루프를
+    # 놓칠 수 있지만, 매일 울려서 무시하게 되는 알림보다 낫다.
+    - name: s3-cost-recording-baseline
+      interval: 5m
+      rules:
+        - record: orino:s3_ops:avg7d
+          expr: avg_over_time(orino:s3_ops:rate30m[7d])
+
+    - name: s3-cost-alerts
+      rules:
+        # 새 폴링 루프가 생기면 다음 청구서가 아니라 당일 안다.
+        # ELOG-027 의 thanos compact 루프는 5개월간 아무도 몰랐다.
+        #
+        # 절대 하한 0.05 ops/s(≈4,320회/day)를 함께 건다. 비율만 보면 thanos tier1
+        # (실측 0.0011 ops/s = 98회/day)처럼 작은 계열이 몇 배로 튀어도 금액은
+        # 무의미한데 매번 발동한다 — 무시하게 되는 알림은 없는 알림과 같다.
+        # 하한 4,320회/day 는 Tier1 단가로 월 $0.65 수준이고, 잡으려는 대상인
+        # ELOG-027 급 루프(+277k/day)보다 두 자릿수 아래라 놓치지 않는다.
+        - alert: S3RequestRateSurge
+          expr: |
+            orino:s3_ops:rate30m > 0.05
+            and
+            orino:s3_ops:rate30m > 3 * orino:s3_ops:avg7d
+          for: 30m
+          labels:
+            severity: warning
+            category: cost
+          annotations:
+            summary: "S3 요청 급증 — {{ "{{" }} $labels.component {{ "}}" }} {{ "{{" }} $labels.tier {{ "}}" }}"
+            description: >-
+              7일 평균 대비 3배 이상. 현재 {{ "{{" }} $value | printf "%.3f" {{ "}}" }} ops/s
+              (일 환산 {{ "{{" }} $value | humanize {{ "}}" }}×86400회).
+              새 폴링 루프나 주기 설정 변경을 의심한다 — 해당 컴포넌트의 interval 플래그부터 본다.

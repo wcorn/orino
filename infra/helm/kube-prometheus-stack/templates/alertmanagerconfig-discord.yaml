@@ -21,10 +21,31 @@ spec:
     groupWait: 30s
     groupInterval: 5m
     repeatInterval: 4h
+    routes:
+      # 비용 알림(#1153)은 전용 채널로 뺀다. 파드 재시작·노드 알림과 성격이 달라
+      # 같은 채널에 섞이면 묻힌다 — 묻힌 알림은 없는 알림과 같다.
+      # 부모 route의 severity 매처를 이미 통과한 뒤라 category만 본다.
+      - receiver: discord-cost
+        matchers:
+          - name: category
+            value: cost
+        groupBy:
+          - alertname
+          - component
+        groupWait: 30s
+        groupInterval: 5m
+        # 비용은 즉시 대응할 성질이 아니다. 4h마다 다시 알릴 이유가 없어 12h로 늘린다.
+        repeatInterval: 12h
   receivers:
     - name: discord
       discordConfigs:
         - apiURL:
             name: alertmanager-discord-secret
+            key: DISCORD_WEBHOOK_URL
+          sendResolved: true
+    - name: discord-cost
+      discordConfigs:
+        - apiURL:
+            name: alertmanager-discord-cost-secret
             key: DISCORD_WEBHOOK_URL
           sendResolved: true
