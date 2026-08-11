@@ -1,7 +1,11 @@
 # 이 파일을 terraform.tfvars로 복사 후 실제 값으로 채우세요.
 # terraform.tfvars는 .gitignore로 추적 제외됩니다.
 
-operator_emails = ["you@example.com"]
+# 예산·이상탐지 알림 수신 주소(#1150). 기본값이 없는 유일한 변수다 —
+# 개인 이메일이라 공개 저장소에 두지 않는다.
+# CI는 이 파일을 쓰지 않고 BUDGET_ALERT_EMAIL 저장소 시크릿을
+# TF_VAR_budget_alert_emails로 주입한다(.github/workflows/terraform.yml).
+budget_alert_emails = ["you@example.com"]
 
-# GCP 관련 값(프로젝트·결제계정·예산액)은 variables.tf에 기본값이 있어 따로 채우지 않아도 된다.
-# 예산액만 바꾸려면: gcp_budget_krw = 50000
+# 나머지는 variables.tf에 기본값이 있어 따로 채우지 않아도 된다.
+# 예산액만 바꾸려면: aws_budget_usd = 40 / gcp_budget_krw = 50000
