@@ -36,6 +36,25 @@ resource "aws_iam_user_policy" "cloudwatch_readonly" {
         ]
         Resource = "*"
       },
+      # Grafana 의 CloudWatch health check 는 metrics 와 logs 를 둘 다 검사한다.
+      # 이 액션이 없으면 패널이 멀쩡히 동작해도 데이터소스가 **영구히 빨간 ERROR** 로
+      # 보인다. 항상 켜져 있는 경고등은 꺼진 경고등과 같다 — 이 프로젝트가 알림에
+      # 대해 세운 원칙이 상태 표시에도 그대로 적용된다. 게다가 그 빨간 배지를 보고
+      # 누군가 logs:* 를 통째로 붙이는 게 진짜 위험이다.
+      #
+      # 부르는 API 가 DescribeLogGroups 하나뿐인 것은 CloudTrail 로 확인했다(#1179).
+      #
+      # ⚠️ Logs Insights 계열(StartQuery·GetQueryResults·FilterLogEvents)은 일부러
+      # 주지 않는다. 그쪽이 **스캔 GB 당 과금**되는 경로다 — Grafana 에서 실수로
+      # 로그 쿼리를 돌려 요금이 나가는 길을 열지 않는다. 관측이 과금을 만드는
+      # 함정을 이 프로젝트는 두 번 겪었다.
+      # 결과적으로 health check 는 통과하고(배지 초록), 유료 경로는 닫혀 있다.
+      {
+        Sid      = "CloudWatchLogsHealthCheckOnly"
+        Effect   = "Allow"
+        Action   = ["logs:DescribeLogGroups"]
+        Resource = "*"
+      },
     ]
   })
 }
