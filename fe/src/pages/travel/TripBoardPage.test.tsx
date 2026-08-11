@@ -108,6 +108,9 @@ function mockBoard(options: {
   trip?: Record<string, unknown>;
   travelTimes?: unknown[];
   days?: unknown[];
+  stayMove?: unknown;
+  /** `GET /trips/{id}/stays` 응답. 상세 시트·겹침 미리보기가 이 목록을 읽는다. */
+  stays?: unknown[];
 }) {
   const byDate = options.byDate ?? {};
   const archive = options.archive ?? [];
@@ -125,10 +128,13 @@ function mockBoard(options: {
           archiveCount: archive.length,
           activities: isArchive ? archive : (byDate[date] ?? []),
           travelTimes: isArchive ? [] : (options.travelTimes ?? []),
-          stayMove: null,
+          stayMove: isArchive ? null : (options.stayMove ?? null),
         },
       });
     }),
+    http.get(`${API_BASE}/travel/trips/:tripId/stays`, () =>
+      HttpResponse.json({ code: "OK", data: options.stays ?? [] }),
+    ),
   );
 }
 
@@ -1493,6 +1499,396 @@ describe("TripBoardPage", () => {
       expect(
         screen.getByRole("button", { name: "일정 추가" }),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe("숙소 (§2.5 · §9.6)", () => {
+    const DOTONBORI = {
+      stayId: 76,
+      name: "도톤보리 호텔",
+      placeId: null,
+      checkInDate: "2026-10-24",
+      checkOutDate: "2026-10-26",
+      checkInTime: "15:00",
+      checkOutTime: "11:00",
+      bookingUrl: "https://booking.example/76",
+      memo: "1층 편의점",
+      nights: 2,
+    };
+
+    const KYOTO = {
+      ...DOTONBORI,
+      stayId: 77,
+      name: "교토 게스트하우스",
+      checkInDate: "2026-10-26",
+      checkOutDate: "2026-10-27",
+      bookingUrl: null,
+      memo: null,
+      nights: 1,
+    };
+
+    /** 보드가 내려주는 배지 값 — 서버가 기간에서 파생해 채운다. */
+    const tonight = (stayId: number, name: string, isCheckInDay = false) => ({
+      stayId,
+      name,
+      sameCity: true,
+      checkInTime: "15:00",
+      isCheckInDay,
+    });
+    const checkout = (stayId: number, name: string) => ({
+      stayId,
+      name,
+      checkOutTime: "11:00",
+    });
+
+    it("체크아웃하는 날 아침에는 체크아웃 시각이 배지에 뜬다", async () => {
+      mockBoard({
+        days: [
+          day(1, "2026-10-24", "토", 0, {
+            stayCheckout: checkout(76, "도톤보리 호텔"),
+            stayTonight: tonight(77, "교토 게스트하우스", true),
+          }),
+          ...DAYS.slice(1),
+        ],
+      });
+
+      renderBoard();
+
+      // 위는 체크아웃 — 급한 정보가 먼저다.
+      expect(
+        await screen.findByRole("button", {
+          name: "숙소 도톤보리 호텔 · 오늘 체크아웃 11:00",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("이동일에는 위(체크아웃)와 아래(오늘 밤)에 서로 다른 숙소가 뜬다", async () => {
+      mockBoard({
+        byDate: { "2026-10-24": [activity()] },
+        days: [
+          day(1, "2026-10-24", "토", 1, {
+            stayCheckout: checkout(76, "도톤보리 호텔"),
+            stayTonight: tonight(77, "교토 게스트하우스", true),
+          }),
+          ...DAYS.slice(1),
+        ],
+      });
+
+      renderBoard();
+      await screen.findByText("센소지");
+
+      expect(
+        screen.getByRole("button", {
+          name: "숙소 도톤보리 호텔 · 오늘 체크아웃 11:00",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "숙소 교토 게스트하우스 · 오늘 체크인 15:00",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("옮기지 않는 날에는 배지가 하나뿐이다 — 같은 숙소를 두 번 쓰지 않는다", async () => {
+      mockBoard({
+        byDate: { "2026-10-24": [activity()] },
+        days: [
+          day(1, "2026-10-24", "토", 1, {
+            stayTonight: tonight(76, "도톤보리 호텔"),
+          }),
+          ...DAYS.slice(1),
+        ],
+      });
+
+      renderBoard();
+      await screen.findByText("센소지");
+
+      expect(
+        screen.getAllByRole("button", { name: /^숙소 도톤보리 호텔/ }),
+      ).toHaveLength(1);
+    });
+
+    it("숙소가 없으면 `숙소 추가`가 선다", async () => {
+      mockBoard({});
+
+      renderBoard();
+
+      expect(
+        await screen.findByRole("button", { name: "숙소 추가" }),
+      ).toBeInTheDocument();
+    });
+
+    it("마지막 일정에서 숙소까지 이동이 리스트 아래에 붙는다", async () => {
+      mockBoard({
+        byDate: { "2026-10-24": [activity()] },
+        stayMove: {
+          stayId: 76,
+          sameCity: true,
+          mode: "WALK",
+          durationMinutes: 8,
+        },
+      });
+
+      renderBoard();
+
+      expect(await screen.findByText("숙소까지 8분")).toBeInTheDocument();
+    });
+
+    it("도시가 다르면 시간 없이 `숙소로 이동`만 — 계산하지 않는다(§3.4)", async () => {
+      mockBoard({
+        byDate: { "2026-10-24": [activity()] },
+        stayMove: {
+          stayId: 76,
+          sameCity: false,
+          mode: null,
+          durationMinutes: null,
+        },
+      });
+
+      renderBoard();
+
+      expect(await screen.findByText("숙소로 이동")).toBeInTheDocument();
+      expect(screen.queryByText(/분$/)).not.toBeInTheDocument();
+    });
+
+    it("배지를 탭하면 상세가 열린다 — 기간·메모·예약 링크", async () => {
+      mockBoard({
+        days: [
+          day(1, "2026-10-24", "토", 0, {
+            stayTonight: tonight(76, "도톤보리 호텔", true),
+          }),
+          ...DAYS.slice(1),
+        ],
+        stays: [DOTONBORI],
+      });
+
+      const user = userEvent.setup();
+      renderBoard();
+      await user.click(
+        await screen.findByRole("button", { name: /^숙소 도톤보리 호텔/ }),
+      );
+
+      const sheet = await screen.findByRole("dialog");
+      expect(within(sheet).getByText("2박")).toBeInTheDocument();
+      expect(within(sheet).getByText("1층 편의점")).toBeInTheDocument();
+      expect(
+        within(sheet).getByRole("link", { name: "예약 확인" }),
+      ).toHaveAttribute("href", "https://booking.example/76");
+    });
+
+    it("`일정으로 추가`는 누를 때만 요청한다 — 자동 생성하면 지워도 되살아난다", async () => {
+      const created: Record<string, unknown>[] = [];
+      server.use(
+        http.post(
+          `${API_BASE}/travel/trips/:tripId/activities`,
+          async ({ request }) => {
+            created.push((await request.json()) as Record<string, unknown>);
+            return HttpResponse.json({ code: "OK", data: activity() });
+          },
+        ),
+      );
+      mockBoard({
+        days: [
+          day(1, "2026-10-24", "토", 0, {
+            stayTonight: tonight(76, "도톤보리 호텔", true),
+          }),
+          ...DAYS.slice(1),
+        ],
+        stays: [DOTONBORI],
+      });
+
+      const user = userEvent.setup();
+      renderBoard();
+      await user.click(
+        await screen.findByRole("button", { name: /^숙소 도톤보리 호텔/ }),
+      );
+
+      // 시트를 여는 것만으로는 아무것도 만들지 않는다.
+      const sheet = await screen.findByRole("dialog");
+      expect(created).toHaveLength(0);
+
+      await user.click(
+        within(sheet).getByRole("button", { name: /일정으로 추가/ }),
+      );
+
+      await waitFor(() => expect(created).toHaveLength(2));
+      expect(created.map((body) => body.title)).toEqual([
+        "도톤보리 호텔 체크인",
+        "도톤보리 호텔 체크아웃",
+      ]);
+      expect(created[0].activityDate).toBe("2026-10-24");
+      expect(created[1].activityDate).toBe("2026-10-26");
+    });
+
+    it("겹치는 기간은 저장을 누르기 전에 막고 어느 숙소와 겹치는지 말한다", async () => {
+      const posted: unknown[] = [];
+      server.use(
+        http.post(`${API_BASE}/travel/trips/:tripId/stays`, async () => {
+          posted.push(1);
+          return HttpResponse.json({ code: "OK", data: KYOTO });
+        }),
+      );
+      mockBoard({ stays: [DOTONBORI] });
+
+      const user = userEvent.setup();
+      renderBoard();
+      await user.click(
+        await screen.findByRole("button", { name: "숙소 추가" }),
+      );
+
+      const sheet = await screen.findByRole("dialog");
+      await user.type(within(sheet).getByLabelText("이름"), "겹치는 호텔");
+      fireEvent.change(within(sheet).getByLabelText("체크인"), {
+        target: { value: "2026-10-25" },
+      });
+      fireEvent.change(within(sheet).getByLabelText("체크아웃"), {
+        target: { value: "2026-10-26" },
+      });
+      await user.click(within(sheet).getByRole("button", { name: "저장" }));
+
+      expect(
+        await within(sheet).findByText(
+          "도톤보리 호텔(10.24–10.26)와 기간이 겹쳐요. 기존 숙소 기간을 먼저 줄여주세요.",
+        ),
+      ).toBeInTheDocument();
+      // 서버에 묻기 전에 답한다 — 요청 자체가 나가지 않는다.
+      expect(posted).toHaveLength(0);
+    });
+
+    it("서버가 겹침을 돌려주면 시트를 닫지 않고 그대로 보여준다", async () => {
+      server.use(
+        http.post(`${API_BASE}/travel/trips/:tripId/stays`, () =>
+          HttpResponse.json(
+            {
+              code: "TRAVEL-ERR-017",
+              message: "이미 숙소가 잡힌 기간입니다.",
+              data: {
+                stayId: 76,
+                name: "도톤보리 호텔",
+                checkInDate: "2026-10-24",
+                checkOutDate: "2026-10-26",
+              },
+            },
+            { status: 409 },
+          ),
+        ),
+      );
+      // 클라이언트는 겹칠 것을 모른다(목록이 비어 있다) — 서버 안내가 유일한 답이다.
+      mockBoard({ stays: [] });
+
+      const user = userEvent.setup();
+      renderBoard();
+      await user.click(
+        await screen.findByRole("button", { name: "숙소 추가" }),
+      );
+
+      const sheet = await screen.findByRole("dialog");
+      await user.type(
+        within(sheet).getByLabelText("이름"),
+        "교토 게스트하우스",
+      );
+      fireEvent.change(within(sheet).getByLabelText("체크인"), {
+        target: { value: "2026-10-24" },
+      });
+      fireEvent.change(within(sheet).getByLabelText("체크아웃"), {
+        target: { value: "2026-10-26" },
+      });
+      await user.click(within(sheet).getByRole("button", { name: "저장" }));
+
+      expect(
+        await within(sheet).findByText(
+          "도톤보리 호텔(10.24–10.26)와 기간이 겹쳐요. 기존 숙소 기간을 먼저 줄여주세요.",
+        ),
+      ).toBeInTheDocument();
+      // 입력이 살아 있어야 한다 — 닫아 버리면 방금 친 것을 다시 쳐야 한다.
+      expect(within(sheet).getByLabelText("이름")).toHaveValue(
+        "교토 게스트하우스",
+      );
+    });
+
+    it("여행 마지막 날 밤은 담을 수 없고, 왜인지 말해 준다", async () => {
+      mockBoard({ stays: [] });
+
+      const user = userEvent.setup();
+      renderBoard();
+      await user.click(
+        await screen.findByRole("button", { name: "숙소 추가" }),
+      );
+
+      const sheet = await screen.findByRole("dialog");
+      await user.type(within(sheet).getByLabelText("이름"), "마지막 밤");
+      fireEvent.change(within(sheet).getByLabelText("체크인"), {
+        target: { value: "2026-10-26" },
+      });
+      fireEvent.change(within(sheet).getByLabelText("체크아웃"), {
+        target: { value: "2026-10-27" },
+      });
+      await user.click(within(sheet).getByRole("button", { name: "저장" }));
+
+      expect(
+        await within(sheet).findByText(/여행 기간을 하루 늘려주세요/),
+      ).toBeInTheDocument();
+    });
+
+    it("삭제는 무엇이 사라지는지 말하고 확인을 받는다", async () => {
+      const deleted: string[] = [];
+      server.use(
+        http.delete(`${API_BASE}/travel/stays/:stayId`, ({ params }) => {
+          deleted.push(String(params.stayId));
+          return HttpResponse.json({ code: "OK", data: null });
+        }),
+      );
+      mockBoard({
+        days: [
+          day(1, "2026-10-24", "토", 0, {
+            stayTonight: tonight(76, "도톤보리 호텔", true),
+          }),
+          ...DAYS.slice(1),
+        ],
+        stays: [DOTONBORI],
+      });
+
+      const user = userEvent.setup();
+      renderBoard();
+      await user.click(
+        await screen.findByRole("button", { name: /^숙소 도톤보리 호텔/ }),
+      );
+      await user.click(
+        within(await screen.findByRole("dialog")).getByRole("button", {
+          name: "삭제",
+        }),
+      );
+
+      expect(
+        await screen.findByText(
+          "이 숙소가 붙어 있던 날짜에서 모두 사라집니다.",
+        ),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "삭제" }));
+      await waitFor(() => expect(deleted).toEqual(["76"]));
+    });
+
+    it("보관함에는 그날 밤이 없다 — 배지도 숙소 이동도 없다", async () => {
+      mockBoard({
+        archive: [activity()],
+        days: [
+          day(1, "2026-10-24", "토", 0, {
+            stayTonight: tonight(76, "도톤보리 호텔", true),
+          }),
+          ...DAYS.slice(1),
+        ],
+      });
+
+      renderBoard("/travel/trips/3/board?day=archive");
+      await screen.findByText("센소지");
+
+      expect(
+        screen.queryByRole("button", { name: /^숙소 / }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/숙소까지|숙소로 이동/),
+      ).not.toBeInTheDocument();
     });
   });
 });

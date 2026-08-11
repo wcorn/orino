@@ -45,6 +45,10 @@ async function mockForm(page: Page): Promise<Record<string, unknown>[]> {
     const q = new URL(route.request().url()).searchParams.get("q") ?? "";
     return route.fulfill(ok(CITIES.filter((city) => city.name.includes(q))));
   });
+  // 보드는 숙소 목록을 함께 읽는다(#1143). 이 화면에서 확인할 것은 아니라 비워 둔다.
+  await page.route("**/api/travel/trips/*/stays", (route) =>
+    route.fulfill(ok([])),
+  );
   await page.route("**/api/travel/trips", (route) => {
     if (route.request().method() !== "POST") return route.continue();
     created.push(route.request().postDataJSON() as Record<string, unknown>);

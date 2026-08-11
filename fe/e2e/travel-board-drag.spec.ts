@@ -103,6 +103,10 @@ async function mockBoard(page: Page): Promise<Captured> {
   await page.route("**/api/travel/summary", (route) =>
     route.fulfill(ok({ ongoing: null, next: null, recentCompleted: null })),
   );
+  // 보드는 숙소 목록을 함께 읽는다(#1143). 이 화면에서 확인할 것은 아니라 비워 둔다.
+  await page.route("**/api/travel/trips/*/stays", (route) =>
+    route.fulfill(ok([])),
+  );
 
   await page.route(
     `**/api/travel/trips/${TRIP_ID}/activities/order`,

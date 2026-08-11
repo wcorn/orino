@@ -14,6 +14,8 @@
  * 따로 있는 이유는 등록 폼의 겹침 미리보기처럼 **서버에 묻기 전에 답해야 하는 자리**가 있어서다.
  */
 
+import { formatShortDate } from "./tripStatus";
+
 /** 판정에 필요한 최소한. 날짜는 `"YYYY-MM-DD"` — 사전순 비교가 곧 날짜 비교다. */
 export interface StayPeriod {
   checkInDate: string;
@@ -36,6 +38,20 @@ export function isCheckOutOn(stay: StayPeriod, date: string): boolean {
  */
 export function overlaps(a: StayPeriod, b: StayPeriod): boolean {
   return a.checkInDate < b.checkOutDate && b.checkInDate < a.checkOutDate;
+}
+
+/**
+ * 겹침 안내 문구. **겹친 숙소의 이름과 기간을 그대로** 보여준다 — 무엇을 줄여야 하는지가
+ * 곧 답이다. "이미 숙소가 잡힌 기간입니다"만으로는 사용자가 어느 숙소를 손봐야 할지 모른다.
+ *
+ * <p>클라이언트가 미리 잡은 겹침과 서버가 409로 돌려준 겹침이 같은 문장을 쓴다 — 같은
+ * 사실을 두 가지로 말하면 사용자는 다른 문제라고 읽는다.
+ */
+export function overlapMessage(
+  conflict: StayPeriod & { name: string },
+): string {
+  const period = `${formatShortDate(conflict.checkInDate)}–${formatShortDate(conflict.checkOutDate)}`;
+  return `${conflict.name}(${period})와 기간이 겹쳐요. 기존 숙소 기간을 먼저 줄여주세요.`;
 }
 
 /** 그날 밤 자는 곳. 겹치는 숙소는 저장되지 않으므로 답은 하나뿐이다. */
