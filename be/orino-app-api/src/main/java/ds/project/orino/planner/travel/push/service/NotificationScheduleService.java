@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * 알림 예약과 재계산(§4.2).
@@ -108,18 +109,61 @@ public class NotificationScheduleService {
 
             if (trip.isMorningSummaryEnabled()) {
                 notificationRepository.save(PushNotification.morningSummary(
-                        trip.getMemberId(), trip.getId(), date, morningAt(date, zone)));
+                        trip.getMemberId(), trip.getId(), date, morningAt(date, cities)));
             }
         }
     }
 
     /**
-     * 아침 요약 시각 — 그 날짜의 <b>현지</b> 08:00(§4.3).
+     * 기준 도시가 바뀐 날짜 주변의 <b>아침 요약</b>만 다시 잡는다.
+     *
+     * <p>일정 알림과 따로 도는 이유는 아침 요약이 <b>일정이 아니라 날짜에 걸려 있어서</b>다 —
+     * {@link #rescheduleDate}는 일정 id로 취소하고 다시 만들기 때문에 요약은 손도 대지 못하고
+     * 옛 도시의 08:00에 그대로 남는다.
+     *
+     * <p><b>그 날짜만으로는 부족하다.</b> 도시가 바뀌면 그날이 "도시 변경일"이 되거나 아니게
+     * 되는데, 같은 변경이 <b>다음 날짜의 판정</b>도 뒤집는다 — N일차를 교토로 바꾸면 N일차는
+     * 변경일이 되고 N+1일차는 변경일이 아니게 된다. 두 날짜를 함께 다시 잡는다.
+     */
+    @Transactional
+    public void rescheduleMorningSummary(Long tripId, LocalDate date) {
+        if (date == null) {
+            return;
+        }
+        Trip trip = tripRepository.findById(tripId).orElse(null);
+        if (trip == null) {
+            return;
+        }
+        Map<LocalDate, TravelPlace> cities = tripDayService.baseCitiesOf(tripId);
+        List<LocalDate> affected = Stream.of(date, date.plusDays(1))
+                .filter(trip::covers)
+                .toList();
+
+        cancelAll(notificationRepository.findAllByTripIdAndTypeAndTargetDateInAndStatus(
+                tripId, NotificationType.MORNING_SUMMARY, affected, NotificationStatus.PENDING));
+        if (!trip.isMorningSummaryEnabled()) {
+            return;
+        }
+        notificationRepository.saveAll(affected.stream()
+                .map(affectedDate -> PushNotification.morningSummary(trip.getMemberId(),
+                        tripId, affectedDate, morningAt(affectedDate, cities)))
+                .toList());
+    }
+
+    /**
+     * 아침 요약 시각 — 그 날짜의 <b>현지</b> 08:00(§4.3). 단 <b>도시가 바뀌는 날은 전날 도시의
+     * 08:00</b>이다(v2.1 §3.6).
+     *
+     * <p>교토로 넘어가는 날 교토 시각 08:00에 알림이 오면 이미 늦다 — 그 시각에 사용자는 아직
+     * 오사카에서 짐을 싸고 있다. 아침에 보는 시계는 <b>떠나는 도시의 시계</b>다.
      *
      * <p>그날 일정이 0건이어도 지금은 만든다. 판정은 <b>보내기 직전</b>에 한다 — 예약 때만 보면
      * 나중에 일정을 채운 날은 영영 요약이 안 오고, 다 지운 날엔 "일정 0개"가 간다.
      */
-    private static Instant morningAt(LocalDate date, ZoneId zone) {
+    private static Instant morningAt(LocalDate date, Map<LocalDate, TravelPlace> cities) {
+        TravelPlace wakeUpIn = MorningCity.wakeUpIn(date, cities);
+        ZoneId zone = wakeUpIn == null ? ZoneId.systemDefault()
+                : TripDayService.zoneOf(wakeUpIn);
         return date.atTime(MORNING_SUMMARY_HOUR, 0).atZone(zone).toInstant();
     }
 

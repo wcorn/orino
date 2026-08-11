@@ -91,8 +91,11 @@ public class BaseCityChangeService {
 
         if (cityChanged) {
             // 벽시계 시각은 그대로다. 그 시각이 어느 순간인지가 바뀌었을 뿐이라 발송 시각만
-            // 다시 잡는다(§4.2). 그 날짜의 일정만 영향을 받는다.
+            // 다시 잡는다(§4.2). 일정 알림은 그 날짜만 영향을 받는다.
             notificationService.rescheduleDate(trip.getId(), day.getDayDate());
+            // 아침 요약은 다르다 — 일정이 아니라 날짜에 걸려 있고, "도시가 바뀌는 날인가"가
+            // 다음 날짜의 발송 시각까지 뒤집는다(v2.1 §3.6). 위 호출은 요약을 건드리지 않는다.
+            notificationService.rescheduleMorningSummary(trip.getId(), day.getDayDate());
         }
         return queryService.days(memberId, trip.getId());
     }
