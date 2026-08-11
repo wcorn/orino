@@ -52,14 +52,26 @@ export async function searchCities(q: string): Promise<City[]> {
   return data.data;
 }
 
-/** `tripId`를 주면 그 여행 목적지 주변을 우선한다(필터가 아니라 편향). */
+/**
+ * `tripId`를 주면 그 여행 도시 주변을 우선한다(필터가 아니라 **편향**).
+ *
+ * <p>`cityPlaceId`(기준 도시 칩)를 주면 그 도시로 편향한다. 안 주면 서버가 첫날 도시로
+ * 떨어뜨리는데, 다구간 여행에서 그건 "오사카 좌표로 교토 가게를 찾는" 상태다.
+ */
 export async function searchPlaces(
   q: string,
   tripId?: number,
+  cityPlaceId?: number | null,
 ): Promise<PlaceSearchResult[]> {
   const { data } = await client.get<ApiEnvelope<PlaceSearchResult[]>>(
     "/travel/places/search",
-    { params: tripId ? { q, tripId } : { q } },
+    {
+      params: {
+        q,
+        ...(tripId ? { tripId } : {}),
+        ...(cityPlaceId ? { city: cityPlaceId } : {}),
+      },
+    },
   );
   return data.data;
 }

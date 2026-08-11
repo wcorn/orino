@@ -37,3 +37,19 @@ export function cityCount(days: BoardDay[]): number {
     days.map((day) => day.baseCity?.placeId).filter((id) => id != null),
   ).size;
 }
+
+/**
+ * 이 여행에 등장하는 도시들. **구간 순서**로, 같은 도시를 다시 방문해도 한 번만 나온다.
+ *
+ * <p>기준 도시를 바꾸는 자리(날짜 탭 시트·검색 기준 칩)에서 가장 자주 고르는 후보라 그대로
+ * 올린다 — 도쿄↔닛코를 오가는 변경에 매번 검색을 시킬 이유가 없다.
+ */
+export function tripCities(days: BoardDay[]): BaseCity[] {
+  return [
+    ...new Map(
+      days
+        .flatMap((day) => (day.baseCity ? [day.baseCity] : []))
+        .map((city) => [city.placeId, city]),
+    ).values(),
+  ];
+}

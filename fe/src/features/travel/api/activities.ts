@@ -214,6 +214,12 @@ export interface ActivityWriteRequest {
    * 프론트가 장소를 먼저 만들 필요가 없다. `placeId`와 함께 보내지 않는다.
    */
   googlePlaceId?: string | null;
+  /**
+   * (v2.1) 이 장소를 **어느 도시를 기준으로 찾았는지**(S-06 검색 기준 도시 칩).
+   * `googlePlaceId`로 새로 담기는 장소에만 쓰이며, 그 도시의 식별자가 장소에 함께 저장돼
+   * 보관함 도시 그룹·도시 이탈 표시가 성립한다. 없으면 장소는 도시 없이 저장된다.
+   */
+  cityPlaceId?: number | null;
   memo?: string | null;
   url?: string | null;
   notifyEnabled?: boolean;

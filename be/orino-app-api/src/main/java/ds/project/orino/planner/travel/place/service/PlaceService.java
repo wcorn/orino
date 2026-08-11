@@ -87,10 +87,14 @@ public class PlaceService {
     }
 
     /**
-     * S-06 장소 검색. `tripId`를 주면 그 여행의 목적지 좌표 주변을 우선한다(§1.5).
+     * S-06 장소 검색. `tripId`를 주면 그 여행의 도시 좌표 주변을 우선한다(§1.5).
+     *
+     * <p>{@code cityPlaceId}(기준 도시 칩)를 주면 <b>그 도시</b>로 편향한다. 안 주면 첫날 도시로
+     * 떨어지는데, 다구간 여행에서 그건 곧 "오사카 좌표로 교토 가게를 찾는" 상태다.
      */
-    public List<PlaceSearchResult> searchPlaces(Long memberId, String query, Long tripId) {
-        PlacesClient.Coordinates bias = biasOf(memberId, tripId);
+    public List<PlaceSearchResult> searchPlaces(Long memberId, String query, Long tripId,
+                                                Long cityPlaceId) {
+        PlacesClient.Coordinates bias = biasOf(memberId, tripId, cityPlaceId);
         String biasKey = bias == null ? "none" : bias.lat() + "," + bias.lng();
 
         List<PlaceResult> results = cached(
@@ -127,15 +131,28 @@ public class PlaceService {
         return PlaceDetail.from(place);
     }
 
+    /** 기준 도시를 모르는 자리(구간 입력 등)에서 담을 때. 장소는 도시 식별자 없이 저장된다. */
+    @Transactional
+    public TravelPlace upsertFromGoogle(Long memberId, String googlePlaceId) {
+        return upsertFromGoogle(memberId, googlePlaceId, null);
+    }
+
     /**
      * 구글 장소를 담는다. 같은 장소를 두 번 저장하지 않는다 — 이미 있으면 그걸 돌려준다
      * ({@code uk_place_member_google}이 멤버당 한 행을 강제한다).
+     *
+     * <p>{@code cityPlaceId}(기준 도시 칩, S-06)가 오면 <b>그 도시의 식별자를 함께 저장한다.</b>
+     * 이 값이 없으면 보관함 도시 그룹도 도시 이탈 표시도 성립하지 않는다 — 구글 상세 응답은
+     * 도시 <i>이름</i>만 주고 도시의 장소 id는 주지 않기 때문에, 어느 도시에서 찾았는지는
+     * 화면만 안다. 좌표 거리로 도시를 되짚지 않는 이유는 D-23에 있다.
      */
     @Transactional
-    public TravelPlace upsertFromGoogle(Long memberId, String googlePlaceId) {
+    public TravelPlace upsertFromGoogle(Long memberId, String googlePlaceId, Long cityPlaceId) {
         Optional<TravelPlace> existing =
                 placeRepository.findByMemberIdAndGooglePlaceId(memberId, googlePlaceId);
         if (existing.isPresent()) {
+            // 이미 담긴 장소의 도시는 덮지 않는다 — 나중에 다른 도시 칩으로 다시 담았다고
+            // 처음 알던 도시가 바뀌면, 그 장소가 붙은 다른 날짜의 판정까지 조용히 흔들린다.
             return existing.get();
         }
         PlaceResult fresh = placesClient.fetchDetails(googlePlaceId)
@@ -145,9 +162,15 @@ public class PlaceService {
         place.updateBasics(fresh.address(), fresh.lat(), fresh.lng(),
                 fresh.category(), fresh.rating());
         place.updateDetails(fresh.phone(), fresh.openingHours(), clock.instant());
-        // 어느 도시의 장소인지는 상세 응답에 이미 들어 있다 — 화면의 `· 오사카` 꼬리표가 쓴다.
-        place.updateCityInfo(fresh.cityName(), place.getCityPlaceRef(), fresh.countryCode());
+        // 도시 이름은 상세 응답 것을 쓴다(화면의 `· 오사카` 꼬리표). 식별자는 칩에서만 온다.
+        place.updateCityInfo(fresh.cityName(), cityRefOf(memberId, cityPlaceId),
+                fresh.countryCode());
         return placeRepository.save(place);
+    }
+
+    private String cityRefOf(Long memberId, Long cityPlaceId) {
+        return cityPlaceId == null ? null : requireOwnedCity(memberId, cityPlaceId)
+                .getCityPlaceRef();
     }
 
     /**
@@ -254,10 +277,16 @@ public class PlaceService {
     }
 
     /**
-     * 검색 편향 좌표. 지금은 <b>첫날 기준 도시</b>를 쓴다 — 날짜를 골라 그 도시로 검색하는
-     * 기준 도시 칩({@code ?city=})은 3단계(S-06)에서 붙는다.
+     * 검색 편향 좌표.
+     *
+     * <p>기준 도시 칩({@code ?city=})이 오면 그 도시를 쓰고, 없으면 <b>첫날 기준 도시</b>로
+     * 떨어진다. 칩이 있는데 조용히 첫날로 떨어뜨리지는 않는다 — 화면이 "교토"라고 말하면서
+     * 오사카 가게를 물어오는 것이 이 이슈가 없애려는 바로 그 상태다.
      */
-    private PlacesClient.Coordinates biasOf(Long memberId, Long tripId) {
+    private PlacesClient.Coordinates biasOf(Long memberId, Long tripId, Long cityPlaceId) {
+        if (cityPlaceId != null) {
+            return coordinatesOf(requireOwnedCity(memberId, cityPlaceId));
+        }
         if (tripId == null) {
             return null;
         }
@@ -265,11 +294,28 @@ public class PlaceService {
         if (trip == null) {
             return null;
         }
-        TravelPlace city = tripDayService.primaryCity(trip.getId());
+        return coordinatesOf(tripDayService.primaryCity(trip.getId()));
+    }
+
+    /** 좌표 없는 도시(직접 입력)는 편향할 수 없다 — 편향 없이 검색하는 편이 낫다. */
+    private static PlacesClient.Coordinates coordinatesOf(TravelPlace city) {
         if (city.getLat() == null || city.getLng() == null) {
             return null;
         }
         return new PlacesClient.Coordinates(city.getLat(), city.getLng());
+    }
+
+    /**
+     * 기준 도시로 쓸 수 있는 내 장소인지 확인한다. 남의 장소·없는 장소는 404, 도시가 아니면
+     * 400이다 — 가게를 기준 도시로 쓸 수는 없다(D-23).
+     */
+    private TravelPlace requireOwnedCity(Long memberId, Long cityPlaceId) {
+        TravelPlace city = placeRepository.findByIdAndMemberId(cityPlaceId, memberId)
+                .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_PLACE_NOT_FOUND));
+        if (!city.isCity()) {
+            throw new CustomException(ErrorCode.TRAVEL_NOT_A_CITY);
+        }
+        return city;
     }
 
     private Map<String, Long> savedIdsOf(Long memberId, List<PlaceResult> results) {

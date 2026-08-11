@@ -12,9 +12,20 @@ export const travelKeys = {
   activity: (activityId: number) => ["travel", "activity", activityId] as const,
   /** 여행의 숙소 전체. 날짜별로 나누지 않는다 — 어느 날짜에 붙는지는 기간에서 파생한다. */
   stays: (tripId: number) => ["travel", "stays", tripId] as const,
-  /** 장소 검색. 서버가 이미 캐시하지만, 뒤로 갔다 오면 결과가 그대로 있어야 한다. */
-  placeSearch: (q: string, tripId?: number) =>
-    ["travel", "places", "search", tripId ?? "none", q] as const,
+  /**
+   * 장소 검색. 서버가 이미 캐시하지만, 뒤로 갔다 오면 결과가 그대로 있어야 한다.
+   *
+   * <p>기준 도시가 키에 들어간다 — 같은 검색어라도 편향 도시가 다르면 다른 결과다.
+   */
+  placeSearch: (q: string, tripId?: number, cityPlaceId?: number | null) =>
+    [
+      "travel",
+      "places",
+      "search",
+      tripId ?? "none",
+      cityPlaceId ?? "none",
+      q,
+    ] as const,
   citySearch: (q: string) => ["travel", "places", "cities", q] as const,
   place: (placeId: number) => ["travel", "place", placeId] as const,
   weather: (tripId: number) => ["travel", "weather", tripId] as const,

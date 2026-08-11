@@ -221,6 +221,80 @@ class PlaceControllerTest extends ApiTestSupport {
         }
 
         @Test
+        @DisplayName("기준 도시 칩을 주면 그 도시로 편향한다 — 첫날 도시가 아니다")
+        void biasesTowardChosenCity() throws Exception {
+            long tripId = createTripWithCoordinates();
+            long kyoto = TravelCityFixture.createCity(mockMvc, authHeader, "교토",
+                    "Asia/Tokyo", "JPY", "35.0116", "135.7681");
+            stub.placeResults = List.of(place("ChIJ_senso", "센소지"));
+
+            mockMvc.perform(get("/api/travel/places/search")
+                            .param("q", uniqueQuery("라멘"))
+                            .param("tripId", String.valueOf(tripId))
+                            .param("city", String.valueOf(kyoto))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
+
+            assertThat(stub.biases).hasSize(1);
+            // 첫날 도시(도쿄 35.6762)가 아니라 고른 도시여야 한다.
+            assertThat(stub.biases.get(0).lat()).isEqualByComparingTo("35.0116");
+        }
+
+        @Test
+        @DisplayName("도시를 바꾸면 캐시를 재사용하지 않는다 — 편향이 다르면 다른 검색이다")
+        void differentCityIsADifferentSearch() throws Exception {
+            long tripId = createTripWithCoordinates();
+            long kyoto = TravelCityFixture.createCity(mockMvc, authHeader, "교토",
+                    "Asia/Tokyo", "JPY", "35.0116", "135.7681");
+            stub.placeResults = List.of(place("ChIJ_senso", "센소지"));
+            String query = uniqueQuery("라멘");
+
+            for (String city : List.of(String.valueOf(kyoto), "")) {
+                var request = get("/api/travel/places/search")
+                        .param("q", query).param("tripId", String.valueOf(tripId))
+                        .header(HttpHeaders.AUTHORIZATION, authHeader);
+                if (!city.isEmpty()) {
+                    request = request.param("city", city);
+                }
+                mockMvc.perform(request).andExpect(status().isOk());
+            }
+
+            assertThat(stub.placeSearches).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("남의 도시로는 편향할 수 없다 — 404")
+        void rejectsOtherMembersCity() throws Exception {
+            long tripId = createTripWithCoordinates();
+            long kyoto = TravelCityFixture.createCity(mockMvc, authHeader, "교토",
+                    "Asia/Tokyo", "JPY", "35.0116", "135.7681");
+
+            mockMvc.perform(get("/api/travel/places/search")
+                            .param("q", uniqueQuery("라멘"))
+                            .param("tripId", String.valueOf(tripId))
+                            .param("city", String.valueOf(kyoto))
+                            .header(HttpHeaders.AUTHORIZATION, otherAuthHeader))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-008"));
+        }
+
+        @Test
+        @DisplayName("가게를 기준 도시로 줄 수는 없다 — 400")
+        void rejectsNonCityAsBias() throws Exception {
+            long tripId = createTripWithCoordinates();
+            TravelPlace poi = placeRepository.save(TravelPlace.manual(
+                    memberRepository.findAll().get(0).getId(), "골목 카페"));
+
+            mockMvc.perform(get("/api/travel/places/search")
+                            .param("q", uniqueQuery("라멘"))
+                            .param("tripId", String.valueOf(tripId))
+                            .param("city", String.valueOf(poi.getId()))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-016"));
+        }
+
+        @Test
         @DisplayName("빈 결과는 캐시하지 않는다 — 일시적 실패를 한 시간 물고 있으면 안 된다")
         void doesNotCacheEmptyResults() throws Exception {
             String query = uniqueQuery("없는곳");
@@ -413,6 +487,88 @@ class PlaceControllerTest extends ApiTestSupport {
                     .hasSize(1);
             assertThat(stub.detailFetches).containsExactly("ChIJ_senso");
         }
+
+        @Test
+        @DisplayName("기준 도시를 함께 주면 담은 장소에 도시 식별자가 붙는다")
+        void savesCityIdentifierFromChip() throws Exception {
+            long tripId = createTripWithCoordinates();
+            long kyoto = cityWithRef("교토", "ChIJ_kyoto");
+            stub.detailResult = Optional.of(place("ChIJ_senso", "센소지"));
+
+            addPlaceToTrip(tripId, "ChIJ_senso", ", \"cityPlaceId\": " + kyoto);
+
+            assertThat(savedGooglePlace().getCityPlaceRef()).isEqualTo("ChIJ_kyoto");
+            // 도시 <b>이름</b>은 구글 상세 것을 쓴다 — 칩보다 그쪽이 정확하다.
+            assertThat(savedGooglePlace().getCityName()).isEqualTo("도쿄");
+        }
+
+        @Test
+        @DisplayName("기준 도시 없이 담으면 식별자도 없다 — 좌표로 도시를 추측하지 않는다(D-23)")
+        void leavesCityIdentifierEmptyWithoutChip() throws Exception {
+            long tripId = createTripWithCoordinates();
+            stub.detailResult = Optional.of(place("ChIJ_senso", "센소지"));
+
+            addPlaceToTrip(tripId, "ChIJ_senso", "");
+
+            assertThat(savedGooglePlace().getCityPlaceRef()).isNull();
+        }
+
+        @Test
+        @DisplayName("직접 입력한 도시는 식별자가 없어 붙일 것도 없다")
+        void manualCityHasNothingToAttach() throws Exception {
+            long tripId = createTripWithCoordinates();
+            // 검색을 거치지 않은 도시는 구글 id가 없어 `city_place_ref`가 비어 있다.
+            long manual = TravelCityFixture.createCity(mockMvc, authHeader, "하코네",
+                    "Asia/Tokyo", "JPY");
+            stub.detailResult = Optional.of(place("ChIJ_senso", "센소지"));
+
+            addPlaceToTrip(tripId, "ChIJ_senso", ", \"cityPlaceId\": " + manual);
+
+            assertThat(savedGooglePlace().getCityPlaceRef()).isNull();
+        }
+
+        @Test
+        @DisplayName("이미 담긴 장소의 도시는 덮지 않는다 — 다른 날짜의 판정까지 흔들린다")
+        void doesNotOverwriteCityOfExistingPlace() throws Exception {
+            long tripId = createTripWithCoordinates();
+            long kyoto = cityWithRef("교토", "ChIJ_kyoto");
+            long osaka = cityWithRef("오사카", "ChIJ_osaka");
+            stub.detailResult = Optional.of(place("ChIJ_senso", "센소지"));
+
+            addPlaceToTrip(tripId, "ChIJ_senso", ", \"cityPlaceId\": " + kyoto);
+            addPlaceToTrip(tripId, "ChIJ_senso", ", \"cityPlaceId\": " + osaka);
+
+            assertThat(savedGooglePlace().getCityPlaceRef()).isEqualTo("ChIJ_kyoto");
+        }
+    }
+
+    /** 검색으로 고른 도시처럼 <b>도시 식별자를 가진</b> 도시. 직접 입력한 도시에는 없다. */
+    private long cityWithRef(String name, String cityPlaceRef) throws Exception {
+        long cityId = TravelCityFixture.createCity(mockMvc, authHeader, name,
+                "Asia/Tokyo", "JPY", "35.0116", "135.7681");
+        TravelPlace city = placeRepository.findById(cityId).orElseThrow();
+        city.updateCityInfo(name, cityPlaceRef, "JP");
+        placeRepository.saveAndFlush(city);
+        return cityId;
+    }
+
+    private void addPlaceToTrip(long tripId, String googlePlaceId, String extra) throws Exception {
+        mockMvc.perform(post("/api/travel/trips/" + tripId + "/activities")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "담기", "activityDate": "2026-10-24",
+                                 "googlePlaceId": "%s"%s}
+                                """.formatted(googlePlaceId, extra)))
+                .andExpect(status().isOk());
+    }
+
+    /** 검색으로 담은 장소. 기준 도시 행도 travel_place라 구글 id로 가른다. */
+    private TravelPlace savedGooglePlace() {
+        return placeRepository.findAll().stream()
+                .filter(place -> place.getGooglePlaceId() != null)
+                .findFirst()
+                .orElseThrow();
     }
 
     /** 편향 검증용 — 목적지 좌표가 있는 여행. */

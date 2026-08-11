@@ -72,6 +72,7 @@ import {
   daysForPlace,
   groupArchiveByCity,
 } from "@/features/travel/lib/archiveGroups";
+import { tripCities } from "@/features/travel/lib/baseCity";
 import { directionsUrl } from "@/features/travel/lib/mapsLink";
 import {
   badgeAboveList,
@@ -238,13 +239,20 @@ export function TripBoardPage() {
    * 이 여행에 등장하는 도시들. 기준 도시를 바꿀 때 가장 자주 고르는 후보라 시트 위쪽에
    * 그대로 올린다 — 도쿄↔닛코를 오가는 변경에 매번 검색을 시킬 이유가 없다.
    */
-  const tripCities = [
-    ...new Map(
-      board.days
-        .flatMap((day) => (day.baseCity ? [day.baseCity] : []))
-        .map((city) => [city.placeId, city]),
-    ).values(),
-  ];
+  const cities = tripCities(board.days);
+
+  /**
+   * 장소 검색으로 넘어간다. <b>보고 있던 날짜의 도시를 들고 간다</b>(§2.7) — 교토 날짜를
+   * 보다가 검색으로 들어왔으면 교토 가게가 나와야 한다. 보관함에는 날짜가 없어 그냥 간다.
+   */
+  const searchPlaces = () => {
+    const city = selectedCity;
+    navigate(
+      city
+        ? `/travel/trips/${tripId}/places?city=${city.placeId}`
+        : `/travel/trips/${tripId}/places`,
+    );
+  };
 
   /** 보관함은 순서가 아니라 도시로 읽는다. 보고 있지 않으면 계산할 이유가 없다. */
   const archiveGroups = isArchive
@@ -705,11 +713,7 @@ export function TripBoardPage() {
               ? "가고 싶은 곳을 미리 담아두세요"
               : "일정이 없어요"}
           </p>
-          <Button
-            variant="outline"
-            disabled={!online}
-            onClick={() => navigate(`/travel/trips/${tripId}/places`)}
-          >
+          <Button variant="outline" disabled={!online} onClick={searchPlaces}>
             <Search className="size-4" />
             장소 검색
           </Button>
@@ -745,7 +749,7 @@ export function TripBoardPage() {
         targetDate={selectedDate}
         onCreate={(input) => void addActivity(input)}
         onPickFromArchive={(a) => void pickFromArchive(a)}
-        onSearchPlaces={() => navigate(`/travel/trips/${tripId}/places`)}
+        onSearchPlaces={searchPlaces}
         pending={createActivity.isPending || updateActivity.isPending}
       />
 
@@ -762,7 +766,7 @@ export function TripBoardPage() {
 
       <BaseCitySheet
         day={cityDay}
-        tripCities={tripCities}
+        tripCities={cities}
         onOpenChange={(open) => !open && setCityDay(null)}
         onSubmit={(body) => void saveDay(body)}
         pending={updateDay.isPending}

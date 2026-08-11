@@ -101,7 +101,10 @@ public class ActivityService {
      */
     private Long resolvePlaceId(Long memberId, ActivityWriteRequest request) {
         if (request.googlePlaceId() != null && !request.googlePlaceId().isBlank()) {
-            return placeService.upsertFromGoogle(memberId, request.googlePlaceId()).getId();
+            // 어느 도시를 기준으로 찾았는지(S-06 칩)를 함께 넘긴다 — 그래야 담은 장소가
+            // 보관함 도시 그룹과 도시 이탈 표시에서 `도시 없음`으로 떨어지지 않는다.
+            return placeService.upsertFromGoogle(memberId, request.googlePlaceId(),
+                    request.cityPlaceId()).getId();
         }
         return request.placeId();
     }

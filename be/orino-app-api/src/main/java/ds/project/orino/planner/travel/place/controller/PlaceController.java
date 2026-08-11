@@ -35,13 +35,20 @@ public class PlaceController {
         return ApiResponse.success(placeService.searchCities(q));
     }
 
-    /** S-06 장소 검색. {@code tripId}를 주면 그 목적지 주변을 우선한다. */
+    /**
+     * S-06 장소 검색.
+     *
+     * @param tripId 주면 그 여행의 도시 주변을 우선한다
+     * @param city   (v2.1) 기준 도시 칩의 도시 {@code placeId}. 주면 <b>그 도시</b>로 편향하고,
+     *               없으면 첫날 도시로 떨어진다
+     */
     @GetMapping("/search")
     public ApiResponse<List<PlaceSearchResult>> search(
             @AuthenticationPrincipal Long memberId,
             @RequestParam String q,
-            @RequestParam(required = false) Long tripId) {
-        return ApiResponse.success(placeService.searchPlaces(memberId, q, tripId));
+            @RequestParam(required = false) Long tripId,
+            @RequestParam(required = false) Long city) {
+        return ApiResponse.success(placeService.searchPlaces(memberId, q, tripId, city));
     }
 
     @GetMapping("/{placeId}")

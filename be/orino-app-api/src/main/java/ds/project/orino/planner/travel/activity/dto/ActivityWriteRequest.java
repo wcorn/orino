@@ -36,6 +36,15 @@ public record ActivityWriteRequest(
          */
         String googlePlaceId,
 
+        /**
+         * (v2.1) 이 장소를 <b>어느 도시를 기준으로 찾았는지</b>(S-06 검색 기준 도시 칩).
+         * {@code googlePlaceId}로 새로 담기는 장소에만 쓰이며, 그 도시의 식별자를 장소에 함께
+         * 저장해 보관함 도시 그룹·도시 이탈 표시가 성립하게 한다.
+         *
+         * <p>없으면 장소는 도시 식별자 없이 저장된다 — 좌표로 도시를 추측하지 않는다(D-23).
+         */
+        Long cityPlaceId,
+
         @Size(max = 1000, message = "메모는 1000자를 넘을 수 없습니다.")
         String memo,
 
