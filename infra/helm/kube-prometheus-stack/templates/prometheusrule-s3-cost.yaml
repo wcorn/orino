@@ -99,3 +99,32 @@ spec:
               7일 평균 대비 3배 이상. 현재 {{ "{{" }} $value | printf "%.3f" {{ "}}" }} ops/s
               (일 환산 {{ "{{" }} $value | humanize {{ "}}" }}×86400회).
               새 폴링 루프나 주기 설정 변경을 의심한다 — 해당 컴포넌트의 interval 플래그부터 본다.
+
+        # ELOG-027 재발 감시. 그 실패는 "lifecycle이 없어서"가 아니라
+        # **선언된 retention이 안 도는 걸 5개월간 아무도 안 봐서**였다.
+        #
+        # 이슈(#1153)는 이걸 CloudWatch NumberOfObjects 의 "7일 연속 감소 없음"으로
+        # 잡자고 했지만, 삭제 요청 자체를 직접 세는 편이 낫다:
+        #   · CloudWatch 는 하루 1회 게시라 탐지가 하루 이상 늦다 → 여기선 분 단위
+        #   · 객체 수 감소는 증상이고, DeleteObject 는 기전 자체다
+        #   · Grafana 관리 알림 + 컨택트포인트라는 두 번째 알림 스택이 안 생긴다
+        #     (Alertmanager→Discord 경로를 그대로 재사용)
+        # 객체 수·용량 추이는 대시보드 패널로 계속 본다 — "삭제는 도는데 증가를
+        # 못 따라가는" 경우는 눈으로 잡는다.
+        #
+        # 창을 48h 로 잡는 이유: compactor 의 apply_retention_interval 이 24h 라
+        # 삭제가 하루 1회 몰아서 난다. 24h 창이면 정상 동작에도 경계에서 깜빡인다.
+        - alert: S3RetentionNotExecuting
+          expr: |
+            increase(loki_s3_request_duration_seconds_count{operation="S3.DeleteObject"}[48h]) == 0
+          for: 1h
+          labels:
+            severity: warning
+            category: cost
+          annotations:
+            summary: "Loki retention 미집행 — 48시간간 S3 삭제 0건"
+            description: >-
+              compactor.retention_enabled 가 선언되어 있는데 48시간 동안 DeleteObject 가
+              한 건도 없다. 인덱스 테이블이 무한 증가하면 tsdb shipper 의 LIST 가
+              같이 늘어 Tier1 요청이 증가한다(ELOG-027 과 같은 경로).
+              compactor 로그와 loki_boltdb_shipper_retention_marker_table_processed_total 을 본다.
