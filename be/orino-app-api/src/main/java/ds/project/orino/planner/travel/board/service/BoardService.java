@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -104,13 +105,16 @@ public class BoardService {
                 buildDays(trip, cities, stays),
                 selectedDate,
                 activityRepository.countUnscheduled(tripId),
-                withBaseCity(activityService.toResponses(activities), selectedCity),
+                withCityRules(activityService.toResponses(activities), selectedCity,
+                        // 보관함 일정은 날짜가 없어 출발 알림 시각 자체가 서지 않는다.
+                        selectedDate == null ? Set.of()
+                                : travelTimeService.departureNotifiable(activities)),
                 // 보관함은 날짜에 배정되지 않은 목록이라 순서에 이동 의미가 없다.
                 // 계산해 봐야 화면에 쓰지 않고, 호출당 과금이라 그냥 낭비다.
                 selectedDate == null ? List.of() : travelTimeService.travelTimes(activities),
                 // 보관함에는 "그날 밤"이 없다 — 숙소 이동도 없다.
                 selectedDate == null ? null
-                        : stayAssembler.moveToStay(stays, selectedDate, activities, selectedCity));
+                        : stayAssembler.moveToStay(stays, selectedDate, activities));
     }
 
     /**
@@ -135,11 +139,20 @@ public class BoardService {
                 (int) cityCount, (int) countryCount, cityCount <= 1);
     }
 
-    /** 선택한 날짜의 기준 도시와 견줘 일정마다 도시 이탈 여부를 붙인다. */
-    private static List<ActivityResponse> withBaseCity(List<ActivityResponse> activities,
-                                                       TravelPlace baseCity) {
+    /**
+     * 일정마다 도시 관련 판정을 붙인다 — 기준 도시 이탈, 그리고 출발 알림 가능 여부.
+     *
+     * <p>둘 다 <b>그날 전체를 봐야</b> 나오는 값이라 일정 하나를 조립할 때는 알 수 없다.
+     * 조립을 마친 뒤 덧씌운다.
+     */
+    private static List<ActivityResponse> withCityRules(List<ActivityResponse> activities,
+                                                        TravelPlace baseCity,
+                                                        Set<Long> departureNotifiable) {
         String ref = baseCity == null ? null : baseCity.getCityPlaceRef();
-        return activities.stream().map(activity -> activity.withBaseCity(ref)).toList();
+        return activities.stream()
+                .map(activity -> activity.withBaseCity(ref)
+                        .withCanDepartureNotify(departureNotifiable.contains(activity.id())))
+                .toList();
     }
 
     /**

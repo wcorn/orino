@@ -138,13 +138,21 @@ export type TravelMode = "WALK" | "DRIVE";
 export interface TravelTime {
   fromActivityId: number;
   toActivityId: number;
-  mode: TravelMode;
-  /** `fallback`이면 null — 거리만 안다. */
+  /** `crossCity`면 null — 도시를 넘는 이동에 수단을 판정하지 않는다. */
+  mode: TravelMode | null;
+  /** `fallback`·`crossCity`면 null — 거리만 안다. */
   durationMinutes: number | null;
-  /** 경로 거리. `fallback`이면 직선거리다. */
+  /** 경로 거리. `fallback`·`crossCity`면 직선거리다. */
   distanceM: number;
   /** Routes를 못 얻어 직선거리로 대체했다. 화면은 `약 N.Nkm`로 보여준다. */
   fallback: boolean;
+  /**
+   * 도시 경계를 넘어 서버가 계산하지 않았다(§3.4). `도시 이동`으로 그리고, 탭하면 이동수단
+   * 시트 없이 곧바로 대중교통 딥링크로 나간다 — 도보/자동차를 물어볼 이유가 없다.
+   *
+   * <p>**거리도 보여주지 않는다.** 오사카→도쿄에 "약 400km"는 계획에 쓸 수 없는 숫자다.
+   */
+  crossCity: boolean;
 }
 
 export interface Board {
@@ -159,7 +167,8 @@ export interface Board {
   /**
    * 그날 마지막 일정 → 오늘 밤 숙소 이동. 숙소가 없거나 보관함을 보고 있으면 null.
    *
-   * <p>`sameCity`가 false면 `mode`·`durationMinutes`가 없다 — 도시를 넘는 이동은 계산하지
+   * <p>`sameCity`는 **마지막 일정과 숙소가** 같은 도시인가다 — 기준 도시가 아니라 이 이동의
+   * 양 끝을 견준다. false면 `mode`·`durationMinutes`가 없다. 도시를 넘는 이동은 계산하지
    * 않는다(§3.4).
    */
   stayMove: StayMove | null;

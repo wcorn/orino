@@ -63,6 +63,7 @@ import {
   daysForPlace,
   groupArchiveByCity,
 } from "@/features/travel/lib/archiveGroups";
+import { directionsUrl } from "@/features/travel/lib/mapsLink";
 import { PickDaySheet } from "@/features/travel/places/PickDaySheet";
 import { toast } from "@/shared/lib/toast";
 import { useOnline } from "@/shared/lib/useOnline";
@@ -170,6 +171,31 @@ export function TripBoardPage() {
       travelTime,
     ]),
   );
+
+  /**
+   * 이동시간 행을 탭했다.
+   *
+   * <p>도시를 넘는 이동이면 <b>이동수단 시트를 열지 않고</b> 곧바로 대중교통 길찾기로 나간다
+   * (§3.4) — 서버가 계산하지 않은 구간이라 시트에 보여줄 도보/자동차가 애초에 없고, 물어볼
+   * 이유도 없다. 실제로 타는 건 신칸센이고 그건 구글 지도가 답한다.
+   */
+  const openTravelTimeRow = (travelTime: TravelTime) => {
+    if (!travelTime.crossCity) {
+      setOpenTravelTime(travelTime);
+      return;
+    }
+    const from = activities.find((a) => a.id === travelTime.fromActivityId);
+    const to = activities.find((a) => a.id === travelTime.toActivityId);
+    const url =
+      from?.place && to?.place ? directionsUrl(from.place, to.place) : null;
+    if (url === null) {
+      // 좌표가 없으면 이동시간 행 자체가 없다. 그래도 열리면 아무 일도 안 일어난 것처럼
+      // 두지 않는다 — 눌렀는데 반응이 없으면 고장으로 읽힌다.
+      toast("길찾기를 열 수 없어요", "error");
+      return;
+    }
+    window.open(url, "_blank", "noopener");
+  };
 
   /** 보고 있는 날짜. 보관함을 보고 있으면 없다. */
   const selectedDay =
@@ -504,7 +530,7 @@ export function TripBoardPage() {
                   {!dragMode && travelTimesByTo.get(activity.id) && (
                     <TravelTimeRow
                       travelTime={travelTimesByTo.get(activity.id)!}
-                      onOpen={setOpenTravelTime}
+                      onOpen={openTravelTimeRow}
                       offline={!online}
                     />
                   )}

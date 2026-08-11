@@ -179,6 +179,20 @@ public class TravelPlace {
         return placeKind == PlaceKind.CITY;
     }
 
+    /**
+     * 두 지점이 <b>도시 경계를 넘는가</b>(D-23). 이동시간·도시 이탈·숙소 이동이 모두 이 판정
+     * 하나를 쓴다 — 규칙이 여러 벌이면 한 화면만 조용히 다르게 답한다.
+     *
+     * <p><b>식별자가 둘 다 있고 서로 다를 때만</b> 넘는다고 본다. 한쪽이라도 모르면 넘지 않는
+     * 것으로 둔다 — 모르는 것을 "다르다"로 답하면 멀쩡한 이동에서 시간이 사라지고, 사용자는
+     * 왜 안 나오는지 알 수 없다. 좌표 거리로 추측하지 않는 이유는 오사카-교토(43km)와
+     * 도쿄-요코하마(30km)가 같은 임계에서 다른 답이 되기 때문이다.
+     */
+    public static boolean crossesCity(String cityPlaceRef, String otherCityPlaceRef) {
+        return cityPlaceRef != null && otherCityPlaceRef != null
+                && !cityPlaceRef.equals(otherCityPlaceRef);
+    }
+
     /** 위치·주소·분류 등 검색 응답으로 채워지는 기본 정보. */
     public void updateBasics(String address, BigDecimal lat, BigDecimal lng,
                              String category, BigDecimal rating) {

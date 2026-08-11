@@ -51,8 +51,11 @@ export function TransportSheet({
   // 다른 구간을 탭하면 이전 구간의 값이 남아 있으면 안 된다.
   useEffect(() => {
     if (!travelTime) return;
-    setByMode({ [travelTime.mode]: travelTime });
-    setSelected(travelTime.mode);
+    // 도시를 넘는 이동은 수단이 없다(§3.4). 보드가 이 시트 대신 지도로 보내므로 여기까지
+    // 오지 않지만, 오더라도 없는 수단을 골라 둔 것처럼 보이면 안 된다.
+    const mode = travelTime.mode;
+    setByMode(mode === null ? {} : { [mode]: travelTime });
+    setSelected(mode);
   }, [travelTime]);
 
   if (!travelTime) return null;

@@ -1,6 +1,7 @@
 package ds.project.orino.planner.travel.activity.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.entity.TripActivity;
 
 import java.time.LocalDate;
@@ -16,8 +17,9 @@ import java.time.LocalTime;
  * @param hasLog       기록 존재 여부. 목록은 {@code log}를 다 펼치지 않고 이 표시만 쓴다
  * @param outOfBaseCity      (v2.1) 그날 기준 도시와 <b>다른 도시</b>의 장소다 → 화면이 경고색으로
  *                           도시명을 덧붙인다. 판정은 {@code place.cityPlaceRef}로만 한다
- * @param canDepartureNotify (v2.1) 출발 알림을 켤 수 있는가. 도시를 넘는 이동은 계산 대상이
- *                           아니라 켤 수 없다(3단계에서 판정이 붙는다)
+ * @param canDepartureNotify (v2.1) 출발 알림을 켤 수 있는가. <b>직전에 장소 있는 일정이 있고</b>
+ *                           그 사이가 <b>도시를 넘지 않아야</b> 한다 — 도시를 넘는 이동은 계산
+ *                           대상이 아니라 언제 나서야 하는지 정할 수 없다(§3.4)
  */
 public record ActivityResponse(
         Long id,
@@ -47,7 +49,7 @@ public record ActivityResponse(
                 activity.getActivityDate(), activity.getStartTime(), place,
                 activity.getMemo(), activity.getUrl(), activity.isNotifyEnabled(),
                 activity.getNotifyMinutes(), activity.isDepartureNotifyEnabled(),
-                activity.getSortOrder(), log, log != null, false, true);
+                activity.getSortOrder(), log, log != null, false, false);
     }
 
     /** 기록이 아직 없는(또는 필요 없는) 자리에서 쓴다. */
@@ -66,13 +68,21 @@ public record ActivityResponse(
     }
 
     /**
+     * 출발 알림을 켤 수 있는지를 덧씌운다. 판정에는 <b>같은 날 앞뒤 일정</b>이 필요해서(§3.4)
+     * 일정 하나만 봐서는 알 수 없다 — 목록을 아는 쪽이 계산해 넘긴다.
+     */
+    public ActivityResponse withCanDepartureNotify(boolean can) {
+        return new ActivityResponse(id, tripId, title, activityDate, startTime, place,
+                memo, url, notifyEnabled, notifyMinutes, departureNotifyEnabled,
+                sortOrder, log, hasLog, outOfBaseCity, can);
+    }
+
+    /**
      * <b>식별자가 둘 다 있고 서로 다를 때만</b> 다른 도시로 본다. 한쪽이라도 모르면 판정하지
      * 않는다 — 모르는 것을 "다르다"로 답하면 멀쩡한 일정에 경고가 붙는다.
      */
     private boolean isOutOf(String baseCityPlaceRef) {
-        if (place == null || place.cityPlaceRef() == null || baseCityPlaceRef == null) {
-            return false;
-        }
-        return !place.cityPlaceRef().equals(baseCityPlaceRef);
+        return TravelPlace.crossesCity(
+                place == null ? null : place.cityPlaceRef(), baseCityPlaceRef);
     }
 }
