@@ -84,12 +84,15 @@ spec:
         # 무의미한데 매번 발동한다 — 무시하게 되는 알림은 없는 알림과 같다.
         # 하한 4,320회/day 는 Tier1 단가로 월 $0.65 수준이고, 잡으려는 대상인
         # ELOG-027 급 루프(+277k/day)보다 두 자릿수 아래라 놓치지 않는다.
+        # 🔴 실사 테스트 중 — 임계 임시 인하 (원래: > 0.05 / 3배 / for 30m). #1181
+        # 현재값은 기준선의 0.5배를 항상 넘으므로 5분 뒤 발동한다.
+        # Discord 비용 채널 수신을 확인한 뒤 **별도 PR로 되돌린다.**
         - alert: S3RequestRateSurge
           expr: |
-            orino:s3_ops:rate30m > 0.05
+            orino:s3_ops:rate30m > 0
             and
-            orino:s3_ops:rate30m > 3 * orino:s3_ops:avg7d
-          for: 30m
+            orino:s3_ops:rate30m > 0.5 * orino:s3_ops:avg7d
+          for: 5m
           labels:
             severity: warning
             category: cost
@@ -114,10 +117,15 @@ spec:
         #
         # 창을 48h 로 잡는 이유: compactor 의 apply_retention_interval 이 24h 라
         # 삭제가 하루 1회 몰아서 난다. 24h 창이면 정상 동작에도 경계에서 깜빡인다.
+        # 🔴 실사 테스트 중 — 비교를 == 0 에서 >= 0 으로 임시 반전 (원래: == 0 / for 1h). #1181
+        # 창을 줄이는 방식(예: [1s])은 표본이 없어 결과 자체가 안 나와 발동하지 않는다.
+        # 비교를 뒤집어야 시리즈가 있는 동안 확실히 발동한다.
+        # ⚠️ 이 상태에서는 알림 문구가 사실과 반대다("48시간간 삭제 0건" — 실제로는 돌고 있다).
+        # Discord 수신과 문구 형태만 확인하고 **별도 PR로 되돌린다.**
         - alert: S3RetentionNotExecuting
           expr: |
-            increase(loki_s3_request_duration_seconds_count{operation="S3.DeleteObject"}[48h]) == 0
-          for: 1h
+            increase(loki_s3_request_duration_seconds_count{operation="S3.DeleteObject"}[48h]) >= 0
+          for: 5m
           labels:
             severity: warning
             category: cost
