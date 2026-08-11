@@ -80,6 +80,11 @@ public class StayBoardAssembler {
         }
         TripStay stay = tonight.get();
         TravelPlace stayPlace = stays.placeOf(stay);
+        // 마지막 일정이 이미 그 숙소면 이동이 없다 — 행도 없다. 억지로 그리면 "이미 그곳인데
+        // 이동하라"가 되고, 같은 좌표라 Routes도 답을 못 줘 결과 없는 호출만 되풀이된다.
+        if (stayPlace != null && travelTimeService.alreadyAt(ordered, stayPlace)) {
+            return null;
+        }
         if (stayPlace == null) {
             // 숙소에 장소가 안 붙어 있으면 좌표도 도시도 없다 — 행만 남긴다.
             return new BoardResponse.StayMove(stay.getId(), true, null, null);

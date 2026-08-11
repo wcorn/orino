@@ -107,8 +107,8 @@ public class TravelTimeService {
             return Optional.empty();
         }
         Located from = located.get(located.size() - 1);
-        Located to = new Located(null, destination.getLat(), destination.getLng(),
-                destination.getCityPlaceRef());
+        Located to = new Located(null, destination.getId(), destination.getLat(),
+                destination.getLng(), destination.getCityPlaceRef());
         if (crossesCity(from, to)) {
             return Optional.of(Move.crossingCity());
         }
@@ -117,6 +117,27 @@ public class TravelTimeService {
                 .map(r -> new Move(mode, Math.round(r.durationSeconds() / 60f), false))
                 // 실패해도 수단은 남긴다 — 거리만 아는 상태와 아무것도 모르는 상태는 다르다.
                 .orElseGet(() -> new Move(mode, null, false)));
+    }
+
+    /**
+     * 그날 <b>마지막 일정이 이미 그 장소인가.</b> 숙소 이동 행(§3.5)이 "이동이 있기는 한가"를
+     * 묻는 자리다.
+     *
+     * <p>비교 대상은 마지막 일정이 아니라 <b>좌표를 가진 마지막 일정</b>이다 — 이동시간이
+     * 출발지로 삼는 것이 그 일정이라, 뒤에 장소 없는 일정("짐 정리")이 끼어도 판정이 밀리면
+     * 안 된다.
+     *
+     * <p>같은 장소끼리는 Routes가 경로를 주지 않아 소요 시간이 비고, 화면은 그것을 "시간을
+     * 모르는 이동"으로 읽어 <b>이미 그곳인 사람에게 이동하라고 말한다.</b> 게다가 실패는
+     * 캐시하지 않으므로 그 날짜를 열 때마다 결과 없는 유료 호출이 되풀이된다 — 여기서
+     * 걸러내면 호출 자체가 사라진다.
+     */
+    public boolean alreadyAt(List<TripActivity> ordered, TravelPlace destination) {
+        List<Located> located = locate(ordered);
+        if (located.isEmpty() || destination.getId() == null) {
+            return false;
+        }
+        return destination.getId().equals(located.get(located.size() - 1).placeId());
     }
 
     /**
@@ -175,8 +196,8 @@ public class TravelTimeService {
             if (place == null || place.getLat() == null || place.getLng() == null) {
                 continue;
             }
-            located.add(new Located(activity.getId(), place.getLat(), place.getLng(),
-                    place.getCityPlaceRef()));
+            located.add(new Located(activity.getId(), place.getId(), place.getLat(),
+                    place.getLng(), place.getCityPlaceRef()));
         }
         return located;
     }
@@ -248,6 +269,7 @@ public class TravelTimeService {
         return value.setScale(5, java.math.RoundingMode.HALF_UP).stripTrailingZeros();
     }
 
-    private record Located(Long activityId, BigDecimal lat, BigDecimal lng, String cityPlaceRef) {
+    private record Located(Long activityId, Long placeId, BigDecimal lat, BigDecimal lng,
+                          String cityPlaceRef) {
     }
 }

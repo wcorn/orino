@@ -9,6 +9,8 @@ import ds.project.orino.domain.planner.travel.repository.TripStayRepository;
 import ds.project.orino.planner.travel.place.StubPlacesClient;
 import ds.project.orino.planner.travel.place.client.PlaceResult;
 import ds.project.orino.planner.travel.place.client.PlacesClient;
+import ds.project.orino.planner.travel.route.StubRoutesClient;
+import ds.project.orino.planner.travel.route.client.RoutesClient;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
@@ -60,8 +62,11 @@ class StayControllerTest extends ApiTestSupport {
     private DbCleaner dbCleaner;
     @Autowired
     private PlacesClient placesClient;
+    @Autowired
+    private RoutesClient routesClient;
 
     private StubPlacesClient placesStub;
+    private StubRoutesClient routesStub;
     private String authHeader;
     private String otherAuthHeader;
     private long tripId;
@@ -72,6 +77,8 @@ class StayControllerTest extends ApiTestSupport {
         dbCleaner.clean();
         placesStub = (StubPlacesClient) placesClient;
         placesStub.reset();
+        routesStub = (StubRoutesClient) routesClient;
+        routesStub.reset();
         memberRepository.save(MemberFixture.create());
         memberRepository.save(MemberFixture.create("other", "password"));
         authHeader = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc);
@@ -366,6 +373,49 @@ class StayControllerTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.stayMove.sameCity").value(false))
                     .andExpect(jsonPath("$.data.stayMove.mode").doesNotExist())
                     .andExpect(jsonPath("$.data.stayMove.durationMinutes").doesNotExist());
+        }
+
+        @Test
+        @DisplayName("마지막 일정이 이미 그 숙소면 이동 행을 만들지 않는다 — 외부 호출도 없다")
+        void noMoveWhenAlreadyAtStay() throws Exception {
+            withCityRef(osaka, "ChIJ_osaka");
+            long hotel = poiInCity("난바 호텔", "ChIJ_osaka");
+            // `일정으로 추가`가 만드는 체크인 일정 — 그 장소가 곧 숙소다.
+            createActivity("난바 호텔 체크인", "2026-10-24", hotel);
+            createStayWithPlace("난바 호텔", "2026-10-24", "2026-10-26", hotel);
+
+            board("2026-10-24")
+                    .andExpect(jsonPath("$.data.stayMove").doesNotExist());
+
+            // 같은 좌표끼리는 Routes가 답을 못 준다. 물어볼 이유가 없다.
+            assertThat(routesStub.calls).isEmpty();
+        }
+
+        @Test
+        @DisplayName("장소 없는 일정이 뒤에 끼어도 판정이 밀리지 않는다")
+        void looksAtLastLocatedActivity() throws Exception {
+            withCityRef(osaka, "ChIJ_osaka");
+            long hotel = poiInCity("난바 호텔", "ChIJ_osaka");
+            createActivity("난바 호텔 체크인", "2026-10-24", hotel);
+            // 좌표가 없어 이동시간 계산에서 건너뛰는 일정이다.
+            createActivityWithoutPlace("짐 정리", "2026-10-24");
+            createStayWithPlace("난바 호텔", "2026-10-24", "2026-10-26", hotel);
+
+            board("2026-10-24")
+                    .andExpect(jsonPath("$.data.stayMove").doesNotExist());
+        }
+
+        @Test
+        @DisplayName("다른 장소에서 숙소로 가는 날은 그대로 계산한다")
+        void stillComputesFromAnotherPlace() throws Exception {
+            withCityRef(osaka, "ChIJ_osaka");
+            createActivity("구로몬 시장", "2026-10-24", poiInCity("구로몬 시장", "ChIJ_osaka"));
+            createStayWithPlace("난바 호텔", "2026-10-24", "2026-10-26",
+                    poiInCity("난바 호텔", "ChIJ_osaka"));
+
+            board("2026-10-24")
+                    .andExpect(jsonPath("$.data.stayMove.sameCity").value(true))
+                    .andExpect(jsonPath("$.data.stayMove.mode").exists());
         }
 
         @Test
