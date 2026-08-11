@@ -84,23 +84,23 @@ spec:
         # 무의미한데 매번 발동한다 — 무시하게 되는 알림은 없는 알림과 같다.
         # 하한 4,320회/day 는 Tier1 단가로 월 $0.65 수준이고, 잡으려는 대상인
         # ELOG-027 급 루프(+277k/day)보다 두 자릿수 아래라 놓치지 않는다.
-        # 🔴 실사 테스트 중 — 임계 임시 인하 (원래: > 0.05 / 3배 / for 30m). #1181
-        # 현재값은 기준선의 0.5배를 항상 넘으므로 5분 뒤 발동한다.
-        # Discord 비용 채널 수신을 확인한 뒤 **별도 PR로 되돌린다.**
         - alert: S3RequestRateSurge
           expr: |
-            orino:s3_ops:rate30m > 0
+            orino:s3_ops:rate30m > 0.05
             and
-            orino:s3_ops:rate30m > 0.5 * orino:s3_ops:avg7d
-          for: 5m
+            orino:s3_ops:rate30m > 3 * orino:s3_ops:avg7d
+          for: 30m
           labels:
             severity: warning
             category: cost
           annotations:
             summary: "S3 요청 급증 — {{ "{{" }} $labels.component {{ "}}" }} {{ "{{" }} $labels.tier {{ "}}" }}"
+            # "일 환산 N회"를 넣으려다 뺐다 — Prometheus 알림 템플릿에는 산술 함수가
+            # 없어서 $value × 86400 을 계산할 수 없다. humanize 를 쓰면 0.180 이
+            # "180.5m"(밀리)로 렌더링돼 실사 테스트에서 "180.5m×86400회"라는
+            # 뜻 모를 문구가 실제로 나갔다. 일 환산 수치는 대시보드에서 본다.
             description: >-
-              7일 평균 대비 3배 이상. 현재 {{ "{{" }} $value | printf "%.3f" {{ "}}" }} ops/s
-              (일 환산 {{ "{{" }} $value | humanize {{ "}}" }}×86400회).
+              7일 평균 대비 3배 이상. 현재 {{ "{{" }} $value | printf "%.4f" {{ "}}" }} ops/s.
               새 폴링 루프나 주기 설정 변경을 의심한다 — 해당 컴포넌트의 interval 플래그부터 본다.
 
         # ELOG-027 재발 감시. 그 실패는 "lifecycle이 없어서"가 아니라
@@ -115,17 +115,29 @@ spec:
         # 객체 수·용량 추이는 대시보드 패널로 계속 본다 — "삭제는 도는데 증가를
         # 못 따라가는" 경우는 눈으로 잡는다.
         #
+        # sum() 과 `or vector(0)` 두 가지는 실사 테스트(#1181)에서 드러난 결함을 고친 것이다.
+        #
+        # 1) sum() — 원시 메트릭을 그대로 쓰면 파드·인스턴스 라벨 11개(cluster·container·
+        #    endpoint·instance·job·namespace·operation·pod·prometheus·service·status_code)가
+        #    Discord 메시지에 그대로 붙는다. 실제로 그렇게 나갔다. 이 알림은 "삭제가
+        #    도는가" 하나만 말하면 되므로 전부 합친다.
+        #
+        # 2) `or vector(0)` — 이게 없으면 **정작 필요할 때 침묵한다.** `== 0` 은 시리즈가
+        #    존재해야 매칭된다. Loki 가 재시작한 뒤 삭제를 한 번도 안 하면 DeleteObject
+        #    시리즈 자체가 없어서 비교 대상이 사라진다 — retention 이 완전히 죽은
+        #    상황이 바로 이 알림이 있어야 할 상황인데 그때 안 울린다.
+        #    부재를 0 으로 바꿔야 "없음"도 잡힌다.
+        #    (Loki 가 통째로 죽어도 발동한다. retention 이 안 도는 건 사실이므로 맞다.)
+        #
         # 창을 48h 로 잡는 이유: compactor 의 apply_retention_interval 이 24h 라
         # 삭제가 하루 1회 몰아서 난다. 24h 창이면 정상 동작에도 경계에서 깜빡인다.
-        # 🔴 실사 테스트 중 — 비교를 == 0 에서 >= 0 으로 임시 반전 (원래: == 0 / for 1h). #1181
-        # 창을 줄이는 방식(예: [1s])은 표본이 없어 결과 자체가 안 나와 발동하지 않는다.
-        # 비교를 뒤집어야 시리즈가 있는 동안 확실히 발동한다.
-        # ⚠️ 이 상태에서는 알림 문구가 사실과 반대다("48시간간 삭제 0건" — 실제로는 돌고 있다).
-        # Discord 수신과 문구 형태만 확인하고 **별도 PR로 되돌린다.**
         - alert: S3RetentionNotExecuting
           expr: |
-            increase(loki_s3_request_duration_seconds_count{operation="S3.DeleteObject"}[48h]) >= 0
-          for: 5m
+            (
+              sum(increase(loki_s3_request_duration_seconds_count{operation="S3.DeleteObject"}[48h]))
+              or vector(0)
+            ) == 0
+          for: 1h
           labels:
             severity: warning
             category: cost
