@@ -28,6 +28,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -186,6 +187,62 @@ class MorningSummaryTest extends ApiTestSupport {
     }
 
     @Nested
+    @DisplayName("도시가 바뀌는 날 (v2.1 §3.6)")
+    class CityChange {
+
+        @Test
+        @DisplayName("도시가 바뀌는 날은 전날 도시의 08:00에 보낸다 — 그 시각엔 아직 거기 있다")
+        void sendsAtPreviousCityMorning() throws Exception {
+            createTwoCityTrip();
+
+            // 1/3이 방콕 첫날이다. 방콕 08:00(01:00Z)이 아니라 도쿄 08:00이어야 한다.
+            assertThat(morningAt("2020-01-03")).isEqualTo(Instant.parse("2020-01-02T23:00:00Z"));
+        }
+
+        @Test
+        @DisplayName("도시가 그대로인 날은 그날 도시의 08:00이다")
+        void sendsAtOwnCityMorning() throws Exception {
+            createTwoCityTrip();
+
+            assertThat(morningAt("2020-01-02")).isEqualTo(Instant.parse("2020-01-01T23:00:00Z"));
+        }
+
+        @Test
+        @DisplayName("첫날은 바뀐 것이 아니다 — 비교할 앞 날짜가 없다")
+        void firstDayIsNotAChange() throws Exception {
+            createTwoCityTrip();
+
+            assertThat(morningAt("2020-01-01")).isEqualTo(Instant.parse("2019-12-31T23:00:00Z"));
+        }
+
+        @Test
+        @DisplayName("기준 도시를 바꾸면 다음 날짜 요약까지 다시 잡힌다")
+        void reschedulesFollowingDay() throws Exception {
+            long tripId = createTwoCityTrip();
+            // 1/3은 도쿄 → 방콕 이동일이라 도쿄 08:00에 잡혀 있다.
+            assertThat(morningAt("2020-01-03")).isEqualTo(Instant.parse("2020-01-02T23:00:00Z"));
+
+            // 1/2도 방콕으로 바꾸면 1/3은 더 이상 이동일이 아니다.
+            changeBaseCity(dayIdOf(tripId, "2020-01-02"), bangkokCityId());
+
+            // 바꾼 날짜가 아니라 그 다음 날짜의 발송 시각이 달라진다 — 방콕 08:00(01:00Z).
+            assertThat(morningAt("2020-01-03")).isEqualTo(Instant.parse("2020-01-03T01:00:00Z"));
+        }
+
+        @Test
+        @DisplayName("기준 도시를 바꿔도 요약이 두 벌 남지 않는다")
+        void doesNotLeaveDuplicates() throws Exception {
+            long tripId = createTwoCityTrip();
+
+            changeBaseCity(dayIdOf(tripId, "2020-01-02"), bangkokCityId());
+
+            assertThat(morningNotifications().stream()
+                    .filter(n -> n.getStatus() == NotificationStatus.PENDING).toList())
+                    .hasSize(3);
+        }
+    }
+
+    @Nested
     @DisplayName("발송")
     class Dispatch {
 
@@ -200,6 +257,30 @@ class MorningSummaryTest extends ApiTestSupport {
 
             assertThat(stub.sent).anySatisfy(s -> assertThat(s.payload())
                     .contains("오늘 일정 2개 · 첫 일정 09:00 숙소 체크아웃"));
+        }
+
+        @Test
+        @DisplayName("도시명을 앞에 붙인다 — 어느 도시의 하루인지가 첫 정보다")
+        void prefixesCityName() throws Exception {
+            long tripId = createTrip(true);
+            addActivity(tripId, "숙소 체크아웃", "2020-01-01", "09:00");
+
+            dispatchService.dispatchDue();
+
+            assertThat(stub.sent).anySatisfy(s -> assertThat(s.payload())
+                    .contains("도쿄 · 오늘 일정 1개 · 첫 일정 09:00 숙소 체크아웃"));
+        }
+
+        @Test
+        @DisplayName("도시가 바뀌는 날은 `도쿄 → 방콕` 꼴로 말한다 — 그날 가장 큰 사건이다")
+        void tellsCityMoveOnChangeDay() throws Exception {
+            long tripId = createTwoCityTrip();
+            addActivity(tripId, "공항 이동", "2020-01-03", "10:00");
+
+            dispatchService.dispatchDue();
+
+            assertThat(stub.sent).anySatisfy(s -> assertThat(s.payload())
+                    .contains("도쿄 → 방콕 · 오늘 일정 1개"));
         }
 
         @Test
@@ -255,6 +336,63 @@ class MorningSummaryTest extends ApiTestSupport {
 
     private long tokyoCityId() throws Exception {
         return TravelCityFixture.createCity(mockMvc, authHeader, "도쿄", "Asia/Tokyo", "JPY");
+    }
+
+    /**
+     * 도쿄(+9) 2일 → 방콕(+7) 1일.
+     *
+     * <p><b>타임존이 실제로 다른 두 도시</b>라야 "전날 도시 08:00"이 관찰된다 — 오사카·교토는
+     * 둘 다 {@code Asia/Tokyo}여서 규칙이 맞든 틀리든 같은 순간이 나온다.
+     */
+    private long createTwoCityTrip() throws Exception {
+        long tokyo = tokyoCityId();
+        long bangkok = TravelCityFixture.createCity(
+                mockMvc, authHeader, "방콕", "Asia/Bangkok", "THB");
+        String body = mockMvc.perform(post("/api/travel/trips")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "동남아",
+                                 "startDate": "2020-01-01", "endDate": "2020-01-03",
+                                 "legs": [{"cityPlaceId": %d, "days": 2},
+                                          {"cityPlaceId": %d, "days": 1}],
+                                 "morningSummaryEnabled": true}
+                                """.formatted(tokyo, bangkok)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();
+    }
+
+    private long bangkokCityId() throws Exception {
+        return TravelCityFixture.createCity(mockMvc, authHeader, "방콕2", "Asia/Bangkok", "THB");
+    }
+
+    /** 그 날짜의 대기 중 아침 요약 예약 시각. */
+    private Instant morningAt(String date) {
+        return morningNotifications().stream()
+                .filter(n -> n.getStatus() == NotificationStatus.PENDING)
+                .filter(n -> n.getTargetDate().toString().equals(date))
+                .findFirst()
+                .orElseThrow()
+                .getScheduledAt();
+    }
+
+    private long dayIdOf(long tripId, String date) throws Exception {
+        String body = mockMvc.perform(get("/api/travel/trips/" + tripId + "/days")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        List<Integer> ids = com.jayway.jsonpath.JsonPath.read(
+                body, "$.data[?(@.date=='" + date + "')].dayId");
+        return ids.get(0).longValue();
+    }
+
+    private void changeBaseCity(long dayId, long cityPlaceId) throws Exception {
+        mockMvc.perform(put("/api/travel/days/" + dayId)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"baseCityPlaceId\": %d}".formatted(cityPlaceId)))
+                .andExpect(status().isOk());
     }
 
 }

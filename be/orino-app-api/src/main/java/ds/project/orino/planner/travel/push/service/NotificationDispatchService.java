@@ -6,8 +6,10 @@ import ds.project.orino.domain.planner.push.entity.PushNotification;
 import ds.project.orino.domain.planner.push.entity.PushSubscription;
 import ds.project.orino.domain.planner.push.repository.PushNotificationRepository;
 import ds.project.orino.domain.planner.push.repository.PushSubscriptionRepository;
+import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.entity.TripActivity;
 import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
+import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.push.send.WebPushSender;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,6 +19,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,6 +38,7 @@ public class NotificationDispatchService {
     private final PushNotificationRepository notificationRepository;
     private final PushSubscriptionRepository subscriptionRepository;
     private final TripActivityRepository activityRepository;
+    private final TripDayService tripDayService;
     private final WebPushSender sender;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -42,12 +46,14 @@ public class NotificationDispatchService {
     public NotificationDispatchService(PushNotificationRepository notificationRepository,
                                        PushSubscriptionRepository subscriptionRepository,
                                        TripActivityRepository activityRepository,
+                                       TripDayService tripDayService,
                                        WebPushSender sender,
                                        ObjectMapper objectMapper,
                                        Clock clock) {
         this.notificationRepository = notificationRepository;
         this.subscriptionRepository = subscriptionRepository;
         this.activityRepository = activityRepository;
+        this.tripDayService = tripDayService;
         this.sender = sender;
         this.objectMapper = objectMapper;
         this.clock = clock;
@@ -133,22 +139,46 @@ public class NotificationDispatchService {
      * <p>0건이면 빈 값이라 호출부가 예약을 접는다.
      */
     private Optional<String> morningSummaryPayload(PushNotification notification) {
+        LocalDate date = notification.getTargetDate();
         List<TripActivity> ordered = activityRepository
                 .findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(
-                        notification.getTripId(), notification.getTargetDate());
+                        notification.getTripId(), date);
         if (ordered.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(json("오늘 일정", summaryBody(ordered),
-                boardPath(notification), "morning-" + notification.getTargetDate()));
+        Map<LocalDate, TravelPlace> cities =
+                tripDayService.baseCitiesOf(notification.getTripId());
+        return Optional.of(json("오늘 일정", summaryBody(ordered, date, cities),
+                boardPath(notification), "morning-" + date));
     }
 
-    /** {@code 오늘 일정 4개 · 첫 일정 09:00 숙소 체크아웃} — 시각이 없으면 제목만 붙인다. */
-    private static String summaryBody(List<TripActivity> ordered) {
+    /**
+     * {@code 교토 · 오늘 일정 4개 · 첫 일정 09:00 숙소 체크아웃} — 시각이 없으면 제목만 붙인다.
+     *
+     * <p><b>도시가 바뀌는 날은 {@code 오사카 → 교토 · 오늘 일정 3개}</b>(v2.1 §3.6). 그날 가장
+     * 중요한 사실이 "어디로 옮긴다"라서 앞자리를 그것에 내주고, 첫 일정은 접는다 — 알림 본문은
+     * 한 줄이고 도시 두 개가 이미 그 줄을 채운다.
+     */
+    private static String summaryBody(List<TripActivity> ordered, LocalDate date,
+                                      Map<LocalDate, TravelPlace> cities) {
+        String count = "오늘 일정 %d개".formatted(ordered.size());
+        if (MorningCity.changesOn(date, cities)) {
+            return "%s → %s · %s".formatted(cityName(cities.get(date.minusDays(1))),
+                    cityName(cities.get(date)), count);
+        }
         TripActivity first = ordered.get(0);
         String when = first.getStartTime() == null ? "" : first.getStartTime() + " ";
-        return "오늘 일정 %d개 · 첫 일정 %s%s"
-                .formatted(ordered.size(), when, first.getTitle());
+        String body = "%s · 첫 일정 %s%s".formatted(count, when, first.getTitle());
+        TravelPlace today = cities.get(date);
+        // 도시를 모르면 접두를 붙이지 않는다 — `도시 없음 · …`은 알려주는 게 아니라 거슬린다.
+        return today == null ? body : "%s · %s".formatted(cityName(today), body);
+    }
+
+    private static String cityName(TravelPlace city) {
+        if (city == null) {
+            return "";
+        }
+        return city.getCityName() != null ? city.getCityName() : city.getName();
     }
 
     /** 특정 일정이 아니라 <b>그날 보드</b>로 보낸다 — 요약이 가리키는 것은 하루 전체다. */
