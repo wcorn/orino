@@ -61,3 +61,17 @@ export function defaultCurrency(tripCurrency: string | undefined): Currency {
     ? (code as Currency)
     : CURRENCIES[0];
 }
+
+/**
+ * <b>여행에 등장하는 통화를 먼저</b>, 그다음 나머지(§3.7).
+ *
+ * <p>고를 일이 가장 많은 것이 지금 가는 나라들의 통화다. 목록 밖 통화(TWD 등)는 조용히
+ * 빠진다 — 고를 수 있게 두면 서버가 거절하고 사용자는 이유를 모른다.
+ */
+export function orderedCurrencies(tripCurrencies: string[]): Currency[] {
+  const first = tripCurrencies
+    .map((code) => code.toUpperCase())
+    .filter((code): code is Currency => CURRENCIES.includes(code as Currency));
+  const seen = new Set(first);
+  return [...new Set(first), ...CURRENCIES.filter((code) => !seen.has(code))];
+}

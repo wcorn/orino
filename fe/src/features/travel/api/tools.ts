@@ -10,6 +10,11 @@ export type WeatherIcon = "CLEAR" | "CLOUD" | "RAIN" | "SNOW";
 
 export interface DailyWeather {
   date: string;
+  /**
+   * (v2.1) 그 날짜의 기준 도시. 날짜마다 다른 도시의 예보가 섞여 오므로 어느 도시 것인지가
+   * 값과 함께 다닌다 — 날짜만 보고 짐작하면 도쿄 예보에 `교토`를 붙이게 된다.
+   */
+  cityName: string | null;
   icon: WeatherIcon;
   tempMax: number | null;
   tempMin: number | null;

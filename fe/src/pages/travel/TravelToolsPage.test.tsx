@@ -73,6 +73,89 @@ function mockWeather(daily: unknown[], hourly: Record<string, unknown[]> = {}) {
   );
 }
 
+/**
+ * 오늘(또는 첫날) 기준 도시를 정하는 것은 <b>보드</b>다 — 여행 상세의 통화·타임존은 첫날
+ * 도시에서 파생된 값이라 도시를 옮긴 날짜에서 조용히 틀린다.
+ */
+function mockBoardCity(city: {
+  name: string;
+  currency: string;
+  countryCode: string;
+  timezone: string;
+}) {
+  server.use(
+    http.get(`${API_BASE}/travel/trips/:tripId/board`, () =>
+      HttpResponse.json({
+        code: "OK",
+        data: {
+          trip: {
+            id: 3,
+            title: "일본",
+            startDate: "2026-10-24",
+            endDate: "2026-10-25",
+            status: "ONGOING",
+            recordMode: false,
+            cityCount: 2,
+            countryCount: 2,
+            singleCity: false,
+          },
+          days: [
+            {
+              dayId: 1,
+              dayIndex: 1,
+              date: "2026-10-24",
+              weekday: "토",
+              activityCount: 0,
+              baseCity: {
+                placeId: 21,
+                name: "도쿄",
+                timezone: "Asia/Tokyo",
+                currency: "JPY",
+                countryCode: "JP",
+                cityPlaceRef: "ChIJ_tokyo",
+                lat: null,
+                lng: null,
+              },
+              cityChanged: false,
+              legIndex: 1,
+              cityMemo: null,
+              weather: null,
+              stayTonight: null,
+              stayCheckout: null,
+            },
+            {
+              dayId: 2,
+              dayIndex: 2,
+              date: "2026-10-25",
+              weekday: "일",
+              activityCount: 0,
+              baseCity: {
+                placeId: 22,
+                ...city,
+                cityPlaceRef: "ChIJ_other",
+                lat: null,
+                lng: null,
+              },
+              cityChanged: true,
+              legIndex: 2,
+              cityMemo: null,
+              weather: null,
+              stayTonight: null,
+              stayCheckout: null,
+            },
+          ],
+          // 오늘이 2일차다 — 서버가 진행 중 여행의 오늘을 골라 준다.
+          selectedDate: "2026-10-25",
+          archiveCount: 0,
+          activities: [],
+          travelTimes: [],
+          stayMove: null,
+        },
+      }),
+    ),
+  );
+}
+
 function renderTools() {
   return renderWithRouter(
     <Providers>
@@ -249,7 +332,9 @@ describe("TravelToolsPage", () => {
       renderTools();
 
       expect(
-        await screen.findByText("Open-Meteo · CC BY 4.0"),
+        await screen.findByText(
+          "도시별로 따로 조회해요 · Open-Meteo · CC BY 4.0",
+        ),
       ).toBeInTheDocument();
     });
   });
@@ -269,6 +354,112 @@ describe("TravelToolsPage", () => {
         "_blank",
         "noopener",
       );
+    });
+  });
+
+  describe("오늘 도시를 따라간다 (§3.7)", () => {
+    const BANGKOK = {
+      name: "방콕",
+      currency: "THB",
+      countryCode: "TH",
+      timezone: "Asia/Bangkok",
+    };
+
+    it("기본 통화는 첫날이 아니라 오늘 도시의 것이다", async () => {
+      const calls: URL[] = [];
+      server.use(
+        http.get(`${API_BASE}/travel/fx`, ({ request }) => {
+          calls.push(new URL(request.url));
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              base: "THB",
+              quote: "KRW",
+              rate: 38.5,
+              source: "ECB",
+              referenceDate: "2026-08-07",
+              fetchedAt: "2026-08-08T00:00:00Z",
+            },
+          });
+        }),
+      );
+      mockBoardCity(BANGKOK);
+
+      renderTools();
+
+      // 여행 상세는 JPY(첫날 도쿄)라고 말한다. 오늘은 방콕이다.
+      await waitFor(() =>
+        expect(calls[calls.length - 1]?.searchParams.get("base")).toBe("THB"),
+      );
+    });
+
+    it("기준 도시 칩이 어느 도시의 통화인지 말한다", async () => {
+      mockBoardCity(BANGKOK);
+
+      renderTools();
+
+      expect(await screen.findByText("방콕 · THB")).toBeInTheDocument();
+    });
+
+    it("통화 목록은 여행에 등장하는 통화가 먼저다", async () => {
+      mockBoardCity(BANGKOK);
+
+      renderTools();
+      await screen.findByText("방콕 · THB");
+      await userEvent.click(
+        screen.getByRole("combobox", { name: "기준 통화" }),
+      );
+
+      const options = (await screen.findAllByRole("option")).map(
+        (o) => o.textContent,
+      );
+      // 도쿄(JPY)·방콕(THB)이 앞줄에 선다. 순서는 구간 순서를 따른다.
+      expect(options.slice(0, 2)).toEqual(["JPY · 일본 엔", "THB · 태국 바트"]);
+    });
+
+    it("번역 목적 언어는 기준 도시 국가를 따라간다", async () => {
+      const open = vi.spyOn(window, "open").mockImplementation(() => null);
+      mockBoardCity(BANGKOK);
+
+      renderTools();
+      await screen.findByText("방콕 · THB");
+      await userEvent.click(
+        screen.getByRole("button", { name: /구글 번역 열기/ }),
+      );
+
+      // 타임존만 보면 Asia/Bangkok → th로 같지만, 국가가 언어를 정하는 것이 규칙이다.
+      expect(open).toHaveBeenCalledWith(
+        expect.stringContaining("tl=th"),
+        "_blank",
+        "noopener",
+      );
+      open.mockRestore();
+    });
+
+    it("날씨 행에 그날 도시명이 붙는다", async () => {
+      mockWeather([
+        {
+          date: "2026-10-24",
+          cityName: "도쿄",
+          icon: "CLEAR",
+          tempMax: 20,
+          tempMin: 13,
+          precipProbability: 10,
+        },
+        {
+          date: "2026-10-25",
+          cityName: "닛코",
+          icon: "RAIN",
+          tempMax: 9,
+          tempMin: 3,
+          precipProbability: 80,
+        },
+      ]);
+
+      renderTools();
+
+      expect(await screen.findByText("도쿄")).toBeInTheDocument();
+      expect(screen.getByText("닛코")).toBeInTheDocument();
     });
   });
 

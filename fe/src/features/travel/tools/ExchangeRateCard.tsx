@@ -1,4 +1,4 @@
-import { ArrowRightLeft } from "lucide-react";
+import { ArrowRightLeft, MapPin } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -7,9 +7,9 @@ import { LoadingText } from "@/components/ui/loading-text";
 import { Select } from "@/components/ui/select";
 import type { ExchangeRate } from "@/features/travel/api/tools";
 import {
-  CURRENCIES,
   type Currency,
   currencyName,
+  orderedCurrencies,
 } from "@/features/travel/tools/currencies";
 import {
   convert,
@@ -23,12 +23,11 @@ interface ExchangeRateCardProps {
   online: boolean;
   currency: Currency;
   onCurrencyChange: (currency: Currency) => void;
+  /** 지금 기준으로 삼는 도시. 어느 도시의 통화인지 화면이 말한다(§9.5). */
+  cityName?: string | null;
+  /** 이 여행에 등장하는 통화 — 목록 맨 앞으로 올린다. */
+  tripCurrencies?: string[];
 }
-
-const CURRENCY_OPTIONS = CURRENCIES.map((code) => ({
-  value: code,
-  label: `${code} · ${currencyName(code)}`,
-}));
 
 /** 현지에서 자주 쓰는 액수(§1.8). */
 const PRESETS = [1000, 5000, 10000];
@@ -43,11 +42,18 @@ export function ExchangeRateCard({
   rate,
   loading,
   online,
+  cityName,
+  tripCurrencies = [],
   currency,
   onCurrencyChange,
 }: ExchangeRateCardProps) {
   const [baseInput, setBaseInput] = useState("");
   const [quoteInput, setQuoteInput] = useState("");
+  // 여행에 등장하는 통화가 먼저 — 고를 일이 가장 많은 것이 지금 가는 나라들의 돈이다.
+  const currencyOptions = orderedCurrencies(tripCurrencies).map((code) => ({
+    value: code,
+    label: `${code} · ${currencyName(code)}`,
+  }));
 
   // 환율이 바뀌면(통화 변경·재조회) 계산을 다시 맞춘다.
   useEffect(() => {
@@ -76,7 +82,15 @@ export function ExchangeRateCard({
   return (
     <section className="border-border bg-card flex flex-col gap-3 rounded-xl border p-4">
       <div className="flex items-center gap-2">
-        <h2 className="text-heading flex-1 font-medium">환율</h2>
+        <h2 className="text-heading font-medium">환율</h2>
+        {/* 어느 도시를 기준으로 잡았는지 말한다 — 다구간에서는 날마다 달라진다. */}
+        {cityName && (
+          <span className="bg-muted text-muted-foreground flex shrink-0 items-center gap-1 rounded-full px-2.5 py-[3px] text-xs">
+            <MapPin className="size-[11px] shrink-0" />
+            {cityName} · {currency}
+          </span>
+        )}
+        <span className="flex-1" />
         {/* 캐시된 값이라는 걸 숨기지 않는다 — 환율은 돈이 걸린 숫자다. */}
         {!online && <Badge variant="secondary">최신 아님</Badge>}
         {/* 여행 통화가 기본이지만 경유지에서 다른 돈을 쓰기도 한다. */}
@@ -86,7 +100,7 @@ export function ExchangeRateCard({
         <Select
           value={currency}
           onValueChange={onCurrencyChange}
-          options={CURRENCY_OPTIONS}
+          options={currencyOptions}
           ariaLabelledby="fx-currency-label"
           disabled={!online}
         />

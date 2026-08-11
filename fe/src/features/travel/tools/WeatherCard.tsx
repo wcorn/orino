@@ -50,9 +50,15 @@ export function WeatherCard({ forecast, loading }: WeatherCardProps) {
                       day.date === activeDate ? "bg-muted" : "hover:bg-muted"
                     }`}
                   >
-                    <span className="w-[74px] shrink-0 text-[13px]">
+                    <span className="w-[38px] shrink-0 text-[13px] tabular-nums">
                       {day.date.slice(5)}
                     </span>
+                    {/* 도시명은 값과 함께 온다(§3.7) — 날짜마다 다른 도시의 예보다. */}
+                    {day.cityName && (
+                      <span className="text-muted-foreground w-[66px] shrink-0 truncate text-[13px]">
+                        {day.cityName}
+                      </span>
+                    )}
                     <Icon
                       className={`size-4 shrink-0 ${alert ? "text-warning" : "text-muted-foreground"}`}
                     />
@@ -97,7 +103,9 @@ export function WeatherCard({ forecast, loading }: WeatherCardProps) {
       )}
 
       {/* Open-Meteo는 출처 표기가 필수다. 데이터가 없어도 남긴다. */}
-      <p className="text-muted-foreground text-xs">Open-Meteo · CC BY 4.0</p>
+      <p className="text-muted-foreground text-xs">
+        도시별로 따로 조회해요 · Open-Meteo · CC BY 4.0
+      </p>
     </section>
   );
 }

@@ -157,7 +157,9 @@ describe("TravelSettingsPage", () => {
 
       expect(await screen.findByText("아침 요약 알림")).toBeInTheDocument();
       expect(
-        screen.getByText("여행 기간 중 매일 현지 08:00"),
+        screen.getByText(
+          "그날 기준 도시의 현지 08:00 · 도시가 바뀌는 날은 전날 도시 08:00",
+        ),
       ).toBeInTheDocument();
       // 어느 여행에 적용되는지 밝힌다 — 설정이 여행 단위라서다.
       expect(screen.getByText(/도쿄 3박 4일에 적용됩니다/)).toBeInTheDocument();
@@ -190,6 +192,31 @@ describe("TravelSettingsPage", () => {
       });
       // 구간은 보내지 않는다 — 알림 스위치 하나가 날짜별 기준 도시를 되감으면 안 된다.
       expect(bodies[0]).not.toHaveProperty("legs");
+    });
+
+    it("켜져 있으면 어떤 요약이 오는지 미리 보여준다", async () => {
+      mockSummary();
+      mockPublicKey("key");
+      // 미리보기는 켜져 있을 때만 나온다 — 끈 사람에게 보여줄 이유가 없다.
+      server.use(
+        http.get(`${API_BASE}/travel/trips/:tripId`, () =>
+          HttpResponse.json({
+            code: "OK",
+            data: { ...TRIP, morningSummaryEnabled: true },
+          }),
+        ),
+      );
+
+      renderSettings();
+      await screen.findByText("아침 요약 알림");
+
+      // 문구만으로는 두 형태가 그려지지 않는다.
+      expect(
+        screen.getByText("교토 · 오늘 일정 4개 · 첫 일정 09:00"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("오사카 → 교토 · 오늘 일정 3개"),
+      ).toBeInTheDocument();
     });
 
     it("여행이 없으면 설정할 것이 없다고 알린다", async () => {

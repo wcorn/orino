@@ -6,8 +6,10 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { LoadingText } from "@/components/ui/loading-text";
 import { fetchExchangeRate, fetchWeather } from "@/features/travel/api/tools";
+import { useBoard } from "@/features/travel/hooks/useBoard";
 import { useTravelSummary } from "@/features/travel/hooks/useTravelSummary";
 import { useTrip } from "@/features/travel/hooks/useTrip";
+import { cityOn, tripCities } from "@/features/travel/lib/baseCity";
 import { travelKeys } from "@/features/travel/queryKeys";
 import {
   type Currency,
@@ -40,6 +42,21 @@ export function TravelToolsPage() {
     : (summary?.ongoing?.id ?? summary?.next?.id ?? null);
 
   const { data: trip, isPending: loadingTrip } = useTrip(tripId);
+  /**
+   * 그날의 보드 — <b>오늘 어느 도시에 있는지</b>가 여기에만 있다. 날짜를 지정하지 않으면
+   * 서버가 진행 중일 때 오늘을, 아니면 1일차를 고른다(§4.1).
+   *
+   * <p>여행 상세의 {@code trip.currency}·{@code trip.timezone}으로는 안 된다 — 서버가
+   * <b>첫날</b> 기준 도시에서 파생해 채워 준 값이라, 교토에 있는 날에도 오사카의 통화·언어를
+   * 말한다. 같은 엔·같은 나라라 눈에 안 띌 뿐이고 국가를 넘으면 곧바로 틀린다.
+   */
+  const { data: board } = useBoard(
+    tripId ?? 0,
+    {},
+    { enabled: tripId !== null },
+  );
+  /** 오늘(또는 첫날) 기준 도시. 통화·언어·칩이 전부 여기서 나온다. */
+  const todayCity = cityOn(board?.days ?? [], board?.selectedDate ?? "");
 
   const { data: weather, isPending: loadingWeather } = useQuery({
     queryKey: travelKeys.weather(tripId ?? 0),
@@ -49,14 +66,14 @@ export function TravelToolsPage() {
     staleTime: 30 * 60 * 1000,
   });
 
-  // 여행 통화가 기본이되 바꿀 수 있다 — 경유지에서 다른 돈을 쓰기도 한다.
+  // 오늘 도시의 통화가 기본이되 바꿀 수 있다 — 경유지에서 다른 돈을 쓰기도 한다.
   const [currency, setCurrency] = useState<Currency>(() =>
-    defaultCurrency(trip?.currency),
+    defaultCurrency(todayCity?.currency),
   );
-  // 여행이 늦게 도착하거나(로딩) 다른 여행으로 바뀌면 그 여행 통화로 다시 맞춘다.
+  // 보드가 늦게 도착하거나(로딩) 다른 여행으로 바뀌면 그 도시 통화로 다시 맞춘다.
   useEffect(() => {
-    setCurrency(defaultCurrency(trip?.currency));
-  }, [trip?.currency]);
+    setCurrency(defaultCurrency(todayCity?.currency));
+  }, [todayCity?.currency]);
 
   const { data: rate, isPending: loadingRate } = useQuery({
     queryKey: travelKeys.fx(currency, HOME_CURRENCY),
@@ -99,6 +116,10 @@ export function TravelToolsPage() {
             online={online}
             currency={currency}
             onCurrencyChange={setCurrency}
+            cityName={todayCity?.name}
+            tripCurrencies={tripCities(board?.days ?? []).map(
+              (c) => c.currency,
+            )}
           />
           <WeatherCard forecast={weather ?? null} loading={loadingWeather} />
 
@@ -111,7 +132,15 @@ export function TravelToolsPage() {
             <Button
               variant="outline"
               onClick={() =>
-                window.open(translateUrl(trip.timezone), "_blank", "noopener")
+                window.open(
+                  // 목적 언어는 기준 도시 <b>국가</b>를 따라간다(§3.7).
+                  translateUrl(
+                    todayCity?.timezone ?? trip.timezone,
+                    todayCity?.countryCode,
+                  ),
+                  "_blank",
+                  "noopener",
+                )
               }
             >
               <Languages className="size-4" />

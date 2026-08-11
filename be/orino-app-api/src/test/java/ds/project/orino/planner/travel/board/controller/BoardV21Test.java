@@ -476,8 +476,8 @@ class BoardV21Test extends ApiTestSupport {
 
     private static WeatherResponse forecast(LocalDate from, int tempMax) {
         List<WeatherResponse.DailyWeather> daily = List.of(
-                new WeatherResponse.DailyWeather(from, WeatherIcon.CLEAR, tempMax, 5, 10),
-                new WeatherResponse.DailyWeather(from.plusDays(1), WeatherIcon.CLEAR,
+                new WeatherResponse.DailyWeather(from, null, WeatherIcon.CLEAR, tempMax, 5, 10),
+                new WeatherResponse.DailyWeather(from.plusDays(1), null, WeatherIcon.CLEAR,
                         tempMax, 5, 10));
         return new WeatherResponse(WeatherResponse.SOURCE, WeatherResponse.LICENSE,
                 java.time.Instant.now(), daily, java.util.Map.of());

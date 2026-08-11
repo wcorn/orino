@@ -17,11 +17,11 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * 여행 기간의 날씨(§S-08).
@@ -74,17 +74,39 @@ public class WeatherService {
      */
     public Map<LocalDate, WeatherResponse.DailyWeather> dailyByDate(
             Trip trip, Map<LocalDate, TravelPlace> cities) {
-        Map<Long, WeatherResponse> byCity = new HashMap<>();
         Map<LocalDate, WeatherResponse.DailyWeather> byDate = new HashMap<>();
-
-        cities.forEach((date, city) -> {
-            WeatherResponse forecast = byCity.computeIfAbsent(city.getId(), id -> forecastOf(city));
-            forecast.daily().stream()
-                    .filter(day -> day.date().equals(date))
-                    .findFirst()
-                    .ifPresent(day -> byDate.put(date, day));
-        });
+        walkByCity(cities, (date, city, forecast) -> dayOf(forecast, date)
+                .ifPresent(day -> byDate.put(date, day.in(cityNameOf(city)))));
         return byDate;
+    }
+
+    /**
+     * 날짜를 순서대로 훑으며 <b>그날 기준 도시의 예보</b>를 넘긴다. 도시별로 한 번만
+     * 조회하도록 여기서 묶는다 — 도쿄 → 닛코 → 도쿄는 2회다.
+     */
+    private void walkByCity(Map<LocalDate, TravelPlace> cities, DayForecast consumer) {
+        Map<Long, WeatherResponse> byCity = new HashMap<>();
+        cities.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> {
+                    TravelPlace city = entry.getValue();
+                    consumer.accept(entry.getKey(), city,
+                            byCity.computeIfAbsent(city.getId(), id -> forecastOf(city)));
+                });
+    }
+
+    private interface DayForecast {
+        void accept(LocalDate date, TravelPlace city, WeatherResponse forecast);
+    }
+
+    private static Optional<WeatherResponse.DailyWeather> dayOf(WeatherResponse forecast,
+                                                                LocalDate date) {
+        return forecast.daily().stream().filter(day -> day.date().equals(date)).findFirst();
+    }
+
+    /** 도시 표시명. 도시 장소는 자기 이름이 곧 도시명이라 비어 있으면 이름으로 떨어진다. */
+    private static String cityNameOf(TravelPlace city) {
+        return city.getCityName() != null ? city.getCityName() : city.getName();
     }
 
     /** 그 도시의 예보. 좌표가 없으면 조회 자체를 하지 않는다. */
@@ -95,25 +117,25 @@ public class WeatherService {
         return cached(city);
     }
 
-    /** 도구 화면(§S-08)이 쓰는 여행 단위 예보. 지금은 첫날 기준 도시로 본다. */
+    /**
+     * 도구 화면(§S-08)이 쓰는 여행 단위 예보. <b>날짜마다 그날 기준 도시로 본다</b>(v2.1 §3.7).
+     *
+     * <p>첫날 도시 하나로 보면 다구간 여행에서 교토 날짜에 도쿄 날씨가 뜬다 — 같은 나라
+     * 안에서도 산간·해안은 몇 도씩 갈린다. 날짜 목록이 곧 기간이라 따로 잘라낼 것도 없다.
+     */
     private WeatherResponse forecastOf(Trip trip) {
-        return clampToTrip(forecastOf(tripDayService.primaryCity(trip.getId())), trip);
-    }
+        List<WeatherResponse.DailyWeather> daily = new ArrayList<>();
+        Map<LocalDate, List<WeatherResponse.HourlyWeather>> hourly = new HashMap<>();
 
-    /** 예보 전체에서 <b>여행 기간</b>만 남긴다. 그 밖의 날짜는 화면이 쓸 일이 없다. */
-    private static WeatherResponse clampToTrip(WeatherResponse forecast, Trip trip) {
-        List<WeatherResponse.DailyWeather> daily = forecast.daily().stream()
-                .filter(day -> !day.date().isBefore(trip.getStartDate())
-                        && !day.date().isAfter(trip.getEndDate()))
-                .toList();
-        Map<LocalDate, List<WeatherResponse.HourlyWeather>> hourly = forecast.hourly().entrySet()
-                .stream()
-                .filter(entry -> !entry.getKey().isBefore(trip.getStartDate())
-                        && !entry.getKey().isAfter(trip.getEndDate()))
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-
-        return new WeatherResponse(forecast.source(), forecast.license(),
-                forecast.fetchedAt(), daily, hourly);
+        walkByCity(tripDayService.baseCitiesOf(trip.getId()), (date, city, forecast) -> {
+            dayOf(forecast, date).ifPresent(day -> daily.add(day.in(cityNameOf(city))));
+            List<WeatherResponse.HourlyWeather> hours = forecast.hourly().get(date);
+            if (hours != null) {
+                hourly.put(date, hours);
+            }
+        });
+        return new WeatherResponse(WeatherResponse.SOURCE, WeatherResponse.LICENSE,
+                clock.instant(), daily, hourly);
     }
 
     /**
