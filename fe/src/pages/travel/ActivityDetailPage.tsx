@@ -4,6 +4,7 @@ import {
   MapPin,
   Navigation,
   Phone,
+  TrainFront,
   Trash2,
 } from "lucide-react";
 import {
@@ -30,8 +31,10 @@ import {
 import { useUndoableAction } from "@/features/travel/board/useUndoableAction";
 import { useActivity } from "@/features/travel/hooks/useActivity";
 import { useUpdateActivity } from "@/features/travel/hooks/useActivityMutations";
+import { useBoard } from "@/features/travel/hooks/useBoard";
 import { usePlaceDetail } from "@/features/travel/hooks/usePlaceDetail";
 import { useTrip } from "@/features/travel/hooks/useTrip";
+import { cityOn } from "@/features/travel/lib/baseCity";
 import { NOTIFY_MINUTES_OPTIONS } from "@/features/travel/lib/destinations";
 import { placeDirectionsUrl } from "@/features/travel/lib/mapsLink";
 import { todayOpeningHours } from "@/features/travel/lib/openingHours";
@@ -87,6 +90,20 @@ export function ActivityDetailPage() {
   const { data: activity, isPending } = useActivity(activityId);
   const { data: placeDetail } = usePlaceDetail(activity?.place?.id ?? null);
   const { data: trip } = useTrip(activity?.tripId ?? null);
+  /**
+   * 그날의 보드. <b>날짜가 갖는 것들</b>이 여기에만 있다 — 기준 도시·타임존과, 앞뒤 일정
+   * 사이의 도시 경계 판정({@code travelTimes[].crossCity})이다.
+   *
+   * <p>여행 상세({@code trip.timezone})로는 안 된다. 그 값은 <b>첫날</b> 기준 도시에서
+   * 파생된 것이라, 도시를 옮긴 날짜에서 조용히 틀린 타임존을 말한다.
+   *
+   * <p>보드에서 들어오는 경로가 대부분이라 대개 캐시가 이미 따뜻하다.
+   */
+  const { data: board } = useBoard(
+    activity?.tripId ?? 0,
+    { date: activity?.activityDate ?? undefined },
+    { enabled: activity !== undefined },
+  );
   const updateActivity = useUpdateActivity(activity?.tripId ?? 0);
   const undoable = useUndoableAction(activity?.tripId ?? 0);
 
@@ -131,22 +148,70 @@ export function ActivityDetailPage() {
   const boardPath = boardPathFor(form.day);
   // 시각이 없으면 언제 보낼지 정할 수 없다(§1.2) — 서버도 같은 규칙이다.
   const hasStartTime = form.startTime !== "";
-  // 출발 알림은 직전 장소 있는 일정이 필요하다. 그건 보드가 아는 값이라
-  // 여기서는 "이 일정에 장소가 있는가"까지만 본다 — 없으면 구간 자체가 안 생긴다.
-  const canNotifyDeparture = hasStartTime && activity.place !== null;
+  /**
+   * 출발 알림을 켤 수 있는가. <b>판정은 서버가 한다</b>({@code canDepartureNotify}, #1142) —
+   * 직전에 장소 있는 일정이 있고 그 사이가 도시를 넘지 않아야 한다. 화면이 좌표로 다시
+   * 따지면 보드와 답이 갈린다.
+   */
+  const canNotifyDeparture =
+    hasStartTime && activity.place !== null && activity.canDepartureNotify;
+  /** 이 일정으로 <b>들어오는</b> 이동. 도시를 넘으면 서버가 계산하지 않은 구간이다. */
+  const incoming =
+    activity.activityDate !== null &&
+    board?.selectedDate === activity.activityDate
+      ? board.travelTimes.find((t) => t.toActivityId === activity.id)
+      : undefined;
+  /** 도시 경계를 넘어 들어오는가. 판정은 읽어 오기만 한다(D-23). */
+  const crossCity = incoming?.crossCity === true;
+  /** 그 경계의 출발 쪽 도시 — 안내 문구의 `오사카 → 교토`에서 앞자리다. */
+  const fromCityName = crossCity
+    ? (board?.activities.find((a) => a.id === incoming?.fromActivityId)?.place
+        ?.cityName ?? null)
+    : null;
+  /** 이 날짜의 기준 도시. 부제·알림 타임존이 쓴다. */
+  const dayCity = cityOn(board?.days ?? [], activity.activityDate ?? "");
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
 
-  // 1일차~N일차 + 보관함. 여행 기간을 알아야 만들 수 있어 상세를 함께 읽는다.
+  /**
+   * 1일차~N일차 + 보관함. 여행 기간을 알아야 만들 수 있어 상세를 함께 읽는다.
+   *
+   * <p>날짜마다 도시를 붙인다 — 다구간 여행에서 "4일차"만으로는 어디로 옮기는지 알 수 없다.
+   * 아직 도시를 못 읽었으면 요일로 대신한다(빈 자리를 남기지 않는다).
+   */
   const dayOptions = [
     ...(trip
-      ? dayChips(trip.startDate, trip.endDate).map((chip) => ({
-          value: chip.date,
-          label: `${chip.dayIndex}일차 · ${formatShortDate(chip.date)} ${chip.weekday}`,
-        }))
+      ? dayChips(trip.startDate, trip.endDate).map((chip) => {
+          const city = cityOn(board?.days ?? [], chip.date);
+          const where = city ? city.name : chip.weekday;
+          return {
+            value: chip.date,
+            label: `${chip.dayIndex}일차 · ${where} (${formatShortDate(chip.date)})`,
+          };
+        })
       : []),
     { value: ARCHIVE_VALUE, label: "보관함 (미배정)" },
   ];
+
+  /**
+   * 헤더 부제 — 며칠째의 어느 도시인가. 보관함 일정에는 날짜가 없다.
+   *
+   * <p>아직 못 읽은 조각은 <b>빼고 잇는다.</b> 자리를 비워 두거나 `?일차`로 채우면 로딩 중
+   * 화면이 고장난 것처럼 보인다.
+   */
+  const dayIndex = board?.days.find(
+    (d) => d.date === activity.activityDate,
+  )?.dayIndex;
+  const subtitle =
+    activity.activityDate === null
+      ? "보관함 · 날짜 미정"
+      : [
+          dayIndex === undefined ? null : `${dayIndex}일차`,
+          dayCity?.name,
+          formatShortDate(activity.activityDate),
+        ]
+          .filter(Boolean)
+          .join(" · ");
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -196,9 +261,14 @@ export function ActivityDetailPage() {
         >
           <ArrowLeft className="size-4" />
         </Button>
-        <h1 className="text-heading min-w-0 flex-1 truncate font-semibold">
-          {activity.title}
-        </h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-heading truncate font-semibold">
+            {activity.title}
+          </h1>
+          <p className="text-caption text-muted-foreground truncate">
+            {subtitle}
+          </p>
+        </div>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -260,6 +330,17 @@ export function ActivityDetailPage() {
                 )}
               </div>
             </div>
+
+            {/* 도시 경계 안내(§9.4) — 판정은 서버가 한 것을 읽기만 한다(D-23).
+                여기서 좌표로 다시 따지면 보드의 `도시 이동` 행과 답이 갈린다. */}
+            {crossCity && (
+              <p className="bg-muted text-muted-foreground flex items-center gap-2 rounded-lg px-2.5 py-[7px] text-xs">
+                <TrainFront className="size-[13px] shrink-0" />
+                {fromCityName && activity.place.cityName
+                  ? `${fromCityName} → ${activity.place.cityName} · 도시 경계를 넘어 이동시간을 계산하지 않아요`
+                  : "도시 경계를 넘어 이동시간을 계산하지 않아요"}
+              </p>
+            )}
 
             {/* 영업시간·전화는 상세 조회에서 온다. 서버가 30일 캐시한다(§4.7). */}
             {openingToday && (
@@ -328,10 +409,17 @@ export function ActivityDetailPage() {
           <div className="flex items-center gap-3 border-b pb-3">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">일정 알림</p>
+              {/* 타임존을 함께 말한다(§9.4) — `09:00`이 어느 도시의 09:00인지가
+                  도시를 옮기는 여행에서는 매번 달라진다. */}
               <p className="text-muted-foreground text-xs">
-                {form.notifyMinutes
-                  ? `시작 ${form.notifyMinutes}분 전`
-                  : "여행 기본값"}
+                {[
+                  form.notifyMinutes
+                    ? `시작 ${form.notifyMinutes}분 전`
+                    : "여행 기본값",
+                  dayCity?.timezone,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             </div>
             <Select
@@ -358,10 +446,14 @@ export function ActivityDetailPage() {
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">출발 알림</p>
+              {/* 못 켜는 이유를 구분해 말한다 — "시각과 이전 장소가 필요해요"는 도시를
+                  넘어서 막힌 사람에게 고칠 수 없는 것을 고치라는 말이 된다. */}
               <p className="text-muted-foreground text-xs">
                 {canNotifyDeparture
                   ? "시작시각 − 이동시간 − 5분"
-                  : "시각과 이전 장소가 필요해요"}
+                  : crossCity
+                    ? "도시 간 이동은 출발 알림을 계산할 수 없어요"
+                    : "시각과 이전 장소가 필요해요"}
               </p>
             </div>
             <Switch
