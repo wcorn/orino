@@ -195,6 +195,27 @@ class StayControllerTest extends ApiTestSupport {
         }
 
         @Test
+        @DisplayName("숙소를 지워도 `일정으로 추가`로 만든 일정은 남는다")
+        void keepsActivitiesMadeFromStay() throws Exception {
+            long stayId = stayId(createStay("도톤보리 호텔", "2026-10-24", "2026-10-27"));
+            // 시트의 `일정으로 추가`가 만드는 것 — 만들고 나면 숙소와 아무 관계가 없는
+            // 보통 일정이다. 숙소를 지웠다고 사라지면 사용자가 옮겨 둔 순서·메모까지 날아간다.
+            createActivityWithoutPlace("도톤보리 호텔 체크인", "2026-10-24");
+
+            mockMvc.perform(delete("/api/travel/stays/" + stayId)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
+
+            mockMvc.perform(get("/api/travel/trips/" + tripId + "/board")
+                            .param("date", "2026-10-24")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.activities", hasSize(1)))
+                    .andExpect(jsonPath("$.data.activities[0].title")
+                            .value("도톤보리 호텔 체크인"));
+        }
+
+        @Test
         @DisplayName("남의 숙소는 404 — 존재 여부가 새어나가지 않는다")
         void deleteScopedByMember() throws Exception {
             long stayId = stayId(createStay("도톤보리 호텔", "2026-10-24", "2026-10-27"));
@@ -351,6 +372,16 @@ class StayControllerTest extends ApiTestSupport {
                         .content("""
                                 {"title": "%s", "activityDate": "%s", "placeId": %d}
                                 """.formatted(title, date, placeId)))
+                .andExpect(status().isOk());
+    }
+
+    private void createActivityWithoutPlace(String title, String date) throws Exception {
+        mockMvc.perform(post("/api/travel/trips/" + tripId + "/activities")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "%s", "activityDate": "%s"}
+                                """.formatted(title, date)))
                 .andExpect(status().isOk());
     }
 

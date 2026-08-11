@@ -147,6 +147,11 @@ export const handlers = [
     });
   }),
 
+  // 기본값: 숙소 없음. 보드는 숙소 목록을 항상 함께 읽는다(상세 시트·겹침 미리보기).
+  http.get(`${API_BASE}/travel/trips/:tripId/stays`, () => {
+    return HttpResponse.json({ code: "OK", data: [] });
+  }),
+
   // 기본값: 빈 캘린더 피드. `/select`의 "오늘 루틴" 메타가 항상 해소되도록.
   http.get(`${API_BASE}/planner/calendar`, () => {
     return HttpResponse.json({
