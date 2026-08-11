@@ -166,6 +166,66 @@
         }
       },
       "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["last"] } }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "버킷별 객체 수 (CloudWatch)",
+      "description": "retention 집행 감시. ELOG-027의 실패는 lifecycle이 없어서가 아니라 선언된 retention이 안 도는 걸 5개월간 아무도 안 봐서였다 — 이 선이 단조 증가하면 그 재발이다.\n\n계단처럼 보이는 게 정상이다: CloudWatch가 하루 1회 게시하는 지표라 period 3600s로 조회해도 값은 하루 한 번만 바뀐다. 더 자주 조회하면 같은 값을 다시 받으면서 GetMetricData 요금만 는다.",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 9 },
+      "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "ap-northeast-2",
+          "namespace": "AWS/S3",
+          "metricName": "NumberOfObjects",
+          "dimensions": { "BucketName": "*", "StorageType": "AllStorageTypes" },
+          "statistic": "Average",
+          "period": "3600",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "max"] } }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "버킷별 용량 (CloudWatch)",
+      "description": "저장료가 어디서 나오는지. 요청 수와 달리 이쪽은 절대량이 곧 비용이다.\n\n객체 수와 마찬가지로 하루 1회 게시 지표다.",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 9 },
+      "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "ap-northeast-2",
+          "namespace": "AWS/S3",
+          "metricName": "BucketSizeBytes",
+          "dimensions": { "BucketName": "*", "StorageType": "StandardStorage" },
+          "statistic": "Average",
+          "period": "3600",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "decimals": 2,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "max"] } }
     }
   ]
 }
