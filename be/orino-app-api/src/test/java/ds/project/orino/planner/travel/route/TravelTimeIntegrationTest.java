@@ -293,6 +293,33 @@ class TravelTimeIntegrationTest extends ApiTestSupport {
 
             assertThat(stub.calls).hasSize(2);
         }
+
+        @Test
+        @DisplayName("할당량에 걸려도 보드는 열린다 — 직선거리로 떨어질 뿐이다 (#1159)")
+        void quotaRejectionDegradesToStraightLine() throws Exception {
+            // 캡(#1151) 하나에 보드 전체가 503이 되면 하드캡이 사고의 원인이 된다.
+            stub.reject = true;
+            addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("신주쿠", placeAt("신주쿠", jitter(SHINJUKU_LAT), jitter(SHINJUKU_LNG)));
+
+            board()
+                    .andExpect(jsonPath("$.data.travelTimes", hasSize(1)))
+                    .andExpect(jsonPath("$.data.travelTimes[0].fallback").value(true))
+                    .andExpect(jsonPath("$.data.travelTimes[0].distanceM").isNumber());
+        }
+
+        @Test
+        @DisplayName("거절도 캐시하지 않는다 — 캡이 리셋되면 바로 실제 경로가 돌아온다")
+        void doesNotCacheRejection() throws Exception {
+            addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("스카이트리", placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+
+            stub.reject = true;
+            board().andExpect(jsonPath("$.data.travelTimes[0].fallback").value(true));
+
+            stub.reject = false;
+            board().andExpect(jsonPath("$.data.travelTimes[0].fallback").value(false));
+        }
     }
 
     @Nested

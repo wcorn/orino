@@ -21,10 +21,12 @@ import {
   clearRecentSearches,
   getRecentSearches,
 } from "@/features/travel/lib/recentSearches";
+import { failureOf } from "@/features/travel/lib/searchFailure";
 import { GoogleAttribution } from "@/features/travel/places/GoogleAttribution";
 import { PickDaySheet } from "@/features/travel/places/PickDaySheet";
 import { PlaceCard } from "@/features/travel/places/PlaceCard";
 import { SearchCityChip } from "@/features/travel/places/SearchCityChip";
+import { SearchUnavailable } from "@/features/travel/places/SearchUnavailable";
 import { toast } from "@/shared/lib/toast";
 
 /** 담기 대상 — 검색 결과이거나, 직접 입력해서 방금 만든 장소. */
@@ -80,6 +82,7 @@ export function PlaceSearchPage() {
     data: places,
     isPending,
     isError,
+    error,
     // 보드가 오기 전에 부르면 편향 없는 결과를 한 번 사게 된다(호출당 과금).
   } = usePlaceSearch(query, tripId, city?.placeId, !boardPending);
   const createActivity = useCreateActivity(tripId);
@@ -232,9 +235,12 @@ export function PlaceSearchPage() {
         <LoadingText />
       ) : isError ? (
         <EmptyState className="min-h-[30svh]">
-          <p className="text-muted-foreground text-sm">
-            검색하지 못했어요. 잠시 후 다시 시도해 주세요.
-          </p>
+          <SearchUnavailable failure={failureOf(error)} />
+          {/* 직접 입력은 구글을 부르지 않는다 — 검색이 막혀도 일정은 계속 채울 수 있다. */}
+          <Button variant="outline" onClick={() => setManualOpen(true)}>
+            <Pencil className="size-4" />
+            직접 입력
+          </Button>
         </EmptyState>
       ) : results.length === 0 ? (
         <EmptyState className="min-h-[30svh]">

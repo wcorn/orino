@@ -10,6 +10,7 @@ import { useCityLegs } from "@/features/travel/hooks/useCityLegs";
 import { cityLabelOfDays } from "@/features/travel/lib/cityLabel";
 import { cityMarkers, legPath } from "@/features/travel/lib/cityMarkers";
 import { formatShortDate } from "@/features/travel/lib/tripStatus";
+import { useGoogleMaps } from "@/features/travel/map/googleMaps";
 import { toMapped } from "@/features/travel/map/toMapped";
 import type { MapPoint } from "@/features/travel/map/TripMap";
 import { useOnline } from "@/shared/lib/useOnline";
@@ -38,6 +39,8 @@ export function TripMapPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const online = useOnline();
+  // 지도를 못 쓰는지는 이 화면이 알아야 한다 — 지도 대신 무엇을 보여줄지가 모드마다 다르다.
+  const maps = useGoogleMaps();
 
   const day = searchParams.get("day");
   const dayIndex = day !== null ? Number(day) : null;
@@ -202,6 +205,32 @@ export function TripMapPage() {
         </EmptyState>
       ) : (
         <>
+          {/*
+            지도 SDK가 안 올라와도 화면은 성립해야 한다(#1159). `전체`는 아래 구간 리스트가
+            이미 그 일을 하지만, `이 날짜`는 순서를 지도만 알고 있었다 — 그러면 회색 상자
+            하나만 남는다.
+          */}
+          {maps === "unavailable" && mode === "day" && (
+            <ol aria-label="일정 순서" className="flex flex-col gap-1.5">
+              {mapped.map((m) => (
+                <li
+                  key={m.activity.id}
+                  className="border-border bg-card flex items-center gap-2.5 rounded-lg border px-3 py-2.5"
+                >
+                  <span className="bg-muted grid size-[22px] shrink-0 place-items-center rounded-full text-xs font-semibold tabular-nums">
+                    {m.order}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[15px] font-medium">
+                    {m.activity.title}
+                  </span>
+                  <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+                    {m.activity.startTime ?? ""}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+
           <Suspense
             fallback={
               <div className="bg-muted grid aspect-[8/5] w-full place-items-center rounded-lg border">

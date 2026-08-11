@@ -12,7 +12,12 @@ import {
   CURRENCY_OPTIONS,
   TIMEZONE_OPTIONS,
 } from "@/features/travel/lib/destinations";
+import {
+  failureOf,
+  type SearchFailure,
+} from "@/features/travel/lib/searchFailure";
 import { GoogleAttribution } from "@/features/travel/places/GoogleAttribution";
+import { SearchUnavailable } from "@/features/travel/places/SearchUnavailable";
 
 type TimezoneValue = (typeof TIMEZONE_OPTIONS)[number]["value"];
 type CurrencyValue = (typeof CURRENCY_OPTIONS)[number]["value"];
@@ -50,7 +55,7 @@ export function CitySheet({
   const [draft, setDraft] = useState("");
   const [cities, setCities] = useState<City[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<SearchFailure>(null);
   const [manual, setManual] = useState(false);
   const [manualName, setManualName] = useState("");
   const [timezone, setTimezone] = useState<TimezoneValue>(
@@ -66,7 +71,7 @@ export function CitySheet({
   const reset = () => {
     setDraft("");
     setCities(null);
-    setFailed(false);
+    setFailure(null);
     setManual(false);
     setManualName("");
   };
@@ -82,12 +87,12 @@ export function CitySheet({
     if (!q) return;
 
     setSearching(true);
-    setFailed(false);
+    setFailure(null);
     try {
       setCities(await searchCities(q));
-    } catch {
+    } catch (error) {
       setCities(null);
-      setFailed(true);
+      setFailure(failureOf(error));
     } finally {
       setSearching(false);
     }
@@ -195,11 +200,9 @@ export function CitySheet({
 
           {searching && <LoadingText />}
 
-          {failed && (
+          {failure && (
             <div className="border-border flex flex-col items-start gap-2 rounded-lg border p-3">
-              <p className="text-muted-foreground text-sm">
-                도시를 검색하지 못했어요.
-              </p>
+              <SearchUnavailable failure={failure} subject="도시" />
               <Button
                 type="button"
                 variant="outline"

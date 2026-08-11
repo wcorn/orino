@@ -47,8 +47,8 @@ public class ExternalApiMetrics {
     /**
      * 호출의 결말.
      *
-     * <p>{@code miss + error}가 <b>실제로 나간 호출 수</b>다 — 청구서에 오르는 값이 그것이다.
-     * {@code hit / (hit + miss + error)}가 히트율이다.
+     * <p>{@code miss + error + rejected}가 <b>실제로 나간 호출 수</b>다 — 청구서에 오르는 값이
+     * 그것이다. {@code hit / 전체}가 히트율이다.
      */
     public enum Result {
         /** 캐시에서 답했다. 외부 호출이 없다. */
@@ -61,7 +61,16 @@ public class ExternalApiMetrics {
          * <p>실패와 "결과 0건"을 구분하지 못한다 — 클라이언트가 둘 다 빈 값으로 돌려주기
          * 때문이다(§4.7의 실패 처리). 비용 관점에서는 어차피 같은 한 번의 호출이다.
          */
-        ERROR("error");
+        ERROR("error"),
+        /**
+         * 구글이 거절했다(429·403).
+         *
+         * <p>{@code error}와 갈라 두는 이유는 <b>대처가 다르기 때문</b>이다 — 이쪽이 오르면
+         * 하드캡(#1151)에 닿았거나 키·과금이 막힌 것이고, 저쪽이 오르면 구글이 흔들리거나
+         * 우리 검색어가 아무것도 못 맞히는 것이다. 한 계열로 묶으면 그래프를 보고도 어느
+         * 쪽인지 알 수 없다.
+         */
+        REJECTED("rejected");
 
         private final String tag;
 
@@ -83,5 +92,10 @@ public class ExternalApiMetrics {
     /** 나간 호출 한 건 — 쓸 값을 받았으면 {@code miss}, 비었으면 {@code error}. */
     public void recordFetch(Api api, boolean usable) {
         record(api, usable ? Result.MISS : Result.ERROR);
+    }
+
+    /** 거절당한 호출 한 건. 돈은 나갔을 수도 아닐 수도 있지만 사용자는 못 받았다. */
+    public void recordRejected(Api api) {
+        record(api, Result.REJECTED);
     }
 }

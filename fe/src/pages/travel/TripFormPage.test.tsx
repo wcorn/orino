@@ -388,6 +388,29 @@ describe("TripFormPage", () => {
   });
 
   describe("검색이 막혔을 때", () => {
+    it("할당량에 걸리면 재시도가 아니라 직접 입력으로 안내한다 (#1159)", async () => {
+      // "잠시 후 다시 시도해 주세요"는 캡에 걸린 사용자에게 틀린 조언이다.
+      server.use(
+        http.get(`${API_BASE}/travel/places/cities`, () =>
+          HttpResponse.json({ code: "TRAVEL-ERR-021" }, { status: 503 }),
+        ),
+      );
+      renderApp("/travel/trips/new");
+      await screen.findByLabelText("여행 제목");
+
+      await userEvent.click(screen.getByRole("button", { name: "구간 추가" }));
+      await userEvent.type(await screen.findByLabelText("도시 검색"), "삿포로");
+      await userEvent.click(screen.getByRole("button", { name: "검색" }));
+
+      expect(
+        await screen.findByText(/지금은 새 도시를 검색할 수 없어요/),
+      ).toBeInTheDocument();
+      // 여행 만들기가 외부 API에 걸려 막히면 안 된다 — 직접 입력은 구글을 부르지 않는다.
+      expect(
+        screen.getByRole("button", { name: "직접 입력하기" }),
+      ).toBeInTheDocument();
+    });
+
     it("직접 입력한 도시를 저장 직전에 만들어 붙인다", async () => {
       server.use(
         http.get(`${API_BASE}/travel/places/cities`, () =>

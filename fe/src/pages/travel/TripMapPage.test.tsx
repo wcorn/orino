@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -258,6 +258,37 @@ describe("TripMapPage", () => {
       await user.click(screen.getByRole("button", { name: /장소 검색/ }));
 
       expect(await screen.findByLabelText("장소 검색")).toBeInTheDocument();
+    });
+
+    it("지도를 못 불러와도 하루 동선이 목록으로 성립한다 (#1159)", async () => {
+      // jsdom에는 지도 키도 SDK도 없다 — 로더가 실제로 `unavailable`로 떨어지는 상태다.
+      // 이때 회색 상자만 남으면 순서를 아는 곳이 화면에 하나도 없게 된다.
+      mockBoard({
+        "2026-10-24": [
+          activity({
+            id: 1,
+            title: "센소지",
+            startTime: "09:00",
+            place: SENSOJI,
+          }),
+          activity({
+            id: 2,
+            title: "스카이트리",
+            startTime: "13:00",
+            place: SENSOJI,
+          }),
+        ],
+      });
+
+      renderMap();
+
+      const list = await screen.findByRole("list", { name: "일정 순서" });
+      const rows = within(list).getAllByRole("listitem");
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toHaveTextContent("1");
+      expect(rows[0]).toHaveTextContent("센소지");
+      expect(rows[0]).toHaveTextContent("09:00");
+      expect(rows[1]).toHaveTextContent("스카이트리");
     });
 
     it("오프라인이면 지도를 못 본다고 알린다 — 타일은 캐시할 수 없다", async () => {

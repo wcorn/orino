@@ -5,6 +5,7 @@ import ds.project.orino.common.exception.ErrorCode;
 import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.entity.TripActivity;
 import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
+import ds.project.orino.planner.travel.external.ExternalApiRejectedException;
 import ds.project.orino.planner.travel.metrics.ExternalApiMetrics;
 import ds.project.orino.planner.travel.route.client.RoutesClient;
 import ds.project.orino.planner.travel.route.client.TravelMode;
@@ -250,10 +251,18 @@ public class TravelTimeService {
             metrics.record(ExternalApiMetrics.Api.ROUTES, ExternalApiMetrics.Result.HIT);
             return Optional.of(objectMapper.readValue(hit.get(), RoutesClient.Route.class));
         }
-        Optional<RoutesClient.Route> fresh = routesClient.route(
-                new RoutesClient.Coordinates(from.lat(), from.lng()),
-                new RoutesClient.Coordinates(to.lat(), to.lng()),
-                mode);
+        Optional<RoutesClient.Route> fresh;
+        try {
+            fresh = routesClient.route(
+                    new RoutesClient.Coordinates(from.lat(), from.lng()),
+                    new RoutesClient.Coordinates(to.lat(), to.lng()),
+                    mode);
+        } catch (ExternalApiRejectedException e) {
+            // 보드는 이동시간이 없어도 성립한다 — 직선거리 fallback이 이미 그 자리를 메운다.
+            // 여기서 503을 올리면 캡 하나에 보드 전체가 열리지 않는다.
+            metrics.recordRejected(ExternalApiMetrics.Api.ROUTES);
+            return Optional.empty();
+        }
         metrics.recordFetch(ExternalApiMetrics.Api.ROUTES, fresh.isPresent());
         // 실패는 캐시하지 않는다 — 일시적 실패를 붙들고 있으면 복구된 뒤에도 계속 fallback이다.
         fresh.ifPresent(r ->

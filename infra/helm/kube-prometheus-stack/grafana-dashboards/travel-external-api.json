@@ -19,7 +19,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(rate(orino_external_api_calls_total{api=~\"places_.*|routes\", result=~\"miss|error\"}[30m])) * 86400",
+          "expr": "sum(rate(orino_external_api_calls_total{api=~\"places_.*|routes\", result=~\"miss|error|rejected\"}[30m])) * 86400",
           "legendFormat": "유료 호출",
           "refId": "A"
         }
@@ -83,14 +83,14 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "결과 없는 호출 비율",
-      "description": "error / (miss + error). 나갔는데 쓸 값이 없었던 비율이다. 클라이언트가 실패와 '결과 0건'을 둘 다 빈 값으로 돌려주므로 구분되지 않는다 — 어느 쪽이든 돈은 나갔다. 이 값이 높으면 호출 조건 자체를 의심한다(#1192가 그 사례다).",
+      "title": "거절된 호출 비율 (할당량·키)",
+      "description": "rejected / 나간 호출. 구글이 429·403으로 되돌려보낸 비율이다 — 하드캡(#1151)에 닿았거나 키·과금이 막힌 것이고, 어느 쪽이든 사용자는 새 장소를 못 찾는다(#1159). 0이 아니면 사람이 볼 일이다. '결과 없음'(error)과 갈라 두었으므로, 여기가 조용한데 error만 오르면 그건 캡이 아니라 검색어 문제다.",
       "gridPos": { "x": 12, "y": 0, "w": 6, "h": 5 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(rate(orino_external_api_calls_total{result=\"error\"}[30m])) / sum(rate(orino_external_api_calls_total{result=~\"miss|error\"}[30m]))",
-          "legendFormat": "결과 없음",
+          "expr": "sum(rate(orino_external_api_calls_total{result=\"rejected\"}[30m])) / sum(rate(orino_external_api_calls_total{result=~\"miss|error|rejected\"}[30m]))",
+          "legendFormat": "거절",
           "refId": "A"
         }
       ],
@@ -104,8 +104,8 @@
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.2 },
-              { "color": "red", "value": 0.5 }
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.1 }
             ]
           }
         }
@@ -125,7 +125,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(rate(orino_external_api_calls_total{api=~\"weather|fx\", result=~\"miss|error\"}[30m])) * 86400",
+          "expr": "sum(rate(orino_external_api_calls_total{api=~\"weather|fx\", result=~\"miss|error|rejected\"}[30m])) * 86400",
           "legendFormat": "무료 호출",
           "refId": "A"
         }
@@ -142,13 +142,13 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "API별 실제 호출 rate (miss + error)",
+      "title": "API별 실제 호출 rate (miss + error + rejected)",
       "description": "계열별로 나눠 본다. 어떤 계열이 늘었는지 보이지 않으면 원인을 좁힐 수 없다 — 장소 검색이 는 것과 상세 조회가 는 것은 대처가 다르다.",
       "gridPos": { "x": 0, "y": 5, "w": 12, "h": 9 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum by (api) (rate(orino_external_api_calls_total{result=~\"miss|error\"}[5m]))",
+          "expr": "sum by (api) (rate(orino_external_api_calls_total{result=~\"miss|error|rejected\"}[5m]))",
           "legendFormat": "{{api}}",
           "refId": "A"
         }

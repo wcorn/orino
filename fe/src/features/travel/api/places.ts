@@ -1,8 +1,29 @@
+import axios from "axios";
+
 import { client } from "@/shared/api";
 
 interface ApiEnvelope<T> {
   code: string;
   data: T;
+}
+
+/** 구글이 호출을 거절했다(할당량·키·과금). 서버가 503으로 내려준다. */
+const REJECTED_CODE = "TRAVEL-ERR-021";
+
+/**
+ * 지금 새 장소를 못 가져오는 상태인가.
+ *
+ * <p>이걸 구분하지 않으면 화면이 **"검색 결과가 없어요"라고 거짓말을 한다** — 사용자는
+ * 검색어가 틀린 줄 알고 계속 바꾸고, 바꿀 때마다 또 거절당한다. 캡(#1151)에 걸린 상태에서
+ * 가장 나쁜 화면이 그것이다.
+ *
+ * <p>이미 담아 둔 장소와 캐시된 검색어는 그대로 동작한다 — 그래서 문구가 "안 됩니다"가
+ * 아니라 "지금은 새로 못 찾는다"여야 한다.
+ */
+export function isPlacesRejected(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  const body = error.response?.data as { code?: string } | undefined;
+  return body?.code === REJECTED_CODE;
 }
 
 /** 목적지 후보. 타임존·통화는 서버가 확정해서 준다 — 프론트가 좌표로 유추하지 않는다. */
