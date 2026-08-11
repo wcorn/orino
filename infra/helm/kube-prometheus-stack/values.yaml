@@ -124,6 +124,11 @@ kube-prometheus-stack:
       # 패널 period를 3600s로 고정하고 대시보드 refresh도 5m 이상으로 둔다.
       # 애초에 BucketSizeBytes·NumberOfObjects는 CloudWatch가 하루 1회 게시하는
       # 지표라 더 자주 조회해도 같은 값만 다시 받는다 — 돈만 쓰고 얻는 게 없다.
+      #
+      # ⚠️ 이 데이터소스로 CloudWatch Logs 조회는 되지 않는다. 의도한 것이다.
+      #   IAM 키에 logs:DescribeLogGroups 만 있고(health check 통과용) Logs Insights
+      #   계열은 없다 — 그쪽이 스캔 GB 당 과금되는 경로라 일부러 막아 뒀다.
+      #   로그는 Loki 데이터소스를 쓴다. 자세한 근거는 infra/terraform/cloudwatch.tf. #1179
       - name: CloudWatch
         type: cloudwatch
         uid: cloudwatch
