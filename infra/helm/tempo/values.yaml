@@ -39,6 +39,22 @@ tempo:
         cpu: "1"
         memory: 1536Mi   # 512Mi→1.5Gi: WAL replay + 블록 완료 + blocklist 폴링 OOM(137) 방지
 
+  # Prometheus 스크랩 (#1152). S3 요청 수를 알려주는 건
+  # tempodb_backend_request_duration_seconds_count{operation} 이다.
+  #
+  # 이 차트의 ServiceMonitor 템플릿은 metricRelabelings 를 지원하지 않아 Loki 처럼
+  # 히스토그램 버킷을 버릴 수 없다. 실측 802 시리즈(그중 _bucket 506)로 현재
+  # head series 56,813 대비 +1.4% 라, 차트를 갈아엎고 자체 ServiceMonitor 를
+  # 유지하는 드리프트 비용이 이득보다 크다. 배포 후 TSDB 증가폭이 예상을 넘으면
+  # 그때 자체 템플릿으로 전환한다.
+  #
+  # 템플릿이 endpoint 를 2개(tempo-prom-metrics, jaeger-metrics) 만드는데 우리
+  # 서비스에는 jaeger-metrics 포트가 없다 → 해당 job 은 타깃 0개가 되어 up 시리즈
+  # 자체가 안 생긴다(TargetDown 노이즈 없음).
+  serviceMonitor:
+    enabled: true
+    interval: 60s  # Loki 와 동일 — 샘플 수가 Thanos S3 업로드로 이어진다
+
   persistence:
     enabled: true
     storageClassName: longhorn
