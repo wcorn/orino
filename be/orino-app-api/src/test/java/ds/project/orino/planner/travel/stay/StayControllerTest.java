@@ -3,7 +3,12 @@ package ds.project.orino.planner.travel.stay;
 import com.jayway.jsonpath.JsonPath;
 import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.domain.planner.travel.entity.TravelPlace;
+import ds.project.orino.domain.planner.travel.entity.TripStay;
 import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
+import ds.project.orino.domain.planner.travel.repository.TripStayRepository;
+import ds.project.orino.planner.travel.place.StubPlacesClient;
+import ds.project.orino.planner.travel.place.client.PlaceResult;
+import ds.project.orino.planner.travel.place.client.PlacesClient;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
@@ -20,8 +25,11 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -47,8 +55,13 @@ class StayControllerTest extends ApiTestSupport {
     @Autowired
     private TravelPlaceRepository placeRepository;
     @Autowired
+    private TripStayRepository stayRepository;
+    @Autowired
     private DbCleaner dbCleaner;
+    @Autowired
+    private PlacesClient placesClient;
 
+    private StubPlacesClient placesStub;
     private String authHeader;
     private String otherAuthHeader;
     private long tripId;
@@ -57,6 +70,8 @@ class StayControllerTest extends ApiTestSupport {
     @BeforeEach
     void setUp() throws Exception {
         dbCleaner.clean();
+        placesStub = (StubPlacesClient) placesClient;
+        placesStub.reset();
         memberRepository.save(MemberFixture.create());
         memberRepository.save(MemberFixture.create("other", "password"));
         authHeader = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc);
@@ -192,6 +207,67 @@ class StayControllerTest extends ApiTestSupport {
             mockMvc.perform(get("/api/travel/trips/" + tripId + "/stays")
                             .header(HttpHeaders.AUTHORIZATION, authHeader))
                     .andExpect(jsonPath("$.data", hasSize(0)));
+        }
+
+        @Test
+        @DisplayName("검색 결과를 그대로 담으면 장소를 만들어 붙인다")
+        void upsertsPlaceFromGoogle() throws Exception {
+            placesStub.detailResult = Optional.of(hotelResult());
+
+            long stayId = stayId(mockMvc.perform(post("/api/travel/trips/" + tripId + "/stays")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"name": "난바 호텔", "googlePlaceId": "ChIJ_namba",
+                                     "checkInDate": "2026-10-24", "checkOutDate": "2026-10-26"}
+                                    """))
+                    .andExpect(status().isOk()));
+
+            TripStay stay = stayRepository.findById(stayId).orElseThrow();
+            assertThat(stay.getPlaceId()).isNotNull();
+            // 좌표가 붙어야 숙소 이동 시간이 계산된다.
+            assertThat(placeRepository.findById(stay.getPlaceId()).orElseThrow().getLat())
+                    .isNotNull();
+        }
+
+        @Test
+        @DisplayName("어느 도시인지 함께 주면 도시 식별자까지 채운다 — 경계 판정이 여기서 산다")
+        void savesCityIdentifier() throws Exception {
+            placesStub.detailResult = Optional.of(hotelResult());
+            withCityRef(osaka, "ChIJ_osaka");
+
+            long stayId = stayId(mockMvc.perform(post("/api/travel/trips/" + tripId + "/stays")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"name": "난바 호텔", "googlePlaceId": "ChIJ_namba",
+                                     "cityPlaceId": %d,
+                                     "checkInDate": "2026-10-24", "checkOutDate": "2026-10-26"}
+                                    """.formatted(osaka)))
+                    .andExpect(status().isOk()));
+
+            TripStay stay = stayRepository.findById(stayId).orElseThrow();
+            assertThat(placeRepository.findById(stay.getPlaceId()).orElseThrow()
+                    .getCityPlaceRef()).isEqualTo("ChIJ_osaka");
+        }
+
+        @Test
+        @DisplayName("도시를 안 주면 식별자도 없다 — 좌표로 도시를 추측하지 않는다(D-23)")
+        void leavesCityIdentifierEmptyWithoutCity() throws Exception {
+            placesStub.detailResult = Optional.of(hotelResult());
+
+            long stayId = stayId(mockMvc.perform(post("/api/travel/trips/" + tripId + "/stays")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"name": "난바 호텔", "googlePlaceId": "ChIJ_namba",
+                                     "checkInDate": "2026-10-24", "checkOutDate": "2026-10-26"}
+                                    """))
+                    .andExpect(status().isOk()));
+
+            TripStay stay = stayRepository.findById(stayId).orElseThrow();
+            assertThat(placeRepository.findById(stay.getPlaceId()).orElseThrow()
+                    .getCityPlaceRef()).isNull();
         }
 
         @Test
@@ -357,6 +433,14 @@ class StayControllerTest extends ApiTestSupport {
                                  "placeId": %d}
                                 """.formatted(name, checkIn, checkOut, placeId)))
                 .andExpect(status().isOk());
+    }
+
+    /** 검색으로 고른 호텔. 좌표가 있어야 숙소 이동 시간이 계산된다. */
+    private static PlaceResult hotelResult() {
+        return new PlaceResult("ChIJ_namba", "난바 호텔", "오사카시 주오구",
+                new BigDecimal("34.6656"), new BigDecimal("135.5061"), "호텔",
+                new BigDecimal("4.2"), null, null, "Asia/Tokyo", "오사카", "JP",
+                List.of("lodging"));
     }
 
     private static long stayId(org.springframework.test.web.servlet.ResultActions result)
