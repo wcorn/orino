@@ -26,6 +26,11 @@ jobs:
     defaults:
       run:
         working-directory: infra/terraform
+    # 예산 알림 수신 주소(#1150). 개인 이메일이라 공개 저장소의 variables.tf 기본값에
+    # 두지 않고 시크릿으로 주입한다. TF_VAR_ 는 list(string) 을 HCL 로 파싱하므로
+    # JSON 배열 형태로 넘긴다. 시크릿이 비면 variables.tf 의 validation 이 잡는다.
+    env:
+      TF_VAR_budget_alert_emails: '["${{ secrets.BUDGET_ALERT_EMAIL }}"]'
     steps:
       - uses: actions/checkout@v4
 
