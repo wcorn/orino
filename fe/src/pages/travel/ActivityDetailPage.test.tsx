@@ -48,6 +48,9 @@ function activity(overrides: Record<string, unknown> = {}) {
     sortOrder: 0,
     log: null,
     hasLog: false,
+    outOfBaseCity: false,
+    // 서버가 판정해 내려주는 값(#1142). 화면은 읽기만 한다.
+    canDepartureNotify: true,
     ...overrides,
   };
 }
@@ -132,6 +135,35 @@ describe("ActivityDetailPage", () => {
     expect(
       screen.getByRole("option", { name: "보관함 (미배정)" }),
     ).toBeInTheDocument();
+  });
+
+  it("날짜 선택지에 도시명이 붙는다 — `4일차`만으로는 어디로 옮기는지 모른다", async () => {
+    mockDetail();
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByLabelText("제목")).toHaveValue("센소지");
+    });
+
+    await userEvent.click(screen.getByRole("combobox", { name: "날짜" }));
+
+    // 기본 보드 목이 1일차를 도쿄로 준다.
+    expect(
+      await screen.findByRole("option", { name: "1일차 · 도쿄 (10.24)" }),
+    ).toBeInTheDocument();
+  });
+
+  it("헤더 부제가 며칠째의 어느 도시인지 말한다", async () => {
+    mockDetail();
+    renderDetail();
+
+    expect(await screen.findByText("1일차 · 도쿄 · 10.24")).toBeInTheDocument();
+  });
+
+  it("보관함 일정은 날짜가 없다고 말한다", async () => {
+    mockDetail({ activityDate: null });
+    renderDetail();
+
+    expect(await screen.findByText("보관함 · 날짜 미정")).toBeInTheDocument();
   });
 
   it("보관함을 고르면 activityDate를 null로 저장한다", async () => {
@@ -342,7 +374,83 @@ describe("ActivityDetailPage", () => {
       address: "다이토구",
       lat: 35.7147651,
       lng: 139.7966553,
+      cityName: "도쿄",
+      cityPlaceRef: "ChIJ_tokyo",
     };
+
+    const KYOTO_PLACE = {
+      ...PLACE,
+      id: 11,
+      name: "기요미즈데라",
+      cityName: "교토",
+      cityPlaceRef: "ChIJ_kyoto",
+    };
+
+    /**
+     * 그날 보드 — 상세 화면이 <b>날짜가 갖는 것들</b>을 여기서 읽는다.
+     *
+     * <p>도시 경계 판정은 서버가 내려준 `travelTimes[].crossCity`다. 화면이 좌표로 다시
+     * 따지지 않는지 보려면 목이 그 값을 쥐고 있어야 한다.
+     */
+    function mockDayBoard({ crossCity = true }: { crossCity?: boolean } = {}) {
+      server.use(
+        http.get(`${API_BASE}/travel/trips/:tripId/board`, () =>
+          HttpResponse.json({
+            code: "OK",
+            data: {
+              trip: { ...TRIP, recordMode: false, singleCity: false },
+              days: [
+                {
+                  dayId: 1,
+                  dayIndex: 1,
+                  date: "2026-10-24",
+                  weekday: "토",
+                  activityCount: 2,
+                  baseCity: {
+                    placeId: 21,
+                    name: "교토",
+                    timezone: "Asia/Tokyo",
+                    currency: "JPY",
+                    countryCode: "JP",
+                    cityPlaceRef: "ChIJ_kyoto",
+                    lat: null,
+                    lng: null,
+                  },
+                  cityChanged: false,
+                  legIndex: 1,
+                  cityMemo: null,
+                  weather: null,
+                  stayTonight: null,
+                  stayCheckout: null,
+                },
+              ],
+              selectedDate: "2026-10-24",
+              archiveCount: 0,
+              activities: [
+                activity({
+                  id: 9,
+                  title: "구로몬 시장",
+                  place: { ...PLACE, id: 12, cityName: "오사카" },
+                }),
+                activity({ id: 1, place: KYOTO_PLACE }),
+              ],
+              travelTimes: [
+                {
+                  fromActivityId: 9,
+                  toActivityId: 1,
+                  mode: crossCity ? null : "WALK",
+                  durationMinutes: crossCity ? null : 12,
+                  distanceM: 42800,
+                  fallback: false,
+                  crossCity,
+                },
+              ],
+              stayMove: null,
+            },
+          }),
+        ),
+      );
+    }
 
     it("시각이 없으면 통째로 비활성이다 — 언제 보낼지 정할 수 없다", async () => {
       mockDetail({ startTime: null });
@@ -413,6 +521,47 @@ describe("ActivityDetailPage", () => {
       });
     });
 
+    it("도시를 넘어 들어오면 출발 알림을 켤 수 없고 왜인지 말한다", async () => {
+      mockDetail({ place: KYOTO_PLACE, canDepartureNotify: false });
+      mockDayBoard();
+
+      renderDetail();
+      await screen.findByLabelText("제목");
+
+      expect(screen.getByRole("switch", { name: "출발 알림" })).toBeDisabled();
+      // "시각과 이전 장소가 필요해요"는 고칠 수 없는 것을 고치라는 말이 된다.
+      expect(
+        screen.getByText("도시 간 이동은 출발 알림을 계산할 수 없어요"),
+      ).toBeInTheDocument();
+    });
+
+    it("장소 블록에 어디서 어디로 넘는지 적는다", async () => {
+      mockDetail({ place: KYOTO_PLACE, canDepartureNotify: false });
+      mockDayBoard();
+
+      renderDetail();
+      await screen.findByLabelText("제목");
+
+      expect(
+        screen.getByText(
+          "오사카 → 교토 · 도시 경계를 넘어 이동시간을 계산하지 않아요",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("같은 도시 안이면 안내도 없고 스위치도 살아 있다", async () => {
+      mockDetail({ place: PLACE });
+      mockDayBoard({ crossCity: false });
+
+      renderDetail();
+      await screen.findByLabelText("제목");
+
+      expect(screen.queryByText(/도시 경계를 넘어/)).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("switch", { name: "출발 알림" }),
+      ).not.toBeDisabled();
+    });
+
     it("알림 시점을 비우면 여행 기본값을 따른다", async () => {
       mockDetail({ notifyEnabled: true, notifyMinutes: 30 });
       const bodies: Record<string, unknown>[] = [];
@@ -426,7 +575,8 @@ describe("ActivityDetailPage", () => {
       const user = userEvent.setup();
       renderDetail();
       await screen.findByLabelText("제목");
-      expect(screen.getByText("시작 30분 전")).toBeInTheDocument();
+      // 타임존을 함께 말한다 — 09:00이 어느 도시의 09:00인지가 매번 달라진다.
+      expect(screen.getByText("시작 30분 전 · Asia/Tokyo")).toBeInTheDocument();
 
       await user.click(screen.getByRole("button", { name: "저장" }));
 
