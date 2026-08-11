@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-s3-cost-overview
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  s3-cost-overview.json: |-
+{{ .Files.Get "grafana-dashboards/s3-cost-overview.json" | indent 4 }}

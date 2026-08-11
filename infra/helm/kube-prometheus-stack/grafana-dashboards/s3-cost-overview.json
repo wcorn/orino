@@ -1,0 +1,171 @@
+{
+  "uid": "s3-cost-overview",
+  "title": "S3 비용 개요",
+  "tags": ["orino", "cost"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "5m",
+  "time": { "from": "now-7d", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Tier1 일 환산 요청 수 (PUT·POST·LIST)",
+      "description": "현재 rate × 86400. 달력일 합계가 아니라 지금 속도가 하루 유지될 때의 값이다 — ELOG-027이 '277k/day'라고 부른 것과 같은 단위. 청구서와 대조할 때 이 숫자를 본다.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "thanos" },
+      "targets": [
+        {
+          "expr": "sum(\n  label_replace(rate(thanos_objstore_bucket_operations_total{operation=~\"upload|iter\"}[30m]), \"tier\", \"tier1\", \"\", \"\")\n  or\n  label_replace(rate(loki_s3_request_duration_seconds_count{operation=~\"S3\\\\.(PutObject|List)\"}[30m]), \"tier\", \"tier1\", \"\", \"\")\n  or\n  label_replace(rate(tempodb_backend_request_duration_seconds_count{operation=~\"PUT|POST\"}[30m]), \"tier\", \"tier1\", \"\", \"\")\n) * 86400",
+          "legendFormat": "Tier1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60000 },
+              { "color": "red", "value": 150000 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Tier2 일 환산 요청 수 (GET·HEAD)",
+      "description": "ELOG-027 조치 전 277k/day → 조치 후 18k/day. 이 값이 다시 6자리로 올라가면 새 폴링 루프를 의심한다.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "thanos" },
+      "targets": [
+        {
+          "expr": "sum(\n  label_replace(rate(thanos_objstore_bucket_operations_total{operation=~\"get|get_range|exists\"}[30m]), \"tier\", \"tier2\", \"\", \"\")\n  or\n  label_replace(rate(loki_s3_request_duration_seconds_count{operation=\"S3.GetObject\"}[30m]), \"tier\", \"tier2\", \"\", \"\")\n  or\n  label_replace(rate(tempodb_backend_request_duration_seconds_count{operation=\"GET\"}[30m]), \"tier\", \"tier2\", \"\", \"\")\n) * 86400",
+          "legendFormat": "Tier2",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 50000 },
+              { "color": "red", "value": 200000 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Tier1 / Tier2 일 환산 요청 수 추이",
+      "description": "청구서와 대조 가능한 형태. Tier1(PUT·POST·LIST)과 Tier2(GET·HEAD)는 단가가 10배 이상 다르므로 합치지 않는다. DELETE는 무과금이라 제외.",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 10 },
+      "datasource": { "type": "prometheus", "uid": "thanos" },
+      "targets": [
+        {
+          "expr": "sum(\n  rate(thanos_objstore_bucket_operations_total{operation=~\"upload|iter\"}[30m])\n  or\n  rate(loki_s3_request_duration_seconds_count{operation=~\"S3\\\\.(PutObject|List)\"}[30m])\n  or\n  rate(tempodb_backend_request_duration_seconds_count{operation=~\"PUT|POST\"}[30m])\n) * 86400",
+          "legendFormat": "Tier1 (PUT·POST·LIST)",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(\n  rate(thanos_objstore_bucket_operations_total{operation=~\"get|get_range|exists\"}[30m])\n  or\n  rate(loki_s3_request_duration_seconds_count{operation=\"S3.GetObject\"}[30m])\n  or\n  rate(tempodb_backend_request_duration_seconds_count{operation=\"GET\"}[30m])\n) * 86400",
+          "legendFormat": "Tier2 (GET·HEAD)",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "max"] } }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "컴포넌트별 S3 operation rate",
+      "description": "어느 컴포넌트가 요청을 만드는가. 급증이 보이면 그 컴포넌트의 주기 플래그(interval)부터 본다 — ELOG-027의 thanos compact는 독립 루프가 4개였다.\n\n⚠️ Loki·Tempo는 2026-08-11에 스크랩을 켰다(#1152). 그 이전 구간은 데이터가 없는 게 정상이며, 8/9 급감은 Thanos 계열에서만 소급 확인된다.",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 10 },
+      "datasource": { "type": "prometheus", "uid": "thanos" },
+      "targets": [
+        {
+          "expr": "sum by (operation) (rate(thanos_objstore_bucket_operations_total{operation=~\"upload|iter|get|get_range|exists\"}[30m]))",
+          "legendFormat": "thanos {{operation}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (operation) (rate(loki_s3_request_duration_seconds_count{operation=~\"S3\\\\.(PutObject|List|GetObject)\"}[30m]))",
+          "legendFormat": "loki {{operation}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (operation) (rate(tempodb_backend_request_duration_seconds_count{operation=~\"PUT|POST|GET\"}[30m]))",
+          "legendFormat": "tempo {{operation}}",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 4,
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0, "showPoints": "never" }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["last"] } }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "급증 감시 — 현재 rate vs 7일 기준선",
+      "description": "S3RequestRateSurge 알림이 보는 것과 같은 값. 현재(30m)가 7일 평균의 3배를 넘고 절대값이 0.05 ops/s를 넘으면 30분 뒤 발동한다.\n\n기준선은 avg_over_time이라 존재하는 표본만 평균한다 — 배포 직후에는 현재값과 거의 같아 조용하고, 날이 지나며 진짜 7일 평균으로 자란다. 첫 일주일은 그만큼 민감도가 낮다.",
+      "gridPos": { "x": 0, "y": 15, "w": 24, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "thanos" },
+      "targets": [
+        {
+          "expr": "orino:s3_ops:rate30m",
+          "legendFormat": "현재 {{component}}/{{tier}}",
+          "refId": "A"
+        },
+        {
+          "expr": "3 * orino:s3_ops:avg7d",
+          "legendFormat": "발동선(7일×3) {{component}}/{{tier}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 4,
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0, "showPoints": "never" }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["last"] } }
+    }
+  ]
+}
