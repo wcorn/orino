@@ -61,6 +61,7 @@ import {
   useUpdateActivity,
 } from "@/features/travel/hooks/useActivityMutations";
 import { useBoard } from "@/features/travel/hooks/useBoard";
+import { usePlaceDetail } from "@/features/travel/hooks/usePlaceDetail";
 import {
   useCreateStay,
   useDeleteStay,
@@ -161,6 +162,11 @@ export function TripBoardPage() {
   const createStay = useCreateStay(tripId);
   const updateStay = useUpdateStay(tripId);
   const removeStay = useDeleteStay(tripId);
+
+  // 숙소 상세 시트가 열렸을 때만 그 장소를 읽는다 — 닫혀 있으면 부를 이유가 없다.
+  const { data: openStayPlace } = usePlaceDetail(
+    stays?.find((stay) => stay.stayId === openStayId)?.placeId ?? null,
+  );
 
   const createActivity = useCreateActivity(tripId);
   const updateActivity = useUpdateActivity(tripId);
@@ -415,6 +421,9 @@ export function TripBoardPage() {
    * 배지가 아는 것은 숙소 id뿐이다(보드 응답이 이름·시각만 싣는다) — 상세는 숙소 목록에서
    * 찾는다. 오프라인이면 그 목록이 없어 열 수 없고, 왜 안 열리는지 말해 준다.
    */
+  /** 열려 있는 숙소. 주소·길찾기는 붙어 있는 장소의 상세에서만 온다(§9.6). */
+  const openStayDetail = stays?.find((stay) => stay.stayId === openStayId);
+
   const openStay = (stayId: number) => {
     if (!stays?.some((stay) => stay.stayId === stayId)) {
       toast("숙소 정보를 불러오지 못했어요.", "error");
@@ -773,7 +782,8 @@ export function TripBoardPage() {
       />
 
       <StaySheet
-        stay={stays?.find((stay) => stay.stayId === openStayId) ?? null}
+        stay={openStayDetail ?? null}
+        place={openStayPlace ?? null}
         onOpenChange={(open) => !open && setOpenStayId(null)}
         onEdit={startEditStay}
         onDelete={(stay) => {
@@ -791,6 +801,9 @@ export function TripBoardPage() {
         tripStartDate={board.trip.startDate}
         tripEndDate={board.trip.endDate}
         stays={stays ?? []}
+        tripId={tripId}
+        cities={cities}
+        defaultCity={selectedCity}
         onOpenChange={(open) => !open && setStayFormOpen(false)}
         onSubmit={saveStay}
         pending={createStay.isPending || updateStay.isPending}

@@ -7,6 +7,7 @@ import ds.project.orino.domain.planner.travel.entity.TripStay;
 import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.domain.planner.travel.repository.TripStayRepository;
+import ds.project.orino.planner.travel.place.service.PlaceService;
 import ds.project.orino.planner.travel.stay.dto.StayOverlapResponse;
 import ds.project.orino.planner.travel.stay.dto.StayRequest;
 import ds.project.orino.planner.travel.stay.dto.StayResponse;
@@ -34,13 +35,16 @@ public class StayService {
     private final TripRepository tripRepository;
     private final TripStayRepository stayRepository;
     private final TravelPlaceRepository placeRepository;
+    private final PlaceService placeService;
 
     public StayService(TripRepository tripRepository,
                        TripStayRepository stayRepository,
-                       TravelPlaceRepository placeRepository) {
+                       TravelPlaceRepository placeRepository,
+                       PlaceService placeService) {
         this.tripRepository = tripRepository;
         this.stayRepository = stayRepository;
         this.placeRepository = placeRepository;
+        this.placeService = placeService;
     }
 
     public List<StayResponse> list(Long memberId, Long tripId) {
@@ -58,7 +62,7 @@ public class StayService {
 
         TripStay stay = new TripStay(tripId, request.name().trim(),
                 request.checkInDate(), request.checkOutDate());
-        stay.updateBasics(request.name().trim(), request.placeId(),
+        stay.updateBasics(request.name().trim(), resolvePlaceId(memberId, request),
                 request.checkInDate(), request.checkOutDate());
         stay.updateDetails(request.checkInTime(), request.checkOutTime(),
                 request.bookingUrl(), request.memo());
@@ -73,7 +77,7 @@ public class StayService {
         // 자기 자신과는 겹칠 수 없다 — 기간을 그대로 두고 이름만 고치는 요청이 막히면 안 된다.
         requireNoOverlap(stay.getTripId(), request, stayId);
 
-        stay.updateBasics(request.name().trim(), request.placeId(),
+        stay.updateBasics(request.name().trim(), resolvePlaceId(memberId, request),
                 request.checkInDate(), request.checkOutDate());
         stay.updateDetails(request.checkInTime(), request.checkOutTime(),
                 request.bookingUrl(), request.memo());
@@ -103,6 +107,21 @@ public class StayService {
         tripRepository.findByIdAndMemberId(stay.getTripId(), memberId)
                 .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_STAY_NOT_FOUND));
         return stay;
+    }
+
+    /**
+     * 요청의 장소를 내부 id로 정규화한다 — 일정 담기(§5)와 같은 규칙이다.
+     *
+     * <p>검색 결과를 그대로 보내면 여기서 upsert한다. 어느 도시의 숙소인지를 함께 넘겨
+     * <b>도시 식별자까지</b> 채운다 — 없으면 숙소 이동이 도시를 넘는지 판정할 수 없어
+     * "모르면 같은 도시"로 떨어지고, 오사카 가게에서 도쿄 숙소까지 자동차 시간이 붙는다.
+     */
+    private Long resolvePlaceId(Long memberId, StayRequest request) {
+        if (request.googlePlaceId() != null && !request.googlePlaceId().isBlank()) {
+            return placeService.upsertFromGoogle(memberId, request.googlePlaceId(),
+                    request.cityPlaceId()).getId();
+        }
+        return request.placeId();
     }
 
     /**

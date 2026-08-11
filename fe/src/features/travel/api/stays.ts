@@ -33,6 +33,19 @@ export interface Stay {
 export interface StayWriteRequest {
   name: string;
   placeId?: number | null;
+  /**
+   * 검색 결과를 그대로 담을 때. 서버가 장소를 upsert해 `placeId`로 연결한다 —
+   * 프론트가 장소를 먼저 만들 필요가 없다. `placeId`와 함께 보내지 않는다.
+   */
+  googlePlaceId?: string | null;
+  /**
+   * 이 숙소가 **어느 도시에 있는지**. 새로 담기는 장소에 그 도시 식별자가 함께 저장돼
+   * 숙소 이동의 도시 경계 판정이 성립한다(§3.4).
+   *
+   * <p>기준 도시에서 가져오지 않고 **사용자가 고른다** — 닛코 당일치기 날의 기준 도시는
+   * 닛코지만 자는 곳은 도쿄일 수 있다.
+   */
+  cityPlaceId?: number | null;
   checkInDate: string;
   checkOutDate: string;
   checkInTime?: string | null;

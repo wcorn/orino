@@ -1869,6 +1869,136 @@ describe("TripBoardPage", () => {
       await waitFor(() => expect(deleted).toEqual(["76"]));
     });
 
+    it("숙소 폼에서 장소를 검색해 붙이면 googlePlaceId와 도시를 함께 보낸다", async () => {
+      const posted: Record<string, unknown>[] = [];
+      server.use(
+        http.get(`${API_BASE}/travel/places/search`, () =>
+          HttpResponse.json({
+            code: "OK",
+            data: [
+              {
+                id: null,
+                googlePlaceId: "ChIJ_namba",
+                name: "난바 호텔",
+                category: "호텔",
+                address: "오사카시 주오구",
+                rating: 4.2,
+                lat: 34.6656,
+                lng: 135.5061,
+              },
+            ],
+          }),
+        ),
+        http.post(
+          `${API_BASE}/travel/trips/:tripId/stays`,
+          async ({ request }) => {
+            posted.push((await request.json()) as Record<string, unknown>);
+            return HttpResponse.json({ code: "OK", data: DOTONBORI });
+          },
+        ),
+      );
+      mockBoard({ stays: [] });
+
+      const user = userEvent.setup();
+      renderBoard();
+      await user.click(
+        await screen.findByRole("button", { name: "숙소 추가" }),
+      );
+
+      const sheet = await screen.findByRole("dialog");
+      await user.type(
+        within(sheet).getByLabelText("숙소 장소 검색"),
+        "난바 호텔",
+      );
+      await user.click(within(sheet).getByRole("button", { name: /검색/ }));
+      await user.click(await within(sheet).findByText("난바 호텔"));
+
+      // 이름이 비어 있으면 고른 장소 이름으로 채운다.
+      expect(within(sheet).getByLabelText("이름")).toHaveValue("난바 호텔");
+
+      fireEvent.change(within(sheet).getByLabelText("체크인"), {
+        target: { value: "2026-10-24" },
+      });
+      fireEvent.change(within(sheet).getByLabelText("체크아웃"), {
+        target: { value: "2026-10-25" },
+      });
+      await user.click(within(sheet).getByRole("button", { name: "저장" }));
+
+      await waitFor(() => expect(posted).toHaveLength(1));
+      expect(posted[0].googlePlaceId).toBe("ChIJ_namba");
+      // 도시는 보던 날짜의 것으로 떨어진다 — 숙소는 기준 도시와 무관하지만 기본값은 필요하다.
+      expect(posted[0].cityPlaceId).toBe(21);
+    });
+
+    it("장소가 붙은 숙소는 상세에 주소와 길찾기가 나온다", async () => {
+      server.use(
+        http.get(`${API_BASE}/travel/places/:placeId`, () =>
+          HttpResponse.json({
+            code: "OK",
+            data: {
+              id: 31,
+              googlePlaceId: "ChIJ_namba",
+              name: "난바 호텔",
+              address: "오사카시 주오구",
+              lat: 34.6656,
+              lng: 135.5061,
+              category: "호텔",
+              phone: null,
+              rating: null,
+              openingHours: null,
+              manualEntry: false,
+            },
+          }),
+        ),
+      );
+      mockBoard({
+        days: [
+          day(1, "2026-10-24", "토", 0, {
+            stayTonight: tonight(76, "도톤보리 호텔", true),
+          }),
+          ...DAYS.slice(1),
+        ],
+        stays: [{ ...DOTONBORI, placeId: 31 }],
+      });
+
+      const user = userEvent.setup();
+      renderBoard();
+      await user.click(
+        await screen.findByRole("button", { name: /^숙소 도톤보리 호텔/ }),
+      );
+
+      const sheet = await screen.findByRole("dialog");
+      expect(
+        await within(sheet).findByText("오사카시 주오구"),
+      ).toBeInTheDocument();
+      expect(
+        within(sheet).getByRole("button", { name: /구글 지도에서 길찾기/ }),
+      ).toBeInTheDocument();
+    });
+
+    it("장소 없는 숙소에는 길찾기가 없다 — 이름만으로는 엉뚱한 곳을 연다", async () => {
+      mockBoard({
+        days: [
+          day(1, "2026-10-24", "토", 0, {
+            stayTonight: tonight(76, "도톤보리 호텔", true),
+          }),
+          ...DAYS.slice(1),
+        ],
+        stays: [DOTONBORI],
+      });
+
+      const user = userEvent.setup();
+      renderBoard();
+      await user.click(
+        await screen.findByRole("button", { name: /^숙소 도톤보리 호텔/ }),
+      );
+
+      const sheet = await screen.findByRole("dialog");
+      expect(
+        within(sheet).queryByRole("button", { name: /구글 지도에서 길찾기/ }),
+      ).not.toBeInTheDocument();
+    });
+
     it("보관함에는 그날 밤이 없다 — 배지도 숙소 이동도 없다", async () => {
       mockBoard({
         archive: [activity()],

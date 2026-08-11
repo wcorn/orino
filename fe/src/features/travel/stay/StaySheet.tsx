@@ -2,12 +2,16 @@ import {
   CalendarPlus,
   Hotel,
   Link as LinkIcon,
+  MapPin,
+  Navigation,
   StickyNote,
 } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Button } from "@/components/ui/button";
+import type { PlaceDetail } from "@/features/travel/api/places";
 import type { Stay } from "@/features/travel/api/stays";
+import { placeDirectionsUrl } from "@/features/travel/lib/mapsLink";
 import { formatShortDate } from "@/features/travel/lib/tripStatus";
 
 interface StaySheetProps {
@@ -21,6 +25,8 @@ interface StaySheetProps {
   offline: boolean;
   /** 일정 생성 중. 두 번 눌러 일정이 두 벌 생기면 안 된다. */
   addingActivity: boolean;
+  /** 붙어 있는 장소의 상세. 주소·좌표는 여기서만 온다 — 숙소 자체는 id만 들고 있다. */
+  place: PlaceDetail | null;
 }
 
 /**
@@ -38,7 +44,9 @@ export function StaySheet({
   onAddActivity,
   offline,
   addingActivity,
+  place,
 }: StaySheetProps) {
+  const mapsUrl = place ? placeDirectionsUrl(place) : null;
   return (
     <BottomSheet
       open={stay !== null}
@@ -52,6 +60,14 @@ export function StaySheet({
             <Hotel className="size-[17px] shrink-0" />
             {stay.name}
           </p>
+
+          {/* 주소·도시는 붙어 있는 장소에서 온다. 장소 없는 숙소는 이 줄이 없다. */}
+          {place?.address && (
+            <p className="text-muted-foreground flex items-start gap-1.5 text-xs">
+              <MapPin className="mt-px size-3 shrink-0" />
+              {place.address}
+            </p>
+          )}
 
           <div className="flex gap-2">
             <TimeBox
@@ -83,6 +99,19 @@ export function StaySheet({
               <LinkIcon className="size-3.5 shrink-0" />
               예약 확인
             </a>
+          )}
+
+          {/* 좌표가 있어야 길찾기가 성립한다 — 이름만으로는 엉뚱한 곳을 연다. */}
+          {mapsUrl && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => window.open(mapsUrl, "_blank", "noopener")}
+            >
+              <Navigation className="size-3.5" />
+              구글 지도에서 길찾기 (대중교통)
+            </Button>
           )}
 
           {!offline && (
