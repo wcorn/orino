@@ -1,7 +1,9 @@
 package ds.project.orino.planner.travel.tools;
 
 import ds.project.orino.common.exception.CustomException;
+import ds.project.orino.planner.travel.metrics.ExternalApiMetrics;
 import ds.project.orino.planner.travel.tools.config.ToolsProperties;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import ds.project.orino.planner.travel.tools.service.ExchangeRateService;
 import ds.project.orino.redis.planner.travel.ToolsCacheRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,13 +57,19 @@ class ExchangeRateServiceTest {
 
     private StubEcbRatesClient client;
     private ExchangeRateService service;
+    private SimpleMeterRegistry registry;
 
     @BeforeEach
     void setUp() {
         client = new StubEcbRatesClient();
+        registry = new SimpleMeterRegistry();
         service = new ExchangeRateService(client, new InMemoryCache(), PROPS,
                 new ObjectMapper(), Clock.fixed(Instant.parse("2026-08-08T00:00:00Z"),
-                ZoneOffset.UTC));
+                ZoneOffset.UTC), new ExternalApiMetrics(registry));
+    }
+
+    private double calls(String result) {
+        return registry.counter("orino.external.api.calls", "api", "fx", "result", result).count();
     }
 
     @Test
@@ -72,6 +80,34 @@ class ExchangeRateServiceTest {
         service.rate("EUR", "JPY");
 
         assertThat(client.calls).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("히트와 미스를 나눠 센다 — 총 호출만 세면 캐시가 죽어도 그래프가 안 변한다")
+    void countsHitAndMiss() {
+        service.rate("JPY", "KRW");
+        service.rate("USD", "KRW");
+        service.rate("EUR", "JPY");
+
+        assertThat(calls("miss")).isEqualTo(1);
+        assertThat(calls("hit")).isEqualTo(2);
+        // 계측과 실제 호출이 어긋나면 그래프가 거짓말을 한다.
+        assertThat(client.calls).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("고시를 못 얻으면 error로 센다 — 나간 호출이라 청구에는 오른다")
+    void countsFailureAsError() {
+        client.result = Optional.empty();
+
+        try {
+            service.rate("JPY", "KRW");
+        } catch (RuntimeException expected) {
+            // 503으로 떨어지는 것은 아래 테스트가 본다.
+        }
+
+        assertThat(calls("error")).isEqualTo(1);
+        assertThat(calls("hit")).isZero();
     }
 
     @Test

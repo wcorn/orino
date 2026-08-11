@@ -1,0 +1,228 @@
+{
+  "uid": "travel-external-api",
+  "title": "여행 외부 API 호출",
+  "tags": ["orino", "cost", "travel"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "유료 호출 일 환산 (Places + Routes)",
+      "description": "실제로 밖으로 나간 호출(miss + error)만 센다 — 청구서에 오르는 값이 그것이다. 현재 rate × 86400이라 달력일 합계가 아니라 '지금 속도가 하루 유지되면' 값이다.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(orino_external_api_calls_total{api=~\"places_.*|routes\", result=~\"miss|error\"}[30m])) * 86400",
+          "legendFormat": "유료 호출",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1000 },
+              { "color": "red", "value": 5000 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "전체 캐시 히트율",
+      "description": "hit / (hit + miss + error). ELOG-023이 통합 테스트로 고정한 캐시가 운영에서도 도는지를 보는 값이다. 이 값이 떨어지는데 호출 수가 늘면 사용자가 는 게 아니라 캐시가 깨진 것이다.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(orino_external_api_calls_total{result=\"hit\"}[30m])) / sum(rate(orino_external_api_calls_total[30m]))",
+          "legendFormat": "히트율",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "green", "value": 0.8 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "결과 없는 호출 비율",
+      "description": "error / (miss + error). 나갔는데 쓸 값이 없었던 비율이다. 클라이언트가 실패와 '결과 0건'을 둘 다 빈 값으로 돌려주므로 구분되지 않는다 — 어느 쪽이든 돈은 나갔다. 이 값이 높으면 호출 조건 자체를 의심한다(#1192가 그 사례다).",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(orino_external_api_calls_total{result=\"error\"}[30m])) / sum(rate(orino_external_api_calls_total{result=~\"miss|error\"}[30m]))",
+          "legendFormat": "결과 없음",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.2 },
+              { "color": "red", "value": 0.5 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "무료 호출 일 환산 (날씨 + 환율)",
+      "description": "돈은 안 들지만 캐시가 도는지는 같은 방식으로 본다. 날씨는 도시 단위 캐시라 열흘 여행이 열 번 나가면 안 된다.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(orino_external_api_calls_total{api=~\"weather|fx\", result=~\"miss|error\"}[30m])) * 86400",
+          "legendFormat": "무료 호출",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0 }
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "API별 실제 호출 rate (miss + error)",
+      "description": "계열별로 나눠 본다. 어떤 계열이 늘었는지 보이지 않으면 원인을 좁힐 수 없다 — 장소 검색이 는 것과 상세 조회가 는 것은 대처가 다르다.",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (api) (rate(orino_external_api_calls_total{result=~\"miss|error\"}[5m]))",
+          "legendFormat": "{{api}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 3,
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "API별 캐시 히트율",
+      "description": "계열마다 캐시 수명이 다르다 — 장소 상세는 RDB 30일, 검색·경로·날씨는 Redis다. 한 계열만 히트율이 무너지면 그 캐시만 문제다.",
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (api) (rate(orino_external_api_calls_total{result=\"hit\"}[30m])) / sum by (api) (rate(orino_external_api_calls_total[30m]))",
+          "legendFormat": "{{api}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "min": 0,
+          "max": 1,
+          "custom": { "fillOpacity": 0, "lineWidth": 2, "showPoints": "never" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "min"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "결말별 호출 rate",
+      "description": "hit·miss·error를 겹쳐 쌓아 전체 흐름을 본다. 전체가 그대로인데 hit이 miss로 옮겨가면 그게 캐시가 죽은 모양이다.",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (result) (rate(orino_external_api_calls_total[5m]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 3,
+          "custom": {
+            "fillOpacity": 30,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    }
+  ]
+}

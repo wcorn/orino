@@ -6,6 +6,7 @@ import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.entity.Trip;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.day.service.TripDayService;
+import ds.project.orino.planner.travel.metrics.ExternalApiMetrics;
 import ds.project.orino.planner.travel.tools.client.WeatherClient;
 import ds.project.orino.planner.travel.tools.config.ToolsProperties;
 import ds.project.orino.planner.travel.tools.dto.WeatherResponse;
@@ -40,6 +41,7 @@ public class WeatherService {
     private final ToolsProperties props;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final ExternalApiMetrics metrics;
 
     public WeatherService(TripRepository tripRepository,
                           TripDayService tripDayService,
@@ -47,7 +49,8 @@ public class WeatherService {
                           ToolsCacheRepository cacheRepository,
                           ToolsProperties props,
                           ObjectMapper objectMapper,
-                          Clock clock) {
+                          Clock clock,
+                          ExternalApiMetrics metrics) {
         this.tripRepository = tripRepository;
         this.tripDayService = tripDayService;
         this.weatherClient = weatherClient;
@@ -55,6 +58,7 @@ public class WeatherService {
         this.props = props;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     public WeatherResponse forTrip(Long memberId, Long tripId) {
@@ -147,10 +151,12 @@ public class WeatherService {
         String key = "%s,%s:%s".formatted(city.getLat(), city.getLng(), city.getTimezone());
         Optional<String> hit = cacheRepository.findWeather(key);
         if (hit.isPresent()) {
+            metrics.record(ExternalApiMetrics.Api.WEATHER, ExternalApiMetrics.Result.HIT);
             return objectMapper.readValue(hit.get(), new TypeReference<WeatherResponse>() { });
         }
         Optional<WeatherResponse> fresh =
                 weatherClient.forecast(city.getLat(), city.getLng(), city.getTimezone());
+        metrics.recordFetch(ExternalApiMetrics.Api.WEATHER, fresh.isPresent());
         // 실패는 캐시하지 않는다 — 6시간 동안 날씨가 통째로 비어 보인다.
         fresh.ifPresent(response -> cacheRepository.saveWeather(
                 key, objectMapper.writeValueAsString(response), props.weatherTtl()));
