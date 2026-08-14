@@ -36,6 +36,17 @@ resource "aws_s3_bucket_public_access_block" "this" {
   restrict_public_buckets = true
 }
 
+# 버킷 단위 요청 수를 CloudWatch 로 내보낸다. Cost Explorer 는 usage type 까지만
+# 쪼개지고 버킷별로는 못 쪼개므로, 차분 귀속이 막혔을 때 유일한 실측 수단이다.
+#
+# filter 를 비워 버킷 전체를 하나로 집계한다(접두사별로 쪼개면 필터당 과금이 는다).
+# name 은 AWS 관례상 "EntireBucket" 을 쓴다.
+resource "aws_s3_bucket_metric" "requests" {
+  count  = var.request_metrics_enabled ? 1 : 0
+  bucket = aws_s3_bucket.this.id
+  name   = "EntireBucket"
+}
+
 resource "aws_s3_bucket_lifecycle_configuration" "this" {
   count  = var.lifecycle_expiration_days > 0 ? 1 : 0
   bucket = aws_s3_bucket.this.id
