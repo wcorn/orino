@@ -34,6 +34,7 @@ import { useUpdateActivity } from "@/features/travel/hooks/useActivityMutations"
 import { useBoard } from "@/features/travel/hooks/useBoard";
 import { usePlaceDetail } from "@/features/travel/hooks/usePlaceDetail";
 import { useTrip } from "@/features/travel/hooks/useTrip";
+import { activityWriteBodyFrom } from "@/features/travel/lib/activityWriteBody";
 import { cityOn } from "@/features/travel/lib/baseCity";
 import { cityLabelOf } from "@/features/travel/lib/cityLabel";
 import { NOTIFY_MINUTES_OPTIONS } from "@/features/travel/lib/destinations";
@@ -230,7 +231,9 @@ export function ActivityDetailPage() {
     try {
       await updateActivity.mutateAsync({
         activityId,
-        body: {
+        // 폼에 없는 필드(장소)는 지금 값 그대로 되돌려 보낸다 — 수정은 전체 교체라
+        // 빠뜨리면 서버가 지운다. 이 화면의 장소 블록은 읽기 전용이다(#1197).
+        body: activityWriteBodyFrom(activity, {
           title: form.title.trim(),
           activityDate: form.day === ARCHIVE_VALUE ? null : form.day,
           // 문자열 그대로 보낸다. 시각이 없으면 null이고 그건 정상이다.
@@ -241,7 +244,7 @@ export function ActivityDetailPage() {
           notifyEnabled: form.notifyEnabled,
           notifyMinutes: form.notifyMinutes ? Number(form.notifyMinutes) : null,
           departureNotifyEnabled: form.departureNotifyEnabled,
-        },
+        }),
       });
       toast("일정을 저장했어요.", "success");
       // 옮겼다면 옮겨간 날짜의 탭으로 간다.

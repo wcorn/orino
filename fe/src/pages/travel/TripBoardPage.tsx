@@ -69,6 +69,7 @@ import {
   useUpdateStay,
 } from "@/features/travel/hooks/useStays";
 import { useUpdateDay } from "@/features/travel/hooks/useUpdateDay";
+import { activityWriteBodyFrom } from "@/features/travel/lib/activityWriteBody";
 import {
   daysForPlace,
   groupArchiveByCity,
@@ -289,7 +290,7 @@ export function TripBoardPage() {
   const pickFromArchive = async (activity: Activity) => {
     await updateActivity.mutateAsync({
       activityId: activity.id,
-      body: { title: activity.title, activityDate: selectedDate },
+      body: activityWriteBodyFrom(activity, { activityDate: selectedDate }),
     });
     setSheetOpen(false);
   };
@@ -305,11 +306,7 @@ export function TripBoardPage() {
       run: () =>
         updateActivity.mutateAsync({
           activityId: activity.id,
-          body: {
-            title: activity.title,
-            activityDate: null,
-            startTime: activity.startTime,
-          },
+          body: activityWriteBodyFrom(activity, { activityDate: null }),
         }),
     });
 
@@ -344,11 +341,7 @@ export function TripBoardPage() {
     if (target === selectedDate) return;
     await updateActivity.mutateAsync({
       activityId: activity.id,
-      body: {
-        title: activity.title,
-        activityDate: target,
-        startTime: activity.startTime,
-      },
+      body: activityWriteBodyFrom(activity, { activityDate: target }),
     });
     toast(
       target === null ? "보관함으로 옮겼어요." : "다른 날짜로 옮겼어요.",

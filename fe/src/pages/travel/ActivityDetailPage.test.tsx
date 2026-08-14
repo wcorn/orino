@@ -199,6 +199,35 @@ describe("ActivityDetailPage", () => {
     expect(seen[0].startTime).toBeNull();
   });
 
+  it("시각을 넣고 저장해도 장소가 살아남는다 — 수정은 전체 교체다(#1197)", async () => {
+    // 이 화면의 장소 블록은 읽기 전용이라 사용자가 장소를 지울 방법이 없다.
+    // `placeId`를 빠뜨리면 서버가 place_id를 NULL로 덮어 이름·주소·좌표가 다 사라진다.
+    mockDetail({
+      startTime: null,
+      place: {
+        id: 10,
+        name: "센소지",
+        address: "다이토구",
+        lat: 35.7147651,
+        lng: 139.7966553,
+        cityName: "도쿄",
+        cityPlaceRef: "ChIJ_tokyo",
+      },
+    });
+    const seen = captureSave();
+    renderDetail();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("시작 시각")).toHaveValue("");
+    });
+    await userEvent.type(screen.getByLabelText("시작 시각"), "09:00");
+    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0].startTime).toBe("09:00");
+    expect(seen[0].placeId).toBe(10);
+  });
+
   it("시각은 문자열 그대로 보낸다 — 기기 타임존으로 변환하지 않는다", async () => {
     mockDetail();
     const seen = captureSave();
