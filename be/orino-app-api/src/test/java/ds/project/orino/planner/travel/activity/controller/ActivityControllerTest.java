@@ -197,6 +197,44 @@ class ActivityControllerTest extends ApiTestSupport {
         }
 
         @Test
+        @DisplayName("수정은 전체 교체다 — placeId를 빼면 장소가 해제된다")
+        void omittingPlaceIdClearsPlace() throws Exception {
+            long placeId = createPoi("센소지", "다이토구");
+            long id = createActivityWithPlace("센소지", DAY1, placeId);
+
+            // 시각만 바꾸려던 요청이라도 placeId가 없으면 장소가 떨어진다. 부분 수정이 아니다.
+            mockMvc.perform(put("/api/travel/activities/" + id)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"title": "센소지", "activityDate": "%s", "startTime": "09:00"}
+                                    """.formatted(DAY1)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.place").doesNotExist());
+
+            assertThat(activityRepository.findById(id).orElseThrow().getPlaceId()).isNull();
+        }
+
+        @Test
+        @DisplayName("placeId를 함께 보내면 장소가 그대로 남는다 — 화면은 이 경로로 저장한다(#1197)")
+        void keepsPlaceWhenPlaceIdIsSent() throws Exception {
+            long placeId = createPoi("센소지", "다이토구");
+            long id = createActivityWithPlace("센소지", DAY1, placeId);
+
+            mockMvc.perform(put("/api/travel/activities/" + id)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"title": "센소지", "activityDate": "%s", "startTime": "09:00",
+                                     "placeId": %d}
+                                    """.formatted(DAY1, placeId)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.startTime").value("09:00"))
+                    .andExpect(jsonPath("$.data.place.id").value(placeId))
+                    .andExpect(jsonPath("$.data.place.address").value("다이토구"));
+        }
+
+        @Test
         @DisplayName("시각 없이 알림을 켜도 저장은 된다(알림 생성 여부는 3단계 판정)")
         void allowsNotifyWithoutTime() throws Exception {
             long id = createActivity("쇼핑", DAY1);
@@ -449,6 +487,32 @@ class ActivityControllerTest extends ApiTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\": \"%s\"%s}".formatted(title, dateField)))
                 .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) JsonPath.read(body, "$.data.id")).longValue();
+    }
+
+    /** 구글을 타지 않는 직접 입력 장소. 담긴 장소가 수정에 살아남는지 보려면 하나 있어야 한다. */
+    private long createPoi(String name, String address) throws Exception {
+        String body = mockMvc.perform(post("/api/travel/places")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "%s", "address": "%s"}
+                                """.formatted(name, address)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) JsonPath.read(body, "$.data.id")).longValue();
+    }
+
+    private long createActivityWithPlace(String title, String date, long placeId) throws Exception {
+        String body = mockMvc.perform(post("/api/travel/trips/" + tripId + "/activities")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "%s", "activityDate": "%s", "placeId": %d}
+                                """.formatted(title, date, placeId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.place.id").value(placeId))
                 .andReturn().getResponse().getContentAsString();
         return ((Number) JsonPath.read(body, "$.data.id")).longValue();
     }

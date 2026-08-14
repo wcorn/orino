@@ -346,7 +346,11 @@ describe("TripBoardPage", () => {
       );
 
       await waitFor(() => expect(seen).toHaveLength(1));
-      expect(seen[0]).toMatchObject({ activityDate: "2026-10-25" });
+      // 날짜만 바꾸는 수정이지만 `PUT`은 전체 교체다 — 장소를 빼면 서버가 지운다(#1197).
+      expect(seen[0]).toMatchObject({
+        activityDate: "2026-10-25",
+        placeId: 109,
+      });
     });
 
     it("빈 보관함 문구는 그대로다", async () => {
@@ -789,11 +793,27 @@ describe("TripBoardPage", () => {
       expect(await screen.findByLabelText("장소 검색")).toBeInTheDocument();
     });
 
-    it("보관함 일정을 지금 보는 날짜로 가져온다", async () => {
+    it("보관함 일정을 지금 보는 날짜로 가져온다 — 장소·메모·알림도 함께 온다", async () => {
       mockBoard({
         byDate: { "2026-10-24": [] },
         archive: [
-          activity({ id: 9, title: "가고 싶은 라멘집", activityDate: null }),
+          activity({
+            id: 9,
+            title: "가고 싶은 라멘집",
+            activityDate: null,
+            place: {
+              id: 42,
+              name: "이치란 시부야",
+              address: "시부야구",
+              lat: 35.6595,
+              lng: 139.7005,
+              cityName: "도쿄",
+              cityPlaceRef: "ChIJ_tokyo",
+            },
+            memo: "1층 자판기",
+            notifyEnabled: true,
+            notifyMinutes: 20,
+          }),
         ],
       });
       const seen: Record<string, unknown>[] = [];
@@ -814,7 +834,14 @@ describe("TripBoardPage", () => {
       );
 
       await waitFor(() => expect(seen).toHaveLength(1));
-      expect(seen[0]).toMatchObject({ activityDate: "2026-10-24" });
+      // 담아 둘 때 붙여 놓은 것들이 날짜를 정하는 순간 사라지면 안 된다(#1197).
+      expect(seen[0]).toMatchObject({
+        activityDate: "2026-10-24",
+        placeId: 42,
+        memo: "1층 자판기",
+        notifyEnabled: true,
+        notifyMinutes: 20,
+      });
     });
 
     it("보관함을 보고 있으면 '가져오기'를 띄우지 않는다", async () => {
@@ -865,6 +892,53 @@ describe("TripBoardPage", () => {
         await screen.findByRole("button", { name: /실행취소/ }),
       ).toBeInTheDocument();
       expect(puts).toHaveLength(0);
+    });
+
+    it("보관함으로 내려도 장소·메모·알림은 그대로다 — 되돌려 놓을 때 필요하다", async () => {
+      // 보관함행은 `activityDate`만 null로 바꾸는 수정인데, `PUT`이 전체 교체라
+      // 나머지를 안 보내면 담아 둔 장소까지 함께 지워졌다(#1197).
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      mockBoard({
+        byDate: {
+          "2026-10-24": [
+            activity({
+              place: {
+                id: 42,
+                name: "센소지 본당",
+                address: "다이토구",
+                lat: 35.7148,
+                lng: 139.7967,
+                cityName: "도쿄",
+                cityPlaceRef: "ChIJ_tokyo",
+              },
+              memo: "가미나리몬 앞",
+              notifyEnabled: true,
+              notifyMinutes: 20,
+            }),
+          ],
+        },
+      });
+      const { puts } = captureWrites();
+
+      renderBoard();
+      await screen.findByText("센소지");
+      await userEvent.click(screen.getByLabelText("센소지 보관함으로"));
+      await screen.findByRole("button", { name: /실행취소/ });
+
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+
+      await waitFor(() => expect(puts).toHaveLength(1));
+      expect(puts[0]).toMatchObject({
+        activityDate: null,
+        placeId: 42,
+        startTime: "09:00",
+        memo: "가미나리몬 앞",
+        notifyEnabled: true,
+        notifyMinutes: 20,
+      });
+      vi.useRealTimers();
     });
 
     it("실행취소를 누르면 요청이 아예 나가지 않고 일정이 돌아온다", async () => {
