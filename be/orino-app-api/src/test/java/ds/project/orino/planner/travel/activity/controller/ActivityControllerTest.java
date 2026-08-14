@@ -18,9 +18,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.TimeZone;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,6 +51,9 @@ class ActivityControllerTest extends ApiTestSupport {
     private TripActivityRepository activityRepository;
     @Autowired
     private DbCleaner dbCleaner;
+    /** 컬럼에 실제로 무엇이 들어갔는지 보려면 엔티티를 거치지 않고 읽어야 한다(#1201). */
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private String authHeader;
     private String otherAuthHeader;
@@ -232,6 +237,37 @@ class ActivityControllerTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.startTime").value("09:00"))
                     .andExpect(jsonPath("$.data.place.id").value(placeId))
                     .andExpect(jsonPath("$.data.place.address").value("다이토구"));
+        }
+
+        @Test
+        @DisplayName("JVM 기본 타임존이 UTC가 아니어도 시각은 벽시계 그대로 저장된다(#1201)")
+        void storesWallClockTimeRegardlessOfJvmTimeZone() throws Exception {
+            // `hibernate.jdbc.time_zone`이 붙어 있으면 Hibernate가 LocalTime을 JVM 기본
+            // 타임존으로 해석해 환산해 넣는다 — 파드에 TZ=Asia/Seoul을 주는 순간 모든 TIME이
+            // 9시간 밀린다. 화면은 읽을 때 되돌려 읽어 왕복이 맞아 보여서 아무도 모른다.
+            TimeZone original = TimeZone.getDefault();
+            long id;
+            try {
+                TimeZone.setDefault(TimeZone.getTimeZone("Asia/Seoul"));
+                id = createActivity("센소지", DAY1);
+                mockMvc.perform(put("/api/travel/activities/" + id)
+                                .header(HttpHeaders.AUTHORIZATION, authHeader)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {"title": "센소지", "activityDate": "%s", "startTime": "09:00"}
+                                        """.formatted(DAY1)))
+                        .andExpect(status().isOk());
+            } finally {
+                TimeZone.setDefault(original);
+            }
+
+            // 엔티티로 읽으면 같은 환산이 반대로 걸려 밀린 값도 09:00으로 보인다.
+            // 컬럼을 문자열로 직접 읽어야 실제로 무엇이 들어갔는지 드러난다.
+            String stored = jdbcTemplate.queryForObject(
+                    "SELECT CAST(start_time AS CHAR) FROM trip_activity WHERE id = ?",
+                    String.class, id);
+
+            assertThat(stored).isEqualTo("09:00:00");
         }
 
         @Test
