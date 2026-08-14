@@ -10,6 +10,7 @@ import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.FixedClockConfig;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.TravelCityFixture;
+import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -18,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -49,6 +51,11 @@ class ActivityControllerTest extends ApiTestSupport {
     private TripActivityRepository activityRepository;
     @Autowired
     private DbCleaner dbCleaner;
+    /** 컬럼에 실제로 무엇이 들어갔는지 보려면 엔티티를 거치지 않고 읽어야 한다(#1201). */
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+    @Autowired
+    private EntityManagerFactory entityManagerFactory;
 
     private String authHeader;
     private String otherAuthHeader;
@@ -232,6 +239,28 @@ class ActivityControllerTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.startTime").value("09:00"))
                     .andExpect(jsonPath("$.data.place.id").value(placeId))
                     .andExpect(jsonPath("$.data.place.address").value("다이토구"));
+        }
+
+        @Test
+        @DisplayName("시각은 컬럼에 벽시계 그대로 들어간다 — 엔티티로 읽으면 환산이 상쇄돼 안 보인다")
+        void storesStartTimeAsWallClock() throws Exception {
+            long id = createActivity("센소지", DAY1);
+
+            mockMvc.perform(put("/api/travel/activities/" + id)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"title": "센소지", "activityDate": "%s", "startTime": "09:00"}
+                                    """.formatted(DAY1)))
+                    .andExpect(status().isOk());
+
+            // 엔티티로 읽으면 쓸 때의 환산이 읽을 때 반대로 걸려 밀린 값도 09:00으로 보인다.
+            // 컬럼을 문자열로 직접 읽어야 실제로 무엇이 들어갔는지 드러난다(#1201).
+            String stored = jdbcTemplate.queryForObject(
+                    "SELECT CAST(start_time AS CHAR) FROM trip_activity WHERE id = ?",
+                    String.class, id);
+
+            assertThat(stored).isEqualTo("09:00:00");
         }
 
         @Test
@@ -461,6 +490,25 @@ class ActivityControllerTest extends ApiTestSupport {
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("TRAVEL-ERR-001"));
         }
+    }
+
+    /**
+     * 시각을 밀리게 하는 설정이 다시 들어오지 않게 막는다(#1201).
+     *
+     * <p>{@code hibernate.jdbc.time_zone}이 붙으면 Hibernate가 {@code LocalTime}을 <b>JVM 기본
+     * 타임존</b>으로 해석해 설정한 타임존으로 환산해 넣는다. 파드에 {@code TZ=Asia/Seoul}을 주는
+     * 순간 모든 {@code TIME}이 9시간 밀리는데, 읽을 때 같은 환산이 반대로 걸려 화면은 멀쩡해
+     * 보인다 — 그래서 동작 테스트로는 잡히지 않고 설정 자체를 막아야 한다.
+     *
+     * <p>동작 자체는 boot jar로 JVM {@code TZ}를 바꿔 가며 실측해 확인했다. 그 조건을 테스트로
+     * 옮기려면 JVM을 따로 띄워야 한다 — 드라이버가 <b>접속 시점의</b> 기본 타임존을 붙들고 있어
+     * 실행 중에 바꿔 봐야 풀에 남은 커넥션에는 반영되지 않는다.
+     */
+    @Test
+    @DisplayName("hibernate.jdbc.time_zone을 두지 않는다 — 붙으면 TIME이 JVM 타임존만큼 밀린다")
+    void doesNotConfigureJdbcTimeZone() {
+        assertThat(entityManagerFactory.getProperties())
+                .doesNotContainKey("hibernate.jdbc.time_zone");
     }
 
     // ---------------- helpers ----------------

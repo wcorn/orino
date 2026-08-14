@@ -1,19 +1,22 @@
+# `hibernate.jdbc.time_zone`을 두지 않는다. 이 애플리케이션은 일정 시각을 **벽시계 시각**
+# (`DATE` + `TIME`)으로 저장하는데, 그 속성이 붙으면 Hibernate가 `LocalTime`을 JVM 기본
+# 타임존으로 해석해 설정한 타임존으로 환산해 넣는다. JVM TZ가 UTC가 아닌 순간 `TIME` 값이
+# 통째로 밀린다(#1201). `Instant`(`created_at`)는 이 속성 없이도 UTC로 저장되므로 잃는 것이 없다.
+#
+# JDBC URL에 `serverTimezone`도 두지 않는다. 서버는 UTC인데 `Asia/Seoul`이라 선언하고 있었고,
+# 실측 결과 이 파라미터는 위 현상에 아무 영향이 없었다 — 사실과 다른 선언만 남는다.
 spring:
   config:
     activate:
       on-profile: prod
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST}/${DB_NAME}?useUnicode=true&charset=utf8mb4&serverTimezone=Asia/Seoul
+    url: jdbc:mysql://${MYSQL_HOST}/${DB_NAME}?useUnicode=true&charset=utf8mb4
     username: ${MYSQL_USERNAME}
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
       ddl-auto: validate
-    properties:
-      hibernate:
-        jdbc:
-          time_zone: UTC
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
 ---
@@ -22,7 +25,7 @@ spring:
     activate:
       on-profile: local
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST}/${DB_NAME}?useUnicode=true&charset=utf8mb4&serverTimezone=Asia/Seoul
+    url: jdbc:mysql://${MYSQL_HOST}/${DB_NAME}?useUnicode=true&charset=utf8mb4
     username: ${MYSQL_USERNAME}
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -34,8 +37,6 @@ spring:
         format_sql: true
         highlight_sql: true
         generate_statistics: true
-        jdbc:
-          time_zone: UTC
   liquibase:
     enabled: true
     change-log: classpath:db/changelog/db.changelog-master.yaml
@@ -65,10 +66,6 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
-    properties:
-      hibernate:
-        jdbc:
-          time_zone: UTC
   liquibase:
     enabled: true
     change-log: classpath:db/changelog/db.changelog-master.yaml
