@@ -243,6 +243,10 @@ public class TravelTimeService {
     /**
      * 캐시를 먼저 본다. 보드는 열 때마다 조회되고 날짜 탭을 넘길 때마다 다시 온다 —
      * 캐시가 없으면 탭 하나 넘길 때마다 일정 수만큼 유료 호출이 난다.
+     *
+     * <p>캐시는 <b>두 벌</b>이다. 경로를 찾은 구간과 <b>경로가 없다고 확인된 구간</b>을 따로
+     * 기억한다(#1203). 후자를 기억하지 않으면 섬·해외 구간처럼 애초에 갈 수 없는 두 지점이
+     * 보드를 열 때마다 같은 유료 호출을 다시 낸다 — 답이 바뀌지 않는데도 매번 사 온다.
      */
     private Optional<RoutesClient.Route> route(Located from, Located to, TravelMode mode) {
         String key = travelTimeKey(from, to, mode);
@@ -251,9 +255,16 @@ public class TravelTimeService {
             metrics.record(ExternalApiMetrics.Api.ROUTES, ExternalApiMetrics.Result.HIT);
             return Optional.of(objectMapper.readValue(hit.get(), RoutesClient.Route.class));
         }
-        Optional<RoutesClient.Route> fresh;
+        if (cacheRepository.isKnownNoRoute(key)) {
+            // HIT 으로 센다 — Result.HIT 의 정의가 "캐시에서 답했다, 외부 호출이 없다"이고
+            // 이 경우가 정확히 그것이다. 새 결말을 만들면 "miss+error+rejected = 나간 호출
+            // 수"라는 계측의 산식이 깨진다.
+            metrics.record(ExternalApiMetrics.Api.ROUTES, ExternalApiMetrics.Result.HIT);
+            return Optional.empty();
+        }
+        RoutesClient.RouteLookup lookup;
         try {
-            fresh = routesClient.route(
+            lookup = routesClient.route(
                     new RoutesClient.Coordinates(from.lat(), from.lng()),
                     new RoutesClient.Coordinates(to.lat(), to.lng()),
                     mode);
@@ -263,11 +274,25 @@ public class TravelTimeService {
             metrics.recordRejected(ExternalApiMetrics.Api.ROUTES);
             return Optional.empty();
         }
-        metrics.recordFetch(ExternalApiMetrics.Api.ROUTES, fresh.isPresent());
-        // 실패는 캐시하지 않는다 — 일시적 실패를 붙들고 있으면 복구된 뒤에도 계속 fallback이다.
-        fresh.ifPresent(r ->
-                cacheRepository.save(key, objectMapper.writeValueAsString(r), props.cacheTtl()));
-        return fresh;
+        if (lookup.calledOut()) {
+            // 나간 호출만 센다. 키가 없어 부르지 않은 건은 청구서에 오르지 않으므로 빼야 한다.
+            metrics.recordFetch(ExternalApiMetrics.Api.ROUTES,
+                    lookup.outcome() == RoutesClient.Outcome.FOUND);
+        }
+        return switch (lookup.outcome()) {
+            case FOUND -> {
+                cacheRepository.save(key, objectMapper.writeValueAsString(lookup.route()),
+                        props.cacheTtl());
+                yield Optional.of(lookup.route());
+            }
+            // 영구적이다. 기억해 두지 않으면 매번 같은 값을 다시 사 온다.
+            case NO_ROUTE -> {
+                cacheRepository.saveNoRoute(key, props.noRouteCacheTtl());
+                yield Optional.empty();
+            }
+            // 일시적 실패는 캐시하지 않는다 — 붙들고 있으면 복구된 뒤에도 계속 fallback이다.
+            case FAILED, DISABLED -> Optional.empty();
+        };
     }
 
     /**

@@ -13,10 +13,11 @@ import java.time.Duration;
  * @param apiKey         Places/Routes 공용 API 키(비면 fallback으로만 동작)
  * @param baseUrl        Routes API base URL
  * @param languageCode   응답 언어
- * @param cacheTtl       구간 캐시 TTL. 같은 두 지점 사이 거리는 잘 변하지 않는다
- * @param walkThresholdM 이 직선거리 이하면 도보, 초과면 자동차(§1.3 — 1.5km)
- * @param connectTimeout 연결 타임아웃
- * @param readTimeout    읽기 타임아웃
+ * @param cacheTtl        구간 캐시 TTL. 같은 두 지점 사이 거리는 잘 변하지 않는다
+ * @param noRouteCacheTtl "경로 없음" 캐시 TTL. 성공 캐시보다 <b>짧게</b> 둔다 — 영구는 아니다
+ * @param walkThresholdM  이 직선거리 이하면 도보, 초과면 자동차(§1.3 — 1.5km)
+ * @param connectTimeout  연결 타임아웃
+ * @param readTimeout     읽기 타임아웃
  */
 @ConfigurationProperties(prefix = "travel.routes")
 public record RoutesProperties(
@@ -24,6 +25,7 @@ public record RoutesProperties(
         String baseUrl,
         String languageCode,
         Duration cacheTtl,
+        Duration noRouteCacheTtl,
         int walkThresholdM,
         Duration connectTimeout,
         Duration readTimeout

@@ -22,7 +22,6 @@ import org.springframework.http.MediaType;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -264,7 +263,7 @@ class TravelTimeIntegrationTest extends ApiTestSupport {
         @Test
         @DisplayName("이동시간 행은 남기고 직선거리로 대체한다 — 거리만이라도 알면 계획이 선다")
         void fallsBackToStraightLine() throws Exception {
-            stub.result = Optional.empty();
+            stub.result = RoutesClient.RouteLookup.failed();
             addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
             addActivity("신주쿠", placeAt("신주쿠", jitter(SHINJUKU_LAT), jitter(SHINJUKU_LNG)));
 
@@ -285,13 +284,44 @@ class TravelTimeIntegrationTest extends ApiTestSupport {
             addActivity("센소지", from);
             addActivity("스카이트리", to);
 
-            stub.result = Optional.empty();
+            stub.result = RoutesClient.RouteLookup.failed();
             board().andExpect(jsonPath("$.data.travelTimes[0].fallback").value(true));
 
-            stub.result = Optional.of(new RoutesClient.Route(720, 900));
+            stub.result = RoutesClient.RouteLookup.found(new RoutesClient.Route(720, 900));
             board().andExpect(jsonPath("$.data.travelTimes[0].fallback").value(false));
 
             assertThat(stub.calls).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("경로 없음은 캐시한다 — 답이 안 바뀌는데 매번 사 오면 안 된다 (#1203)")
+        void cachesNoRoute() throws Exception {
+            addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("스카이트리", placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+
+            stub.result = RoutesClient.RouteLookup.noRoute();
+            board().andExpect(jsonPath("$.data.travelTimes[0].fallback").value(true));
+            assertThat(stub.calls).hasSize(1);
+
+            // 두 번째 조회는 나가지 않는다. 이 한 줄이 #1203 의 전부다.
+            board().andExpect(jsonPath("$.data.travelTimes[0].fallback").value(true));
+            assertThat(stub.calls).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("경로 없음 캐시는 성공 캐시를 가리지 않는다 — 다른 구간은 그대로 조회된다")
+        void noRouteCacheIsPerLeg() throws Exception {
+            addActivity("센소지", placeAt("센소지", jitter(SENSOJI_LAT), jitter(SENSOJI_LNG)));
+            addActivity("스카이트리", placeAt("스카이트리", jitter(SKYTREE_LAT), jitter(SKYTREE_LNG)));
+
+            stub.result = RoutesClient.RouteLookup.noRoute();
+            board().andExpect(jsonPath("$.data.travelTimes[0].fallback").value(true));
+
+            // 새 구간(다른 좌표쌍 = 다른 키)은 앞 구간의 "경로 없음"에 막히지 않는다.
+            stub.result = RoutesClient.RouteLookup.found(new RoutesClient.Route(720, 900));
+            addActivity("신주쿠", placeAt("신주쿠", jitter(SHINJUKU_LAT), jitter(SHINJUKU_LNG)));
+
+            board().andExpect(jsonPath("$.data.travelTimes[1].fallback").value(false));
         }
 
         @Test

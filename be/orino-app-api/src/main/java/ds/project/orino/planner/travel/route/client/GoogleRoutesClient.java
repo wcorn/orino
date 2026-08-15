@@ -15,9 +15,13 @@ import tools.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
 import java.util.Map;
-import java.util.Optional;
 
-/** Google Routes {@code computeRoutes}. 실패는 예외 대신 빈 값으로 돌려준다. */
+/**
+ * Google Routes {@code computeRoutes}. 실패는 예외 대신 {@link RouteLookup}으로 돌려준다.
+ *
+ * <p>"경로가 없다"({@code NO_ROUTE})와 "못 불렀다"({@code FAILED})를 <b>여기서</b> 가른다.
+ * 호출부는 응답을 다시 볼 수 없으므로, 이 구분을 여기서 지우면 되살릴 수 없다(#1203).
+ */
 @Component
 public class GoogleRoutesClient implements RoutesClient {
 
@@ -45,9 +49,9 @@ public class GoogleRoutesClient implements RoutesClient {
     }
 
     @Override
-    public Optional<Route> route(Coordinates origin, Coordinates destination, TravelMode mode) {
+    public RouteLookup route(Coordinates origin, Coordinates destination, TravelMode mode) {
         if (!props.enabled()) {
-            return Optional.empty();
+            return RouteLookup.disabled();
         }
         try {
             JsonNode root = restClient.post()
@@ -68,11 +72,11 @@ public class GoogleRoutesClient implements RoutesClient {
                 throw new ExternalApiRejectedException("Routes 거절 (" + status.value() + ")");
             }
             log.warn("Routes 조회 실패: mode={}, {}", mode, e.getMessage());
-            return Optional.empty();
+            return RouteLookup.failed();
         } catch (Exception e) {
-            // 경로를 못 얻는 건 흔한 일이다(섬·해외 구간). 직선거리로 대체된다.
+            // 타임아웃·연결 실패·본문 파싱 예외. 일시적이라 캐시하지 않는다.
             log.warn("Routes 조회 실패: mode={}, {}", mode, e.getMessage());
-            return Optional.empty();
+            return RouteLookup.failed();
         }
     }
 
@@ -90,19 +94,25 @@ public class GoogleRoutesClient implements RoutesClient {
                 Map.of("latitude", c.lat(), "longitude", c.lng())));
     }
 
-    private static Optional<Route> parse(JsonNode root) {
-        JsonNode routes = root == null ? null : root.get("routes");
+    private static RouteLookup parse(JsonNode root) {
+        if (root == null) {
+            // 본문이 비어 왔다. 정상 응답이 아니라 프로토콜이 이상한 것이라 일시적으로 본다.
+            return RouteLookup.failed();
+        }
+        JsonNode routes = root.get("routes");
         if (routes == null || !routes.isArray() || routes.isEmpty()) {
-            // 경로 없음도 정상 응답이다(빈 routes 배열).
-            return Optional.empty();
+            // 경로 없음도 정상 응답이다(빈 routes 배열). 이건 영구적이라 캐시해도 된다.
+            return RouteLookup.noRoute();
         }
         JsonNode first = routes.get(0);
         Integer seconds = durationSeconds(first.get("duration"));
         JsonNode meters = first.get("distanceMeters");
         if (seconds == null || meters == null) {
-            return Optional.empty();
+            // 경로는 왔는데 필요한 필드를 못 읽었다 — FIELD_MASK 나 응답 형식이 바뀐 쪽에
+            // 가깝다. "경로가 없다"로 캐시해 버리면 우리 버그를 30일 굳혀 놓게 된다.
+            return RouteLookup.failed();
         }
-        return Optional.of(new Route(seconds, meters.asInt()));
+        return RouteLookup.found(new Route(seconds, meters.asInt()));
     }
 
     /** {@code duration}은 {@code "1074s"} 형태의 문자열로 온다. */

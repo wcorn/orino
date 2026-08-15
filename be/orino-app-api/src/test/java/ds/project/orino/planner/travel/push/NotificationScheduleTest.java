@@ -226,7 +226,7 @@ class NotificationScheduleTest extends ApiTestSupport {
         @Test
         @DisplayName("이동시간을 못 얻으면 만들지 않는다 — 지어내지 않는다")
         void skipsWhenTravelTimeUnknown() throws Exception {
-            ((StubRoutesClient) routesClient).result = java.util.Optional.empty();
+            ((StubRoutesClient) routesClient).result = RoutesClient.RouteLookup.failed();
 
             addActivity("""
                     {"title": "센소지", "activityDate": "2026-10-24", "startTime": "09:00",
