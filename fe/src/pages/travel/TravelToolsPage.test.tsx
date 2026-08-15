@@ -461,6 +461,73 @@ describe("TravelToolsPage", () => {
       expect(await screen.findByText("도쿄")).toBeInTheDocument();
       expect(screen.getByText("닛코")).toBeInTheDocument();
     });
+
+    /**
+     * 도시가 바뀌는 날은 <b>같은 날짜로 줄이 둘</b>이다(D-25) — 떠나온 도시가 먼저. 한 줄의
+     * 정체가 날짜가 아니라 (날짜, 도시)라서, 날짜로 묶거나 중복을 지우면 오전 도시가 사라진다.
+     */
+    it("도시가 바뀌는 날은 같은 날짜로 줄이 둘이다 — 떠나온 도시가 먼저", async () => {
+      mockWeather([
+        {
+          date: "2026-10-24",
+          cityName: "오사카",
+          icon: "RAIN",
+          tempMax: 18,
+          tempMin: 11,
+          precipProbability: 70,
+        },
+        {
+          date: "2026-10-24",
+          cityName: "교토",
+          icon: "CLOUD",
+          tempMax: 16,
+          tempMin: 9,
+          precipProbability: 30,
+        },
+      ]);
+
+      renderTools();
+
+      await screen.findByText("오사카");
+      expect(screen.getAllByText("10-24")).toHaveLength(2);
+      expect(screen.getByText("교토")).toBeInTheDocument();
+      // 첫 줄만 눌린 상태다. 날짜를 선택 키로 쓰면 두 줄이 함께 눌린다.
+      const pressed = screen
+        .getAllByRole("button")
+        .filter((row) => row.getAttribute("aria-pressed") === "true");
+      expect(pressed).toHaveLength(1);
+      expect(pressed[0]).toHaveTextContent("오사카");
+    });
+
+    it("한 줄을 눌러도 나머지 한 줄은 눌리지 않는다", async () => {
+      mockWeather([
+        {
+          date: "2026-10-24",
+          cityName: "오사카",
+          icon: "RAIN",
+          tempMax: 18,
+          tempMin: 11,
+          precipProbability: 70,
+        },
+        {
+          date: "2026-10-24",
+          cityName: "교토",
+          icon: "CLOUD",
+          tempMax: 16,
+          tempMin: 9,
+          precipProbability: 30,
+        },
+      ]);
+
+      renderTools();
+      await userEvent.click(await screen.findByText("교토"));
+
+      const pressed = screen
+        .getAllByRole("button")
+        .filter((row) => row.getAttribute("aria-pressed") === "true");
+      expect(pressed).toHaveLength(1);
+      expect(pressed[0]).toHaveTextContent("교토");
+    });
   });
 
   describe("보드에서 들어오기", () => {

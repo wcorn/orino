@@ -61,12 +61,8 @@ export function DayTabs({
           <Chip
             dropId={droppable ? `day:${day.date}` : undefined}
             active={selectedDate === day.date}
-            label={
-              singleCity || !day.baseCity
-                ? `${day.dayIndex}일차`
-                : `${day.dayIndex} ${day.baseCity.name}`
-            }
-            wide={!singleCity && day.baseCity !== null}
+            label={labelOf(day, singleCity)}
+            width={widthOf(day, singleCity)}
             sub={`${formatShortDate(day.date)} ${day.weekday}`}
             weather={day.weather}
             onClick={() => onSelectDate(day.date)}
@@ -86,12 +82,54 @@ export function DayTabs({
   );
 }
 
+/**
+ * 탭 글자. 도시가 하나뿐인 여행은 `N일차`, 아니면 `N 교토`다.
+ *
+ * <p><b>도시가 바뀌는 날은 두 도시를 다 쓴다</b> — `5 오사카 → 교토`(D-25). 도착 도시만
+ * 쓰면 그날 오전에 오사카에 있었다는 사실이 화면에서 사라져, 오전 일정이 왜 거기 있는지
+ * 설명되지 않는다. 옆의 구분선은 "여기서 옮긴다"만 말하고 어디서 오는지는 말하지 않는다.
+ */
+function labelOf(day: BoardDay, singleCity: boolean): string {
+  if (singleCity || !day.baseCity) {
+    return `${day.dayIndex}일차`;
+  }
+  const from = day.arrivingFrom;
+  return from
+    ? `${day.dayIndex} ${from.name} → ${day.baseCity.name}`
+    : `${day.dayIndex} ${day.baseCity.name}`;
+}
+
+/**
+ * 칩 너비. 도시명이 붙으면 넓히고, <b>도시가 둘이면 한 번 더 넓힌다</b> — `5 오사카 → 교토`가
+ * 좁은 칸에서 잘리면 정작 알려야 할 "어디서 어디로"가 사라진다.
+ */
+function widthOf(day: BoardDay, singleCity: boolean): ChipWidth {
+  if (singleCity || !day.baseCity) {
+    return "narrow";
+  }
+  return day.arrivingFrom ? "widest" : "wide";
+}
+
+type ChipWidth = "narrow" | "wide" | "widest";
+
+const CHIP_WIDTH: Record<ChipWidth, string> = {
+  narrow: "min-w-[78px]",
+  wide: "min-w-[92px]",
+  widest: "min-w-[132px]",
+};
+
+const LABEL_WIDTH: Record<ChipWidth, string> = {
+  narrow: "max-w-[110px]",
+  wide: "max-w-[110px]",
+  widest: "max-w-[160px]",
+};
+
 interface ChipProps {
   active: boolean;
   label: string;
   sub: string;
   /** 도시명이 붙는 칩은 조금 넓다. 짧은 도시명에서 칸이 들쭉날쭉해지지 않게. */
-  wide?: boolean;
+  width?: ChipWidth;
   /** 예보 범위(16일) 밖이면 없다 — 그 자리를 비운다. */
   weather?: DailyWeather | null;
   icon?: React.ReactNode;
@@ -106,7 +144,7 @@ function Chip({
   active,
   label,
   sub,
-  wide = false,
+  width = "narrow",
   weather,
   icon,
   onClick,
@@ -139,7 +177,7 @@ function Chip({
       {...longPress}
       className={cn(
         "flex shrink-0 flex-col items-start gap-0.5 rounded-lg border px-2.5 py-2 transition-colors",
-        wide ? "min-w-[92px]" : "min-w-[78px]",
+        CHIP_WIDTH[width],
         active
           ? "bg-accent text-accent-foreground border-primary"
           : "bg-card border-border hover:bg-muted",
@@ -147,7 +185,12 @@ function Chip({
         isOver && "border-primary ring-primary bg-accent ring-2",
       )}
     >
-      <span className="flex max-w-[110px] items-center gap-1 truncate text-[13px] font-semibold">
+      <span
+        className={cn(
+          "flex items-center gap-1 truncate text-[13px] font-semibold",
+          LABEL_WIDTH[width],
+        )}
+      >
         {icon}
         {label}
       </span>

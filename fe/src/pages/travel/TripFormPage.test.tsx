@@ -307,6 +307,58 @@ describe("TripFormPage", () => {
       expect(screen.getByText("10.26 – 10.27")).toBeInTheDocument();
     });
 
+    /**
+     * 구간을 일 단위로 배타적으로 나누면 <b>이동일이 어느 카드에도 안 보인다.</b> 도쿄가
+     * 10.25에 끝나고 교토가 10.26에 시작하는데, 카드만 보면 10.26 오전에 아직 도쿄에
+     * 있다는 사실이 어디에도 없다(D-25).
+     */
+    it("구간 사이에 이동 줄이 서서 경계일을 말한다", async () => {
+      renderApp("/travel/trips/new");
+      await screen.findByLabelText("여행 제목");
+
+      await fillPeriod("2026-10-24", "2026-10-27");
+      mockCities([TOKYO_CITY]);
+      await addLeg("도쿄");
+      await userEvent.click(
+        screen.getByRole("button", { name: /도쿄 일수 늘리기/ }),
+      );
+      mockCities([KYOTO_CITY]);
+      await addLeg("교토");
+
+      // 교토 구간의 첫날이 곧 이동일이다.
+      expect(
+        await screen.findByLabelText("10.26 도쿄에서 교토로 이동"),
+      ).toBeInTheDocument();
+    });
+
+    it("구간이 하나면 이동 줄이 없다 — 옮길 곳이 없다", async () => {
+      renderApp("/travel/trips/new");
+      await screen.findByLabelText("여행 제목");
+
+      await fillPeriod("2026-10-24", "2026-10-27");
+      await addLeg("도쿄");
+
+      expect(await screen.findByText("10.24 – 10.27")).toBeInTheDocument();
+      expect(screen.queryByLabelText(/로 이동$/)).not.toBeInTheDocument();
+    });
+
+    it("잘린 구간으로는 이동 줄을 그리지 않는다 — 그 이동은 일어나지 않는다", async () => {
+      renderApp("/travel/trips/new");
+      await screen.findByLabelText("여행 제목");
+
+      await fillPeriod("2026-10-24", "2026-10-25");
+      mockCities([TOKYO_CITY]);
+      await addLeg("도쿄");
+      await userEvent.click(
+        screen.getByRole("button", { name: /도쿄 일수 늘리기/ }),
+      );
+      mockCities([KYOTO_CITY]);
+      await addLeg("교토");
+
+      expect(await screen.findByText("기간을 넘겨 잘려요")).toBeInTheDocument();
+      expect(screen.queryByLabelText(/로 이동$/)).not.toBeInTheDocument();
+    });
+
     it("합계가 기간과 다르면 무슨 일이 일어날지 미리 말한다 — 저장을 막지는 않는다", async () => {
       renderApp("/travel/trips/new");
       await screen.findByLabelText("여행 제목");
