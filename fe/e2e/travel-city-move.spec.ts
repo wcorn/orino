@@ -1,11 +1,14 @@
 import { expect, type Page, test } from "@playwright/test";
 
 /**
- * 도시 경계 이동시간(§3.4, #1142).
+ * 도시를 넘는 구간의 이동(#1208).
  *
- * <p>여기서 확인하는 것은 <b>탭 한 번에 지도로 나가는가</b>다. 도시를 넘는 이동에는 도보/자동차를
- * 물어볼 이유가 없어 이동수단 시트를 건너뛰는데, "시트가 열리지 않는다"는 실제 클릭으로만
- * 확인된다 — 핸들러를 갈아끼운 검사는 시트가 열렸다 닫혔는지 구분하지 못한다.
+ * <p>이 파일이 원래 지키던 것은 그 반대였다 — 도시를 넘으면 <b>계산하지 않고</b> 시트 없이 곧바로
+ * 지도로 나간다(§3.4, #1142). 자동 계산을 걷어내면서 그 규칙이 사라졌다. 비행기·신칸센이야말로
+ * 미리 정해 두는 이동이라, 지금은 <b>여기가 적는 자리</b>다.
+ *
+ * <p>실제 클릭으로 확인한다 — 시트가 열리는지, 고른 수단이 요청에 실려 나가는지는 핸들러를
+ * 갈아끼운 검사로는 구분되지 않는다.
  */
 
 const TRIP_ID = 1;
@@ -128,16 +131,17 @@ async function mockBoard(page: Page) {
             cityPlaceRef: "ChIJ_kyoto",
           }),
         ],
-        // 서버가 계산하지 않은 구간 — 수단도 소요 시간도 없이 온다.
-        travelTimes: [
+        // 아직 아무것도 적지 않은 구간 — 도시를 넘어도 다를 것이 없다.
+        moves: [
           {
             fromActivityId: 1,
             toActivityId: 2,
+            toStayId: null,
             mode: null,
+            name: null,
             durationMinutes: null,
-            distanceM: 42800,
-            fallback: false,
-            crossCity: true,
+            url: null,
+            memo: null,
           },
         ],
         stayMove: null,
@@ -146,27 +150,60 @@ async function mockBoard(page: Page) {
   );
 }
 
-test.describe("도시 경계 이동", () => {
-  test("시간 대신 `도시 이동`만 뜨고, 탭하면 시트 없이 곧바로 지도로 나간다", async ({
+test.describe("도시를 넘는 구간의 이동", () => {
+  test("도시를 넘어도 시트가 열리고, 고른 수단과 적은 시간이 그대로 저장된다", async ({
     page,
-    context,
   }) => {
+    const saved: unknown[] = [];
+    await page.route(`**/api/travel/trips/${TRIP_ID}/moves`, async (route) => {
+      saved.push(route.request().postDataJSON());
+      return route.fulfill(ok(null));
+    });
     await mockBoard(page);
     await page.goto(`/travel/trips/${TRIP_ID}/board`);
 
-    const row = page.getByRole("button", { name: "이동시간 도시 이동" });
+    // 예전에는 여기가 `도시 이동` 넉 자였다. 지금은 적으라고 말한다.
+    const row = page.getByRole("button", { name: "이동 이동 추가" });
     await expect(row).toBeVisible();
-    // "약 42.8km"는 계획에 쓸 수 없는 숫자다 — 거리도 말하지 않는다.
-    await expect(page.getByText(/km/)).toHaveCount(0);
-
-    // 딥링크는 새 탭으로 열린다. 그 탭이 열리는 것 자체가 확인 대상이다.
-    const opened = context.waitForEvent("page");
     await row.click();
+
+    const sheet = page.getByRole("dialog");
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByText("구로몬 시장 → 기요미즈데라")).toBeVisible();
+
+    await sheet.getByRole("button", { name: "기차" }).click();
+    await sheet.getByLabel("이동수단 이름").fill("특급 하루카");
+    await sheet.getByLabel("소요 시간(분)").fill("75");
+    await sheet.getByRole("button", { name: "저장" }).click();
+
+    await expect.poll(() => saved.length).toBe(1);
+    expect(saved[0]).toMatchObject({
+      fromActivityId: 1,
+      toActivityId: 2,
+      mode: "TRAIN",
+      name: "특급 하루카",
+      durationMinutes: 75,
+    });
+  });
+
+  test("시간을 확인하러 나가는 통로는 대중교통 딥링크다", async ({
+    page,
+    context,
+  }) => {
+    // 앱이 계산하지 않으므로 사용자는 어딘가에서 시간을 봐야 한다. 그 통로가 이 버튼이다.
+    await mockBoard(page);
+    await page.goto(`/travel/trips/${TRIP_ID}/board`);
+
+    await page.getByRole("button", { name: "이동 이동 추가" }).click();
+    const sheet = page.getByRole("dialog");
+
+    const opened = context.waitForEvent("page");
+    await sheet
+      .getByRole("button", { name: /구글 지도에서 시간 확인/ })
+      .click();
     const mapTab = await opened;
 
     expect(mapTab.url()).toContain("google.com/maps/dir/");
     expect(mapTab.url()).toContain("travelmode=transit");
-    // 도보/자동차를 물어볼 이유가 없다 — 이동수단 시트는 열리지 않는다.
-    await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 });

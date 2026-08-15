@@ -161,7 +161,7 @@ async function mockTrip(page: Page) {
                 },
               ]
             : [],
-        travelTimes: [],
+        moves: [],
         stayMove: null,
       }),
     );
