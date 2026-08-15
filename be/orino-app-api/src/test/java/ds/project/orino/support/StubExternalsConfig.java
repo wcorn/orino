@@ -4,8 +4,6 @@ import ds.project.orino.planner.travel.place.StubPlacesClient;
 import ds.project.orino.planner.travel.place.client.PlacesClient;
 import ds.project.orino.planner.travel.push.StubWebPushSender;
 import ds.project.orino.planner.travel.push.send.WebPushSender;
-import ds.project.orino.planner.travel.route.StubRoutesClient;
-import ds.project.orino.planner.travel.route.client.RoutesClient;
 import ds.project.orino.planner.travel.tools.StubEcbRatesClient;
 import ds.project.orino.planner.travel.tools.StubWeatherClient;
 import ds.project.orino.planner.travel.tools.client.EcbRatesClient;
@@ -30,12 +28,6 @@ public class StubExternalsConfig {
     @Primary
     public PlacesClient stubPlacesClient() {
         return new StubPlacesClient();
-    }
-
-    @Bean
-    @Primary
-    public RoutesClient stubRoutesClient() {
-        return new StubRoutesClient();
     }
 
     @Bean

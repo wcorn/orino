@@ -7,14 +7,12 @@ import ds.project.orino.domain.planner.push.entity.PushNotification;
 import ds.project.orino.domain.planner.push.repository.PushNotificationRepository;
 import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
-import ds.project.orino.planner.travel.route.client.RoutesClient;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.StubExternalsConfig;
 import ds.project.orino.support.TravelCityFixture;
-import ds.project.orino.planner.travel.route.StubRoutesClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -59,8 +57,6 @@ class NotificationScheduleTest extends ApiTestSupport {
     private PushNotificationRepository notificationRepository;
     @Autowired
     private DbCleaner dbCleaner;
-    @Autowired
-    private RoutesClient routesClient;
 
     private String authHeader;
     private Long memberId;
@@ -69,8 +65,6 @@ class NotificationScheduleTest extends ApiTestSupport {
     @BeforeEach
     void setUp() throws Exception {
         dbCleaner.clean();
-        ((StubRoutesClient) routesClient).reset();
-
         memberRepository.save(MemberFixture.create());
         memberId = memberRepository.findAll().get(0).getId();
         authHeader = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc);
@@ -124,6 +118,17 @@ class NotificationScheduleTest extends ApiTestSupport {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();
+    }
+
+    /** 두 일정 사이 이동을 적어 둔다. 출발 알림은 여기 적힌 소요 시간으로만 선다(#1208). */
+    private void saveMove(long from, long to, String fields) throws Exception {
+        mockMvc.perform(put("/api/travel/trips/" + tripId + "/moves")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fromActivityId": %d, "toActivityId": %d, %s}
+                                """.formatted(from, to, fields)))
+                .andExpect(status().isOk());
     }
 
     private List<PushNotification> pending() {
@@ -194,18 +199,20 @@ class NotificationScheduleTest extends ApiTestSupport {
     class DepartureNotification {
 
         @Test
-        @DisplayName("시작시각 − 이동시간 − 5분")
+        @DisplayName("시작시각 − 적어 둔 소요 시간 − 5분")
         void schedulesBeforeDeparture() throws Exception {
-            addActivity("""
+            long from = addActivity("""
                     {"title": "센소지", "activityDate": "2026-10-24", "startTime": "09:00",
                      "placeId": %d}
                     """.formatted(placeAt("센소지", SENSOJI_LAT, SENSOJI_LNG)));
-            addActivity("""
+            long to = addActivity("""
                     {"title": "스카이트리", "activityDate": "2026-10-24", "startTime": "11:00",
                      "placeId": %d, "departureNotifyEnabled": true}
                     """.formatted(placeAt("스카이트리", SKYTREE_LAT, SKYTREE_LNG)));
 
-            // 스텁이 720초(12분)를 준다 → 11:00 − 12분 − 5분 = 10:43.
+            saveMove(from, to, "\"mode\": \"SUBWAY\", \"durationMinutes\": 12");
+
+            // 11:00 − 12분 − 5분 = 10:43.
             assertThat(pending()).singleElement().satisfies(n -> {
                 assertThat(n.getType()).isEqualTo(NotificationType.DEPARTURE);
                 assertThat(n.getScheduledAt()).isEqualTo(tokyo("2026-10-24T10:43"));
@@ -224,36 +231,90 @@ class NotificationScheduleTest extends ApiTestSupport {
         }
 
         @Test
-        @DisplayName("이동시간을 못 얻으면 만들지 않는다 — 지어내지 않는다")
-        void skipsWhenTravelTimeUnknown() throws Exception {
-            ((StubRoutesClient) routesClient).result = java.util.Optional.empty();
-
-            addActivity("""
+        @DisplayName("소요 시간을 아직 안 적었으면 만들지 않는다 — 지어내지 않는다")
+        void skipsWhenDurationUnknown() throws Exception {
+            long from = addActivity("""
                     {"title": "센소지", "activityDate": "2026-10-24", "startTime": "09:00",
                      "placeId": %d}
                     """.formatted(placeAt("센소지", SENSOJI_LAT, SENSOJI_LNG)));
-            addActivity("""
+            long to = addActivity("""
                     {"title": "스카이트리", "activityDate": "2026-10-24", "startTime": "11:00",
                      "placeId": %d, "departureNotifyEnabled": true}
                     """.formatted(placeAt("스카이트리", SKYTREE_LAT, SKYTREE_LNG)));
+
+            // 수단만 정하고 시간은 나중에 확인하는 상태.
+            saveMove(from, to, "\"mode\": \"SUBWAY\"");
 
             assertThat(pending()).isEmpty();
         }
 
         @Test
-        @DisplayName("도시를 넘는 이동에는 만들지 않는다 — 이동시간을 모르는데 언제 나서라고 할 수 없다")
-        void skipsAcrossCityBoundary() throws Exception {
-            addActivity("""
+        @DisplayName("도시를 넘는 이동에도 만든다 — 적어 두면 언제 나서야 할지 알 수 있다 (#1208)")
+        void schedulesAcrossCityBoundary() throws Exception {
+            // 자동 계산 시절에는 도시를 넘으면 소요 시간을 못 구해 알림이 서지 않았다.
+            // 신칸센 구간이야말로 "언제 나서야 하는가"가 가장 중요한 이동이다.
+            long from = addActivity("""
                     {"title": "오사카 가게", "activityDate": "2026-10-24", "startTime": "09:00",
                      "placeId": %d}
                     """.formatted(placeIn("오사카 가게", "ChIJ_osaka", SENSOJI_LAT, SENSOJI_LNG)));
-            addActivity("""
+            long to = addActivity("""
                     {"title": "교토 가게", "activityDate": "2026-10-24", "startTime": "11:00",
                      "placeId": %d, "departureNotifyEnabled": true}
                     """.formatted(placeIn("교토 가게", "ChIJ_kyoto", SKYTREE_LAT, SKYTREE_LNG)));
 
+            saveMove(from, to, """
+                    "mode": "TRAIN", "name": "특급 하루카", "durationMinutes": 75
+                    """);
+
+            assertThat(pending()).singleElement().satisfies(n -> {
+                assertThat(n.getType()).isEqualTo(NotificationType.DEPARTURE);
+                assertThat(n.getScheduledAt()).isEqualTo(tokyo("2026-10-24T09:40"));
+            });
+        }
+
+        @Test
+        @DisplayName("이동을 지우면 출발 알림도 사라진다 — 지워진 값으로 울리면 안 된다")
+        void cancelsWhenMoveDeleted() throws Exception {
+            long from = addActivity("""
+                    {"title": "센소지", "activityDate": "2026-10-24", "startTime": "09:00",
+                     "placeId": %d}
+                    """.formatted(placeAt("센소지", SENSOJI_LAT, SENSOJI_LNG)));
+            long to = addActivity("""
+                    {"title": "스카이트리", "activityDate": "2026-10-24", "startTime": "11:00",
+                     "placeId": %d, "departureNotifyEnabled": true}
+                    """.formatted(placeAt("스카이트리", SKYTREE_LAT, SKYTREE_LNG)));
+            saveMove(from, to, "\"mode\": \"SUBWAY\", \"durationMinutes\": 12");
+            assertThat(pending()).hasSize(1);
+
+            mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .delete("/api/travel/trips/" + tripId + "/moves")
+                            .param("from", String.valueOf(from))
+                            .param("to", String.valueOf(to))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
+
             assertThat(pending()).isEmpty();
         }
+
+        @Test
+        @DisplayName("소요 시간을 고치면 알림 시각도 따라 바뀐다")
+        void reschedulesWhenDurationChanges() throws Exception {
+            long from = addActivity("""
+                    {"title": "센소지", "activityDate": "2026-10-24", "startTime": "09:00",
+                     "placeId": %d}
+                    """.formatted(placeAt("센소지", SENSOJI_LAT, SENSOJI_LNG)));
+            long to = addActivity("""
+                    {"title": "스카이트리", "activityDate": "2026-10-24", "startTime": "11:00",
+                     "placeId": %d, "departureNotifyEnabled": true}
+                    """.formatted(placeAt("스카이트리", SKYTREE_LAT, SKYTREE_LNG)));
+
+            saveMove(from, to, "\"mode\": \"WALK\", \"durationMinutes\": 40");
+            saveMove(from, to, "\"mode\": \"SUBWAY\", \"durationMinutes\": 12");
+
+            assertThat(pending()).singleElement().satisfies(n ->
+                    assertThat(n.getScheduledAt()).isEqualTo(tokyo("2026-10-24T10:43")));
+        }
+
     }
 
     @Nested
@@ -372,7 +433,7 @@ class NotificationScheduleTest extends ApiTestSupport {
         }
 
         @Test
-        @DisplayName("순서를 바꾸면 출발 알림이 다시 잡힌다 — 이동시간이 달라진다")
+        @DisplayName("순서를 바꾸면 출발 알림이 다시 잡힌다 — 어느 구간이 이어지는지가 달라진다")
         void reschedulesOnReorder() throws Exception {
             long first = addActivity("""
                     {"title": "센소지", "activityDate": "2026-10-24", "startTime": "09:00",
@@ -382,6 +443,10 @@ class NotificationScheduleTest extends ApiTestSupport {
                     {"title": "스카이트리", "activityDate": "2026-10-24", "startTime": "11:00",
                      "placeId": %d, "departureNotifyEnabled": true}
                     """.formatted(placeAt("스카이트리", SKYTREE_LAT, SKYTREE_LNG)));
+
+            // 양방향을 다 적어 둔다 — 어느 쪽으로 이어지든 소요 시간을 아는 상태로 만든다.
+            saveMove(first, second, "\"mode\": \"SUBWAY\", \"durationMinutes\": 12");
+            saveMove(second, first, "\"mode\": \"SUBWAY\", \"durationMinutes\": 12");
 
             // 처음엔 두 번째 일정에만 출발 알림이 붙는다(첫 일정은 앞이 없다).
             assertThat(pending()).singleElement().satisfies(n ->

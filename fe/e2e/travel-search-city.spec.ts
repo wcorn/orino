@@ -128,7 +128,7 @@ async function mockTrip(page: Page) {
         selectedDate: D1,
         archiveCount: 0,
         activities: [],
-        travelTimes: [],
+        moves: [],
         stayMove: null,
       }),
     ),

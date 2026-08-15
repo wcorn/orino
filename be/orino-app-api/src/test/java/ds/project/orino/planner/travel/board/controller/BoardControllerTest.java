@@ -67,7 +67,7 @@ class BoardControllerTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.data.days[3].dayIndex").value(4))
                 // 날씨·이동시간은 각각 4·2단계라 지금은 비어 있다.
                 .andExpect(jsonPath("$.data.days[0].weather").doesNotExist())
-                .andExpect(jsonPath("$.data.travelTimes", hasSize(0)));
+                .andExpect(jsonPath("$.data.moves", hasSize(0)));
     }
 
     @Test

@@ -52,8 +52,9 @@ function activity(id: number, title: string, place: unknown) {
     log: null,
     hasLog: false,
     outOfBaseCity: true,
-    // 도시를 넘어 들어오는 일정이라 서버가 false로 내려준다(#1142).
-    canDepartureNotify: false,
+    // 직전에 장소 있는 일정이 있으므로 true다. #1208 전에는 "도시를 넘는다"는 이유로
+    // 서버가 false를 내려 스위치가 막혀 있었다 — 그 조건이 빠졌다.
+    canDepartureNotify: true,
   };
 }
 
@@ -178,16 +179,17 @@ async function mockTrip(page: Page) {
           activity(9, "구로몬 시장", OSAKA_PLACE),
           activity(1, "기요미즈데라", KYOTO_PLACE),
         ],
-        // 서버가 계산하지 않은 구간(#1142).
-        travelTimes: [
+        // 수단은 골랐지만 소요 시간을 아직 안 적은 구간(#1208).
+        moves: [
           {
             fromActivityId: 9,
             toActivityId: 1,
-            mode: null,
+            toStayId: null,
+            mode: "TRAIN",
+            name: null,
             durationMinutes: null,
-            distanceM: 42800,
-            fallback: false,
-            crossCity: true,
+            url: null,
+            memo: null,
           },
         ],
         stayMove: null,
@@ -198,29 +200,28 @@ async function mockTrip(page: Page) {
   return saved;
 }
 
-test.describe("일정 상세 · 도시 경계", () => {
-  test("도시를 넘는 일정은 출발 알림을 눌러도 켜지지 않고, 왜인지 적혀 있다", async ({
+test.describe("일정 상세 · 도시를 넘어 들어오는 일정", () => {
+  test("도시를 넘어도 출발 알림을 켤 수 있고, 시간을 안 적었으면 왜 안 오는지 적혀 있다", async ({
     page,
   }) => {
+    // #1208 전에는 도시를 넘으면 소요 시간을 못 구해 스위치가 막혀 있었다.
+    // 지금은 사용자가 적을 수 있으므로 막을 이유가 없다 — 다만 아직 안 적었으면
+    // 알림이 서지 않고, 그 이유를 말해 주지 않으면 그냥 고장으로 읽힌다.
     await mockTrip(page);
     await page.goto("/travel/activities/1");
 
     // 부제가 며칠째의 어느 도시인지 말한다.
     await expect(page.getByText("1일차 · 교토 · 10.24")).toBeVisible();
     await expect(
-      page.getByText(
-        "오사카 → 교토 · 도시 경계를 넘어 이동시간을 계산하지 않아요",
-      ),
+      page.getByText("보드에서 이동 시간을 적으면 알림이 잡혀요"),
     ).toBeVisible();
-    await expect(
-      page.getByText("도시 간 이동은 출발 알림을 계산할 수 없어요"),
-    ).toBeVisible();
+    // 도시 경계 안내는 사라졌다 — 넘어도 되는 일이 됐다.
+    await expect(page.getByText(/도시 경계를 넘어/)).toHaveCount(0);
 
-    // 일정 알림은 그대로 켤 수 있다 — 막힌 것은 출발 알림뿐이다.
     const departure = page.getByRole("switch", { name: "출발 알림" });
-    await expect(departure).toBeDisabled();
-    await departure.click({ force: true });
-    await expect(departure).toHaveAttribute("aria-checked", "false");
+    await expect(departure).toBeEnabled();
+    await departure.click();
+    await expect(departure).toHaveAttribute("aria-checked", "true");
 
     await expect(page.getByRole("switch", { name: "일정 알림" })).toBeEnabled();
   });

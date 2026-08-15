@@ -45,8 +45,10 @@ public enum ErrorCode {
     TRAVEL_ACTIVITY_NOT_FOUND("TRAVEL-ERR-006", "존재하지 않는 일정입니다.", 404),
     TRAVEL_DATE_OUT_OF_RANGE("TRAVEL-ERR-007", "여행 기간 밖의 날짜입니다.", 400),
     TRAVEL_PLACE_NOT_FOUND("TRAVEL-ERR-008", "존재하지 않는 장소입니다.", 404),
-    TRAVEL_TIME_NOT_AVAILABLE("TRAVEL-ERR-009",
-            "두 일정 사이의 이동시간을 계산할 수 없습니다.", 400),
+    // 장소가 붙지 않은 일정은 이동의 양 끝이 될 수 없다 — 어디서 어디로인지가 없다.
+    // 이름은 바뀌었지만(#1208 이동시간 계산 → 이동 기록) 자리는 같아 코드는 그대로 둔다.
+    TRAVEL_MOVE_NOT_AVAILABLE("TRAVEL-ERR-009",
+            "두 일정 사이의 이동을 저장할 수 없습니다.", 400),
     TRAVEL_FX_UNAVAILABLE("TRAVEL-ERR-010", "환율을 가져올 수 없습니다.", 503),
     TRAVEL_FX_UNSUPPORTED_CURRENCY("TRAVEL-ERR-011",
             "지원하지 않는 통화입니다.", 400),

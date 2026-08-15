@@ -10,7 +10,7 @@ import java.time.Duration;
  * <p>{@code apiKey}가 비어 있으면 장소 기능만 꺼지고 앱은 정상 기동한다 — 2단계 전 환경이나
  * 로컬에서 키 없이 나머지를 개발할 수 있어야 한다.
  *
- * @param apiKey         Places/Routes 공용 API 키(비면 기능 비활성)
+ * @param apiKey         Places API 키(비면 기능 비활성)
  * @param baseUrl        Places API (New) base URL
  * @param languageCode   응답 언어
  * @param searchTtl      검색 결과 캐시 TTL(§4.7 — 1시간)

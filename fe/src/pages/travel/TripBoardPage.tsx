@@ -35,7 +35,7 @@ import { Menu, MenuItem } from "@/components/ui/menu";
 import type {
   Activity,
   BoardDay,
-  TravelTime,
+  Move,
 } from "@/features/travel/api/activities";
 // 삭제는 뮤테이션 훅이 아니라 raw 요청을 쓴다 — 화면을 떠난 뒤에 보낼 수도 있어서다.
 import { deleteActivity as deleteActivityRequest } from "@/features/travel/api/activities";
@@ -50,15 +50,16 @@ import { CityMoveLine } from "@/features/travel/board/CityMoveLine";
 import { DayTabs } from "@/features/travel/board/DayTabs";
 import { DragModeBar } from "@/features/travel/board/DragModeBar";
 import { LocalClockLine } from "@/features/travel/board/LocalClockLine";
+import { MoveRow } from "@/features/travel/board/MoveRow";
+import { type MoveDraft, MoveSheet } from "@/features/travel/board/MoveSheet";
 import { OfflineBanner } from "@/features/travel/board/OfflineBanner";
 import { usePendingActions } from "@/features/travel/board/pendingActions";
-import { StayMoveRow } from "@/features/travel/board/StayMoveRow";
-import { TransportSheet } from "@/features/travel/board/TransportSheet";
-import { TravelTimeRow } from "@/features/travel/board/TravelTimeRow";
 import { useUndoableAction } from "@/features/travel/board/useUndoableAction";
 import {
   useCreateActivity,
+  useDeleteMove,
   useReorderActivities,
+  useSaveMove,
   useUpdateActivity,
 } from "@/features/travel/hooks/useActivityMutations";
 import { useBoard } from "@/features/travel/hooks/useBoard";
@@ -76,7 +77,6 @@ import {
   groupArchiveByCity,
 } from "@/features/travel/lib/archiveGroups";
 import { tripCities } from "@/features/travel/lib/baseCity";
-import { directionsUrl } from "@/features/travel/lib/mapsLink";
 import {
   badgeAboveList,
   badgeBelowList,
@@ -147,7 +147,8 @@ export function TripBoardPage() {
   /** 날짜를 고르는 중인 보관함 일정. null이면 시트가 닫혀 있다. */
   const [pickingDayFor, setPickingDayFor] = useState<Activity | null>(null);
   const [dragMode, setDragMode] = useState(false);
-  const [openTravelTime, setOpenTravelTime] = useState<TravelTime | null>(null);
+  /** 편집 시트를 연 이동 구간. null이면 닫혀 있다. */
+  const [openMove, setOpenMove] = useState<Move | null>(null);
   /** 상세 시트를 연 숙소 id. null이면 닫혀 있다. */
   const [openStayId, setOpenStayId] = useState<number | null>(null);
   /** 등록·수정 폼. `editingStay`가 null이면 등록이다. */
@@ -174,6 +175,8 @@ export function TripBoardPage() {
   const updateActivity = useUpdateActivity(tripId);
   const updateDay = useUpdateDay(tripId);
   const reorder = useReorderActivities(tripId);
+  const saveMove = useSaveMove(tripId);
+  const removeMove = useDeleteMove(tripId);
   const undoable = useUndoableAction(tripId);
   const pendingIds = usePendingActions((state) => state.pendingIds);
 
@@ -205,36 +208,36 @@ export function TripBoardPage() {
    * 실제로는 점심을 건너뛴 전망대→저녁 구간이다. 도착 앞에 두면 "저녁까지 28분"이 되어
    * 건너뛴 일정이 있어도 가리키는 곳이 분명하다.
    */
-  const travelTimesByTo = new Map(
-    board.travelTimes.map((travelTime) => [
-      travelTime.toActivityId,
-      travelTime,
-    ]),
+  const movesByTo = new Map(
+    board.moves.map((move) => [move.toActivityId, move]),
   );
 
-  /**
-   * 이동시간 행을 탭했다.
-   *
-   * <p>도시를 넘는 이동이면 <b>이동수단 시트를 열지 않고</b> 곧바로 대중교통 길찾기로 나간다
-   * (§3.4) — 서버가 계산하지 않은 구간이라 시트에 보여줄 도보/자동차가 애초에 없고, 물어볼
-   * 이유도 없다. 실제로 타는 건 신칸센이고 그건 구글 지도가 답한다.
-   */
-  const openTravelTimeRow = (travelTime: TravelTime) => {
-    if (!travelTime.crossCity) {
-      setOpenTravelTime(travelTime);
-      return;
+  /** 이동 시트에서 저장했다. 같은 장소 쌍을 잇는 다른 날짜의 이동도 함께 바뀐다. */
+  const persistMove = async (move: Move, draft: MoveDraft) => {
+    try {
+      await saveMove.mutateAsync({
+        fromActivityId: move.fromActivityId,
+        toActivityId: move.toActivityId,
+        toStayId: move.toStayId,
+        ...draft,
+      });
+    } catch {
+      toast("이동을 저장하지 못했어요", "error");
     }
-    const from = activities.find((a) => a.id === travelTime.fromActivityId);
-    const to = activities.find((a) => a.id === travelTime.toActivityId);
-    const url =
-      from?.place && to?.place ? directionsUrl(from.place, to.place) : null;
-    if (url === null) {
-      // 좌표가 없으면 이동시간 행 자체가 없다. 그래도 열리면 아무 일도 안 일어난 것처럼
-      // 두지 않는다 — 눌렀는데 반응이 없으면 고장으로 읽힌다.
-      toast("길찾기를 열 수 없어요", "error");
-      return;
+  };
+
+  const dropMove = async (move: Move) => {
+    try {
+      await removeMove.mutateAsync({
+        from: move.fromActivityId,
+        to:
+          move.toActivityId !== null
+            ? { activityId: move.toActivityId }
+            : { stayId: move.toStayId! },
+      });
+    } catch {
+      toast("이동을 지우지 못했어요", "error");
     }
-    window.open(url, "_blank", "noopener");
   };
 
   /** 보고 있는 날짜. 보관함을 보고 있으면 없다. */
@@ -669,11 +672,11 @@ export function TripBoardPage() {
             <ul className="flex flex-col">
               {activities.map((activity, index) => (
                 <Fragment key={activity.id}>
-                  {/* 드래그 중에는 감춘다 — 순서가 바뀌는 중이라 표시값이 곧 거짓이 된다. */}
-                  {!dragMode && travelTimesByTo.get(activity.id) && (
-                    <TravelTimeRow
-                      travelTime={travelTimesByTo.get(activity.id)!}
-                      onOpen={openTravelTimeRow}
+                  {/* 드래그 중에는 감춘다 — 순서가 바뀌는 중이라 어느 구간인지가 곧 거짓이 된다. */}
+                  {!dragMode && movesByTo.get(activity.id) && (
+                    <MoveRow
+                      move={movesByTo.get(activity.id)!}
+                      onOpen={setOpenMove}
                       offline={!online}
                     />
                   )}
@@ -695,7 +698,11 @@ export function TripBoardPage() {
               ))}
               {/* 마지막 일정 → 오늘 밤 숙소. 드래그 중에는 순서가 바뀌는 중이라 감춘다. */}
               {!dragMode && board.stayMove && (
-                <StayMoveRow stayMove={board.stayMove} />
+                <MoveRow
+                  move={board.stayMove}
+                  onOpen={setOpenMove}
+                  offline={!online}
+                />
               )}
             </ul>
           </SortableContext>
@@ -743,12 +750,17 @@ export function TripBoardPage() {
         </div>
       )}
 
-      <TransportSheet
-        open={openTravelTime !== null}
-        onOpenChange={(open) => !open && setOpenTravelTime(null)}
-        tripId={tripId}
-        travelTime={openTravelTime}
+      <MoveSheet
+        open={openMove !== null}
+        onOpenChange={(open) => !open && setOpenMove(null)}
+        move={openMove}
         activities={activities}
+        stayName={
+          stays?.find((stay) => stay.stayId === openMove?.toStayId)?.name ??
+          null
+        }
+        onSave={(draft) => persistMove(openMove!, draft)}
+        onDelete={() => dropMove(openMove!)}
       />
 
       <AddSheet

@@ -10,8 +10,8 @@ import ds.project.orino.domain.planner.travel.entity.TripActivity;
 import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.day.service.TripDayService;
-import ds.project.orino.planner.travel.route.dto.TravelTimeResponse;
-import ds.project.orino.planner.travel.route.service.TravelTimeService;
+import ds.project.orino.planner.travel.move.dto.MoveResponse;
+import ds.project.orino.planner.travel.move.service.MoveService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,18 +47,18 @@ public class NotificationScheduleService {
     private final TripActivityRepository activityRepository;
     private final TripRepository tripRepository;
     private final TripDayService tripDayService;
-    private final TravelTimeService travelTimeService;
+    private final MoveService moveService;
 
     public NotificationScheduleService(PushNotificationRepository notificationRepository,
                                        TripActivityRepository activityRepository,
                                        TripRepository tripRepository,
                                        TripDayService tripDayService,
-                                       TravelTimeService travelTimeService) {
+                                       MoveService moveService) {
         this.notificationRepository = notificationRepository;
         this.activityRepository = activityRepository;
         this.tripRepository = tripRepository;
         this.tripDayService = tripDayService;
-        this.travelTimeService = travelTimeService;
+        this.moveService = moveService;
     }
 
     /**
@@ -194,12 +194,12 @@ public class NotificationScheduleService {
 
     /** 그 날짜의 일정들에서 만들 알림을 전부 계산한다. 시각 환산은 그 날짜의 타임존으로 한다. */
     private List<PushNotification> build(Trip trip, List<TripActivity> ordered, ZoneId zone) {
-        // 이동시간은 출발 알림에만 쓴다. 아무도 켜지 않았으면 조회할 이유가 없다 —
-        // 일정을 저장할 때마다 유료 API를 부르게 되고, 저장이 그만큼 느려진다.
-        Map<Long, TravelTimeResponse> travelTimesByTo = ordered.stream()
+        // 이동은 출발 알림에만 쓴다. 아무도 켜지 않았으면 조회할 이유가 없다 —
+        // 일정을 저장할 때마다 나가는 쿼리라, 쓰지 않을 값이면 저장만 느려진다.
+        Map<Long, MoveResponse> movesByTo = ordered.stream()
                 .anyMatch(TripActivity::isDepartureNotifyEnabled)
-                ? travelTimeService.travelTimes(ordered).stream()
-                        .collect(Collectors.toMap(TravelTimeResponse::toActivityId, Function.identity()))
+                ? moveService.moves(trip.getMemberId(), ordered).stream()
+                        .collect(Collectors.toMap(MoveResponse::toActivityId, Function.identity()))
                 : Map.of();
 
         List<PushNotification> created = new ArrayList<>();
@@ -218,7 +218,7 @@ public class NotificationScheduleService {
                                 * activity.resolveNotifyMinutes(trip.getDefaultNotifyMinutes()))));
             }
 
-            departureAt(activity, travelTimesByTo.get(activity.getId()), startAt)
+            departureAt(activity, movesByTo.get(activity.getId()), startAt)
                     .ifPresent(at -> created.add(PushNotification.forActivity(
                             trip.getMemberId(), trip.getId(), activity.getId(),
                             NotificationType.DEPARTURE, at)));
@@ -227,19 +227,23 @@ public class NotificationScheduleService {
     }
 
     /**
-     * 출발 알림 시각 = 시작시각 − 이동시간 − 5분.
+     * 출발 알림 시각 = 시작시각 − 이동 소요 시간 − 5분.
      *
      * <p><b>직전 장소 있는 일정이 없으면 만들지 않는다.</b> 어디서 출발하는지 모르면 언제
      * 나서야 하는지도 모른다 — 화면에서도 그 경우 이 설정이 비활성이다.
+     *
+     * <p><b>소요 시간을 아직 적지 않은 구간도 만들지 않는다.</b> 스위치는 켤 수 있지만 알림은
+     * 서지 않는다 — 몇 분 걸리는지 모르는 채로 시각을 정하면 그건 지어낸 값이다. 사용자가
+     * 시간을 적는 순간 이 재계산이 다시 돌아 알림이 생긴다.
      */
-    private Optional<Instant> departureAt(TripActivity activity, TravelTimeResponse travelTime, Instant startAt) {
-        if (!activity.isDepartureNotifyEnabled() || travelTime == null
-                || travelTime.durationMinutes() == null) {
-            // fallback(직선거리만 아는 구간)은 소요 시간을 모른다 — 지어내지 않는다.
+    private Optional<Instant> departureAt(TripActivity activity, MoveResponse move,
+                                          Instant startAt) {
+        if (!activity.isDepartureNotifyEnabled() || move == null
+                || move.durationMinutes() == null) {
             return Optional.empty();
         }
         return Optional.of(startAt.minusSeconds(60L
-                * (travelTime.durationMinutes() + PushNotification.DEPARTURE_BUFFER_MINUTES)));
+                * (move.durationMinutes() + PushNotification.DEPARTURE_BUFFER_MINUTES)));
     }
 
     /**

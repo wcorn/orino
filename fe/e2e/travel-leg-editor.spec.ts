@@ -72,7 +72,7 @@ async function mockForm(page: Page): Promise<Record<string, unknown>[]> {
         selectedDate: null,
         archiveCount: 0,
         activities: [],
-        travelTimes: [],
+        moves: [],
         stayMove: null,
       }),
     ),

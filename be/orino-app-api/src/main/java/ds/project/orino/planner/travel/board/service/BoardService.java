@@ -19,7 +19,7 @@ import ds.project.orino.planner.travel.day.service.LegDeriver;
 import ds.project.orino.planner.travel.day.service.TransitionDays;
 import ds.project.orino.planner.travel.day.service.TripClock;
 import ds.project.orino.planner.travel.day.service.TripDayService;
-import ds.project.orino.planner.travel.route.service.TravelTimeService;
+import ds.project.orino.planner.travel.move.service.MoveService;
 import ds.project.orino.planner.travel.stay.service.StayBoardAssembler;
 import ds.project.orino.planner.travel.tools.service.WeatherService;
 import org.springframework.stereotype.Service;
@@ -55,7 +55,7 @@ public class BoardService {
     private final TripDayRepository dayRepository;
     private final ActivityService activityService;
     private final TripDayService tripDayService;
-    private final TravelTimeService travelTimeService;
+    private final MoveService moveService;
     private final WeatherService weatherService;
     private final StayBoardAssembler stayAssembler;
     private final Clock clock;
@@ -65,7 +65,7 @@ public class BoardService {
                         TripDayRepository dayRepository,
                         ActivityService activityService,
                         TripDayService tripDayService,
-                        TravelTimeService travelTimeService,
+                        MoveService moveService,
                         WeatherService weatherService,
                         StayBoardAssembler stayAssembler,
                         Clock clock) {
@@ -74,7 +74,7 @@ public class BoardService {
         this.dayRepository = dayRepository;
         this.activityService = activityService;
         this.tripDayService = tripDayService;
-        this.travelTimeService = travelTimeService;
+        this.moveService = moveService;
         this.weatherService = weatherService;
         this.stayAssembler = stayAssembler;
         this.clock = clock;
@@ -116,13 +116,12 @@ public class BoardService {
                         TransitionDays.cityRefsOf(selectedCity, departedCity),
                         // 보관함 일정은 날짜가 없어 출발 알림 시각 자체가 서지 않는다.
                         selectedDate == null ? Set.of()
-                                : travelTimeService.departureNotifiable(activities)),
+                                : moveService.departureNotifiable(activities)),
                 // 보관함은 날짜에 배정되지 않은 목록이라 순서에 이동 의미가 없다.
-                // 계산해 봐야 화면에 쓰지 않고, 호출당 과금이라 그냥 낭비다.
-                selectedDate == null ? List.of() : travelTimeService.travelTimes(activities),
+                selectedDate == null ? List.of() : moveService.moves(memberId, activities),
                 // 보관함에는 "그날 밤"이 없다 — 숙소 이동도 없다.
                 selectedDate == null ? null
-                        : stayAssembler.moveToStay(stays, selectedDate, activities));
+                        : stayAssembler.moveToStay(memberId, stays, selectedDate, activities));
     }
 
     /**

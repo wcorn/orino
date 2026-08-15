@@ -140,7 +140,7 @@ async function mockBoard(page: Page): Promise<Captured> {
                   canDepartureNotify: true,
                 },
               ],
-        travelTimes: [],
+        moves: [],
         stayMove: null,
       }),
     );

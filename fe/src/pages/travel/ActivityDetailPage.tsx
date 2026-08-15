@@ -4,7 +4,6 @@ import {
   MapPin,
   Navigation,
   Phone,
-  TrainFront,
   Trash2,
 } from "lucide-react";
 import {
@@ -36,7 +35,6 @@ import { usePlaceDetail } from "@/features/travel/hooks/usePlaceDetail";
 import { useTrip } from "@/features/travel/hooks/useTrip";
 import { activityWriteBodyFrom } from "@/features/travel/lib/activityWriteBody";
 import { cityOn } from "@/features/travel/lib/baseCity";
-import { cityLabelOf } from "@/features/travel/lib/cityLabel";
 import { NOTIFY_MINUTES_OPTIONS } from "@/features/travel/lib/destinations";
 import { placeDirectionsUrl } from "@/features/travel/lib/mapsLink";
 import { todayOpeningHours } from "@/features/travel/lib/openingHours";
@@ -93,8 +91,8 @@ export function ActivityDetailPage() {
   const { data: placeDetail } = usePlaceDetail(activity?.place?.id ?? null);
   const { data: trip } = useTrip(activity?.tripId ?? null);
   /**
-   * 그날의 보드. <b>날짜가 갖는 것들</b>이 여기에만 있다 — 기준 도시·타임존과, 앞뒤 일정
-   * 사이의 도시 경계 판정({@code travelTimes[].crossCity})이다.
+   * 그날의 보드. <b>날짜가 갖는 것들</b>이 여기에만 있다 — 기준 도시·타임존과, 이 일정으로
+   * 들어오는 이동({@code moves})이다.
    *
    * <p>여행 상세({@code trip.timezone})로는 안 된다. 그 값은 <b>첫날</b> 기준 도시에서
    * 파생된 것이라, 도시를 옮긴 날짜에서 조용히 틀린 타임존을 말한다.
@@ -152,34 +150,22 @@ export function ActivityDetailPage() {
   const hasStartTime = form.startTime !== "";
   /**
    * 출발 알림을 켤 수 있는가. <b>판정은 서버가 한다</b>({@code canDepartureNotify}, #1142) —
-   * 직전에 장소 있는 일정이 있고 그 사이가 도시를 넘지 않아야 한다. 화면이 좌표로 다시
-   * 따지면 보드와 답이 갈린다.
+   * 직전에 장소 있는 일정이 있어야 한다. 화면이 다시 따지면 보드와 답이 갈린다.
    */
   const canNotifyDeparture =
     hasStartTime && activity.place !== null && activity.canDepartureNotify;
-  /** 이 일정으로 <b>들어오는</b> 이동. 도시를 넘으면 서버가 계산하지 않은 구간이다. */
+  /** 이 일정으로 <b>들어오는</b> 이동. 사용자가 적지 않았으면 값이 비어 있다(#1208). */
   const incoming =
     activity.activityDate !== null &&
     board?.selectedDate === activity.activityDate
-      ? board.travelTimes.find((t) => t.toActivityId === activity.id)
+      ? board.moves.find((m) => m.toActivityId === activity.id)
       : undefined;
-  /** 도시 경계를 넘어 들어오는가. 판정은 읽어 오기만 한다(D-23). */
-  const crossCity = incoming?.crossCity === true;
   /**
-   * 경계 양쪽 도시 이름 — 안내 문구의 `오사카시 → 교토시`.
-   *
-   * <p>날짜 탭·부제와 <b>같은 이름</b>을 쓴다. 장소가 들고 온 이름을 그대로 쓰면 부제는
-   * `교토시`인데 안내는 `Kyoto`가 되어, 같은 도시를 가리키는지 붙지 않는다.
+   * 소요 시간을 아직 안 적은 구간인가. 출발 알림은 <b>적힌 분</b>으로만 서므로, 스위치를
+   * 켜도 알림이 안 오는 이유가 여기에 있다 — 말해 주지 않으면 고장으로 읽힌다.
    */
-  const tripCityList =
-    board?.days.flatMap((d) => (d.baseCity ? [d.baseCity] : [])) ?? [];
-  const fromCityName = crossCity
-    ? cityLabelOf(
-        board?.activities.find((a) => a.id === incoming?.fromActivityId)?.place,
-        tripCityList,
-      )
-    : null;
-  const toCityName = cityLabelOf(activity.place, tripCityList);
+  const durationMissing =
+    canNotifyDeparture && incoming?.durationMinutes == null;
   /** 이 날짜의 기준 도시. 부제·알림 타임존이 쓴다. */
   const dayCity = cityOn(board?.days ?? [], activity.activityDate ?? "");
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
@@ -345,17 +331,6 @@ export function ActivityDetailPage() {
               </div>
             </div>
 
-            {/* 도시 경계 안내(§9.4) — 판정은 서버가 한 것을 읽기만 한다(D-23).
-                여기서 좌표로 다시 따지면 보드의 `도시 이동` 행과 답이 갈린다. */}
-            {crossCity && (
-              <p className="bg-muted text-muted-foreground flex items-center gap-2 rounded-lg px-2.5 py-[7px] text-xs">
-                <TrainFront className="size-[13px] shrink-0" />
-                {fromCityName && toCityName
-                  ? `${fromCityName} → ${toCityName} · 도시 경계를 넘어 이동시간을 계산하지 않아요`
-                  : "도시 경계를 넘어 이동시간을 계산하지 않아요"}
-              </p>
-            )}
-
             {/* 영업시간·전화는 상세 조회에서 온다. 서버가 30일 캐시한다(§4.7). */}
             {openingToday && (
               <p className="text-muted-foreground flex items-center gap-1 text-xs">
@@ -460,14 +435,14 @@ export function ActivityDetailPage() {
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">출발 알림</p>
-              {/* 못 켜는 이유를 구분해 말한다 — "시각과 이전 장소가 필요해요"는 도시를
-                  넘어서 막힌 사람에게 고칠 수 없는 것을 고치라는 말이 된다. */}
+              {/* 못 켜는 이유와 켜도 안 서는 이유를 구분해 말한다 — 스위치는 켰는데
+                  알림이 안 오면, 이유를 모르는 사용자에게는 그냥 고장이다. */}
               <p className="text-muted-foreground text-xs">
-                {canNotifyDeparture
-                  ? "시작시각 − 이동시간 − 5분"
-                  : crossCity
-                    ? "도시 간 이동은 출발 알림을 계산할 수 없어요"
-                    : "시각과 이전 장소가 필요해요"}
+                {!canNotifyDeparture
+                  ? "시각과 이전 장소가 필요해요"
+                  : durationMissing
+                    ? "보드에서 이동 시간을 적으면 알림이 잡혀요"
+                    : "시작시각 − 이동 시간 − 5분"}
               </p>
             </div>
             <Switch
