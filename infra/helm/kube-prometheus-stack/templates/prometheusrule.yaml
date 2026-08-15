@@ -402,30 +402,68 @@ spec:
             summary: "BE DB 커넥션 풀 고갈 임박"
             description: "HikariCP active / max 비율이 5분간 90% 초과 (현재: {{ "{{" }} $value | printf \"%.2f\" {{ "}}" }})"
 
+    # 이 클러스터의 트래픽은 희박하다 — 7일 실측에서 be 는 5분 창 1,690개 중
+    # **6.6%** 에만 요청이 있었고, 있을 때도 최대 0.43 req/s(130건/5분)다. 나머지
+    # 93.4% 는 요청 0건이다.
+    #
+    # 그래서 여기서는 **비율과 분위수를 그대로 쓰면 안 된다.** 표본이 한 자릿수면
+    # 비율은 한 건에 튀고 분위수는 최악값과 같아진다. 두 룰 모두 "무엇이 나빠졌나"가
+    # 아니라 "느리거나 실패한 요청이 **몇 건** 있었나"를 절대 건수로 본다. #1204
     - name: istio
       rules:
+        # 비율만 보면 5분에 8건 받는 서비스에서 **5xx 한 건이 12.5%** 라 곧바로 임계를
+        # 넘는다. 절대 건수 가드를 and 로 붙여, 비율이 높아도 실제 실패가 3건 미만이면
+        # 울리지 않게 한다.
+        #
+        # 건수 쪽에 increase 를 쓰는 이유는 rate(req/s)로 쓰면 임계가 0.01 같은 값이 되어
+        # 읽는 사람이 "5분에 몇 건인가"를 암산해야 하기 때문이다. increase[5m] 은 그
+        # 자체가 5분간 건수다.
         - alert: IstioServiceErrorRateHigh
           expr: |
             sum by (destination_service) (rate(istio_requests_total{reporter="destination",response_code=~"5.."}[5m]))
               / sum by (destination_service) (rate(istio_requests_total{reporter="destination"}[5m])) > 0.05
+            and
+            sum by (destination_service) (increase(istio_requests_total{reporter="destination",response_code=~"5.."}[5m])) >= 3
           for: 5m
           labels:
             severity: warning
           annotations:
             summary: "Istio 서비스 5xx 비율 높음: {{ "{{" }} $labels.destination_service {{ "}}" }}"
-            description: "destination 5xx 비율이 5분간 5% 초과 (현재: {{ "{{" }} $value | printf \"%.2f\" {{ "}}" }})"
+            description: "destination 5xx 비율이 5분간 5% 초과 + 실제 5xx 3건 이상 (현재 비율: {{ "{{" }} $value | printf \"%.2f\" {{ "}}" }})"
 
-        - alert: IstioServiceLatencyP99High
+        # 이전 룰은 histogram_quantile(0.99, ...) > 2000 이었다. 두 가지가 틀렸다.
+        #
+        # 1) **2000ms 자리에는 버킷 경계가 없다.** 실측한 le 경계는 … 1000, 2500 … 이라
+        #    2000 은 폭 1,500ms 짜리 버킷 **안쪽**이고, 나온 값은 측정이 아니라 그
+        #    구간의 선형 보간이다. 2026-08-16 발화의 "p99 2387ms" 가 그 보간값이었고
+        #    같은 기간 **2.5초를 넘은 요청은 7일간 0건**이었다.
+        # 2) 표본이 8건이면 p99 는 통계량이 아니라 가장 느린 한 건이다.
+        #
+        # 요청량 가드(and rate > N)를 붙이는 방법은 검토했다가 **버렸다.** 실측상
+        # 0.2 req/s 가드는 평가되는 창을 1,690개 중 7개(0.4%)로 줄여 알림을 사실상
+        # 끄는 것과 같았다. 분위수를 유지하려면 이 트래픽에서는 끄는 수밖에 없다.
+        #
+        # 그래서 분위수를 버리고 **실재하는 버킷 경계(1000ms)를 넘은 요청 건수**를 센다.
+        # 보간이 없고 표본 수와 무관하다.
+        #
+        # ⚠️ le 는 문자열 라벨이고 실제 값은 "1000.0" 이다. le="1000" 으로 쓰면
+        # **조용히 아무것도 매칭되지 않아** 뺄셈이 빈 벡터가 되고 알림이 영영 울리지
+        # 않는다. 울리지 않는 알림은 틀린 알림보다 나쁘다 — 반드시 실측한 문자열을 쓴다.
+        #
+        # 임계 5건/5분 + for 10m 은 7일 실측에서 발화 0회다(1초 초과가 1건 이상인 창
+        # 자체가 7개뿐이고 최대가 8건, 그나마 10분을 잇지 않았다). 지속되는 저하만
+        # 잡고 실사용 중의 산발적 느린 요청은 넘긴다.
+        - alert: IstioServiceSlowRequests
           expr: |
-            histogram_quantile(0.99,
-              sum by (destination_service, le) (rate(istio_request_duration_milliseconds_bucket{reporter="destination"}[5m]))
-            ) > 2000
+            sum by (destination_service) (increase(istio_request_duration_milliseconds_bucket{reporter="destination",le="+Inf"}[5m]))
+              - sum by (destination_service) (increase(istio_request_duration_milliseconds_bucket{reporter="destination",le="1000.0"}[5m]))
+              > 5
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Istio 서비스 p99 지연 높음: {{ "{{" }} $labels.destination_service {{ "}}" }}"
-            description: "p99 레이턴시가 10분간 2초 초과 (현재: {{ "{{" }} $value | printf \"%.0f\" {{ "}}" }}ms)"
+            summary: "Istio 느린 요청 다발: {{ "{{" }} $labels.destination_service {{ "}}" }}"
+            description: "1초를 넘은 요청이 10분간 5분당 5건 초과 (현재: {{ "{{" }} $value | printf \"%.0f\" {{ "}}" }}건/5분)"
 
     - name: observability-self
       rules:
