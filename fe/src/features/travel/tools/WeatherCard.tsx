@@ -1,7 +1,10 @@
 import { useState } from "react";
 
 import { LoadingText } from "@/components/ui/loading-text";
-import type { WeatherForecast } from "@/features/travel/api/tools";
+import type {
+  DailyWeather,
+  WeatherForecast,
+} from "@/features/travel/api/tools";
 import { iconFor, needsUmbrella } from "@/features/travel/tools/weatherIcon";
 
 interface WeatherCardProps {
@@ -14,6 +17,15 @@ function temperature(value: number | null): string {
 }
 
 /**
+ * 한 줄의 정체는 <b>날짜가 아니라 (날짜, 도시)</b>다 — 도시가 바뀌는 날은 같은 날짜로 줄이
+ * 둘이라(D-25) 날짜만으로는 두 줄이 구별되지 않는다. 날짜를 키로 쓰면 리스트 키가 겹치고,
+ * 한 줄을 눌렀을 때 나머지 한 줄까지 같이 눌린 것처럼 보인다.
+ */
+function rowKey(day: DailyWeather): string {
+  return `${day.date}·${day.cityName ?? ""}`;
+}
+
+/**
  * 날씨(§S-08).
  *
  * <p>예보가 비는 것은 오류가 아니다 — Open-Meteo는 <b>16일까지만</b> 준다. 여행이 아직
@@ -22,7 +34,11 @@ function temperature(value: number | null): string {
 export function WeatherCard({ forecast, loading }: WeatherCardProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const daily = forecast?.daily ?? [];
-  const activeDate = selected ?? daily[0]?.date ?? null;
+  const activeRow = selected ?? (daily[0] ? rowKey(daily[0]) : null);
+  // 시간대별 예보는 <b>날짜당 하나</b>다(그날 기준 도시 것). 이동일의 두 줄은 어느 쪽을
+  // 눌러도 같은 시간대별을 편다 — 하루에 시계가 둘일 수는 없다.
+  const activeDate =
+    daily.find((day) => rowKey(day) === activeRow)?.date ?? null;
   const hourly = activeDate ? (forecast?.hourly[activeDate] ?? []) : [];
 
   return (
@@ -40,20 +56,22 @@ export function WeatherCard({ forecast, loading }: WeatherCardProps) {
             {daily.map((day) => {
               const Icon = iconFor(day.icon, day.precipProbability);
               const alert = needsUmbrella(day.precipProbability);
+              const key = rowKey(day);
               return (
-                <li key={day.date}>
+                <li key={key}>
                   <button
                     type="button"
-                    onClick={() => setSelected(day.date)}
-                    aria-pressed={day.date === activeDate}
+                    onClick={() => setSelected(key)}
+                    aria-pressed={key === activeRow}
                     className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left ${
-                      day.date === activeDate ? "bg-muted" : "hover:bg-muted"
+                      key === activeRow ? "bg-muted" : "hover:bg-muted"
                     }`}
                   >
                     <span className="w-[38px] shrink-0 text-[13px] tabular-nums">
                       {day.date.slice(5)}
                     </span>
-                    {/* 도시명은 값과 함께 온다(§3.7) — 날짜마다 다른 도시의 예보다. */}
+                    {/* 도시명은 값과 함께 온다(§3.7) — 날짜마다 다른 도시의 예보고,
+                        도시가 바뀌는 날은 같은 날짜에 줄이 둘이라 여기서만 갈린다. */}
                     {day.cityName && (
                       <span className="text-muted-foreground w-[66px] shrink-0 truncate text-[13px]">
                         {day.cityName}

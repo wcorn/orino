@@ -81,14 +81,24 @@ export interface BoardDay {
   date: string;
   weekday: string;
   activityCount: number;
+  /** 그날의 기준 도시. 도시가 바뀌는 날이면 **도착한 쪽**이다. */
   baseCity: BaseCity | null;
   /** 직전 날짜와 도시가 다르다 → 탭 왼쪽에 구분선. */
   cityChanged: boolean;
+  /**
+   * 그날 **떠나온 도시**. 도시가 바뀌는 날에만 있다(D-25) — 그 하루는 두 도시에 속한다.
+   *
+   * <p>오프라인 캐시(Workbox)에 이 필드가 생기기 전 응답이 남아 있을 수 있어 선택이다.
+   * 없으면 이동일 표시가 빠질 뿐, 화면은 그대로 산다.
+   */
+  arrivingFrom?: BaseCity | null;
   /** 이 날짜가 속한 구간 번호(1부터). 저장값이 아니라 파생이다. */
   legIndex: number;
   cityMemo: string | null;
   /** 예보 범위(16일) 밖이면 null이다 — 오류가 아니라 "아직 모름"이다. */
   weather: DailyWeather | null;
+  /** 떠나온 도시의 그날 날씨. 이동일에만 있다 — 오전에 뭘 입을지는 그 도시가 정한다. */
+  arrivingFromWeather?: DailyWeather | null;
   /** 오늘 밤 자는 곳(`checkIn <= date < checkOut`). 없으면 null. */
   stayTonight: StayTonight | null;
   /** 오늘 체크아웃하는 곳. 없으면 null. */

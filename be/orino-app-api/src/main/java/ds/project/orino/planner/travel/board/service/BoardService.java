@@ -16,11 +16,11 @@ import ds.project.orino.planner.travel.activity.dto.ActivityResponse;
 import ds.project.orino.planner.travel.board.dto.BoardResponse;
 import ds.project.orino.planner.travel.day.dto.BaseCityResponse;
 import ds.project.orino.planner.travel.day.service.LegDeriver;
+import ds.project.orino.planner.travel.day.service.TransitionDays;
 import ds.project.orino.planner.travel.day.service.TripClock;
 import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.route.service.TravelTimeService;
 import ds.project.orino.planner.travel.stay.service.StayBoardAssembler;
-import ds.project.orino.planner.travel.tools.dto.WeatherResponse;
 import ds.project.orino.planner.travel.tools.service.WeatherService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,11 +30,13 @@ import java.time.LocalDate;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -95,17 +97,23 @@ public class BoardService {
                 : activityRepository.findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(
                         tripId, selectedDate);
 
-        // 선택한 날짜의 기준 도시. 도시 이탈 판정이 이 도시와 견준다.
+        List<TripDay> dayRows = dayRepository.findAllByTripIdOrderByDayDateAsc(trip.getId());
+        // 도시가 바뀌는 날 → 떠나온 도시. 날짜 탭과 도시 이탈 판정이 같은 파생을 쓴다.
+        Map<LocalDate, TravelPlace> departedCities = departedCitiesOf(dayRows, cities);
+
+        // 선택한 날짜에 있어도 되는 도시들. 이동일이면 떠나온 도시도 함께 통과시킨다(D-25).
         TravelPlace selectedCity = selectedDate == null ? null : cities.get(selectedDate);
+        TravelPlace departedCity = selectedDate == null ? null : departedCities.get(selectedDate);
         // 숙소는 여행 전체를 한 번에 읽는다 — 날짜 탭마다 조회하면 기간만큼 쿼리가 는다.
         StayBoardAssembler.Stays stays = stayAssembler.of(tripId);
 
         return new BoardResponse(
                 buildTrip(trip, cities, status),
-                buildDays(trip, cities, stays),
+                buildDays(trip, dayRows, cities, departedCities, stays),
                 selectedDate,
                 activityRepository.countUnscheduled(tripId),
-                withCityRules(activityService.toResponses(activities), selectedCity,
+                withCityRules(activityService.toResponses(activities),
+                        TransitionDays.cityRefsOf(selectedCity, departedCity),
                         // 보관함 일정은 날짜가 없어 출발 알림 시각 자체가 서지 않는다.
                         selectedDate == null ? Set.of()
                                 : travelTimeService.departureNotifiable(activities)),
@@ -140,19 +148,42 @@ public class BoardService {
     }
 
     /**
-     * 일정마다 도시 관련 판정을 붙인다 — 기준 도시 이탈, 그리고 출발 알림 가능 여부.
+     * 일정마다 도시 관련 판정을 붙인다 — 도시 이탈, 그리고 출발 알림 가능 여부.
      *
      * <p>둘 다 <b>그날 전체를 봐야</b> 나오는 값이라 일정 하나를 조립할 때는 알 수 없다.
      * 조립을 마친 뒤 덧씌운다.
+     *
+     * @param cityRefs 그날 있어도 되는 도시들. 이동일이면 둘이다(D-25)
      */
     private static List<ActivityResponse> withCityRules(List<ActivityResponse> activities,
-                                                        TravelPlace baseCity,
+                                                        Set<String> cityRefs,
                                                         Set<Long> departureNotifiable) {
-        String ref = baseCity == null ? null : baseCity.getCityPlaceRef();
         return activities.stream()
-                .map(activity -> activity.withBaseCity(ref)
+                .map(activity -> activity.withBaseCities(cityRefs)
                         .withCanDepartureNotify(departureNotifiable.contains(activity.id())))
                 .toList();
+    }
+
+    /**
+     * 도시가 바뀌는 날 → 떠나온 도시. {@link TransitionDays}가 장소 id로 답하는 것을 그날의
+     * 장소로 풀어 둔다 — 날짜 탭과 일정 판정이 같은 값을 쓴다.
+     *
+     * <p>이미 읽어 둔 {@code cities}로 장소를 푼다 — 날짜 탭이 쓰는 도시와 같은 객체라
+     * 조회가 늘지 않는다. {@code cityChanged}도 이 맵의 {@code containsKey}로 답한다.
+     */
+    private static Map<LocalDate, TravelPlace> departedCitiesOf(
+            List<TripDay> dayRows, Map<LocalDate, TravelPlace> cities) {
+        Map<Long, TravelPlace> byPlaceId = cities.values().stream()
+                .collect(Collectors.toMap(TravelPlace::getId, Function.identity(),
+                        (kept, duplicate) -> kept));
+        Map<LocalDate, TravelPlace> departed = new LinkedHashMap<>();
+        TransitionDays.departedByDate(dayRows).forEach((date, placeId) -> {
+            TravelPlace city = byPlaceId.get(placeId);
+            if (city != null) {
+                departed.put(date, city);
+            }
+        });
+        return departed;
     }
 
     /**
@@ -178,24 +209,29 @@ public class BoardService {
      * <p>날짜마다 기준 도시와 구간 번호가 붙는다. {@code cityChanged}는 <b>직전 날짜와 도시가
      * 다른가</b>이고, 화면은 그 자리에 구분선을 긋는다 — 도시가 바뀌는 지점이 한눈에 보여야
      * 며칠씩 이어지는 일정에서 길을 잃지 않는다.
+     *
+     * <p>그 날짜에는 <b>떠나온 도시도 함께</b> 붙는다(D-25). 탭이 {@code 오사카 → 교토}로
+     * 그려지고 날씨도 두 도시가 나온다 — 이동일 오전은 아직 그 도시에 있기 때문이다.
      */
     private List<BoardResponse.BoardDay> buildDays(Trip trip,
+                                                   List<TripDay> dayRows,
                                                    Map<LocalDate, TravelPlace> cities,
+                                                   Map<LocalDate, TravelPlace> departedCities,
                                                    StayBoardAssembler.Stays stays) {
         Map<LocalDate, Long> counts = activityRepository.countByDate(trip.getId()).stream()
                 .collect(Collectors.toMap(ActivityDateCount::activityDate, ActivityDateCount::count));
         // 날짜 탭이 전부 필요로 하므로 여행 기간을 한 번에 받는다(§S-08).
         // 도시별로 한 번씩만 조회한다 — 열흘짜리 여행이 열 번을 부르면 안 된다.
-        Map<LocalDate, WeatherResponse.DailyWeather> weather =
-                weatherService.dailyByDate(trip, cities);
-        List<TripDay> dayRows = dayRepository.findAllByTripIdOrderByDayDateAsc(trip.getId());
+        WeatherService.DailyForecasts weather =
+                weatherService.dailyByDate(cities, departedCities);
         Map<LocalDate, Integer> legIndexes = legIndexByDate(dayRows);
 
         List<BoardResponse.BoardDay> days = new ArrayList<>();
-        Long previousCity = null;
         for (TripDay row : dayRows) {
             LocalDate date = row.getDayDate();
             TravelPlace city = cities.get(date);
+            // 도시가 바뀐 날에만 키가 있다 — cityChanged와 arrivingFrom이 한 파생에서 나온다.
+            TravelPlace from = departedCities.get(date);
             days.add(new BoardResponse.BoardDay(
                     row.getId(),
                     trip.dayNumberOf(date),
@@ -203,15 +239,15 @@ public class BoardService {
                     date.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.KOREAN),
                     counts.getOrDefault(date, 0L),
                     city == null ? null : BaseCityResponse.from(city),
-                    // 첫날은 "바뀐 것"이 아니다 — 비교할 앞 날짜가 없다.
-                    previousCity != null && !previousCity.equals(row.getBasePlaceId()),
+                    departedCities.containsKey(date),
+                    from == null ? null : BaseCityResponse.from(from),
                     legIndexes.getOrDefault(date, 1),
                     row.getCityMemo(),
                     // 예보 범위(오늘부터 16일) 밖이면 null이다 — 화면이 그 자리를 비운다.
-                    weather.get(date),
+                    weather.arrived().get(date),
+                    weather.departed().get(date),
                     stayAssembler.tonight(stays, date, city),
                     stayAssembler.checkout(stays, date)));
-            previousCity = row.getBasePlaceId();
         }
         return days;
     }

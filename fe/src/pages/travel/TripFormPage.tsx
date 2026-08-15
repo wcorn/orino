@@ -1,5 +1,5 @@
 import { ArrowLeft, Info, Plus } from "lucide-react";
-import { type FormEvent, useEffect, useId, useState } from "react";
+import { type FormEvent, Fragment, useEffect, useId, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -36,6 +36,7 @@ import {
   legFromManualCity,
   legFromSaved,
 } from "@/features/travel/trip/legDraft";
+import { LegMoveRow } from "@/features/travel/trip/LegMoveRow";
 import { LegRow } from "@/features/travel/trip/LegRow";
 import { LegSumBar } from "@/features/travel/trip/LegSumBar";
 import { toast } from "@/shared/lib/toast";
@@ -315,24 +316,38 @@ export function TripFormPage() {
           </h2>
           {form.legs.length > 0 && (
             <ul className="flex flex-col gap-2">
-              {form.legs.map((leg, index) => (
-                <LegRow
-                  key={leg.key}
-                  index={index}
-                  cityName={leg.cityName}
-                  days={leg.days}
-                  dates={plan.dates[index]}
-                  onPickCity={() => setPickingKey(leg.key)}
-                  onChangeDays={(days) =>
-                    updateLeg(leg.key, { days: Math.max(1, days) })
-                  }
-                  onMove={(direction) => moveLeg(index, direction)}
-                  onRemove={() => removeLeg(leg.key)}
-                  canMoveUp={index > 0}
-                  canMoveDown={index < form.legs.length - 1}
-                  canRemove={form.legs.length > 1}
-                />
-              ))}
+              {form.legs.map((leg, index) => {
+                // 이 구간이 끝나고 다음 구간이 시작하는 날 = 이동일. 다음 구간이 기간을
+                // 넘겨 잘렸으면(dates가 null) 이동 자체가 일어나지 않는다.
+                const next = form.legs[index + 1];
+                const moveDate = plan.dates[index + 1]?.startDate;
+                return (
+                  <Fragment key={leg.key}>
+                    <LegRow
+                      index={index}
+                      cityName={leg.cityName}
+                      days={leg.days}
+                      dates={plan.dates[index]}
+                      onPickCity={() => setPickingKey(leg.key)}
+                      onChangeDays={(days) =>
+                        updateLeg(leg.key, { days: Math.max(1, days) })
+                      }
+                      onMove={(direction) => moveLeg(index, direction)}
+                      onRemove={() => removeLeg(leg.key)}
+                      canMoveUp={index > 0}
+                      canMoveDown={index < form.legs.length - 1}
+                      canRemove={form.legs.length > 1}
+                    />
+                    {next && moveDate && leg.cityName && next.cityName && (
+                      <LegMoveRow
+                        date={moveDate}
+                        fromCity={leg.cityName}
+                        toCity={next.cityName}
+                      />
+                    )}
+                  </Fragment>
+                );
+              })}
             </ul>
           )}
 

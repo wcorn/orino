@@ -20,6 +20,11 @@ export interface TripDay {
   cityChanged: boolean;
   cityMemo: string | null;
   baseCity: BaseCity | null;
+  /**
+   * 그날 떠나온 도시. 도시가 바뀌는 날에만 있다(D-25) — 구간 편집기가 구간 카드 사이에
+   * `10.28 오사카 → 교토` 이동 줄을 그린다.
+   */
+  arrivingFrom?: BaseCity | null;
 }
 
 /**

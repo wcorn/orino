@@ -10,6 +10,8 @@ import java.time.LocalDate;
  * @param weekday      한국어 요일 한 글자("화")
  * @param legIndex     이 날짜가 속한 구간 번호(1부터). 저장된 값이 아니라 파생이다
  * @param cityChanged  직전 날짜와 기준 도시가 다르다 — 날짜 탭 왼쪽에 구분선이 붙는다
+ * @param arrivingFrom (D-25) 그날 떠나온 도시. 도시가 바뀌는 날에만 있다 — 구간 편집기가
+ *                     구간 카드 사이에 {@code 10.28 오사카 → 교토} 이동 줄을 그린다
  */
 public record TripDayResponse(
         Long dayId,
@@ -19,6 +21,7 @@ public record TripDayResponse(
         int legIndex,
         boolean cityChanged,
         String cityMemo,
-        BaseCityResponse baseCity
+        BaseCityResponse baseCity,
+        BaseCityResponse arrivingFrom
 ) {
 }

@@ -396,6 +396,109 @@ describe("TripBoardPage", () => {
       expect(tabs[2]).toHaveTextContent("3 도쿄");
     });
 
+    /**
+     * 도시가 바뀌는 날은 그 하루가 두 도시에 속한다(D-25). 구분선은 "여기서 옮긴다"만
+     * 말하고 <b>어디서 오는지는 말하지 않는다</b> — 그날 오전 일정이 왜 거기 있는지가
+     * 탭에서 읽혀야 한다.
+     */
+    it("도시가 바뀌는 날은 탭이 `N 도쿄 → 닛코`를 쓴다", async () => {
+      mockBoard({
+        byDate: { "2026-10-24": [], "2026-10-25": [], "2026-10-26": [] },
+        trip: { singleCity: false, cityCount: 2 },
+        days: [
+          day(1, "2026-10-24", "토", 0),
+          day(2, "2026-10-25", "일", 0, {
+            baseCity: NIKKO,
+            cityChanged: true,
+            arrivingFrom: TOKYO,
+            legIndex: 2,
+          }),
+          day(3, "2026-10-26", "월", 0, {
+            cityChanged: true,
+            arrivingFrom: NIKKO,
+            legIndex: 3,
+          }),
+        ],
+      });
+
+      renderBoard();
+
+      const tabs = await screen.findAllByRole("tab");
+      // 첫날은 떠나온 도시가 없다 — 비교할 앞 날짜가 없다.
+      expect(tabs[0]).toHaveTextContent("1 도쿄");
+      expect(tabs[1]).toHaveTextContent("2 도쿄 → 닛코");
+      // 당일치기라 돌아오는 날도 이동일이다.
+      expect(tabs[2]).toHaveTextContent("3 닛코 → 도쿄");
+    });
+
+    /**
+     * 아침에 뭘 입을지는 <b>오전을 보낼 도시</b>가 정한다 — 오사카에 비가 오면 교토가
+     * 맑아도 우산을 든다. 탭은 도착 도시의 날씨만 보여주므로 그 값이 여기 있어야 한다.
+     */
+    it("이동일에는 두 도시와 두 날씨가 한 줄로 선다", async () => {
+      mockBoard({
+        byDate: { "2026-10-24": [], "2026-10-25": [] },
+        trip: { singleCity: false, cityCount: 2 },
+        days: [
+          day(1, "2026-10-24", "토", 0),
+          day(2, "2026-10-25", "일", 0, {
+            baseCity: NIKKO,
+            cityChanged: true,
+            arrivingFrom: TOKYO,
+            legIndex: 2,
+            weather: {
+              date: "2026-10-25",
+              cityName: "닛코",
+              icon: "CLOUD",
+              tempMax: 16,
+              tempMin: 9,
+              precipProbability: 30,
+            },
+            arrivingFromWeather: {
+              date: "2026-10-25",
+              cityName: "도쿄",
+              icon: "RAIN",
+              tempMax: 18,
+              tempMin: 11,
+              precipProbability: 70,
+            },
+          }),
+        ],
+      });
+
+      // `?day=`는 날짜가 아니라 탭 인덱스다 — 1이 둘째 날(이동일)이다.
+      renderBoard("/travel/trips/3/board?day=1");
+      await screen.findAllByRole("tab");
+
+      const line = await screen.findByLabelText("도쿄에서 닛코로 이동하는 날");
+      // 떠나온 도시가 먼저다 — 그날은 그 도시에서 시작한다.
+      expect(line).toHaveTextContent("도쿄18°/11°");
+      expect(line).toHaveTextContent("닛코16°/9°");
+    });
+
+    it("도시가 안 바뀌는 날에는 그 줄이 없다 — 빈 자리를 남기지 않는다", async () => {
+      mockMultiCity();
+
+      renderBoard();
+      await screen.findAllByRole("tab");
+
+      expect(screen.queryByLabelText(/이동하는 날$/)).not.toBeInTheDocument();
+    });
+
+    /**
+     * 오프라인 캐시(Workbox)에는 이 필드가 생기기 전 응답이 남아 있을 수 있다. 없다고
+     * 화면이 죽으면 비행기 모드에서 보드가 통째로 사라진다.
+     */
+    it("떠나온 도시가 없는 응답이면 도착 도시만 쓴다", async () => {
+      mockMultiCity();
+
+      renderBoard();
+
+      const tabs = await screen.findAllByRole("tab");
+      expect(tabs[1]).toHaveTextContent("2 닛코");
+      expect(tabs[1]).not.toHaveTextContent("→");
+    });
+
     it("전 기간 한 도시면 도시명을 감추고 `N일차`로 쓴다 — 반복은 정보가 아니다", async () => {
       mockBoard({ byDate: { "2026-10-24": [] } });
 

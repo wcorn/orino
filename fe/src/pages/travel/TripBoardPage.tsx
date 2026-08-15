@@ -46,6 +46,7 @@ import { deleteTrip } from "@/features/travel/api/travel";
 import { ActivityRow } from "@/features/travel/board/ActivityRow";
 import { AddSheet } from "@/features/travel/board/AddSheet";
 import { BaseCitySheet } from "@/features/travel/board/BaseCitySheet";
+import { CityMoveLine } from "@/features/travel/board/CityMoveLine";
 import { DayTabs } from "@/features/travel/board/DayTabs";
 import { DragModeBar } from "@/features/travel/board/DragModeBar";
 import { LocalClockLine } from "@/features/travel/board/LocalClockLine";
@@ -605,6 +606,10 @@ export function TripBoardPage() {
           // 드래그 중이 아닐 때는 아무 영향도 없으므로 항상 켜 둔다.
           droppable
         />
+
+        {/* 도시가 바뀌는 날이면 어디서 어디로 옮기는지 + 두 도시의 날씨(D-25).
+            오전을 보낼 도시의 날씨는 탭에 없다 — 탭은 도착 도시만 말한다. */}
+        {!isArchive && <CityMoveLine day={selectedDay} />}
 
         {/* 도시 메모는 있을 때만 한 줄. 없는 날짜에 빈 자리를 남기지 않는다. */}
         {selectedDay?.cityMemo && (

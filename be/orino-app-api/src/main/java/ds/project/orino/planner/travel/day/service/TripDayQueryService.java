@@ -50,21 +50,25 @@ public class TripDayQueryService {
         Map<Long, TravelPlace> cities = citiesOf(days);
         Map<LocalDate, Integer> legIndexes = legIndexByDate(days);
 
+        // 도시가 바뀌는 날 → 떠나온 도시. 키가 있다는 것 자체가 "바뀌었다"이므로
+        // cityChanged와 arrivingFrom이 한 곳에서 나온다 — 둘이 어긋날 수 없다.
+        Map<LocalDate, Long> departed = TransitionDays.departedByDate(days);
+
         List<TripDayResponse> responses = new ArrayList<>();
-        Long previousCity = null;
         for (TripDay day : days) {
             TravelPlace city = cities.get(day.getBasePlaceId());
+            Long departedId = departed.get(day.getDayDate());
+            TravelPlace from = departedId == null ? null : cities.get(departedId);
             responses.add(new TripDayResponse(
                     day.getId(),
                     trip.dayNumberOf(day.getDayDate()),
                     day.getDayDate(),
                     weekdayOf(day.getDayDate()),
                     legIndexes.getOrDefault(day.getDayDate(), 1),
-                    // 첫날은 "바뀐 것"이 아니다 — 비교할 앞 날짜가 없다.
-                    previousCity != null && !previousCity.equals(day.getBasePlaceId()),
+                    departed.containsKey(day.getDayDate()),
                     day.getCityMemo(),
-                    city == null ? null : BaseCityResponse.from(city)));
-            previousCity = day.getBasePlaceId();
+                    city == null ? null : BaseCityResponse.from(city),
+                    from == null ? null : BaseCityResponse.from(from)));
         }
         return responses;
     }

@@ -289,6 +289,145 @@ class BoardV21Test extends ApiTestSupport {
         }
     }
 
+    /**
+     * 도시가 바뀌는 날은 <b>그 하루가 두 도시에 속한다</b>(D-25). 오전엔 아직 떠나온 도시에
+     * 있고 오후에 도착한다.
+     *
+     * <p>이 규칙이 없으면 이동일 오전 일정에 전부 경고가 붙는다 — 7구간 여행이면 이동일이
+     * 여섯 번이라 <b>여섯 날의 오전이 통째로 잘못 담은 것처럼 보인다.</b>
+     */
+    @Nested
+    @DisplayName("도시가 바뀌는 날 — 그 하루는 두 도시에 속한다")
+    class TransitionDay {
+
+        @Test
+        @DisplayName("이동일 오전, 떠나온 도시의 일정에는 경고가 붙지 않는다")
+        void keepsActivityInDepartedCity() throws Exception {
+            long tripId = transitionTrip();
+            long placeId = poiInCity("센소지", "도쿄", "ChIJ_tokyo");
+            createActivity(tripId, "센소지", transitionDate(), placeId);
+
+            board(tripId, transitionDate())
+                    .andExpect(jsonPath("$.data.activities[0].outOfBaseCity").value(false));
+        }
+
+        @Test
+        @DisplayName("도착한 도시의 일정도 물론 경고가 없다")
+        void keepsActivityInArrivedCity() throws Exception {
+            long tripId = transitionTrip();
+            long placeId = poiInCity("도쇼구", "닛코", "ChIJ_nikko");
+            createActivity(tripId, "도쇼구", transitionDate(), placeId);
+
+            board(tripId, transitionDate())
+                    .andExpect(jsonPath("$.data.activities[0].outOfBaseCity").value(false));
+        }
+
+        /**
+         * 두 도시를 통과시키는 것이 <b>판정을 끄는 것이 아니다.</b> 여기서 경고가 사라지면
+         * 경고 기능 자체가 죽은 것이고, 잘못 담은 장소를 영영 알 수 없다.
+         */
+        @Test
+        @DisplayName("두 도시 어디도 아니면 이동일에도 경고가 선다")
+        void stillFlagsAThirdCity() throws Exception {
+            long tripId = transitionTrip();
+            long placeId = poiInCity("오사카성", "오사카", "ChIJ_osaka");
+            createActivity(tripId, "오사카성", transitionDate(), placeId);
+
+            board(tripId, transitionDate())
+                    .andExpect(jsonPath("$.data.activities[0].outOfBaseCity").value(true));
+        }
+
+        /**
+         * 규칙이 이동일에만 걸리는지 보는 자리다. 날짜와 무관하게 전날 도시를 통과시키면
+         * 닛코 이틀째에 도쿄 장소를 담아도 조용해진다 — 그건 실제로 잘못 담은 것이다.
+         */
+        @Test
+        @DisplayName("이동일이 아닌 날은 전날 도시를 통과시키지 않는다")
+        void doesNotLeakIntoTheNextDay() throws Exception {
+            long tripId = transitionTrip();
+            String afterTransition = START.plusDays(3).toString();
+            long placeId = poiInCity("센소지", "도쿄", "ChIJ_tokyo");
+            createActivity(tripId, "센소지", afterTransition, placeId);
+
+            board(tripId, afterTransition)
+                    .andExpect(jsonPath("$.data.activities[0].outOfBaseCity").value(true));
+        }
+
+        @Test
+        @DisplayName("이동일에만 arrivingFrom이 붙는다 — 탭이 오사카 → 교토로 그려진다")
+        void carriesArrivingFrom() throws Exception {
+            long tripId = transitionTrip();
+
+            board(tripId)
+                    // 첫날은 바뀐 것이 아니다 — 떠나온 도시도 없다.
+                    .andExpect(jsonPath("$.data.days[0].arrivingFrom").doesNotExist())
+                    .andExpect(jsonPath("$.data.days[1].arrivingFrom").doesNotExist())
+                    .andExpect(jsonPath("$.data.days[2].cityChanged").value(true))
+                    .andExpect(jsonPath("$.data.days[2].arrivingFrom.name").value("도쿄"))
+                    .andExpect(jsonPath("$.data.days[2].baseCity.name").value("닛코"))
+                    // 도착한 다음 날은 이미 그 도시에 있다.
+                    .andExpect(jsonPath("$.data.days[3].arrivingFrom").doesNotExist());
+        }
+
+        /**
+         * 당일치기 — 도쿄에 자면서 닛코에 다녀오는 날. 박(night) 단위로 구간을 저장하면
+         * 자는 도시가 도쿄라 닛코가 통째로 사라지는데, 날짜 기준이라 <b>앞뒤로 이동일이 두
+         * 번</b> 서면서 그대로 표현된다(D-25).
+         */
+        @Test
+        @DisplayName("당일치기는 갈 때와 돌아올 때 두 번 다 이동일이다")
+        void dayTripTransitionsBothWays() throws Exception {
+            long tripId = createTrip(leg(tokyo, 1), leg(nikko, 1), leg(tokyo, 2));
+
+            board(tripId)
+                    .andExpect(jsonPath("$.data.days[1].arrivingFrom.name").value("도쿄"))
+                    .andExpect(jsonPath("$.data.days[2].arrivingFrom.name").value("닛코"))
+                    .andExpect(jsonPath("$.data.days[3].arrivingFrom").doesNotExist());
+        }
+
+        @Test
+        @DisplayName("이동일엔 떠나온 도시 날씨도 온다 — 오전에 뭘 입을지는 그 도시가 정한다")
+        void showsWeatherOfBothCities() throws Exception {
+            LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Tokyo"));
+            weatherStub.byCoordinates = coords -> forecast(today,
+                    coords.startsWith(tokyoLat) ? 20 : 10);
+            long tripId = createTripFrom(today, leg(tokyo, 1), leg(nikko, 1));
+
+            board(tripId, today.toString())
+                    .andExpect(jsonPath("$.data.days[1].weather.tempMax").value(10))
+                    .andExpect(jsonPath("$.data.days[1].arrivingFromWeather.tempMax").value(20))
+                    .andExpect(jsonPath("$.data.days[1].arrivingFromWeather.cityName")
+                            .value("도쿄"))
+                    // 도착한 날은 이동일이 아니다 — 떠나온 도시가 없다.
+                    .andExpect(jsonPath("$.data.days[0].arrivingFromWeather").doesNotExist());
+        }
+
+        /**
+         * 떠나온 도시는 <b>반드시 다른 날짜의 기준 도시</b>라 예보를 이미 읽어 둔 상태다.
+         * 여기서 숫자가 늘면 이동일마다 유료 호출이 하나씩 더 붙는다는 뜻이다.
+         */
+        @Test
+        @DisplayName("두 도시를 보여줘도 날씨 조회는 늘지 않는다")
+        void doesNotAddWeatherCalls() throws Exception {
+            long tripId = createTrip(leg(tokyo, 1), leg(nikko, 1), leg(tokyo, 2));
+
+            board(tripId).andExpect(status().isOk());
+
+            assertThat(weatherStub.calls).hasSize(2);
+        }
+
+        /** 도쿄 2일 → 닛코 2일. 3일차(START+2)가 이동일이다. */
+        private long transitionTrip() throws Exception {
+            withCityRef(tokyo, "ChIJ_tokyo");
+            withCityRef(nikko, "ChIJ_nikko");
+            return createTrip(leg(tokyo, 2), leg(nikko, 2));
+        }
+
+        private String transitionDate() {
+            return START.plusDays(2).toString();
+        }
+    }
+
     @Nested
     @DisplayName("기준 도시 변경 — 검색 결과 그대로")
     class ChangeBaseCityFromSearch {
@@ -396,11 +535,15 @@ class BoardV21Test extends ApiTestSupport {
 
     /** 도시 식별자를 가진 일반 장소. 도시 이탈 판정은 이 값만 본다. */
     private long poiInCity(String name, String cityPlaceRef) {
+        return poiInCity(name, "오사카", cityPlaceRef);
+    }
+
+    private long poiInCity(String name, String cityName, String cityPlaceRef) {
         Long memberId = memberRepository.findAll().get(0).getId();
         TravelPlace place = placeRepository.save(
                 TravelPlace.fromGoogle(memberId, "g-" + UUID.randomUUID(), name));
         place.updateBasics(null, new BigDecimal("35.71"), new BigDecimal("139.79"), null, null);
-        place.updateCityInfo(cityPlaceRef == null ? null : "오사카", cityPlaceRef, "JP");
+        place.updateCityInfo(cityPlaceRef == null ? null : cityName, cityPlaceRef, "JP");
         return placeRepository.saveAndFlush(place).getId();
     }
 

@@ -92,7 +92,28 @@ class TripDayControllerTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data[0].legIndex").value(1))
                     // 첫날은 "바뀐 것"이 아니다 — 비교할 앞 날짜가 없다.
                     .andExpect(jsonPath("$.data[0].cityChanged").value(false))
+                    .andExpect(jsonPath("$.data[0].arrivingFrom").doesNotExist())
                     .andExpect(jsonPath("$.data[3].dayIndex").value(4));
+        }
+
+        /**
+         * 구간 편집기(S-03)가 구간 카드 사이에 {@code 10.28 도쿄 → 닛코} 이동 줄을 그린다 —
+         * 경계일이 어느 날인지가 보여야 "그날 오전은 아직 도쿄"라는 것이 읽힌다(D-25).
+         */
+        @Test
+        @DisplayName("도시가 바뀌는 날에는 떠나온 도시가 함께 온다")
+        void carriesDepartedCityOnTransitionDay() throws Exception {
+            changeBaseCity(dayIdAt(2), nikko);
+
+            mockMvc.perform(get("/api/travel/trips/" + tripId + "/days")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data[1].arrivingFrom").doesNotExist())
+                    .andExpect(jsonPath("$.data[2].cityChanged").value(true))
+                    .andExpect(jsonPath("$.data[2].baseCity.name").value("닛코"))
+                    .andExpect(jsonPath("$.data[2].arrivingFrom.name").value("도쿄"))
+                    // 닛코에서 도쿄로 돌아오는 날도 이동일이다.
+                    .andExpect(jsonPath("$.data[3].arrivingFrom.name").value("닛코"));
         }
 
         @Test

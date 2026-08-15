@@ -151,11 +151,39 @@ class ToolsControllerTest extends ApiTestSupport {
             mockMvc.perform(get("/api/travel/trips/" + tripId + "/weather")
                             .header(HttpHeaders.AUTHORIZATION, authHeader))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.daily", hasSize(2)))
-                    // 2일차는 닛코(36.x) 예보여야 한다. 도쿄 것이면 25도가 온다.
-                    .andExpect(jsonPath("$.data.daily[1].tempMax").value(9))
                     .andExpect(jsonPath("$.data.daily[0].cityName").value("도쿄"))
-                    .andExpect(jsonPath("$.data.daily[1].cityName").value("닛코"));
+                    // 2일차는 닛코(36.x) 예보여야 한다. 도쿄 것이면 25도가 온다.
+                    .andExpect(jsonPath("$.data.daily[2].tempMax").value(9))
+                    .andExpect(jsonPath("$.data.daily[2].cityName").value("닛코"));
+        }
+
+        /**
+         * 도시가 바뀌는 날은 줄이 둘이다(D-25) — 그날 오전은 아직 떠나온 도시에 있다. 도착
+         * 도시 하나만 보여주면 아침에 뭘 입을지를 <b>가 보지도 않은 도시의 날씨로</b> 정하게
+         * 된다.
+         */
+        @Test
+        @DisplayName("도시가 바뀌는 날은 두 줄 — 떠나온 도시가 먼저다")
+        void showsBothCitiesOnTransitionDay() throws Exception {
+            long tripId = createTwoCityTrip();
+            weatherStub.byCoordinates = key -> new WeatherResponse(
+                    WeatherResponse.SOURCE, WeatherResponse.LICENSE,
+                    java.time.Instant.parse("2026-08-08T00:00:00Z"),
+                    List.of(day("2026-10-24", WeatherIcon.CLEAR, 20, 10, 0),
+                            day("2026-10-25", WeatherIcon.RAIN,
+                                    key.startsWith("36.") ? 9 : 25, 5, 80)),
+                    java.util.Map.of());
+
+            mockMvc.perform(get("/api/travel/trips/" + tripId + "/weather")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    // 10-24 도쿄 / 10-25 도쿄(오전) / 10-25 닛코(오후)
+                    .andExpect(jsonPath("$.data.daily", hasSize(3)))
+                    .andExpect(jsonPath("$.data.daily[1].date").value("2026-10-25"))
+                    .andExpect(jsonPath("$.data.daily[1].cityName").value("도쿄"))
+                    .andExpect(jsonPath("$.data.daily[1].tempMax").value(25))
+                    .andExpect(jsonPath("$.data.daily[2].date").value("2026-10-25"))
+                    .andExpect(jsonPath("$.data.daily[2].cityName").value("닛코"));
         }
 
         @Test

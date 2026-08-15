@@ -73,34 +73,58 @@ public class WeatherService {
      * <p>날짜마다 조회하면 열흘짜리 여행이 열 번을 부른다. 도시 단위로 묶으면 오사카 3일
      * 여행은 1회, 도쿄 → 닛코 → 도쿄는 2회다(같은 도시는 캐시를 공유한다).
      *
+     * <p><b>도시가 바뀌는 날은 두 도시를 준다</b>(D-25) — 오전을 보낸 도시의 날씨도 알아야
+     * 아침에 뭘 입을지 정한다. 떠나온 도시는 <b>반드시 다른 날짜의 기준 도시</b>이므로 예보를
+     * 이미 읽어 둔 상태고, 그래서 이 값 때문에 조회가 늘지 않는다.
+     *
      * <p>기준 도시 좌표가 없으면(직접 입력한 도시) 그 날짜만 날씨가 없다 — 다른 도시 날짜는
      * 멀쩡히 나온다.
+     *
+     * @param departedCities 도시가 바뀌는 날 → 떠나온 도시. 그 외 날짜는 키가 없다
      */
-    public Map<LocalDate, WeatherResponse.DailyWeather> dailyByDate(
-            Trip trip, Map<LocalDate, TravelPlace> cities) {
+    public DailyForecasts dailyByDate(Map<LocalDate, TravelPlace> cities,
+                                      Map<LocalDate, TravelPlace> departedCities) {
+        // 두 갈래가 같은 조회 결과를 나눠 쓴다 — 따로 돌면 떠나온 도시를 한 번 더 읽는다.
+        Map<Long, WeatherResponse> byCity = new HashMap<>();
+        return new DailyForecasts(dayByDate(cities, byCity),
+                dayByDate(departedCities, byCity));
+    }
+
+    /**
+     * 날짜를 순서대로 훑으며 그날 그 도시의 예보를 뽑는다. 도시별로 한 번만 조회하도록
+     * {@code byCity}에 묶어 둔다 — 도쿄 → 닛코 → 도쿄는 2회다.
+     */
+    private Map<LocalDate, WeatherResponse.DailyWeather> dayByDate(
+            Map<LocalDate, TravelPlace> cities, Map<Long, WeatherResponse> byCity) {
         Map<LocalDate, WeatherResponse.DailyWeather> byDate = new HashMap<>();
-        walkByCity(cities, (date, city, forecast) -> dayOf(forecast, date)
-                .ifPresent(day -> byDate.put(date, day.in(cityNameOf(city)))));
+        cities.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> dayIn(entry.getKey(), entry.getValue(), byCity)
+                        .ifPresent(day -> byDate.put(entry.getKey(), day)));
         return byDate;
     }
 
     /**
-     * 날짜를 순서대로 훑으며 <b>그날 기준 도시의 예보</b>를 넘긴다. 도시별로 한 번만
-     * 조회하도록 여기서 묶는다 — 도쿄 → 닛코 → 도쿄는 2회다.
+     * 그날 그 도시의 예보 한 줄. 같은 도시를 다시 물으면 {@code byCity}에서 꺼내 쓴다 —
+     * 도시가 바뀌는 날의 떠나온 도시는 <b>다른 날짜의 기준 도시이기도 해서</b> 이미 읽혀 있다.
      */
-    private void walkByCity(Map<LocalDate, TravelPlace> cities, DayForecast consumer) {
-        Map<Long, WeatherResponse> byCity = new HashMap<>();
-        cities.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> {
-                    TravelPlace city = entry.getValue();
-                    consumer.accept(entry.getKey(), city,
-                            byCity.computeIfAbsent(city.getId(), id -> forecastOf(city)));
-                });
+    private Optional<WeatherResponse.DailyWeather> dayIn(LocalDate date, TravelPlace city,
+                                                         Map<Long, WeatherResponse> byCity) {
+        WeatherResponse forecast =
+                byCity.computeIfAbsent(city.getId(), id -> forecastOf(city));
+        return dayOf(forecast, date).map(day -> day.in(cityNameOf(city)));
     }
 
-    private interface DayForecast {
-        void accept(LocalDate date, TravelPlace city, WeatherResponse forecast);
+    /**
+     * 날짜 탭의 날씨.
+     *
+     * @param arrived  그날 기준 도시(도시가 바뀌는 날이면 도착한 쪽)의 날씨
+     * @param departed 도시가 바뀌는 날의 <b>떠나온 도시</b> 날씨. 그 외 날짜는 키가 없다
+     */
+    public record DailyForecasts(
+            Map<LocalDate, WeatherResponse.DailyWeather> arrived,
+            Map<LocalDate, WeatherResponse.DailyWeather> departed
+    ) {
     }
 
     private static Optional<WeatherResponse.DailyWeather> dayOf(WeatherResponse forecast,
@@ -126,18 +150,34 @@ public class WeatherService {
      *
      * <p>첫날 도시 하나로 보면 다구간 여행에서 교토 날짜에 도쿄 날씨가 뜬다 — 같은 나라
      * 안에서도 산간·해안은 몇 도씩 갈린다. 날짜 목록이 곧 기간이라 따로 잘라낼 것도 없다.
+     *
+     * <p><b>도시가 바뀌는 날은 줄이 둘이다</b>(D-25) — 떠나온 도시가 먼저, 도착한 도시가
+     * 다음이다. 화면의 날씨 행에 도시명 열이 있어 두 줄이 그대로 읽힌다. 시간대별 예보는
+     * 그날의 기준 도시(도착한 쪽) 하나만 둔다 — 하루에 시계가 둘일 수는 없다.
      */
     private WeatherResponse forecastOf(Trip trip) {
+        Map<LocalDate, TravelPlace> cities = tripDayService.baseCitiesOf(trip.getId());
+        Map<LocalDate, TravelPlace> departed = tripDayService.departedCitiesOf(trip.getId());
         List<WeatherResponse.DailyWeather> daily = new ArrayList<>();
         Map<LocalDate, List<WeatherResponse.HourlyWeather>> hourly = new HashMap<>();
+        Map<Long, WeatherResponse> byCity = new HashMap<>();
 
-        walkByCity(tripDayService.baseCitiesOf(trip.getId()), (date, city, forecast) -> {
-            dayOf(forecast, date).ifPresent(day -> daily.add(day.in(cityNameOf(city))));
-            List<WeatherResponse.HourlyWeather> hours = forecast.hourly().get(date);
-            if (hours != null) {
-                hourly.put(date, hours);
-            }
-        });
+        cities.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> {
+                    LocalDate date = entry.getKey();
+                    TravelPlace city = entry.getValue();
+                    TravelPlace from = departed.get(date);
+                    if (from != null) {
+                        dayIn(date, from, byCity).ifPresent(daily::add);
+                    }
+                    dayIn(date, city, byCity).ifPresent(daily::add);
+                    List<WeatherResponse.HourlyWeather> hours =
+                            byCity.get(city.getId()).hourly().get(date);
+                    if (hours != null) {
+                        hourly.put(date, hours);
+                    }
+                });
         return new WeatherResponse(WeatherResponse.SOURCE, WeatherResponse.LICENSE,
                 clock.instant(), daily, hourly);
     }
