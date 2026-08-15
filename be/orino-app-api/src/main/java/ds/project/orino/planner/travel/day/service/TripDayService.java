@@ -142,6 +142,29 @@ public class TripDayService {
     }
 
     /**
+     * 도시가 바뀌는 날 → <b>떠나온 도시</b>(D-25). 그 외 날짜는 키가 없다.
+     *
+     * <p>이동일 오전은 아직 떠나온 도시에 있다. 그날 있어도 되는 도시를 묻는 쪽(도시 이탈
+     * 판정·날씨)이 이 값을 {@link #baseCitiesOf}와 함께 본다.
+     */
+    public Map<LocalDate, TravelPlace> departedCitiesOf(Long tripId) {
+        List<TripDay> days = dayRepository.findAllByTripIdOrderByDayDateAsc(tripId);
+        Map<Long, TravelPlace> places = placeRepository
+                .findAllById(days.stream().map(TripDay::getBasePlaceId).distinct().toList())
+                .stream()
+                .collect(Collectors.toMap(TravelPlace::getId, Function.identity()));
+
+        Map<LocalDate, TravelPlace> departed = new LinkedHashMap<>();
+        TransitionDays.departedByDate(days).forEach((date, placeId) -> {
+            TravelPlace city = places.get(placeId);
+            if (city != null) {
+                departed.put(date, city);
+            }
+        });
+        return departed;
+    }
+
+    /**
      * 여행 여럿의 <b>날짜별</b> 기준 도시를 한 번에. 상태 판정은 오늘에 해당하는 날짜의
      * 타임존으로 하므로 첫날만으로는 부족하다.
      *

@@ -65,10 +65,17 @@ public record BoardResponse(
      * @param dayIndex      1부터 시작하는 일차
      * @param weekday       한국어 요일 한 글자("금")
      * @param activityCount 그 날짜의 일정 수
-     * @param baseCity      그날의 기준 도시 — 타임존·통화·날씨 좌표가 전부 여기서 나온다
+     * @param baseCity      그날의 기준 도시 — 타임존·통화·날씨 좌표가 전부 여기서 나온다.
+     *                      도시가 바뀌는 날이면 <b>도착한 쪽</b>이다
      * @param cityChanged   직전 날짜와 도시가 다르다 → 탭 왼쪽에 구분선
+     * @param arrivingFrom  (D-25) 그날 <b>떠나온 도시</b>. 도시가 바뀌는 날에만 있다.
+     *                      화면은 날짜 탭을 {@code 오사카 → 교토}로 그리고, 그날 오전
+     *                      일정에는 도시 경고를 붙이지 않는다
      * @param legIndex      이 날짜가 속한 구간 번호(1부터). 저장값이 아니라 파생이다
      * @param weather       날씨 요약. 예보 범위(16일) 밖이면 null이다
+     * @param arrivingFromWeather 떠나온 도시의 그날 날씨. 도시가 바뀌는 날에만 있다 —
+     *                      오전을 보낸 도시의 날씨도 알아야 아침에 뭘 입을지 정한다.
+     *                      날씨는 도시 단위로 조회하므로 이 값 때문에 호출이 늘지 않는다
      * @param stayTonight   오늘 밤 자는 곳({@code checkIn <= date < checkOut})
      * @param stayCheckout  오늘 체크아웃하는 곳
      */
@@ -80,9 +87,11 @@ public record BoardResponse(
             long activityCount,
             BaseCityResponse baseCity,
             boolean cityChanged,
+            BaseCityResponse arrivingFrom,
             int legIndex,
             String cityMemo,
             WeatherResponse.DailyWeather weather,
+            WeatherResponse.DailyWeather arrivingFromWeather,
             StayTonight stayTonight,
             StayCheckout stayCheckout
     ) {
