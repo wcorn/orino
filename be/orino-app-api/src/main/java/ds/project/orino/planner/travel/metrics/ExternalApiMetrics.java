@@ -30,8 +30,7 @@ public class ExternalApiMetrics {
         PLACES_CITY("places_city"),
         /** 장소 상세 — 영업시간·전화. 유료. */
         PLACES_DETAILS("places_details"),
-        /** 이동시간. 유료. */
-        ROUTES("routes"),
+        // 이동시간(routes)은 없다(#1208). 사용자가 직접 넣으므로 나갈 호출이 없다.
         /** 날씨. 무료지만 도시 단위 캐시가 실제로 도는지 봐야 한다. */
         WEATHER("weather"),
         /** 환율. 무료. */

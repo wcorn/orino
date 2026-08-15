@@ -9,8 +9,6 @@ import ds.project.orino.domain.planner.travel.repository.TripStayRepository;
 import ds.project.orino.planner.travel.place.StubPlacesClient;
 import ds.project.orino.planner.travel.place.client.PlaceResult;
 import ds.project.orino.planner.travel.place.client.PlacesClient;
-import ds.project.orino.planner.travel.route.StubRoutesClient;
-import ds.project.orino.planner.travel.route.client.RoutesClient;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
@@ -62,11 +60,8 @@ class StayControllerTest extends ApiTestSupport {
     private DbCleaner dbCleaner;
     @Autowired
     private PlacesClient placesClient;
-    @Autowired
-    private RoutesClient routesClient;
 
     private StubPlacesClient placesStub;
-    private StubRoutesClient routesStub;
     private String authHeader;
     private String otherAuthHeader;
     private long tripId;
@@ -77,8 +72,6 @@ class StayControllerTest extends ApiTestSupport {
         dbCleaner.clean();
         placesStub = (StubPlacesClient) placesClient;
         placesStub.reset();
-        routesStub = (StubRoutesClient) routesClient;
-        routesStub.reset();
         memberRepository.save(MemberFixture.create());
         memberRepository.save(MemberFixture.create("other", "password"));
         authHeader = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc);
@@ -333,50 +326,68 @@ class StayControllerTest extends ApiTestSupport {
         }
 
         @Test
-        @DisplayName("마지막 일정에서 숙소까지 이동이 붙는다 — 같은 도시일 때만 계산한다")
-        void computesStayMoveInSameCity() throws Exception {
+        @DisplayName("마지막 일정에서 숙소까지 이동 행이 붙는다 — 아직 안 적었으면 빈 행으로")
+        void addsStayMoveRow() throws Exception {
             long stayPlace = poiInCity("난바 호텔", "ChIJ_osaka");
             withCityRef(osaka, "ChIJ_osaka");
             createActivity("구로몬 시장", "2026-10-24", poiInCity("구로몬 시장", "ChIJ_osaka"));
             createStayWithPlace("난바 호텔", "2026-10-24", "2026-10-26", stayPlace);
 
             board("2026-10-24")
-                    .andExpect(jsonPath("$.data.stayMove.sameCity").value(true))
-                    .andExpect(jsonPath("$.data.stayMove.mode").exists());
+                    .andExpect(jsonPath("$.data.stayMove.toStayId").isNumber())
+                    .andExpect(jsonPath("$.data.stayMove.mode").doesNotExist());
         }
 
         @Test
-        @DisplayName("도시가 다르면 계산하지 않고 표시만 한다")
-        void skipsComputationAcrossCities() throws Exception {
+        @DisplayName("숙소로 가는 이동도 적을 수 있다 — 일정 사이 이동과 같은 저장소다 (#1208)")
+        void savesStayMove() throws Exception {
+            withCityRef(osaka, "ChIJ_osaka");
+            long stayPlace = poiInCity("난바 호텔", "ChIJ_osaka");
+            long activityId = createActivity("구로몬 시장", "2026-10-24",
+                    poiInCity("구로몬 시장", "ChIJ_osaka"));
+            long stayId = createStayWithPlace("난바 호텔", "2026-10-24", "2026-10-26", stayPlace);
+
+            mockMvc.perform(put("/api/travel/trips/" + tripId + "/moves")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"fromActivityId": %d, "toStayId": %d,
+                                     "mode": "SUBWAY", "name": "미도스지선",
+                                     "durationMinutes": 14}
+                                    """.formatted(activityId, stayId)))
+                    .andExpect(status().isOk());
+
+            board("2026-10-24")
+                    .andExpect(jsonPath("$.data.stayMove.mode").value("SUBWAY"))
+                    .andExpect(jsonPath("$.data.stayMove.name").value("미도스지선"))
+                    .andExpect(jsonPath("$.data.stayMove.durationMinutes").value(14));
+        }
+
+        @Test
+        @DisplayName("도시가 달라도 적을 수 있다 — 교토 숙소로 돌아가는 밤이 그렇다")
+        void allowsStayMoveAcrossCities() throws Exception {
             withCityRef(osaka, "ChIJ_osaka");
             long stayPlace = poiInCity("교토 게스트하우스", "ChIJ_kyoto");
-            createActivity("구로몬 시장", "2026-10-24", poiInCity("구로몬 시장", "ChIJ_osaka"));
-            createStayWithPlace("교토 게스트하우스", "2026-10-24", "2026-10-26", stayPlace);
+            long activityId = createActivity("구로몬 시장", "2026-10-24",
+                    poiInCity("구로몬 시장", "ChIJ_osaka"));
+            long stayId = createStayWithPlace("교토 게스트하우스", "2026-10-24", "2026-10-26",
+                    stayPlace);
+
+            mockMvc.perform(put("/api/travel/trips/" + tripId + "/moves")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"fromActivityId": %d, "toStayId": %d,
+                                     "mode": "TRAIN", "durationMinutes": 55}
+                                    """.formatted(activityId, stayId)))
+                    .andExpect(status().isOk());
 
             board("2026-10-24")
-                    .andExpect(jsonPath("$.data.stayMove.sameCity").value(false))
-                    .andExpect(jsonPath("$.data.stayMove.mode").doesNotExist())
-                    .andExpect(jsonPath("$.data.stayMove.durationMinutes").doesNotExist());
+                    .andExpect(jsonPath("$.data.stayMove.durationMinutes").value(55));
         }
 
         @Test
-        @DisplayName("견주는 대상은 기준 도시가 아니라 마지막 일정이다 — 닛코에서 도쿄 숙소로 가는 날")
-        void comparesAgainstLastActivityNotBaseCity() throws Exception {
-            // 기준 도시는 오사카인데 그날 마지막 일정만 교토에 있고 숙소는 오사카다.
-            // 기준 도시로 견주면 "같은 도시"라 교토→오사카를 자동차로 계산해 버린다.
-            withCityRef(osaka, "ChIJ_osaka");
-            long stayPlace = poiInCity("난바 호텔", "ChIJ_osaka");
-            createActivity("기요미즈데라", "2026-10-24", poiInCity("기요미즈데라", "ChIJ_kyoto"));
-            createStayWithPlace("난바 호텔", "2026-10-24", "2026-10-26", stayPlace);
-
-            board("2026-10-24")
-                    .andExpect(jsonPath("$.data.stayMove.sameCity").value(false))
-                    .andExpect(jsonPath("$.data.stayMove.mode").doesNotExist())
-                    .andExpect(jsonPath("$.data.stayMove.durationMinutes").doesNotExist());
-        }
-
-        @Test
-        @DisplayName("마지막 일정이 이미 그 숙소면 이동 행을 만들지 않는다 — 외부 호출도 없다")
+        @DisplayName("마지막 일정이 이미 그 숙소면 이동 행을 만들지 않는다")
         void noMoveWhenAlreadyAtStay() throws Exception {
             withCityRef(osaka, "ChIJ_osaka");
             long hotel = poiInCity("난바 호텔", "ChIJ_osaka");
@@ -386,9 +397,6 @@ class StayControllerTest extends ApiTestSupport {
 
             board("2026-10-24")
                     .andExpect(jsonPath("$.data.stayMove").doesNotExist());
-
-            // 같은 좌표끼리는 Routes가 답을 못 준다. 물어볼 이유가 없다.
-            assertThat(routesStub.calls).isEmpty();
         }
 
         @Test
@@ -397,7 +405,7 @@ class StayControllerTest extends ApiTestSupport {
             withCityRef(osaka, "ChIJ_osaka");
             long hotel = poiInCity("난바 호텔", "ChIJ_osaka");
             createActivity("난바 호텔 체크인", "2026-10-24", hotel);
-            // 좌표가 없어 이동시간 계산에서 건너뛰는 일정이다.
+            // 장소가 없어 이동 판정에서 건너뛰는 일정이다.
             createActivityWithoutPlace("짐 정리", "2026-10-24");
             createStayWithPlace("난바 호텔", "2026-10-24", "2026-10-26", hotel);
 
@@ -406,16 +414,14 @@ class StayControllerTest extends ApiTestSupport {
         }
 
         @Test
-        @DisplayName("다른 장소에서 숙소로 가는 날은 그대로 계산한다")
-        void stillComputesFromAnotherPlace() throws Exception {
+        @DisplayName("숙소에 장소가 없으면 이동 행이 없다 — 도착지가 없어 적을 수도 없다")
+        void noStayMoveWithoutStayPlace() throws Exception {
             withCityRef(osaka, "ChIJ_osaka");
             createActivity("구로몬 시장", "2026-10-24", poiInCity("구로몬 시장", "ChIJ_osaka"));
-            createStayWithPlace("난바 호텔", "2026-10-24", "2026-10-26",
-                    poiInCity("난바 호텔", "ChIJ_osaka"));
+            createStay("이름만 적은 숙소", "2026-10-24", "2026-10-26");
 
             board("2026-10-24")
-                    .andExpect(jsonPath("$.data.stayMove.sameCity").value(true))
-                    .andExpect(jsonPath("$.data.stayMove.mode").exists());
+                    .andExpect(jsonPath("$.data.stayMove").doesNotExist());
         }
 
         @Test
@@ -473,16 +479,16 @@ class StayControllerTest extends ApiTestSupport {
                 .andExpect(status().isOk());
     }
 
-    private void createStayWithPlace(String name, String checkIn, String checkOut, long placeId)
+    private long createStayWithPlace(String name, String checkIn, String checkOut, long placeId)
             throws Exception {
-        mockMvc.perform(post("/api/travel/trips/" + tripId + "/stays")
+        return stayId(mockMvc.perform(post("/api/travel/trips/" + tripId + "/stays")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "%s", "checkInDate": "%s", "checkOutDate": "%s",
                                  "placeId": %d}
                                 """.formatted(name, checkIn, checkOut, placeId)))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk()));
     }
 
     /** 검색으로 고른 호텔. 좌표가 있어야 숙소 이동 시간이 계산된다. */
@@ -499,14 +505,16 @@ class StayControllerTest extends ApiTestSupport {
                 "$.data.stayId")).longValue();
     }
 
-    private void createActivity(String title, String date, long placeId) throws Exception {
-        mockMvc.perform(post("/api/travel/trips/" + tripId + "/activities")
+    private long createActivity(String title, String date, long placeId) throws Exception {
+        String body = mockMvc.perform(post("/api/travel/trips/" + tripId + "/activities")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"title": "%s", "activityDate": "%s", "placeId": %d}
                                 """.formatted(title, date, placeId)))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) JsonPath.read(body, "$.data.id")).longValue();
     }
 
     private void createActivityWithoutPlace(String title, String date) throws Exception {

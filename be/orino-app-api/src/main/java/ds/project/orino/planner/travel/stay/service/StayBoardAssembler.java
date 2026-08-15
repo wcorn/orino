@@ -6,7 +6,8 @@ import ds.project.orino.domain.planner.travel.entity.TripStay;
 import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
 import ds.project.orino.domain.planner.travel.repository.TripStayRepository;
 import ds.project.orino.planner.travel.board.dto.BoardResponse;
-import ds.project.orino.planner.travel.route.service.TravelTimeService;
+import ds.project.orino.planner.travel.move.dto.MoveResponse;
+import ds.project.orino.planner.travel.move.service.MoveService;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -33,14 +34,14 @@ public class StayBoardAssembler {
 
     private final TripStayRepository stayRepository;
     private final TravelPlaceRepository placeRepository;
-    private final TravelTimeService travelTimeService;
+    private final MoveService moveService;
 
     public StayBoardAssembler(TripStayRepository stayRepository,
                               TravelPlaceRepository placeRepository,
-                              TravelTimeService travelTimeService) {
+                              MoveService moveService) {
         this.stayRepository = stayRepository;
         this.placeRepository = placeRepository;
-        this.travelTimeService = travelTimeService;
+        this.moveService = moveService;
     }
 
     /** 여행의 모든 숙소를 한 번에 읽어 둔다 — 날짜 탭마다 조회하면 기간만큼 쿼리가 는다. */
@@ -60,20 +61,19 @@ public class StayBoardAssembler {
     /**
      * 리스트 맨 아래 붙는 숙소 이동 — <b>그날 마지막 일정에서 오늘 밤 숙소까지</b>.
      *
-     * <p>도시가 다르면 계산하지 않고 표시만 한다(§3.4). 오사카 가게에서 도쿄 숙소까지 "자동차
-     * 6시간"이 뜨면 그 화면은 신뢰를 잃는다.
+     * <p>일정 사이 이동과 <b>같은 저장소</b>를 탄다(#1208). 장소 쌍이 키라 숙소든 일정이든 두
+     * 장소를 잇는 이동은 한 값이다 — 도쿄역에서 숙소까지를 한 번 적으면 매일 다시 적지 않아도
+     * 된다.
      *
-     * <p><b>견주는 대상은 기준 도시가 아니라 출발지인 마지막 일정의 도시다.</b> 이 행이 답하는
-     * 것은 "이 이동을 계산해도 되는가"이고, 경계는 그 이동의 양 끝에 있다 — 닛코 당일치기 날
-     * (기준 도시 도쿄) 닛코에서 도쿄 숙소로 돌아가는 이동은 기준 도시와는 같지만 실제로는
-     * 도시를 넘는다. 판정은 {@link TravelTimeService}가 한다. 출발지가 좌표 없는 일정이면 그
-     * 앞 일정으로 밀리는데, 그 결정을 두 곳에서 따로 하면 어긋난다.
+     * <p>도시 경계 조건은 없다. 예전에는 도시가 다르면 계산하지 않았지만, 지금은 사용자가
+     * 적어 두면 그대로 실린다 — 오사카 가게에서 도쿄 숙소까지 신칸센 2시간 30분은 사용자가
+     * 아는 값이고, 앱이 몰라서 비워 둘 이유가 없다.
      *
-     * <p><b>모르면 다르다고 하지 않는다</b>(D-23) — 도시 식별자가 한쪽이라도 없으면 같은 도시로
-     * 보고 계산한다. 모르는 것을 근거로 기능을 끄면 사용자는 왜 시간이 안 나오는지 알 수 없다.
+     * <p>출발지 판정은 {@link MoveService}가 한다. 장소 없는 일정이면 그 앞 일정으로 밀리는데,
+     * 그 결정을 두 곳에서 따로 하면 어긋난다.
      */
-    public BoardResponse.StayMove moveToStay(Stays stays, LocalDate date,
-                                             List<TripActivity> ordered) {
+    public MoveResponse moveToStay(Long memberId, Stays stays, LocalDate date,
+                                   List<TripActivity> ordered) {
         Optional<TripStay> tonight = stays.tonight(date);
         if (tonight.isEmpty() || ordered.isEmpty()) {
             return null;
@@ -81,19 +81,17 @@ public class StayBoardAssembler {
         TripStay stay = tonight.get();
         TravelPlace stayPlace = stays.placeOf(stay);
         // 마지막 일정이 이미 그 숙소면 이동이 없다 — 행도 없다. 억지로 그리면 "이미 그곳인데
-        // 이동하라"가 되고, 같은 좌표라 Routes도 답을 못 줘 결과 없는 호출만 되풀이된다.
-        if (stayPlace != null && travelTimeService.alreadyAt(ordered, stayPlace)) {
+        // 이동하라"가 된다.
+        if (stayPlace != null && moveService.alreadyAt(ordered, stayPlace.getId())) {
             return null;
         }
+        // 숙소에 장소가 안 붙어 있으면 이동의 도착지가 없다 — 적을 수도 없으므로 행도 없다.
         if (stayPlace == null) {
-            // 숙소에 장소가 안 붙어 있으면 좌표도 도시도 없다 — 행만 남긴다.
-            return new BoardResponse.StayMove(stay.getId(), true, null, null);
+            return null;
         }
-        return travelTimeService.moveToPlace(ordered, stayPlace)
-                .map(move -> new BoardResponse.StayMove(stay.getId(), !move.crossCity(),
-                        move.mode(), move.durationMinutes()))
-                // 마지막 일정에 좌표가 없으면 이동 자체가 성립하지 않는다 — 행만 남긴다.
-                .orElseGet(() -> new BoardResponse.StayMove(stay.getId(), true, null, null));
+        return moveService.moveToPlace(memberId, ordered, stay.getId(), stayPlace.getId())
+                // 마지막 일정에 장소가 없으면 이동 자체가 성립하지 않는다.
+                .orElse(null);
     }
 
     public BoardResponse.StayTonight tonight(Stays stays, LocalDate date, TravelPlace baseCity) {

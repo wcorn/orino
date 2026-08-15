@@ -21,8 +21,8 @@ import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.photo.dto.PhotoResponse;
 import ds.project.orino.planner.travel.photo.service.TravelPhotoService;
 import ds.project.orino.planner.travel.push.service.NotificationScheduleService;
-import ds.project.orino.planner.travel.route.dto.TravelTimeResponse;
-import ds.project.orino.planner.travel.route.service.TravelTimeService;
+import ds.project.orino.planner.travel.move.dto.MoveResponse;
+import ds.project.orino.planner.travel.move.service.MoveService;
 import ds.project.orino.planner.travel.place.service.PlaceService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,7 +63,7 @@ public class ActivityService {
     private final TripRepository tripRepository;
     private final TravelPlaceRepository placeRepository;
     private final PlaceService placeService;
-    private final TravelTimeService travelTimeService;
+    private final MoveService moveService;
     private final NotificationScheduleService notificationService;
     private final TripDayService tripDayService;
     private final Clock clock;
@@ -75,7 +75,7 @@ public class ActivityService {
                            TripRepository tripRepository,
                            TravelPlaceRepository placeRepository,
                            PlaceService placeService,
-                           TravelTimeService travelTimeService,
+                           MoveService moveService,
                            NotificationScheduleService notificationService,
                            TripDayService tripDayService,
                            Clock clock) {
@@ -86,7 +86,7 @@ public class ActivityService {
         this.tripRepository = tripRepository;
         this.placeRepository = placeRepository;
         this.placeService = placeService;
-        this.travelTimeService = travelTimeService;
+        this.moveService = moveService;
         this.notificationService = notificationService;
         this.tripDayService = tripDayService;
         this.clock = clock;
@@ -196,7 +196,7 @@ public class ActivityService {
      * 클라이언트가 실수로 일부만 보내도 순서에 구멍이나 중복이 남지 않게 하기 위한 것이다.
      */
     @Transactional
-    public List<TravelTimeResponse> reorder(Long memberId, Long tripId, ReorderRequest request) {
+    public List<MoveResponse> reorder(Long memberId, Long tripId, ReorderRequest request) {
         Trip trip = getOwnedTrip(memberId, tripId);
 
         Map<Long, TripActivity> targets = loadOwnedActivities(tripId, request);
@@ -216,13 +216,13 @@ public class ActivityService {
         }
         activityRepository.flush();
         touchedDates.forEach(date -> reindex(tripId, date));
-        // 순서가 바뀌면 출발 알림의 이동시간이 바뀐다(§4.2).
+        // 순서가 바뀌면 어느 구간이 이어지는지가 바뀌고, 출발 알림이 쓰는 이동도 함께 바뀐다(§4.2).
         touchedDates.forEach(date -> notificationService.rescheduleDate(tripId, date));
 
         // 보관함(null)은 이동 의미가 없어 건너뛴다.
         return touchedDates.stream()
                 .filter(java.util.Objects::nonNull)
-                .flatMap(date -> travelTimeService.travelTimes(
+                .flatMap(date -> moveService.moves(memberId,
                         activityRepository.findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(
                                 tripId, date)).stream())
                 .toList();
@@ -362,14 +362,14 @@ public class ActivityService {
      * 보드만 채우면 목록에선 못 켠다고 하고 상세에선 켤 수 있다고 하는, 화면마다 다른 답이 된다.
      *
      * <p>판정에 그날 목록이 필요해 조회가 한 번 더 나간다. 그래도 <b>외부 호출은 없다</b> —
-     * 도시 판정은 저장된 식별자만 본다.
+     * 직전에 장소 있는 일정이 있는지만 본다.
      */
     private boolean canDepartureNotify(TripActivity activity) {
         // 보관함 일정은 날짜가 없어 알림 시각 자체가 서지 않는다(§1.2).
         if (activity.getActivityDate() == null) {
             return false;
         }
-        return travelTimeService.departureNotifiable(
+        return moveService.departureNotifiable(
                 activityRepository.findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(
                         activity.getTripId(), activity.getActivityDate()))
                 .contains(activity.getId());

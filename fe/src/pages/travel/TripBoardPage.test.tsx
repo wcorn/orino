@@ -106,7 +106,7 @@ function mockBoard(options: {
   byDate?: Record<string, unknown[]>;
   archive?: unknown[];
   trip?: Record<string, unknown>;
-  travelTimes?: unknown[];
+  moves?: unknown[];
   days?: unknown[];
   stayMove?: unknown;
   /** `GET /trips/{id}/stays` 응답. 상세 시트·겹침 미리보기가 이 목록을 읽는다. */
@@ -127,7 +127,7 @@ function mockBoard(options: {
           selectedDate: isArchive ? null : date,
           archiveCount: archive.length,
           activities: isArchive ? archive : (byDate[date] ?? []),
-          travelTimes: isArchive ? [] : (options.travelTimes ?? []),
+          moves: isArchive ? [] : (options.moves ?? []),
           stayMove: isArchive ? null : (options.stayMove ?? null),
         },
       });
@@ -1274,18 +1274,29 @@ describe("TripBoardPage", () => {
     });
   });
 
-  describe("이동시간", () => {
-    function travelTime(overrides: Record<string, unknown> = {}) {
+  describe("이동 (#1208)", () => {
+    /** 저장된 이동 하나. `mode`가 null이면 아직 아무것도 적지 않은 구간이다. */
+    function move(overrides: Record<string, unknown> = {}) {
       return {
         fromActivityId: 1,
         toActivityId: 2,
-        mode: "WALK",
+        toStayId: null,
+        mode: "SUBWAY",
+        name: "긴자선",
         durationMinutes: 12,
-        distanceM: 900,
-        fallback: false,
-        crossCity: false,
+        url: null,
+        memo: null,
         ...overrides,
       };
+    }
+
+    function emptyMove(overrides: Record<string, unknown> = {}) {
+      return move({
+        mode: null,
+        name: null,
+        durationMinutes: null,
+        ...overrides,
+      });
     }
 
     function twoActivities() {
@@ -1315,47 +1326,71 @@ describe("TripBoardPage", () => {
       ];
     }
 
-    it("일정 사이에 이동시간을 보여준다", async () => {
+    it("적어 둔 이동은 이름과 시간을 함께 보여준다 — 현지에서 찾는 건 이름이다", async () => {
       mockBoard({
         byDate: { "2026-10-24": twoActivities() },
-        travelTimes: [travelTime()],
+        moves: [move()],
       });
 
       renderBoard();
 
       expect(
-        await screen.findByRole("button", { name: "이동시간 12분" }),
+        await screen.findByRole("button", { name: "이동 긴자선 · 12분" }),
       ).toBeInTheDocument();
     });
 
-    it("계산이 실패하면 시간 대신 거리를 보여준다 — 틀린 분 수는 계획을 망친다", async () => {
+    it("이름이 없으면 수단 이름으로 대신한다", async () => {
       mockBoard({
         byDate: { "2026-10-24": twoActivities() },
-        travelTimes: [
-          travelTime({
-            durationMinutes: null,
-            distanceM: 8200,
-            fallback: true,
-          }),
-        ],
+        moves: [move({ name: null })],
       });
 
       renderBoard();
 
       expect(
-        await screen.findByRole("button", { name: "이동시간 약 8.2km" }),
+        await screen.findByRole("button", {
+          name: "이동 지하철 · 전철 · 12분",
+        }),
       ).toBeInTheDocument();
     });
 
-    it("드래그 모드에서는 감춘다 — 순서가 바뀌는 중이라 표시값이 곧 거짓이 된다", async () => {
+    it("아직 안 적은 구간도 행으로 남는다 — 그 자리가 입력 지점이다", async () => {
+      mockBoard({
+        byDate: { "2026-10-24": twoActivities() },
+        moves: [emptyMove()],
+      });
+
+      renderBoard();
+
+      expect(
+        await screen.findByRole("button", { name: "이동 이동 추가" }),
+      ).toBeInTheDocument();
+    });
+
+    it("시간을 안 적었으면 지어내지 않고 수단만 말한다", async () => {
+      mockBoard({
+        byDate: { "2026-10-24": twoActivities() },
+        moves: [move({ name: null, durationMinutes: null })],
+      });
+
+      renderBoard();
+
+      expect(
+        await screen.findByRole("button", { name: "이동 지하철 · 전철" }),
+      ).toBeInTheDocument();
+    });
+
+    it("드래그 모드에서는 감춘다 — 순서가 바뀌는 중이라 어느 구간인지가 곧 거짓이 된다", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       mockBoard({
         byDate: { "2026-10-24": twoActivities() },
-        travelTimes: [travelTime()],
+        moves: [move()],
       });
 
       renderBoard();
-      const row = await screen.findByRole("button", { name: "이동시간 12분" });
+      const row = await screen.findByRole("button", {
+        name: "이동 긴자선 · 12분",
+      });
 
       // 400ms 길게 누르면 드래그 모드로 들어간다.
       await act(async () => {
@@ -1367,113 +1402,179 @@ describe("TripBoardPage", () => {
       vi.useRealTimers();
     });
 
-    it("탭하면 이동수단 시트가 열린다", async () => {
+    it("탭하면 편집 시트가 열리고 적어 둔 값이 채워져 있다", async () => {
       mockBoard({
         byDate: { "2026-10-24": twoActivities() },
-        travelTimes: [travelTime()],
+        moves: [move({ memo: "5호차 12A" })],
       });
 
       const user = userEvent.setup();
       renderBoard();
       await user.click(
-        await screen.findByRole("button", { name: "이동시간 12분" }),
+        await screen.findByRole("button", { name: "이동 긴자선 · 12분" }),
       );
 
       const sheet = await screen.findByRole("dialog");
       expect(within(sheet).getByText("아침 산책 → 전망대")).toBeInTheDocument();
-      expect(
-        within(sheet).getByRole("button", { name: /도보/ }),
-      ).toBeInTheDocument();
-      expect(
-        within(sheet).getByRole("button", { name: /자동차/ }),
-      ).toBeInTheDocument();
+      expect(within(sheet).getByLabelText("이동수단 이름")).toHaveValue(
+        "긴자선",
+      );
+      expect(within(sheet).getByLabelText("소요 시간(분)")).toHaveValue(12);
+      expect(within(sheet).getByLabelText("메모")).toHaveValue("5호차 12A");
     });
 
-    it("자동 판정된 수단은 이미 값이 있어 다시 부르지 않는다", async () => {
-      const calls: URL[] = [];
+    it("수단을 고르고 시간을 넣어 저장한다 — 앱이 계산하지 않는다", async () => {
+      const saved: unknown[] = [];
       server.use(
-        http.get(
-          `${API_BASE}/travel/trips/:tripId/travel-time`,
-          ({ request }) => {
-            calls.push(new URL(request.url));
-            return HttpResponse.json({
-              code: "OK",
-              data: travelTime({ mode: "DRIVE" }),
-            });
+        http.put(
+          `${API_BASE}/travel/trips/:tripId/moves`,
+          async ({ request }) => {
+            saved.push(await request.json());
+            return HttpResponse.json({ code: "OK", data: move() });
           },
         ),
       );
       mockBoard({
         byDate: { "2026-10-24": twoActivities() },
-        travelTimes: [travelTime()],
+        moves: [emptyMove()],
       });
 
       const user = userEvent.setup();
       renderBoard();
       await user.click(
-        await screen.findByRole("button", { name: "이동시간 12분" }),
+        await screen.findByRole("button", { name: "이동 이동 추가" }),
       );
 
       const sheet = await screen.findByRole("dialog");
-      await user.click(within(sheet).getByRole("button", { name: /도보/ }));
+      await user.click(within(sheet).getByRole("button", { name: "기차" }));
+      await user.type(
+        within(sheet).getByLabelText("이동수단 이름"),
+        "노조미 21호",
+      );
+      await user.type(within(sheet).getByLabelText("소요 시간(분)"), "138");
+      await user.click(within(sheet).getByRole("button", { name: "저장" }));
 
-      // 보드가 이미 WALK로 줬다. 호출당 과금이라 같은 값을 다시 사지 않는다.
-      expect(calls).toHaveLength(0);
+      await waitFor(() => expect(saved).toHaveLength(1));
+      expect(saved[0]).toMatchObject({
+        fromActivityId: 1,
+        toActivityId: 2,
+        mode: "TRAIN",
+        name: "노조미 21호",
+        durationMinutes: 138,
+      });
     });
 
-    it("다른 수단을 고르면 그때 조회한다", async () => {
-      const calls: URL[] = [];
+    it("수단만 고르고 시간은 비워 둘 수 있다 — 확인은 나중에 한다", async () => {
+      const saved: unknown[] = [];
       server.use(
-        http.get(
-          `${API_BASE}/travel/trips/:tripId/travel-time`,
-          ({ request }) => {
-            calls.push(new URL(request.url));
-            return HttpResponse.json({
-              code: "OK",
-              data: travelTime({
-                mode: "DRIVE",
-                durationMinutes: 28,
-                distanceM: 17100,
-              }),
-            });
+        http.put(
+          `${API_BASE}/travel/trips/:tripId/moves`,
+          async ({ request }) => {
+            saved.push(await request.json());
+            return HttpResponse.json({ code: "OK", data: move() });
           },
         ),
       );
       mockBoard({
         byDate: { "2026-10-24": twoActivities() },
-        travelTimes: [travelTime()],
+        moves: [emptyMove()],
       });
 
       const user = userEvent.setup();
       renderBoard();
       await user.click(
-        await screen.findByRole("button", { name: "이동시간 12분" }),
+        await screen.findByRole("button", { name: "이동 이동 추가" }),
       );
 
       const sheet = await screen.findByRole("dialog");
-      await user.click(within(sheet).getByRole("button", { name: /자동차/ }));
+      await user.click(within(sheet).getByRole("button", { name: "비행기" }));
+      await user.click(within(sheet).getByRole("button", { name: "저장" }));
 
-      await waitFor(() => expect(calls).toHaveLength(1));
-      expect(calls[0].searchParams.get("mode")).toBe("DRIVE");
-      expect(await within(sheet).findByText("28분")).toBeInTheDocument();
+      await waitFor(() => expect(saved).toHaveLength(1));
+      expect(saved[0]).toMatchObject({ mode: "FLIGHT", durationMinutes: null });
     });
 
-    it("길찾기는 항상 대중교통으로 연다", async () => {
+    it("수단을 안 고르면 저장할 수 없다", async () => {
+      mockBoard({
+        byDate: { "2026-10-24": twoActivities() },
+        moves: [emptyMove()],
+      });
+
+      const user = userEvent.setup();
+      renderBoard();
+      await user.click(
+        await screen.findByRole("button", { name: "이동 이동 추가" }),
+      );
+
+      const sheet = await screen.findByRole("dialog");
+      expect(
+        within(sheet).getByRole("button", { name: "저장" }),
+      ).toBeDisabled();
+    });
+
+    it("적어 둔 이동은 지울 수 있다", async () => {
+      const deleted: URL[] = [];
+      server.use(
+        http.delete(`${API_BASE}/travel/trips/:tripId/moves`, ({ request }) => {
+          deleted.push(new URL(request.url));
+          return HttpResponse.json({ code: "OK", data: null });
+        }),
+      );
+      mockBoard({
+        byDate: { "2026-10-24": twoActivities() },
+        moves: [move()],
+      });
+
+      const user = userEvent.setup();
+      renderBoard();
+      await user.click(
+        await screen.findByRole("button", { name: "이동 긴자선 · 12분" }),
+      );
+
+      const sheet = await screen.findByRole("dialog");
+      await user.click(
+        within(sheet).getByRole("button", { name: "이동 지우기" }),
+      );
+
+      await waitFor(() => expect(deleted).toHaveLength(1));
+      expect(deleted[0].searchParams.get("from")).toBe("1");
+      expect(deleted[0].searchParams.get("to")).toBe("2");
+    });
+
+    it("아직 안 적은 구간에는 지우기가 없다", async () => {
+      mockBoard({
+        byDate: { "2026-10-24": twoActivities() },
+        moves: [emptyMove()],
+      });
+
+      const user = userEvent.setup();
+      renderBoard();
+      await user.click(
+        await screen.findByRole("button", { name: "이동 이동 추가" }),
+      );
+
+      const sheet = await screen.findByRole("dialog");
+      expect(
+        within(sheet).queryByRole("button", { name: "이동 지우기" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("시간을 확인하러 나가는 통로가 있다 — 딥링크는 항상 대중교통이다", async () => {
       const open = vi.spyOn(window, "open").mockImplementation(() => null);
       mockBoard({
         byDate: { "2026-10-24": twoActivities() },
-        travelTimes: [travelTime()],
+        moves: [move()],
       });
 
       const user = userEvent.setup();
       renderBoard();
       await user.click(
-        await screen.findByRole("button", { name: "이동시간 12분" }),
+        await screen.findByRole("button", { name: "이동 긴자선 · 12분" }),
       );
 
       const sheet = await screen.findByRole("dialog");
       await user.click(
-        within(sheet).getByRole("button", { name: /구글 지도에서 길찾기/ }),
+        within(sheet).getByRole("button", { name: /구글 지도에서 시간 확인/ }),
       );
 
       expect(open).toHaveBeenCalledWith(
@@ -1484,80 +1585,41 @@ describe("TripBoardPage", () => {
       open.mockRestore();
     });
 
-    it("보관함에는 이동시간이 없다", async () => {
-      mockBoard({ archive: twoActivities(), travelTimes: [travelTime()] });
+    it("적어 둔 예매 링크를 시트에서 바로 연다", async () => {
+      const open = vi.spyOn(window, "open").mockImplementation(() => null);
+      mockBoard({
+        byDate: { "2026-10-24": twoActivities() },
+        moves: [move({ url: "https://www.jreast.co.jp/" })],
+      });
+
+      const user = userEvent.setup();
+      renderBoard();
+      await user.click(
+        await screen.findByRole("button", { name: "이동 긴자선 · 12분" }),
+      );
+
+      const sheet = await screen.findByRole("dialog");
+      await user.click(
+        within(sheet).getByRole("button", { name: /저장한 링크 열기/ }),
+      );
+
+      expect(open).toHaveBeenCalledWith(
+        "https://www.jreast.co.jp/",
+        "_blank",
+        "noopener",
+      );
+      open.mockRestore();
+    });
+
+    it("보관함에는 이동이 없다", async () => {
+      mockBoard({ archive: twoActivities(), moves: [move()] });
 
       renderBoard("/travel/trips/3/board?day=archive");
       await screen.findByText("아침 산책");
 
       expect(
-        screen.queryByRole("button", { name: /이동시간/ }),
+        screen.queryByRole("button", { name: /^이동 / }),
       ).not.toBeInTheDocument();
-    });
-
-    describe("도시 경계 (§3.4)", () => {
-      /** 서버가 계산하지 않은 구간 — 수단도 소요 시간도 없이 온다. */
-      function crossCityTime() {
-        return travelTime({
-          mode: null,
-          durationMinutes: null,
-          distanceM: 402_000,
-          crossCity: true,
-        });
-      }
-
-      it("시간 대신 `도시 이동`만 보여준다 — 거리도 말하지 않는다", async () => {
-        mockBoard({
-          byDate: { "2026-10-24": twoActivities() },
-          travelTimes: [crossCityTime()],
-        });
-
-        renderBoard();
-
-        expect(
-          await screen.findByRole("button", { name: "이동시간 도시 이동" }),
-        ).toBeInTheDocument();
-        // "약 402.0km"는 계획에 쓸 수 없는 숫자다.
-        expect(screen.queryByText(/km/)).not.toBeInTheDocument();
-      });
-
-      it("탭하면 이동수단 시트 없이 곧바로 대중교통 길찾기로 나간다", async () => {
-        const open = vi.spyOn(window, "open").mockImplementation(() => null);
-        mockBoard({
-          byDate: { "2026-10-24": twoActivities() },
-          travelTimes: [crossCityTime()],
-        });
-
-        const user = userEvent.setup();
-        renderBoard();
-        await user.click(
-          await screen.findByRole("button", { name: "이동시간 도시 이동" }),
-        );
-
-        expect(open).toHaveBeenCalledWith(
-          expect.stringContaining("travelmode=transit"),
-          "_blank",
-          "noopener",
-        );
-        // 도보/자동차를 물어볼 이유가 없다 — 시트가 열리면 안 된다.
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-        open.mockRestore();
-      });
-
-      it("같은 도시 구간은 그대로 시트가 열린다", async () => {
-        mockBoard({
-          byDate: { "2026-10-24": twoActivities() },
-          travelTimes: [travelTime()],
-        });
-
-        const user = userEvent.setup();
-        renderBoard();
-        await user.click(
-          await screen.findByRole("button", { name: "이동시간 12분" }),
-        );
-
-        expect(await screen.findByRole("dialog")).toBeInTheDocument();
-      });
     });
   });
 
@@ -1644,15 +1706,16 @@ describe("TripBoardPage", () => {
             }),
           ],
         },
-        travelTimes: [
+        moves: [
           {
             fromActivityId: 1,
             toActivityId: 2,
-            mode: "WALK",
+            toStayId: null,
+            mode: "SUBWAY",
+            name: "긴자선",
             durationMinutes: 12,
-            distanceM: 900,
-            fallback: false,
-            crossCity: false,
+            url: null,
+            memo: null,
           },
         ],
       });
@@ -1660,7 +1723,7 @@ describe("TripBoardPage", () => {
       renderBoard();
 
       expect(
-        await screen.findByRole("button", { name: "이동시간 12분" }),
+        await screen.findByRole("button", { name: "이동 긴자선 · 12분" }),
       ).toBeDisabled();
     });
 
@@ -1799,33 +1862,91 @@ describe("TripBoardPage", () => {
       mockBoard({
         byDate: { "2026-10-24": [activity()] },
         stayMove: {
-          stayId: 76,
-          sameCity: true,
+          fromActivityId: 1,
+          toActivityId: null,
+          toStayId: 76,
           mode: "WALK",
+          name: null,
           durationMinutes: 8,
+          url: null,
+          memo: null,
         },
       });
 
       renderBoard();
 
-      expect(await screen.findByText("숙소까지 8분")).toBeInTheDocument();
+      expect(
+        await screen.findByRole("button", { name: "이동 도보 · 8분" }),
+      ).toBeInTheDocument();
     });
 
-    it("도시가 다르면 시간 없이 `숙소로 이동`만 — 계산하지 않는다(§3.4)", async () => {
+    it("아직 안 적었으면 `숙소로 이동 추가`가 선다 — 그 자리가 입력 지점이다", async () => {
       mockBoard({
         byDate: { "2026-10-24": [activity()] },
         stayMove: {
-          stayId: 76,
-          sameCity: false,
+          fromActivityId: 1,
+          toActivityId: null,
+          toStayId: 76,
           mode: null,
+          name: null,
           durationMinutes: null,
+          url: null,
+          memo: null,
         },
       });
 
       renderBoard();
 
-      expect(await screen.findByText("숙소로 이동")).toBeInTheDocument();
+      expect(
+        await screen.findByRole("button", { name: "이동 숙소로 이동 추가" }),
+      ).toBeInTheDocument();
       expect(screen.queryByText(/분$/)).not.toBeInTheDocument();
+    });
+
+    it("숙소 이동도 시트에서 적는다 — 일정 사이 이동과 같은 저장소다", async () => {
+      const saved: unknown[] = [];
+      server.use(
+        http.put(
+          `${API_BASE}/travel/trips/:tripId/moves`,
+          async ({ request }) => {
+            saved.push(await request.json());
+            return HttpResponse.json({ code: "OK", data: null });
+          },
+        ),
+      );
+      mockBoard({
+        byDate: { "2026-10-24": [activity()] },
+        stayMove: {
+          fromActivityId: 1,
+          toActivityId: null,
+          toStayId: 76,
+          mode: null,
+          name: null,
+          durationMinutes: null,
+          url: null,
+          memo: null,
+        },
+        stays: [DOTONBORI],
+      });
+
+      const user = userEvent.setup();
+      renderBoard();
+      await user.click(
+        await screen.findByRole("button", { name: "이동 숙소로 이동 추가" }),
+      );
+
+      const sheet = await screen.findByRole("dialog");
+      await user.click(within(sheet).getByRole("button", { name: "버스" }));
+      await user.type(within(sheet).getByLabelText("소요 시간(분)"), "22");
+      await user.click(within(sheet).getByRole("button", { name: "저장" }));
+
+      await waitFor(() => expect(saved).toHaveLength(1));
+      expect(saved[0]).toMatchObject({
+        fromActivityId: 1,
+        toStayId: 76,
+        mode: "BUS",
+        durationMinutes: 22,
+      });
     });
 
     it("배지를 탭하면 상세가 열린다 — 기간·메모·예약 링크", async () => {
@@ -2193,9 +2314,7 @@ describe("TripBoardPage", () => {
       expect(
         screen.queryByRole("button", { name: /^숙소 / }),
       ).not.toBeInTheDocument();
-      expect(
-        screen.queryByText(/숙소까지|숙소로 이동/),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/숙소로 이동/)).not.toBeInTheDocument();
     });
   });
 });

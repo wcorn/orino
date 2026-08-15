@@ -1,0 +1,106 @@
+databaseChangeLog:
+  # 이동수단을 직접 고르고 시간을 직접 넣는다 (#1208).
+  #
+  # 앱이 직선거리로 도보/자동차를 판정하고 Google Routes로 소요 시간을 사 오던 것을 그만두고,
+  # 사용자가 적은 값을 그대로 쓴다. 옮겨올 원본이 없다 — 자동 계산값은 Redis 캐시였고
+  # 캐시는 진실이 아니다. 배포 직후 모든 구간이 빈 상태로 시작해 사용자가 채운다.
+  #
+  # 여행이 아니라 (멤버, 출발 장소, 도착 장소)에 붙인다. 일정 쌍에 붙이면 드래그로 순서를
+  # 바꾸는 순간 값이 거짓이 되거나 사라진다.
+
+  - changeSet:
+      id: 054-create-travel-move
+      author: wcorn
+      comment: 두 장소 사이 이동 1건. 수단·소요시간과 함께 무엇을 타는지(이름·예매 링크·메모)를 담는다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: travel_move
+      changes:
+        - createTable:
+            tableName: travel_move
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              # 장소가 이미 멤버별이지만 여기에도 둔다 — 유니크 키가 멤버로 닫혀야
+              # 다른 사용자의 장소 id와 우연히 겹치는 일을 애초에 못 만든다.
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # 장소가 지워지면 그 장소를 잇던 이동도 의미가 없다. 남겨두면 화면에
+              # 어디로 가는지 모르는 이동이 뜬다.
+              - column:
+                  name: from_place_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_travel_move_from_place
+                    references: travel_place(id)
+                    deleteCascade: true
+              - column:
+                  name: to_place_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_travel_move_to_place
+                    references: travel_place(id)
+                    deleteCascade: true
+              # WALK BIKE BUS CAR SUBWAY TRAIN FLIGHT FERRY OTHER.
+              # 나라 고유명(신칸센·TGV)은 값으로 두지 않는다 — name 에 적는다.
+              - column:
+                  name: mode
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              # "나리타 익스프레스 3호" · "피치 MM8"
+              - column:
+                  name: name
+                  type: VARCHAR(100)
+              # NULL 허용. 수단을 먼저 정하고 시간은 나중에 확인하는 것이 실제 순서라,
+              # 아직 안 찾아본 것과 0분을 구분해야 한다.
+              - column:
+                  name: duration_minutes
+                  type: INT
+              - column:
+                  name: url
+                  type: VARCHAR(500)
+              # 좌석·플랫폼·예약번호.
+              - column:
+                  name: memo
+                  type: VARCHAR(500)
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        # 한 구간에 이동은 하나다. 방향은 유지한다 — A→B와 B→A는 다른 행이고,
+        # 편도 항공과 일방통행이 실제로 다르다.
+        - createIndex:
+            tableName: travel_move
+            indexName: uk_move_member_places
+            unique: true
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: from_place_id
+              - column:
+                  name: to_place_id
+      # 자동 롤백은 인덱스를 먼저 지우려 드는데 FK가 (from_place_id) 를 쓰고 있어
+      # MySQL이 거부한다. 테이블을 지우면 인덱스·FK가 함께 사라진다.
+      rollback:
+        - dropTable:
+            tableName: travel_move

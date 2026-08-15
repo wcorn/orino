@@ -4,8 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import ds.project.orino.domain.planner.travel.entity.TripStatus;
 import ds.project.orino.planner.travel.activity.dto.ActivityResponse;
 import ds.project.orino.planner.travel.day.dto.BaseCityResponse;
-import ds.project.orino.planner.travel.route.client.TravelMode;
-import ds.project.orino.planner.travel.route.dto.TravelTimeResponse;
+import ds.project.orino.planner.travel.move.dto.MoveResponse;
 import ds.project.orino.planner.travel.tools.dto.WeatherResponse;
 
 import java.time.LocalDate;
@@ -27,7 +26,9 @@ import java.util.List;
  *                      요청이 날짜를 생략했을 때 서버가 무엇을 골랐는지 FE가 알아야 탭을 강조할 수 있다
  * @param archiveCount  미배정 보관함 일정 수(보관함 칩의 "{n}개")
  * @param activities    선택된 날짜(또는 보관함)의 일정만. {@code sortOrder} 순
- * @param travelTimes   연속한 두 일정 사이 이동시간(§4.4). 장소 없는 일정은 건너뛴다
+ * @param moves         연속한 두 일정 사이 이동(§4.4). 장소 없는 일정은 건너뛴다.
+ *                      <b>아직 아무것도 적지 않은 구간도 빈 값으로 실린다</b> — 그 자리가 곧
+ *                      입력 지점이라, 빼 버리면 화면에 누를 곳이 없어진다
  * @param stayMove      그날 마지막 일정 → 오늘 밤 숙소 이동. 숙소가 없거나 보관함을 보고 있으면 null
  */
 public record BoardResponse(
@@ -36,8 +37,8 @@ public record BoardResponse(
         LocalDate selectedDate,
         long archiveCount,
         List<ActivityResponse> activities,
-        List<TravelTimeResponse> travelTimes,
-        StayMove stayMove
+        List<MoveResponse> moves,
+        MoveResponse stayMove
 ) {
 
     /**
@@ -121,18 +122,4 @@ public record BoardResponse(
     ) {
     }
 
-    /**
-     * 리스트 맨 아래 붙는 숙소 이동. 오늘 밤 숙소가 없거나 그날 일정이 없으면 null이다.
-     *
-     * <p>{@code sameCity}는 <b>마지막 일정과 숙소가 같은 도시인가</b>다 — 기준 도시가 아니라
-     * 이 이동의 양 끝을 견준다. false면 {@code mode}·{@code durationMinutes}가 없다.
-     * 도시를 넘는 이동은 계산하지 않는다(v2.1 §3.4).
-     */
-    public record StayMove(
-            Long stayId,
-            boolean sameCity,
-            TravelMode mode,
-            Integer durationMinutes
-    ) {
-    }
 }

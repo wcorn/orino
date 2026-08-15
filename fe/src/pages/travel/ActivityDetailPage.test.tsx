@@ -325,7 +325,7 @@ describe("ActivityDetailPage", () => {
             selectedDate: archive ? null : "2026-10-24",
             archiveCount: 1,
             activities: [],
-            travelTimes: [],
+            moves: [],
           },
         });
       }),
@@ -418,10 +418,12 @@ describe("ActivityDetailPage", () => {
     /**
      * 그날 보드 — 상세 화면이 <b>날짜가 갖는 것들</b>을 여기서 읽는다.
      *
-     * <p>도시 경계 판정은 서버가 내려준 `travelTimes[].crossCity`다. 화면이 좌표로 다시
-     * 따지지 않는지 보려면 목이 그 값을 쥐고 있어야 한다.
+     * <p>들어오는 이동은 서버가 내려준 `moves`다(#1208). 소요 시간을 적었는지가 출발 알림이
+     * 실제로 서는지를 가르므로, 목이 그 값을 쥐고 있어야 한다.
      */
-    function mockDayBoard({ crossCity = true }: { crossCity?: boolean } = {}) {
+    function mockDayBoard({
+      durationMinutes = null,
+    }: { durationMinutes?: number | null } = {}) {
       server.use(
         http.get(`${API_BASE}/travel/trips/:tripId/board`, () =>
           HttpResponse.json({
@@ -463,15 +465,16 @@ describe("ActivityDetailPage", () => {
                 }),
                 activity({ id: 1, place: KYOTO_PLACE }),
               ],
-              travelTimes: [
+              moves: [
                 {
                   fromActivityId: 9,
                   toActivityId: 1,
-                  mode: crossCity ? null : "WALK",
-                  durationMinutes: crossCity ? null : 12,
-                  distanceM: 42800,
-                  fallback: false,
-                  crossCity,
+                  toStayId: null,
+                  mode: durationMinutes === null ? null : "TRAIN",
+                  name: null,
+                  durationMinutes,
+                  url: null,
+                  memo: null,
                 },
               ],
               stayMove: null,
@@ -550,45 +553,50 @@ describe("ActivityDetailPage", () => {
       });
     });
 
-    it("도시를 넘어 들어오면 출발 알림을 켤 수 없고 왜인지 말한다", async () => {
-      mockDetail({ place: KYOTO_PLACE, canDepartureNotify: false });
+    it("이동 시간을 안 적었으면 켤 수는 있어도 왜 안 오는지 말해 준다", async () => {
+      // 스위치는 켰는데 알림이 안 오면, 이유를 모르는 사용자에게는 그냥 고장이다.
+      mockDetail({ place: KYOTO_PLACE });
       mockDayBoard();
+
+      renderDetail();
+      await screen.findByLabelText("제목");
+
+      expect(
+        screen.getByRole("switch", { name: "출발 알림" }),
+      ).not.toBeDisabled();
+      expect(
+        screen.getByText("보드에서 이동 시간을 적으면 알림이 잡혀요"),
+      ).toBeInTheDocument();
+    });
+
+    it("도시를 넘어 들어와도 시간만 적혀 있으면 그대로 선다 (#1208)", async () => {
+      // 자동 계산 시절에는 도시를 넘으면 아예 막혔다. 신칸센 구간이야말로
+      // "언제 나서야 하는가"가 가장 중요한 이동이다.
+      mockDetail({ place: KYOTO_PLACE });
+      mockDayBoard({ durationMinutes: 75 });
+
+      renderDetail();
+      await screen.findByLabelText("제목");
+
+      expect(
+        screen.getByRole("switch", { name: "출발 알림" }),
+      ).not.toBeDisabled();
+      expect(
+        screen.getByText("시작시각 − 이동 시간 − 5분"),
+      ).toBeInTheDocument();
+    });
+
+    it("직전에 장소 있는 일정이 없으면 켤 수 없다", async () => {
+      mockDetail({ place: PLACE, canDepartureNotify: false });
+      mockDayBoard({ durationMinutes: 12 });
 
       renderDetail();
       await screen.findByLabelText("제목");
 
       expect(screen.getByRole("switch", { name: "출발 알림" })).toBeDisabled();
-      // "시각과 이전 장소가 필요해요"는 고칠 수 없는 것을 고치라는 말이 된다.
       expect(
-        screen.getByText("도시 간 이동은 출발 알림을 계산할 수 없어요"),
+        screen.getByText("시각과 이전 장소가 필요해요"),
       ).toBeInTheDocument();
-    });
-
-    it("장소 블록에 어디서 어디로 넘는지 적는다", async () => {
-      mockDetail({ place: KYOTO_PLACE, canDepartureNotify: false });
-      mockDayBoard();
-
-      renderDetail();
-      await screen.findByLabelText("제목");
-
-      expect(
-        screen.getByText(
-          "오사카 → 교토 · 도시 경계를 넘어 이동시간을 계산하지 않아요",
-        ),
-      ).toBeInTheDocument();
-    });
-
-    it("같은 도시 안이면 안내도 없고 스위치도 살아 있다", async () => {
-      mockDetail({ place: PLACE });
-      mockDayBoard({ crossCity: false });
-
-      renderDetail();
-      await screen.findByLabelText("제목");
-
-      expect(screen.queryByText(/도시 경계를 넘어/)).not.toBeInTheDocument();
-      expect(
-        screen.getByRole("switch", { name: "출발 알림" }),
-      ).not.toBeDisabled();
     });
 
     it("알림 시점을 비우면 여행 기본값을 따른다", async () => {

@@ -95,7 +95,7 @@ function mockBoard() {
           selectedDate: date ?? DAYS[0].date,
           archiveCount: 0,
           activities: [],
-          travelTimes: [],
+          moves: [],
           stayMove: null,
         },
       });

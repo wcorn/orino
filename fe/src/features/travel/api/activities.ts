@@ -142,27 +142,45 @@ export interface BoardTrip {
   singleCity: boolean;
 }
 
-/** 앱이 계산하는 이동수단. 대중교통은 계산하지 않는다 — 구글 지도 딥링크가 맡는다. */
-export type TravelMode = "WALK" | "DRIVE";
+/**
+ * 이동수단의 **분류**. 아이콘과 묶음에만 쓴다 — 실제로 무엇을 타는지는 `name`에 적는다.
+ *
+ * <p>나라 고유명(신칸센·TGV)을 값으로 두지 않는다. 일본 밖에서 못 쓰게 되고, 다음엔 다른
+ * 나라 열차를 넣어 달라는 요청이 이어진다. `TRAIN` + `노조미 21호`면 그 줄이 끊긴다.
+ */
+export type TravelMode =
+  | "WALK"
+  | "BIKE"
+  | "BUS"
+  | "CAR"
+  | "SUBWAY"
+  | "TRAIN"
+  | "FLIGHT"
+  | "FERRY"
+  | "OTHER";
 
-export interface TravelTime {
+/**
+ * 이동 한 건(#1208). **사용자가 직접 적는다** — 앱이 계산하지 않는다.
+ *
+ * <p>아직 아무것도 적지 않은 구간도 행으로 내려온다(`mode`가 null). 그 빈 행이 곧 입력
+ * 지점이라, 응답에서 빼면 화면에 누를 곳이 없어진다.
+ */
+export interface Move {
   fromActivityId: number;
-  toActivityId: number;
-  /** `crossCity`면 null — 도시를 넘는 이동에 수단을 판정하지 않는다. */
+  /** 숙소로 가는 이동이면 null. */
+  toActivityId: number | null;
+  /** 일정 사이 이동이면 null. */
+  toStayId: number | null;
+  /** null이면 아직 적지 않은 구간이다. */
   mode: TravelMode | null;
-  /** `fallback`·`crossCity`면 null — 거리만 안다. */
+  /** 실제로 타는 것 — `나리타 익스프레스 3호` · `피치 MM8`. */
+  name: string | null;
+  /** 수단만 먼저 정하고 시간은 나중에 확인할 수 있어 null을 허용한다. */
   durationMinutes: number | null;
-  /** 경로 거리. `fallback`·`crossCity`면 직선거리다. */
-  distanceM: number;
-  /** Routes를 못 얻어 직선거리로 대체했다. 화면은 `약 N.Nkm`로 보여준다. */
-  fallback: boolean;
-  /**
-   * 도시 경계를 넘어 서버가 계산하지 않았다(§3.4). `도시 이동`으로 그리고, 탭하면 이동수단
-   * 시트 없이 곧바로 대중교통 딥링크로 나간다 — 도보/자동차를 물어볼 이유가 없다.
-   *
-   * <p>**거리도 보여주지 않는다.** 오사카→도쿄에 "약 400km"는 계획에 쓸 수 없는 숫자다.
-   */
-  crossCity: boolean;
+  /** 예매·확인 링크. */
+  url: string | null;
+  /** 좌석·플랫폼·예약번호. */
+  memo: string | null;
 }
 
 export interface Board {
@@ -172,23 +190,17 @@ export interface Board {
   selectedDate: string | null;
   archiveCount: number;
   activities: Activity[];
-  /** 연속한 두 일정 사이 이동. 장소 없는 일정은 건너뛴 결과다. */
-  travelTimes: TravelTime[];
   /**
-   * 그날 마지막 일정 → 오늘 밤 숙소 이동. 숙소가 없거나 보관함을 보고 있으면 null.
+   * 연속한 두 일정 사이 이동. 장소 없는 일정은 건너뛴 결과다.
    *
-   * <p>`sameCity`는 **마지막 일정과 숙소가** 같은 도시인가다 — 기준 도시가 아니라 이 이동의
-   * 양 끝을 견준다. false면 `mode`·`durationMinutes`가 없다. 도시를 넘는 이동은 계산하지
-   * 않는다(§3.4).
+   * <p>아직 안 적은 구간도 빈 값으로 들어 있다 — 그 자리가 입력 지점이다.
    */
-  stayMove: StayMove | null;
-}
-
-export interface StayMove {
-  stayId: number;
-  sameCity: boolean;
-  mode: TravelMode | null;
-  durationMinutes: number | null;
+  moves: Move[];
+  /**
+   * 그날 마지막 일정 → 오늘 밤 숙소 이동. 숙소가 없거나, 마지막 일정이 이미 그 숙소거나,
+   * 숙소에 장소가 안 붙어 있으면 null이다(도착지가 없으면 적을 수도 없다).
+   */
+  stayMove: Move | null;
 }
 
 /**
@@ -285,21 +297,46 @@ export async function saveActivityLog(
   return data.data ?? null;
 }
 
+export interface MoveWriteRequest {
+  fromActivityId: number;
+  /** `toStayId`와 정확히 하나만 보낸다. */
+  toActivityId?: number | null;
+  toStayId?: number | null;
+  mode: TravelMode;
+  name?: string | null;
+  durationMinutes?: number | null;
+  url?: string | null;
+  memo?: string | null;
+}
+
 /**
- * 이동수단 시트가 여는 단건 조회. 자동 판정되지 않은 수단은 **고른 순간에만** 부른다 —
- * 미리 둘 다 받아두면 아무도 안 열어 볼 값까지 사게 된다(호출당 과금).
+ * 이동을 저장한다. 등록·수정이 같은 요청이고, 한 구간에 이동은 하나라 덮어쓴다.
+ *
+ * <p>양 끝을 **일정 id로** 보낸다 — 서버가 장소로 옮겨 저장한다. 화면이 장소 id를 들고
+ * 다니면 저장 단위를 바꿀 때마다 화면이 함께 흔들린다.
  */
-export async function fetchTravelTime(
+export async function saveMove(
   tripId: number,
-  from: number,
-  to: number,
-  mode: TravelMode,
-): Promise<TravelTime> {
-  const { data } = await client.get<ApiEnvelope<TravelTime>>(
-    `/travel/trips/${tripId}/travel-time`,
-    { params: { from, to, mode } },
+  body: MoveWriteRequest,
+): Promise<Move> {
+  const { data } = await client.put<ApiEnvelope<Move>>(
+    `/travel/trips/${tripId}/moves`,
+    body,
   );
   return data.data;
+}
+
+export async function deleteMove(
+  tripId: number,
+  from: number,
+  to: { activityId: number } | { stayId: number },
+): Promise<void> {
+  await client.delete(`/travel/trips/${tripId}/moves`, {
+    params:
+      "activityId" in to
+        ? { from, to: to.activityId }
+        : { from, toStay: to.stayId },
+  });
 }
 
 /** 날짜 하나의 전체 순서. 부분 갱신은 보내지 않는다(순서가 비결정적이 된다). */
@@ -310,8 +347,11 @@ export interface ReorderMove {
 }
 
 /**
- * 드래그 결과를 한 번에 반영한다. 응답에 **재계산된 `travelTimes`가 담겨** 온다 —
- * 드래그는 손을 뗀 순간 결과가 보여야 해서, 이동시간 때문에 한 번 더 왕복하지 않는다.
+ * 드래그 결과를 한 번에 반영한다. 응답에 **다시 이어진 구간의 이동이 담겨** 온다 —
+ * 드래그는 손을 뗀 순간 결과가 보여야 해서 한 번 더 왕복하지 않는다.
+ *
+ * <p>순서가 바뀌면 저장된 이동이 사라지는 게 아니라 **어느 자리에 오는지**가 바뀐다.
+ * 이동은 장소 쌍에 붙어 있다.
  *
  * <p>다른 날짜로 옮기는 것은 이 엔드포인트가 아니라 {@link updateActivity}로 한다 —
  * 서버가 대상 날짜의 맨 뒤에 붙이고 떠나온 날짜를 재인덱싱해 주기 때문에, 대상 날짜의
@@ -320,10 +360,10 @@ export interface ReorderMove {
 export async function reorderActivities(
   tripId: number,
   moves: ReorderMove[],
-): Promise<TravelTime[]> {
-  const { data } = await client.put<ApiEnvelope<{ travelTimes: TravelTime[] }>>(
+): Promise<Move[]> {
+  const { data } = await client.put<ApiEnvelope<{ moves: Move[] }>>(
     `/travel/trips/${tripId}/activities/order`,
     { moves },
   );
-  return data.data.travelTimes;
+  return data.data.moves;
 }
