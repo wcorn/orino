@@ -169,8 +169,11 @@ test.describe("날짜 달력 · 기준 도시", () => {
     await page.goto(`/travel/trips/${TRIP_ID}/board`);
 
     // 헤더는 보고 있는 날짜와 그 도시를, 구간 바는 기간 전체의 도시 경계를 말한다.
-    await expect(page.getByText("10.24")).toBeVisible();
-    await expect(page.getByText("· 도쿄")).toBeVisible();
+    // 헤더로 범위를 좁힌다 — 도시명은 제목 아래 현지 시계에도 있어, 화면 전체에서
+    // 찾으면 기기 타임존에 따라(오프셋이 다를 때만 `현지 …`가 붙는다) 둘이 걸린다.
+    const header = page.getByRole("button", { name: "달력 접기" });
+    await expect(header).toContainText("10.24");
+    await expect(header).toContainText("· 도쿄");
     await expect(page.locator("[data-city-band]")).toHaveText(["도쿄", "닛코"]);
     // 부제는 보고 있는 날짜의 도시를 따른다.
     await expect(page.getByText(/도쿄 · Asia\/Tokyo · JPY/)).toBeVisible();
