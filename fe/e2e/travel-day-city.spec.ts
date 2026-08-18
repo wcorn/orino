@@ -161,15 +161,17 @@ async function press(page: Page, locator: string, ms: number) {
   await page.mouse.up();
 }
 
-test.describe("날짜 탭 · 기준 도시", () => {
-  test("탭이 도시를 말하고 도시가 바뀌는 날짜에 메모가 붙는다", async ({
+test.describe("날짜 달력 · 기준 도시", () => {
+  test("달력이 도시를 말하고 도시가 바뀌는 날짜에 메모가 붙는다", async ({
     page,
   }) => {
     await mockBoard(page);
     await page.goto(`/travel/trips/${TRIP_ID}/board`);
 
-    await expect(page.getByRole("tab").nth(0)).toContainText("1 도쿄");
-    await expect(page.getByRole("tab").nth(1)).toContainText("2 닛코");
+    // 헤더는 보고 있는 날짜와 그 도시를, 구간 바는 기간 전체의 도시 경계를 말한다.
+    await expect(page.getByText("10.24")).toBeVisible();
+    await expect(page.getByText("· 도쿄")).toBeVisible();
+    await expect(page.locator("[data-city-band]")).toHaveText(["도쿄", "닛코"]);
     // 부제는 보고 있는 날짜의 도시를 따른다.
     await expect(page.getByText(/도쿄 · Asia\/Tokyo · JPY/)).toBeVisible();
 

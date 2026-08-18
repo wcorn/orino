@@ -47,7 +47,7 @@ import { ActivityRow } from "@/features/travel/board/ActivityRow";
 import { AddSheet } from "@/features/travel/board/AddSheet";
 import { BaseCitySheet } from "@/features/travel/board/BaseCitySheet";
 import { CityMoveLine } from "@/features/travel/board/CityMoveLine";
-import { DayTabs } from "@/features/travel/board/DayTabs";
+import { DayCalendar } from "@/features/travel/board/DayCalendar";
 import { DragModeBar } from "@/features/travel/board/DragModeBar";
 import { LocalClockLine } from "@/features/travel/board/LocalClockLine";
 import { MoveRow } from "@/features/travel/board/MoveRow";
@@ -95,9 +95,9 @@ const ARCHIVE = "archive";
 /**
  * 포인터가 들어간 대상을 먼저 본다.
  *
- * <p>기본 판정(사각형 겹침)은 끌고 있는 행의 큰 사각형을 기준으로 하는데, 날짜 칩은 작고
- * 목록 위쪽에 있어 손가락이 칩 위에 있어도 바로 아래 행이 더 많이 겹쳐 이긴다.
- * 칩에 떨어뜨리는 건 "손가락이 어디 있느냐"의 문제라 포인터를 우선한다.
+ * <p>기본 판정(사각형 겹침)은 끌고 있는 행의 큰 사각형을 기준으로 하는데, 달력의 날짜 칸은
+ * 작고 목록 위쪽에 있어 손가락이 칸 위에 있어도 바로 아래 행이 더 많이 겹쳐 이긴다.
+ * 칸에 떨어뜨리는 건 "손가락이 어디 있느냐"의 문제라 포인터를 우선한다.
  */
 const collisionDetection: CollisionDetection = (args) => {
   const byPointer = pointerWithin(args);
@@ -520,20 +520,15 @@ export function TripBoardPage() {
               {board.trip.title}
             </h1>
             {/* 부제는 <b>보고 있는 날짜</b>의 기준 도시를 따른다 — 도시를 옮겨 다니면
-                날짜 탭을 넘길 때마다 도시도 현지 시각도 바뀐다. */}
-            {isArchive ? (
-              <p className="text-caption text-muted-foreground">
-                미배정 보관함
-              </p>
-            ) : (
-              selectedCity && (
-                <LocalClockLine
-                  cityName={selectedCity.name}
-                  timezone={selectedCity.timezone}
-                  currency={selectedCity.currency}
-                  recordMode={board.trip.recordMode}
-                />
-              )
+                날짜를 넘길 때마다 도시도 현지 시각도 바뀐다. 보관함에는 날짜가 없어
+                말할 시계도 없다 — 무엇을 보고 있는지는 달력 헤더가 말한다(#1213). */}
+            {!isArchive && selectedCity && (
+              <LocalClockLine
+                cityName={selectedCity.name}
+                timezone={selectedCity.timezone}
+                currency={selectedCity.currency}
+                recordMode={board.trip.recordMode}
+              />
             )}
           </div>
         </div>
@@ -597,7 +592,7 @@ export function TripBoardPage() {
       >
         {!online && <OfflineBanner />}
 
-        <DayTabs
+        <DayCalendar
           days={board.days}
           archiveCount={board.archiveCount}
           selectedDate={selectedDate}
@@ -608,6 +603,8 @@ export function TripBoardPage() {
           // 드래그가 시작된 뒤에 등록하면 그 드래그의 충돌 판정 대상에 들어가지 못한다.
           // 드래그 중이 아닐 때는 아무 영향도 없으므로 항상 켜 둔다.
           droppable
+          // 접어 둔 채로 드래그에 들어가면 떨어뜨릴 날짜 칸이 없다.
+          forceOpen={dragMode}
         />
 
         {/* 도시가 바뀌는 날이면 어디서 어디로 옮기는지 + 두 도시의 날씨(D-25).

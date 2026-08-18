@@ -257,7 +257,7 @@ test.describe("일정 보드 드래그", () => {
     expect(captured.orders.at(-1)![0].activityIds.slice(0, 2)).toEqual([2, 1]);
   });
 
-  test("날짜 탭에 떨어뜨리면 그 날짜로 옮긴다", async ({ page }) => {
+  test("달력의 날짜 칸에 떨어뜨리면 그 날짜로 옮긴다", async ({ page }) => {
     const captured = await mockBoard(page);
     await page.goto(`/travel/trips/${TRIP_ID}/board`);
     await expect(page.getByText("센소지")).toBeVisible();
@@ -265,7 +265,7 @@ test.describe("일정 보드 드래그", () => {
     await enterDragMode(page, "센소지");
 
     const row = page.getByText("센소지", { exact: true });
-    const tab = page.getByRole("tab", { name: /2일차/ });
+    const tab = page.getByRole("tab", { name: /10\.25/ });
     const a = await row.boundingBox();
     const b = await tab.boundingBox();
 

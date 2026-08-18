@@ -251,7 +251,7 @@ describe("TripFormPage", () => {
       await userEvent.click(screen.getByRole("button", { name: "만들기" }));
 
       await waitFor(() => {
-        expect(screen.getByRole("tab", { name: /1일차/ })).toBeInTheDocument();
+        expect(screen.getByRole("tab", { name: /10\.24/ })).toBeInTheDocument();
       });
     });
 
