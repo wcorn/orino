@@ -138,7 +138,22 @@ function mockBoard(options: {
   );
 }
 
-/** 날짜 탭을 450ms 길게 눌러 기준 도시 시트를 연다. 손가락이 하는 일 그대로다. */
+/**
+ * 도시 구간 바의 칸들. 바는 `aria-hidden`이라(도시는 날짜 칸의 이름이 이미 말한다)
+ * 역할로는 못 잡는다 — 주(週)별 묶음 그대로 돌려준다.
+ */
+function cityBandCells(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>("[data-city-band] > span")];
+}
+
+/** 주별 도시명 묶음 — `[["도쿄"], ["닛코", "도쿄"]]`. */
+function cityBands(): string[][] {
+  return [...document.querySelectorAll("[data-city-band]")].map((row) =>
+    [...row.children].map((cell) => cell.textContent ?? ""),
+  );
+}
+
+/** 날짜 칸을 450ms 길게 눌러 기준 도시 시트를 연다. 손가락이 하는 일 그대로다. */
 async function openCitySheet(tabIndex: number) {
   const tab = screen.getAllByRole("tab")[tabIndex];
   fireEvent.pointerDown(tab, { clientX: 10, clientY: 10 });
@@ -169,8 +184,8 @@ describe("TripBoardPage", () => {
     vi.restoreAllMocks();
   });
 
-  describe("날짜 탭", () => {
-    it("기간의 모든 날짜와 맨 뒤에 보관함 칩을 보여준다", async () => {
+  describe("날짜 달력", () => {
+    it("기간의 모든 날짜를 달력 칸으로 깔고 보관함은 그 아래 따로 선다", async () => {
       mockBoard({
         byDate: { "2026-10-24": [activity()] },
         archive: [activity({ id: 9 })],
@@ -180,11 +195,57 @@ describe("TripBoardPage", () => {
 
       const tabs = await screen.findAllByRole("tab");
       expect(tabs).toHaveLength(4);
-      expect(tabs[0]).toHaveTextContent("1일차");
-      expect(tabs[0]).toHaveTextContent("10.24 토");
-      // 보관함은 항상 마지막이고 2행에 건수를 쓴다.
+      // 칸에는 일(日)만 남는다 — 월은 헤더가 말한다.
+      expect(tabs[0]).toHaveTextContent("24");
+      // 칸 글자가 숫자뿐이라 나머지는 이름으로 읽힌다.
+      expect(tabs[0]).toHaveAccessibleName("10.24 토 · 도쿄 · 일정 2개");
+      // 보관함은 날짜가 아니라 "아직 날짜를 못 정한 것"이라 마지막이다.
       expect(tabs[3]).toHaveTextContent("보관함");
       expect(tabs[3]).toHaveTextContent("1개");
+    });
+
+    it("선택한 날짜는 스크롤과 무관하게 헤더에 남는다 — 이게 달력으로 바꾼 이유다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+
+      renderBoard();
+
+      expect(await screen.findByText("10.24")).toBeInTheDocument();
+      expect(screen.getByText("(토)")).toBeInTheDocument();
+    });
+
+    it("헤더의 화살표로 하루씩 움직인다 — 양 끝에서는 눌리지 않는다", async () => {
+      mockBoard({
+        byDate: {
+          "2026-10-24": [activity()],
+          "2026-10-25": [
+            activity({ id: 5, title: "디즈니씨", activityDate: "2026-10-25" }),
+          ],
+        },
+      });
+
+      renderBoard();
+      await screen.findByText("센소지");
+
+      // 첫날이라 이전은 없다.
+      expect(screen.getByRole("button", { name: "이전 날짜" })).toBeDisabled();
+
+      await userEvent.click(screen.getByRole("button", { name: "다음 날짜" }));
+
+      expect(await screen.findByText("디즈니씨")).toBeInTheDocument();
+      expect(screen.getByText("10.25")).toBeInTheDocument();
+    });
+
+    it("달력을 접어도 선택일은 남는다 — 긴 여행에서 자리를 돌려준다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+
+      renderBoard();
+      await screen.findAllByRole("tab");
+
+      await userEvent.click(screen.getByRole("button", { name: "달력 접기" }));
+
+      // 날짜 칸은 사라지고 보관함만 남는다.
+      expect(screen.getAllByRole("tab")).toHaveLength(1);
+      expect(screen.getByText("10.24")).toBeInTheDocument();
     });
 
     it("서버가 고른 날짜가 기본 선택된다", async () => {
@@ -198,7 +259,7 @@ describe("TripBoardPage", () => {
       });
     });
 
-    it("탭을 누르면 URL에 ?day= 가 남고 그 날짜를 조회한다", async () => {
+    it("날짜 칸을 누르면 URL에 ?day= 가 남고 그 날짜를 조회한다", async () => {
       mockBoard({
         byDate: {
           "2026-10-24": [activity()],
@@ -211,7 +272,7 @@ describe("TripBoardPage", () => {
       renderBoard();
       await screen.findByText("센소지");
 
-      await userEvent.click(screen.getByRole("tab", { name: /3일차/ }));
+      await userEvent.click(screen.getByRole("tab", { name: /10\.26/ }));
 
       expect(await screen.findByText("디즈니씨")).toBeInTheDocument();
       expect(screen.queryByText("센소지")).toBeNull();
@@ -364,7 +425,7 @@ describe("TripBoardPage", () => {
     });
   });
 
-  describe("탭이 도시를 말한다 (v2.1)", () => {
+  describe("달력이 도시를 말한다 (v2.1)", () => {
     /** 도쿄 → 닛코 → 도쿄. 하루만 다른 도시라 구간이 셋으로 쪼개진 여행이다. */
     const NIKKO = baseCity(22, "닛코", "Asia/Tokyo");
     const MULTI_DAYS = [
@@ -385,23 +446,53 @@ describe("TripBoardPage", () => {
       });
     }
 
-    it("도시가 여럿이면 탭이 `N 도시명`을 쓴다", async () => {
+    it("도시는 날짜 아래 구간 바가 말한다 — 칸마다 반복하지 않는다", async () => {
       mockMultiCity();
 
       renderBoard();
+      await screen.findAllByRole("tab");
 
-      const tabs = await screen.findAllByRole("tab");
-      expect(tabs[0]).toHaveTextContent("1 도쿄");
-      expect(tabs[1]).toHaveTextContent("2 닛코");
-      expect(tabs[2]).toHaveTextContent("3 도쿄");
+      // 10.24(토)는 첫 주 마지막 칸이라 주가 갈린다. 둘째 주에 닛코·도쿄가 나란히 선다.
+      expect(cityBands()).toEqual([["도쿄"], ["닛코", "도쿄"]]);
+    });
+
+    it("연속으로 같은 도시인 날들은 바 하나로 묶인다 — 경계가 곧 이동일이다", async () => {
+      mockBoard({
+        byDate: {
+          "2026-10-25": [],
+          "2026-10-26": [],
+          "2026-10-27": [],
+          "2026-10-28": [],
+        },
+        trip: { singleCity: false, cityCount: 2 },
+        days: [
+          day(1, "2026-10-25", "일", 0),
+          day(2, "2026-10-26", "월", 0),
+          day(3, "2026-10-27", "화", 0, {
+            baseCity: NIKKO,
+            cityChanged: true,
+            legIndex: 2,
+          }),
+          day(4, "2026-10-28", "수", 0, { baseCity: NIKKO, legIndex: 2 }),
+        ],
+      });
+
+      renderBoard();
+      await screen.findAllByRole("tab");
+
+      // 한 주 안에 도쿄 2일 + 닛코 2일 — 이름이 네 번이 아니라 두 번 나온다.
+      expect(cityBands()).toEqual([["도쿄", "닛코"]]);
+      const [tokyo, nikko] = cityBandCells();
+      expect(tokyo.style.gridColumn).toBe("1 / span 2");
+      expect(nikko.style.gridColumn).toBe("3 / span 2");
     });
 
     /**
-     * 도시가 바뀌는 날은 그 하루가 두 도시에 속한다(D-25). 구분선은 "여기서 옮긴다"만
+     * 도시가 바뀌는 날은 그 하루가 두 도시에 속한다(D-25). 구간 바는 "여기서 옮긴다"만
      * 말하고 <b>어디서 오는지는 말하지 않는다</b> — 그날 오전 일정이 왜 거기 있는지가
-     * 탭에서 읽혀야 한다.
+     * 헤더에서 읽혀야 한다.
      */
-    it("도시가 바뀌는 날은 탭이 `N 도쿄 → 닛코`를 쓴다", async () => {
+    it("도시가 바뀌는 날은 헤더가 `도쿄 → 닛코`를 쓴다", async () => {
       mockBoard({
         byDate: { "2026-10-24": [], "2026-10-25": [], "2026-10-26": [] },
         trip: { singleCity: false, cityCount: 2 },
@@ -421,14 +512,20 @@ describe("TripBoardPage", () => {
         ],
       });
 
+      // `?day=`는 날짜가 아니라 일차 인덱스다 — 1이 둘째 날(이동일)이다.
+      renderBoard("/travel/trips/3/board?day=1");
+      await screen.findAllByRole("tab");
+
+      expect(await screen.findByText("· 도쿄 → 닛코")).toBeInTheDocument();
+    });
+
+    it("첫날에는 떠나온 도시가 없다 — 비교할 앞 날짜가 없다", async () => {
+      mockMultiCity();
+
       renderBoard();
 
-      const tabs = await screen.findAllByRole("tab");
-      // 첫날은 떠나온 도시가 없다 — 비교할 앞 날짜가 없다.
-      expect(tabs[0]).toHaveTextContent("1 도쿄");
-      expect(tabs[1]).toHaveTextContent("2 도쿄 → 닛코");
-      // 당일치기라 돌아오는 날도 이동일이다.
-      expect(tabs[2]).toHaveTextContent("3 닛코 → 도쿄");
+      expect(await screen.findByText("· 도쿄")).toBeInTheDocument();
+      expect(screen.queryByText(/→/)).not.toBeInTheDocument();
     });
 
     /**
@@ -492,33 +589,34 @@ describe("TripBoardPage", () => {
     it("떠나온 도시가 없는 응답이면 도착 도시만 쓴다", async () => {
       mockMultiCity();
 
-      renderBoard();
+      renderBoard("/travel/trips/3/board?day=1");
+      await screen.findAllByRole("tab");
 
-      const tabs = await screen.findAllByRole("tab");
-      expect(tabs[1]).toHaveTextContent("2 닛코");
-      expect(tabs[1]).not.toHaveTextContent("→");
+      expect(await screen.findByText("· 닛코")).toBeInTheDocument();
+      expect(screen.queryByText(/→/)).not.toBeInTheDocument();
     });
 
-    it("전 기간 한 도시면 도시명을 감추고 `N일차`로 쓴다 — 반복은 정보가 아니다", async () => {
+    it("전 기간 한 도시면 도시명을 화면에서 뺀다 — 반복은 정보가 아니다", async () => {
       mockBoard({ byDate: { "2026-10-24": [] } });
 
       renderBoard();
+      await screen.findAllByRole("tab");
 
-      const tabs = await screen.findAllByRole("tab");
-      expect(tabs[0]).toHaveTextContent("1일차");
-      expect(tabs[0]).not.toHaveTextContent("도쿄");
+      // 헤더에도 구간 바에도 도시가 없다. 도시를 아는 건 제목 아래 현지 시계뿐이다.
+      expect(screen.queryByText("· 도쿄")).not.toBeInTheDocument();
+      expect(cityBands()).toEqual([]);
     });
 
-    it("도시가 바뀌는 탭 앞에만 구분선이 선다 — 첫날은 비교할 앞 날짜가 없다", async () => {
+    it("같은 도시는 어느 날짜를 봐도 같은 색이다 — 색이 구간을 잇는다", async () => {
       mockMultiCity();
 
       renderBoard();
       await screen.findAllByRole("tab");
 
-      // 탭 줄의 자식 순서로 확인한다: 칩 · 선 · 칩 · 선 · 칩 · 보관함 칩.
-      const strip = screen.getByRole("tablist");
-      const roles = [...strip.children].map((el) => el.getAttribute("role"));
-      expect(roles).toEqual(["tab", null, "tab", null, "tab", "tab"]);
+      const [tokyoWeek1] = cityBandCells();
+      const [nikko, tokyoWeek2] = cityBandCells().slice(1);
+      expect(tokyoWeek2.style.background).toBe(tokyoWeek1.style.background);
+      expect(nikko.style.background).not.toBe(tokyoWeek1.style.background);
     });
 
     it("450ms 눌러야 기준 도시 시트가 열린다 — 400ms는 아직 아니다", async () => {
@@ -623,7 +721,7 @@ describe("TripBoardPage", () => {
       expect(seen[0]).toEqual({ baseCityGooglePlaceId: "ChIJ_kyoto" });
     });
 
-    it("도시 메모는 있을 때만 탭 아래 한 줄로 보인다", async () => {
+    it("도시 메모는 있을 때만 달력 아래 한 줄로 보인다", async () => {
       mockBoard({
         byDate: { "2026-10-24": [], "2026-10-25": [] },
         days: [
@@ -636,7 +734,7 @@ describe("TripBoardPage", () => {
 
       expect(await screen.findByText("코인로커에 짐 보관")).toBeInTheDocument();
 
-      await userEvent.click(screen.getByRole("tab", { name: /2일차/ }));
+      await userEvent.click(screen.getByRole("tab", { name: /10\.25/ }));
 
       await waitFor(() => {
         expect(

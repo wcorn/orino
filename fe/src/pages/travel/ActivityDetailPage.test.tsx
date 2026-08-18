@@ -286,7 +286,7 @@ describe("ActivityDetailPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "저장" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: /1일차/ })).toHaveAttribute(
+      expect(screen.getByRole("tab", { name: /10\.24/ })).toHaveAttribute(
         "aria-selected",
         "true",
       );
@@ -369,7 +369,7 @@ describe("ActivityDetailPage", () => {
 
       // 보드로 이동했는데도 되돌릴 기회가 남아 있다 — 보류함이 화면 밖에 있기 때문이다.
       await waitFor(() => {
-        expect(screen.getByRole("tab", { name: /1일차/ })).toBeInTheDocument();
+        expect(screen.getByRole("tab", { name: /10\.24/ })).toBeInTheDocument();
       });
       expect(
         await screen.findByRole("button", { name: /실행취소/ }),

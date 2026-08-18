@@ -161,7 +161,7 @@ describe("WorkspaceSelectPage", () => {
     await userEvent.click(travelCard);
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: /1일차/ })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /10\.24/ })).toBeInTheDocument();
     });
   });
 
