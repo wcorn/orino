@@ -2142,13 +2142,52 @@ describe("TripBoardPage", () => {
         within(sheet).getByRole("button", { name: /일정으로 추가/ }),
       );
 
-      await waitFor(() => expect(created).toHaveLength(2));
-      expect(created.map((body) => body.title)).toEqual([
-        "도톤보리 호텔 체크인",
-        "도톤보리 호텔 체크아웃",
-      ]);
+      // 보고 있는 날짜(1일차 = 체크인 날)에 한 벌만 만든다.
+      await waitFor(() => expect(created).toHaveLength(1));
+      expect(created[0].title).toBe("도톤보리 호텔 체크인");
       expect(created[0].activityDate).toBe("2026-10-24");
-      expect(created[1].activityDate).toBe("2026-10-26");
+      expect(created[0].startTime).toBe("15:00");
+    });
+
+    it("묵는 날에 담으면 그 날짜에 숙소 이름으로 담긴다 — 체크아웃 날로 새지 않는다", async () => {
+      const created: Record<string, unknown>[] = [];
+      server.use(
+        http.post(
+          `${API_BASE}/travel/trips/:tripId/activities`,
+          async ({ request }) => {
+            created.push((await request.json()) as Record<string, unknown>);
+            return HttpResponse.json({ code: "OK", data: activity() });
+          },
+        ),
+      );
+      mockBoard({
+        days: [
+          DAYS[0],
+          day(2, "2026-10-25", "일", 0, {
+            // 이어서 묵는 날 — 체크인도 체크아웃도 아니다.
+            stayTonight: tonight(76, "도톤보리 호텔"),
+          }),
+          ...DAYS.slice(2),
+        ],
+        stays: [DOTONBORI],
+      });
+
+      const user = userEvent.setup();
+      // 2일차를 보고 있다.
+      renderBoard("/travel/trips/3/board?day=1");
+      await user.click(
+        await screen.findByRole("button", { name: /^숙소 도톤보리 호텔/ }),
+      );
+      const sheet = await screen.findByRole("dialog");
+      await user.click(
+        within(sheet).getByRole("button", { name: /일정으로 추가/ }),
+      );
+
+      await waitFor(() => expect(created).toHaveLength(1));
+      expect(created[0].title).toBe("도톤보리 호텔");
+      expect(created[0].activityDate).toBe("2026-10-25");
+      // 묵는 날에는 아는 시각이 없다.
+      expect(created[0].startTime).toBeNull();
     });
 
     it("겹치는 기간은 저장을 누르기 전에 막고 어느 숙소와 겹치는지 말한다", async () => {
