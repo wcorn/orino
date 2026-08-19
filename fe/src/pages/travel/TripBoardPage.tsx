@@ -267,13 +267,16 @@ export function TripBoardPage() {
    * 장소 검색으로 넘어간다. <b>보고 있던 날짜의 도시를 들고 간다</b>(§2.7) — 교토 날짜를
    * 보다가 검색으로 들어왔으면 교토 가게가 나와야 한다. 보관함에는 날짜가 없어 그냥 간다.
    */
+  /**
+   * 장소 검색(S-06)으로 나간다. <b>보고 있던 날짜를 함께 넘긴다</b> — 담기 시트가 그 날짜를
+   * 미리 골라 두므로, 3일차를 짜다 들어온 사람이 날짜를 다시 고를 일이 없다.
+   */
   const searchPlaces = () => {
-    const city = selectedCity;
-    navigate(
-      city
-        ? `/travel/trips/${tripId}/places?city=${city.placeId}`
-        : `/travel/trips/${tripId}/places`,
-    );
+    const params = new URLSearchParams();
+    if (selectedCity) params.set("city", String(selectedCity.placeId));
+    if (selectedDate) params.set("date", selectedDate);
+    const query = params.toString();
+    navigate(`/travel/trips/${tripId}/places${query ? `?${query}` : ""}`);
   };
 
   /** 보관함은 순서가 아니라 도시로 읽는다. 보고 있지 않으면 계산할 이유가 없다. */

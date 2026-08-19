@@ -23,7 +23,10 @@ import {
 } from "@/features/travel/lib/recentSearches";
 import { failureOf } from "@/features/travel/lib/searchFailure";
 import { GoogleAttribution } from "@/features/travel/places/GoogleAttribution";
-import { PickDaySheet } from "@/features/travel/places/PickDaySheet";
+import {
+  type PlaceAddInput,
+  PlaceAddSheet,
+} from "@/features/travel/places/PlaceAddSheet";
 import { PlaceCard } from "@/features/travel/places/PlaceCard";
 import { SearchCityChip } from "@/features/travel/places/SearchCityChip";
 import { SearchUnavailable } from "@/features/travel/places/SearchUnavailable";
@@ -53,6 +56,11 @@ export function PlaceSearchPage() {
   const [draft, setDraft] = useState(query);
   /** 기준 도시도 URL이 소유한다(§9.7) — 새로고침·뒤로가기에서 살아남아야 한다. */
   const cityParam = Number(searchParams.get("city"));
+  /**
+   * 보드에서 보고 있던 날짜(`?date=YYYY-MM-DD`, 보관함이면 `archive`).
+   * 담기 시트의 기본 날짜가 된다 — 3일차를 짜다 들어왔으면 담을 곳도 3일차다.
+   */
+  const dateParam = searchParams.get("date");
   const [citySheetOpen, setCitySheetOpen] = useState(false);
 
   const [recent, setRecent] = useState<string[]>(() =>
@@ -68,13 +76,18 @@ export function PlaceSearchPage() {
 
   const { data: board, isPending: boardPending } = useBoard(tripId, {});
   const cities = tripCities(board?.days ?? []);
+  /** 넘어온 날짜가 이 여행의 날짜일 때만 쓴다 — 손으로 고친 URL을 그대로 믿지 않는다. */
+  const viewingDate =
+    dateParam !== null && board?.days.some((day) => day.date === dateParam)
+      ? dateParam
+      : null;
   /**
    * 검색이 기준으로 삼는 도시. `?city=`가 있으면 그 도시, 없으면 <b>보고 있던 날짜의</b>
    * 도시다 — 교토 날짜를 보다가 검색으로 들어왔으면 교토가 기준이어야 한다.
    */
   const city =
     cities.find((c) => c.placeId === cityParam) ??
-    cityOn(board?.days ?? [], board?.selectedDate ?? "") ??
+    cityOn(board?.days ?? [], viewingDate ?? board?.selectedDate ?? "") ??
     cities[0] ??
     null;
 
@@ -113,12 +126,14 @@ export function PlaceSearchPage() {
     setParams({ city: next.placeId });
   };
 
-  const add = (date: string | null) => {
+  const add = ({ title, date, startTime, memo }: PlaceAddInput) => {
     if (!target) return;
     createActivity.mutate(
       {
-        title: target.name,
+        title,
         activityDate: date,
+        startTime,
+        memo,
         ...(target.kind === "google"
           ? // 어느 도시를 기준으로 찾았는지 함께 보낸다 — 그래야 담은 장소가 보관함
             // 도시 그룹과 도시 이탈 표시에서 `도시 없음`으로 떨어지지 않는다.
@@ -273,13 +288,14 @@ export function PlaceSearchPage() {
         </div>
       )}
 
-      <PickDaySheet
+      <PlaceAddSheet
         open={target !== null}
         onOpenChange={(open) => !open && setTarget(null)}
         placeName={target?.name ?? null}
         // 기준 도시가 곧 그 장소의 도시다 — 그 도시인 날짜를 위로 올린다(#1134).
         days={daysForPlace(board?.days ?? [], city?.cityPlaceRef)}
-        onPick={add}
+        defaultDate={viewingDate}
+        onSave={add}
         pending={createActivity.isPending}
       />
 

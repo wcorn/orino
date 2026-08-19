@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -298,7 +298,14 @@ describe("PlaceSearchPage", () => {
       renderSearch("/travel/trips/3/places?q=%EC%84%BC%EC%86%8C%EC%A7%80");
 
       await user.click(await screen.findByRole("button", { name: "담기" }));
-      await user.click(await screen.findByRole("button", { name: /2일차/ }));
+
+      // 고른 순간 담기지 않는다 — 저장을 눌러야 만들어진다.
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+      expect(bodies).toHaveLength(0);
+
+      await user.click(screen.getByRole("combobox", { name: "날짜" }));
+      await user.click(await screen.findByRole("option", { name: /2일차/ }));
+      await user.click(screen.getByRole("button", { name: "저장" }));
 
       await waitFor(() => expect(bodies).toHaveLength(1));
       expect(bodies[0]).toMatchObject({
@@ -307,6 +314,92 @@ describe("PlaceSearchPage", () => {
         googlePlaceId: "ChIJ_senso",
       });
       expect(await screen.findByText("2일차에 담았어요")).toBeInTheDocument();
+    });
+
+    it("보던 날짜가 미리 골라져 있다 — 3일차를 짜다 들어왔으면 담을 곳도 그 날짜다", async () => {
+      mockSearch();
+      const bodies: unknown[] = [];
+      server.use(
+        http.post(
+          `${API_BASE}/travel/trips/:tripId/activities`,
+          async ({ request }) => {
+            bodies.push(await request.json());
+            return HttpResponse.json({ code: "OK", data: { id: 11 } });
+          },
+        ),
+      );
+      const user = userEvent.setup();
+      // 보드가 넘겨주는 형태 그대로다(`?date=`).
+      renderSearch(
+        "/travel/trips/3/places?q=%EC%84%BC%EC%86%8C%EC%A7%80&date=2026-10-25",
+      );
+
+      await user.click(await screen.findByRole("button", { name: "담기" }));
+      // 날짜를 고르지 않고 곧바로 저장한다.
+      await user.click(await screen.findByRole("button", { name: "저장" }));
+
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0]).toMatchObject({ activityDate: "2026-10-25" });
+    });
+
+    it("시각과 메모를 담는 김에 같이 적는다 — 담고 나서 다시 찾아 열지 않게", async () => {
+      mockSearch();
+      const bodies: unknown[] = [];
+      server.use(
+        http.post(
+          `${API_BASE}/travel/trips/:tripId/activities`,
+          async ({ request }) => {
+            bodies.push(await request.json());
+            return HttpResponse.json({ code: "OK", data: { id: 11 } });
+          },
+        ),
+      );
+      const user = userEvent.setup();
+      renderSearch(
+        "/travel/trips/3/places?q=%EC%84%BC%EC%86%8C%EC%A7%80&date=2026-10-24",
+      );
+
+      await user.click(await screen.findByRole("button", { name: "담기" }));
+      const title = await screen.findByLabelText("일정 제목");
+      await user.clear(title);
+      await user.type(title, "센소지 야경");
+      fireEvent.change(screen.getByLabelText("시각 (선택)"), {
+        target: { value: "18:30" },
+      });
+      await user.type(screen.getByLabelText("메모 (선택)"), "나카미세 통과");
+      await user.click(screen.getByRole("button", { name: "저장" }));
+
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0]).toMatchObject({
+        title: "센소지 야경",
+        activityDate: "2026-10-24",
+        startTime: "18:30",
+        memo: "나카미세 통과",
+      });
+    });
+
+    it("여행에 없는 날짜가 넘어오면 무시하고 보관함으로 둔다 — URL을 그대로 믿지 않는다", async () => {
+      mockSearch();
+      const bodies: unknown[] = [];
+      server.use(
+        http.post(
+          `${API_BASE}/travel/trips/:tripId/activities`,
+          async ({ request }) => {
+            bodies.push(await request.json());
+            return HttpResponse.json({ code: "OK", data: { id: 11 } });
+          },
+        ),
+      );
+      const user = userEvent.setup();
+      renderSearch(
+        "/travel/trips/3/places?q=%EC%84%BC%EC%86%8C%EC%A7%80&date=1999-01-01",
+      );
+
+      await user.click(await screen.findByRole("button", { name: "담기" }));
+      await user.click(await screen.findByRole("button", { name: "저장" }));
+
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0]).toMatchObject({ activityDate: null });
     });
 
     it("보관함을 고르면 날짜 없이 담는다 — 갈지는 정했는데 언제인지는 아직일 때", async () => {
@@ -325,7 +418,9 @@ describe("PlaceSearchPage", () => {
       renderSearch("/travel/trips/3/places?q=%EC%84%BC%EC%86%8C%EC%A7%80");
 
       await user.click(await screen.findByRole("button", { name: "담기" }));
-      await user.click(await screen.findByRole("button", { name: /보관함/ }));
+      await user.click(await screen.findByRole("combobox", { name: "날짜" }));
+      await user.click(await screen.findByRole("option", { name: /보관함/ }));
+      await user.click(screen.getByRole("button", { name: "저장" }));
 
       await waitFor(() => expect(bodies).toHaveLength(1));
       expect(bodies[0]).toMatchObject({ activityDate: null });
@@ -343,7 +438,9 @@ describe("PlaceSearchPage", () => {
       renderSearch("/travel/trips/3/places?q=%EC%84%BC%EC%86%8C%EC%A7%80");
 
       await user.click(await screen.findByRole("button", { name: "담기" }));
-      await user.click(await screen.findByRole("button", { name: /1일차/ }));
+      await user.click(await screen.findByRole("combobox", { name: "날짜" }));
+      await user.click(await screen.findByRole("option", { name: /1일차/ }));
+      await user.click(screen.getByRole("button", { name: "저장" }));
 
       expect(await screen.findByText(/담지 못했어요/)).toBeInTheDocument();
     });
@@ -382,8 +479,10 @@ describe("PlaceSearchPage", () => {
       );
       await user.click(screen.getByRole("button", { name: "만들기" }));
 
-      // 장소만 만들고 끝나면 어디에도 보이지 않는다 — 바로 날짜를 물어야 한다.
-      await user.click(await screen.findByRole("button", { name: /1일차/ }));
+      // 장소만 만들고 끝나면 어디에도 보이지 않는다 — 바로 담기 시트를 열어야 한다.
+      await user.click(await screen.findByRole("combobox", { name: "날짜" }));
+      await user.click(await screen.findByRole("option", { name: /1일차/ }));
+      await user.click(screen.getByRole("button", { name: "저장" }));
 
       await waitFor(() => expect(bodies).toHaveLength(1));
       expect(bodies[0]).toMatchObject({
@@ -412,6 +511,40 @@ describe("PlaceSearchPage", () => {
       );
 
       expect(await screen.findByLabelText("장소 검색")).toBeInTheDocument();
+    });
+
+    it("보던 날짜를 들고 와 담기 시트에 미리 골라 둔다", async () => {
+      mockSearch();
+      const bodies: unknown[] = [];
+      server.use(
+        http.post(
+          `${API_BASE}/travel/trips/:tripId/activities`,
+          async ({ request }) => {
+            bodies.push(await request.json());
+            return HttpResponse.json({ code: "OK", data: { id: 11 } });
+          },
+        ),
+      );
+      const user = userEvent.setup();
+      // 2일차를 보다가 검색으로 들어간다.
+      renderWithRouter(
+        <Providers>
+          <AppRouter />
+        </Providers>,
+        { initialEntries: ["/travel/trips/3/board?day=1"] },
+      );
+
+      await user.click(
+        await screen.findByRole("button", { name: "장소 검색" }),
+      );
+      await user.type(await screen.findByLabelText("장소 검색"), "센소지");
+      await user.keyboard("{Enter}");
+
+      await user.click(await screen.findByRole("button", { name: "담기" }));
+      await user.click(await screen.findByRole("button", { name: "저장" }));
+
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0]).toMatchObject({ activityDate: "2026-10-25" });
     });
 
     it("보던 날짜의 도시를 들고 온다 — 이 화면의 기본 조회로는 알 수 없는 값이다", async () => {
@@ -502,8 +635,9 @@ describe("PlaceSearchPage", () => {
       renderSearch("/travel/trips/3/places?q=센소지&city=22");
 
       await user.click(await screen.findByRole("button", { name: "담기" }));
-      const sheet = await screen.findByRole("dialog");
-      await user.click(within(sheet).getByRole("button", { name: /1일차/ }));
+      await user.click(await screen.findByRole("combobox", { name: "날짜" }));
+      await user.click(await screen.findByRole("option", { name: /1일차/ }));
+      await user.click(screen.getByRole("button", { name: "저장" }));
 
       await waitFor(() => expect(created).toHaveLength(1));
       expect(created[0].googlePlaceId).toBe("ChIJ_senso");
@@ -517,13 +651,12 @@ describe("PlaceSearchPage", () => {
       renderSearch("/travel/trips/3/places?q=센소지&city=22");
 
       await user.click(await screen.findByRole("button", { name: "담기" }));
-      const sheet = await screen.findByRole("dialog");
+      await user.click(await screen.findByRole("combobox", { name: "날짜" }));
 
-      const dayButtons = within(sheet)
-        .getAllByRole("button")
-        .map((button) => button.textContent ?? "")
+      const options = (await screen.findAllByRole("option"))
+        .map((option) => option.textContent ?? "")
         .filter((text) => text.includes("일차"));
-      expect(dayButtons[0]).toContain("2일차");
+      expect(options[0]).toContain("2일차");
     });
   });
 });
