@@ -2036,7 +2036,7 @@ describe("TripBoardPage", () => {
       // 위는 체크아웃 — 급한 정보가 먼저다.
       expect(
         await screen.findByRole("button", {
-          name: "숙소 도톤보리 호텔 · 오늘 체크아웃 11:00",
+          name: "숙소 도톤보리 호텔 · 체크아웃 11:00",
         }),
       ).toBeInTheDocument();
     });
@@ -2058,12 +2058,12 @@ describe("TripBoardPage", () => {
 
       expect(
         screen.getByRole("button", {
-          name: "숙소 도톤보리 호텔 · 오늘 체크아웃 11:00",
+          name: "숙소 도톤보리 호텔 · 체크아웃 11:00",
         }),
       ).toBeInTheDocument();
       expect(
         screen.getByRole("button", {
-          name: "숙소 교토 게스트하우스 · 오늘 체크인 15:00",
+          name: "숙소 교토 게스트하우스 · 체크인 15:00",
         }),
       ).toBeInTheDocument();
     });

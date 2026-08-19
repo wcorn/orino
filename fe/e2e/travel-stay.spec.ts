@@ -171,7 +171,7 @@ test.describe("숙소", () => {
 
     // 저장 → 보드 무효화 → 배지. 체크인하는 날이라 시각이 함께 붙는다.
     const badge = page.getByRole("button", {
-      name: "숙소 도톤보리 호텔 · 오늘 체크인 15:00",
+      name: "숙소 도톤보리 호텔 · 체크인 15:00",
     });
     await expect(badge).toBeVisible();
 

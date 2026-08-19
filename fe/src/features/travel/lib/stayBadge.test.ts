@@ -43,8 +43,8 @@ describe("숙소 배지", () => {
     );
 
     expect(items).toEqual([
-      { stayId: 76, name: "도톤보리 호텔", note: "오늘 체크아웃 11:00" },
-      { stayId: 77, name: "교토 게스트하우스", note: "오늘 체크인 15:00" },
+      { stayId: 76, name: "도톤보리 호텔", note: "체크아웃 11:00" },
+      { stayId: 77, name: "교토 게스트하우스", note: "체크인 15:00" },
     ]);
   });
 
@@ -74,7 +74,7 @@ describe("숙소 배지", () => {
       day({ stayTonight: { ...KYOTO, checkInTime: null } }),
     );
 
-    expect(items[0].note).toBe("오늘 체크인");
+    expect(items[0].note).toBe("체크인");
   });
 
   it("체크아웃 시각을 몰라도 체크아웃이라고 말한다 — 시각을 지어내지 않는다", () => {
@@ -82,7 +82,7 @@ describe("숙소 배지", () => {
       day({ stayCheckout: { ...DOTONBORI, checkOutTime: null } }),
     );
 
-    expect(items[0].note).toBe("오늘 체크아웃");
+    expect(items[0].note).toBe("체크아웃");
   });
 
   it("이어서 묵는 날에는 꼬리표를 붙이지 않는다 — 체크인은 지난 일이다", () => {
@@ -97,7 +97,7 @@ describe("숙소 배지", () => {
     const items = stayBadges(day({ stayCheckout: DOTONBORI }));
 
     expect(items).toHaveLength(1);
-    expect(items[0].note).toBe("오늘 체크아웃 11:00");
+    expect(items[0].note).toBe("체크아웃 11:00");
   });
 
   it("둘 다 없으면 비어 있다 — 화면은 그 자리에 `숙소 추가`를 세운다", () => {

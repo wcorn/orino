@@ -101,7 +101,7 @@ export interface BoardDay {
   arrivingFromWeather?: DailyWeather | null;
   /** 오늘 밤 자는 곳(`checkIn <= date < checkOut`). 없으면 null. */
   stayTonight: StayTonight | null;
-  /** 오늘 체크아웃하는 곳. 없으면 null. */
+  /** 그날 체크아웃하는 곳. 없으면 null. */
   stayCheckout: StayCheckout | null;
 }
 
@@ -117,7 +117,7 @@ export interface StayTonight {
   sameCity: boolean;
   /** 벽시계 시각(`15:00`). 없으면 null. */
   checkInTime: string | null;
-  /** 오늘 체크인하는 날인가 — 배지에 시각을 함께 보여줄지 가른다. */
+  /** 그날 체크인하는 날인가 — 배지에 시각을 함께 보여줄지 가른다. */
   isCheckInDay: boolean;
 }
 
