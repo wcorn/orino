@@ -179,10 +179,9 @@ test.describe("검색 기준 도시", () => {
 
     // 담으면 그 도시 식별자가 함께 저장된다 — 보관함 도시 그룹이 여기서 살아난다.
     await page.getByRole("button", { name: "담기" }).click();
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: /2일차/ })
-      .click();
+    await page.getByRole("combobox", { name: "날짜" }).click();
+    await page.getByRole("option", { name: /2일차/ }).click();
+    await page.getByRole("button", { name: "저장" }).click();
 
     await expect.poll(() => created.length).toBe(1);
     expect(created[0].cityPlaceId).toBe(22);
