@@ -12,7 +12,9 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testIgnore: /(service-worker|offline)\.spec\.ts/,
+      // 길게 눌러 드래그 모드에 들어가는 길은 <b>터치 전용</b>이다(#1223) — 마우스는 모드 없이
+      // 손잡이로 끈다. 데스크톱 쪽은 travel-mouse-reorder.spec.ts가 본다.
+      testIgnore: /(service-worker|offline|travel-board-drag)\.spec\.ts/,
       use: { browserName: "chromium" },
     },
     // SW·precache는 빌드 결과에서만 확인된다. dev 서버에는 SW가 없다.
