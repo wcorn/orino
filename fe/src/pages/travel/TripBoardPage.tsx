@@ -78,9 +78,10 @@ import {
 } from "@/features/travel/lib/archiveGroups";
 import { tripCities } from "@/features/travel/lib/baseCity";
 import {
-  badgeAboveList,
-  badgeBelowList,
-} from "@/features/travel/lib/stayBadge";
+  stayActivityTime,
+  stayActivityTitle,
+} from "@/features/travel/lib/stayActivity";
+import { stayBadges } from "@/features/travel/lib/stayBadge";
 import { overlapMessage } from "@/features/travel/lib/stayForDay";
 import { PickDaySheet } from "@/features/travel/places/PickDaySheet";
 import { StayBadge } from "@/features/travel/stay/StayBadge";
@@ -257,6 +258,8 @@ export function TripBoardPage() {
   /** 보고 있는 날짜. 보관함을 보고 있으면 없다. */
   const selectedDay =
     board.days.find((day) => day.date === selectedDate) ?? null;
+  /** 그날의 숙소 배지들. 옮기는 날이면 나가는 곳과 자는 곳이 함께 온다. */
+  const dayStays = stayBadges(selectedDay);
   /** 보고 있는 날짜의 기준 도시. 보관함에는 날짜가 없어 첫날로 떨어진다. */
   const selectedCity = (selectedDay ?? board.days[0])?.baseCity ?? null;
 
@@ -494,30 +497,25 @@ export function TripBoardPage() {
   };
 
   /**
-   * 체크인·체크아웃을 일정으로 만든다 — <b>누를 때만</b>. 자동 생성하면 지워도 다음 조회에
-   * 되살아나는 일정이 되고, 그 뒤로는 사용자가 지운 것을 앱이 되돌리는 셈이다.
+   * 숙소를 일정으로 만든다 — <b>누를 때만</b>. 자동 생성하면 지워도 다음 조회에 되살아나는
+   * 일정이 되고, 그 뒤로는 사용자가 지운 것을 앱이 되돌리는 셈이다.
+   *
+   * <p><b>보고 있는 날짜에 담는다.</b> 예전에는 체크인·체크아웃 날짜에 한 벌씩 만들었는데,
+   * 그러면 3박짜리 숙소를 둘째 날 화면에서 담아도 그 날짜에는 아무것도 생기지 않았다 —
+   * 누른 사람 입장에서는 담기지 않은 것과 같다.
    *
    * <p>만든 뒤로는 숙소와 아무 관계가 없는 보통 일정이다 — 숙소를 지워도 남는다.
    */
-  const addStayActivities = async (stay: Stay) => {
-    await Promise.all(
-      [
-        {
-          title: `${stay.name} 체크인`,
-          activityDate: stay.checkInDate,
-          startTime: stay.checkInTime,
-        },
-        {
-          title: `${stay.name} 체크아웃`,
-          activityDate: stay.checkOutDate,
-          startTime: stay.checkOutTime,
-        },
-      ].map((input) =>
-        createActivity.mutateAsync({ ...input, placeId: stay.placeId }),
-      ),
-    );
+  const addStayActivity = async (stay: Stay) => {
+    if (selectedDate === null) return;
+    await createActivity.mutateAsync({
+      title: stayActivityTitle(stay, selectedDate),
+      activityDate: selectedDate,
+      startTime: stayActivityTime(stay, selectedDate),
+      placeId: stay.placeId,
+    });
     setOpenStayId(null);
-    toast("체크인·체크아웃을 일정으로 추가했어요.", "success");
+    toast("일정으로 추가했어요.", "success");
   };
 
   return (
@@ -636,15 +634,28 @@ export function TripBoardPage() {
           </p>
         )}
 
-        {/* 숙소 배지 — 체크아웃이 먼저다(§3.5). 보관함에는 "그날 밤"이 없다. */}
-        {!isArchive && (
-          <StayBadge
-            item={badgeAboveList(selectedDay)}
-            onOpen={openStay}
-            onAdd={startAddStay}
-            offline={!online}
-          />
-        )}
+        {/* 숙소 배지 — 체크아웃이 먼저다(§3.5). 보관함에는 "그날 밤"이 없다.
+            옮기는 날의 두 숙소를 모두 여기 세운다. 하나를 리스트 아래에 두면 일정이
+            두 숙소 사이에 끼어 "이 일정은 어느 숙소에 속하나"처럼 읽힌다. */}
+        {!isArchive &&
+          (dayStays.length > 0 ? (
+            dayStays.map((item) => (
+              <StayBadge
+                key={item.stayId}
+                item={item}
+                onOpen={openStay}
+                onAdd={startAddStay}
+                offline={!online}
+              />
+            ))
+          ) : (
+            <StayBadge
+              item={null}
+              onOpen={openStay}
+              onAdd={startAddStay}
+              offline={!online}
+            />
+          ))}
 
         {/* 보관함은 도시별로 묶는다 — 그 도시 날짜를 짜는 동안 볼 것이 한 덩어리가 된다.
             순서가 없는 목록이라 드래그 정렬도 없다. */}
@@ -722,17 +733,6 @@ export function TripBoardPage() {
               )}
             </ul>
           </SortableContext>
-        )}
-
-        {/* 숙소를 옮기는 날에만 — 위 배지(체크아웃)와 다른 숙소일 때다. 같으면 소음이다. */}
-        {!isArchive && badgeBelowList(selectedDay) && (
-          <StayBadge
-            item={badgeBelowList(selectedDay)}
-            onOpen={openStay}
-            onAdd={startAddStay}
-            offline={!online}
-            hideAdd
-          />
         )}
       </DndContext>
 
@@ -825,7 +825,7 @@ export function TripBoardPage() {
           setOpenStayId(null);
           setDeletingStay(stay);
         }}
-        onAddActivity={(stay) => void addStayActivities(stay)}
+        onAddActivity={(stay) => void addStayActivity(stay)}
         offline={!online}
         addingActivity={createActivity.isPending}
       />

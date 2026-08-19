@@ -9,34 +9,33 @@ export interface StayBadgeItem {
 }
 
 /**
- * 리스트 **위** 배지 — <b>체크아웃이 먼저다</b>(§3.5).
+ * 그날의 숙소 배지들 — <b>모두 리스트 위</b>에 선다.
  *
- * <p>아침에 이 화면을 열었을 때 급한 정보는 "오늘 어디서 자나"가 아니라 "몇 시에 나가야
- * 하나"다. 체크아웃하는 날에 오늘 밤 숙소를 위에 띄우면, 정작 시간에 쫓기는 정보가 아래로
- * 밀린다.
+ * <p>숙소를 옮기는 날에는 나가는 곳과 들어가는 곳이 둘 다 나온다. 예전에는 하나를 리스트
+ * <b>아래</b>에 뒀는데, 그러면 일정이 두 숙소 사이에 끼어 "이 일정은 어느 숙소에 속하나"처럼
+ * 읽혔다. 숙소는 하루의 <b>테두리</b>지 일정 사이의 칸막이가 아니다.
+ *
+ * <p>순서는 <b>체크아웃이 먼저</b>다(§3.5). 아침에 이 화면을 열었을 때 급한 정보는
+ * "오늘 어디서 자나"가 아니라 "몇 시에 나가야 하나"다.
  */
-export function badgeAboveList(day: BoardDay | null): StayBadgeItem | null {
-  if (day?.stayCheckout) {
-    const { stayId, name, checkOutTime } = day.stayCheckout;
-    return {
-      stayId,
-      name,
-      note: checkOutTime ? `오늘 체크아웃 ${checkOutTime}` : "오늘 체크아웃",
-    };
-  }
-  return tonightItem(day);
+export function stayBadges(day: BoardDay | null): StayBadgeItem[] {
+  const badges = [checkoutItem(day), tonightItem(day)].filter(
+    (item): item is StayBadgeItem => item !== null,
+  );
+  // 나가는 곳과 자는 곳이 같으면(= 이어서 묵는 날) 한 줄이면 된다.
+  return badges.length === 2 && badges[0].stayId === badges[1].stayId
+    ? [badges[0]]
+    : badges;
 }
 
-/**
- * 리스트 **아래** 배지 — 위 배지와 <b>다를 때만</b>(= 숙소를 옮기는 날).
- *
- * <p>같으면 같은 숙소를 한 화면에 두 번 쓰는 것이라 정보가 아니라 소음이다. 다를 때만
- * 그리면 그 자리에 배지가 있다는 것 자체가 "오늘 숙소를 옮긴다"는 뜻이 된다.
- */
-export function badgeBelowList(day: BoardDay | null): StayBadgeItem | null {
-  const tonight = tonightItem(day);
-  if (tonight === null) return null;
-  return badgeAboveList(day)?.stayId === tonight.stayId ? null : tonight;
+function checkoutItem(day: BoardDay | null): StayBadgeItem | null {
+  if (!day?.stayCheckout) return null;
+  const { stayId, name, checkOutTime } = day.stayCheckout;
+  return {
+    stayId,
+    name,
+    note: withTime("오늘 체크아웃", checkOutTime),
+  };
 }
 
 function tonightItem(day: BoardDay | null): StayBadgeItem | null {
@@ -45,7 +44,13 @@ function tonightItem(day: BoardDay | null): StayBadgeItem | null {
   return {
     stayId,
     name,
-    // 체크인하는 날에만 시각을 붙인다 — 이어서 묵는 날에 체크인 시각은 지난 정보다.
-    note: isCheckInDay && checkInTime ? `오늘 체크인 ${checkInTime}` : null,
+    // 체크인하는 날은 <b>시각을 몰라도</b> 체크인이라고 말한다 — 체크아웃 쪽과 같은 규칙이다.
+    // 한쪽만 꼬리표가 붙으면 나가는 곳인지 들어가는 곳인지를 이름으로 추측하게 된다.
+    // 이어서 묵는 날은 붙일 말이 없다(체크인은 지난 일이고 체크아웃은 오늘이 아니다).
+    note: isCheckInDay ? withTime("오늘 체크인", checkInTime) : null,
   };
+}
+
+function withTime(label: string, time: string | null): string {
+  return time ? `${label} ${time}` : label;
 }
