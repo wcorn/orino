@@ -365,11 +365,14 @@ describe("ReviewSessionPage", () => {
       const user = userEvent.setup();
       renderPage();
 
-      await waitFor(() => {
-        expect(screen.getByText("질문 1")).toBeInTheDocument();
-      });
+      // 자동 포커스는 useEffect에서 일어난다(ReviewCard). React는 DOM 반영과 패시브 이펙트를
+      // 따로 흘리므로, 화면에 질문이 보인다고 해서 포커스가 이미 들어온 것은 아니다.
+      // 들어오기 전에 빼면 blur가 헛돌고, 뒤늦게 들어온 포커스가 Space를 삼킨다.
+      const note = await screen.findByLabelText("내 답");
+      await waitFor(() => expect(note).toHaveFocus());
+
       // 자동 포커스된 입력칸에서 포커스를 뺀다(기존 Space 단축키가 그대로 사는지)
-      (document.activeElement as HTMLElement | null)?.blur();
+      note.blur();
 
       await user.keyboard(" ");
       expect(await screen.findByText("답 1")).toBeInTheDocument();
