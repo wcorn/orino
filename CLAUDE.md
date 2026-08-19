@@ -108,10 +108,15 @@ npm run test:e2e:ui   # E2E tests with UI
 |---|---|
 | BE | `cd be && ./gradlew check` (테스트 + Checkstyle, 경고 0) |
 | FE | `cd fe && npm run format:check && npm run lint && npm test && npm run build` |
+| FE (E2E) | `cd fe && npm run test:e2e` — **화면·상호작용을 바꿨다면 전체로** |
 | Infra (YAML) | `yamllint -c .yamllint.yml infra/` |
 | Infra (Helm) | `helm lint infra/helm/<app>` · `helm template infra/helm/<app> \| kubeconform -strict` |
 | Terraform | `cd infra/terraform && terraform fmt -check -recursive` |
 
+- FE CI는 유닛 뒤에 **E2E까지** 돌린다. 바꾼 화면 이름으로 스펙을 골라 일부만 돌리면 놓친다 —
+  다른 스펙이 그 화면을 지나갈 수 있다(전체 실행 ~50초).
+- `playwright.config.ts`는 chromium(데스크톱) · built(preview) · mobile-touch 세 프로젝트다.
+  입력 장치나 화면 폭으로 갈리는 동작을 넣으면 같은 스펙이 프로젝트마다 다르게 돈다.
 - pre-commit 훅(husky + lint-staged, BE Checkstyle)을 `--no-verify`로 우회하지 않는다.
 - CI는 경로별로 나뉜다: `be/**` → BE CI(Gradle build + Trivy), `fe/**` → FE CI,
   `infra/**` → Infra CI(yamllint · helm lint · kubeconform), `infra/terraform/**` → Terraform,
