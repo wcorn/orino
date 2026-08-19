@@ -966,6 +966,112 @@ describe("TripBoardPage", () => {
     });
   });
 
+  describe("마우스로 순서 바꾸기 (#1223)", () => {
+    /**
+     * 주 입력 장치를 마우스로 바꾼다. 폭이 아니라 <b>입력 장치</b>가 기준이므로
+     * 뷰포트는 건드리지 않는다.
+     */
+    function setFinePointer() {
+      const original = window.matchMedia;
+      window.matchMedia = ((query: string) => ({
+        matches: query.includes("pointer: fine"),
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      })) as unknown as typeof window.matchMedia;
+      return () => {
+        window.matchMedia = original;
+      };
+    }
+
+    it("길게 누르지 않아도 손잡이와 이동 버튼이 있다 — 모드에 들어갈 필요가 없다", async () => {
+      const restore = setFinePointer();
+      try {
+        mockBoard({
+          byDate: {
+            "2026-10-24": [
+              activity(),
+              activity({ id: 2, title: "디즈니씨", sortOrder: 1 }),
+            ],
+          },
+        });
+
+        renderBoard();
+
+        expect(
+          await screen.findByRole("button", { name: "센소지 순서 바꾸기" }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: "센소지 아래로" }),
+        ).toBeEnabled();
+        // 첫 줄은 더 올라갈 곳이 없다.
+        expect(
+          screen.getByRole("button", { name: "센소지 위로" }),
+        ).toBeDisabled();
+        // 드래그 모드에 들어간 적이 없으므로 모드 바도 없다.
+        expect(
+          screen.queryByRole("button", { name: "완료" }),
+        ).not.toBeInTheDocument();
+      } finally {
+        restore();
+      }
+    });
+
+    it("이동 버튼을 누르면 그 날짜의 순서가 서버로 간다 — 끌기의 대안이다 (SC 2.5.7)", async () => {
+      const restore = setFinePointer();
+      try {
+        const moves: unknown[] = [];
+        server.use(
+          http.put(
+            `${API_BASE}/travel/trips/:tripId/activities/order`,
+            async ({ request }) => {
+              moves.push(await request.json());
+              return HttpResponse.json({ code: "OK", data: { moves: [] } });
+            },
+          ),
+        );
+        mockBoard({
+          byDate: {
+            "2026-10-24": [
+              activity(),
+              activity({ id: 2, title: "디즈니씨", sortOrder: 1 }),
+            ],
+          },
+        });
+
+        renderBoard();
+        await userEvent.click(
+          await screen.findByRole("button", { name: "센소지 아래로" }),
+        );
+
+        await waitFor(() => expect(moves).toHaveLength(1));
+        expect(moves[0]).toEqual({
+          moves: [{ date: "2026-10-24", activityIds: [2, 1] }],
+        });
+      } finally {
+        restore();
+      }
+    });
+
+    it("손가락에는 손잡이를 내주지 않는다 — 길게 눌러 모드로 들어가는 길이 그대로다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+
+      renderBoard();
+      await screen.findByText("센소지");
+
+      expect(
+        screen.queryByRole("button", { name: "센소지 순서 바꾸기" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "센소지 아래로" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe("빈 상태", () => {
     it("일정 없는 날짜와 빈 보관함의 문구가 다르다", async () => {
       mockBoard({ byDate: { "2026-10-24": [] }, archive: [] });

@@ -8,6 +8,10 @@ import { expect, type Page, test } from "@playwright/test";
  * 400ms 롱프레스와 드롭을 재현하고, 서버로 나가는 순서 배열까지 확인한다.
  *
  * (터치 감각 자체는 Android Chrome 실기기 확인이 따로 필요하다 — 자동화로 대체할 수 없다.)
+ *
+ * <p><b>터치 전용 스펙이다</b>(#1223). 길게 눌러 모드에 들어가는 길은 손가락에만 있다 —
+ * 스크롤과 집어 올리기를 가를 방법이 그것뿐이기 때문이다. 마우스는 모드 없이 손잡이로 끌고,
+ * 그쪽은 travel-mouse-reorder.spec.ts가 본다. 그래서 이 파일은 mobile-touch 프로젝트에서만 돈다.
  */
 
 const TRIP_ID = 1;

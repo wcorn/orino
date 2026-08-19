@@ -88,6 +88,7 @@ import { StayFormSheet } from "@/features/travel/stay/StayFormSheet";
 import { StaySheet } from "@/features/travel/stay/StaySheet";
 import { toast } from "@/shared/lib/toast";
 import { useOnline } from "@/shared/lib/useOnline";
+import { usePointerFine } from "@/shared/lib/usePointerFine";
 
 /** `?day=` 값 — 0부터 시작하는 일차 인덱스, 또는 보관함. */
 const ARCHIVE = "archive";
@@ -161,6 +162,8 @@ export function TripBoardPage() {
   const [stayError, setStayError] = useState<string | null>(null);
   // 오프라인은 조회 전용이다(§4.6). 편집을 막는 게 아니라 진입 자체를 없앤다.
   const online = useOnline();
+  // 마우스면 드래그 모드 없이 손잡이로 끈다 — 롱프레스는 손가락의 관용구다.
+  const pointerFine = usePointerFine();
 
   // 숙소는 여행 전체를 한 번에 읽는다 — 어느 날짜에 붙는지는 기간에서 파생한다.
   const { data: stays } = useStays(tripId);
@@ -666,6 +669,7 @@ export function TripBoardPage() {
                     onPickDay={() => setPickingDayFor(activity)}
                     onDelete={() => removeActivityDeferred(activity)}
                     onEnterDragMode={() => {}}
+                    pointerFine={pointerFine}
                   />
                 ))}
               </ul>
@@ -701,6 +705,7 @@ export function TripBoardPage() {
                     onArchive={() => archiveActivity(activity)}
                     onDelete={() => removeActivityDeferred(activity)}
                     onEnterDragMode={enterDragMode}
+                    pointerFine={pointerFine}
                   />
                 </Fragment>
               ))}

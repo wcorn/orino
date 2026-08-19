@@ -194,7 +194,7 @@ test.describe("날짜 달력 · 기준 도시", () => {
     await expect(sheet).toContainText("지금은 도쿄");
   });
 
-  test("일정 행을 누르면 드래그 모드일 뿐 도시 시트는 열리지 않는다", async ({
+  test("일정 행을 길게 눌러도 도시 시트는 열리지 않는다 — 시트는 날짜 칸의 것이다", async ({
     page,
   }) => {
     await mockBoard(page);
@@ -203,8 +203,10 @@ test.describe("날짜 달력 · 기준 도시", () => {
 
     await press(page, 'text="센소지"', 600);
 
-    await expect(page.getByRole("button", { name: "완료" })).toBeVisible();
     await expect(page.getByRole("dialog")).toBeHidden();
+    // 데스크톱에는 들어갈 드래그 모드가 없다(#1223) — 길게 눌러도 아무 일도 일어나지 않는다.
+    // 손가락으로 길게 눌러 모드에 들어가는 쪽은 travel-board-drag.spec.ts가 본다.
+    await expect(page.getByRole("button", { name: "완료" })).toBeHidden();
   });
 
   test("시트에서 도시를 고르면 그 날짜만 바꾸는 요청이 나간다", async ({

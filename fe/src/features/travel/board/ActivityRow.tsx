@@ -45,6 +45,11 @@ interface ActivityRowProps {
   onDelete: () => void;
   /** 400ms 길게 눌러 드래그 모드로 들어간다. */
   onEnterDragMode: () => void;
+  /**
+   * 마우스·트랙패드인가. 그러면 <b>모드 없이</b> 손잡이로 곧바로 끈다 —
+   * 롱프레스는 스크롤과 구분해야 하는 손가락의 관용구지, 마우스가 배운 동작이 아니다.
+   */
+  pointerFine: boolean;
 }
 
 /**
@@ -67,25 +72,51 @@ export function ActivityRow({
   onPickDay,
   onDelete,
   onEnterDragMode,
+  pointerFine,
 }: ActivityRowProps) {
   // 날짜 탭이 쓰는 것과 같은 이름으로 — 같은 도시가 화면마다 다른 글자면 안 된다.
   const cityLabel = cityLabelOf(activity.place, cities);
-  // 드래그는 모드에 들어온 뒤에만 활성화한다 — 그 전에는 목록을 세로로 스크롤해야 한다.
+  /**
+   * 손가락은 <b>모드에 들어온 뒤에만</b> 끌 수 있다 — 그 전에는 목록을 세로로 스크롤해야 하고,
+   * 두 손짓을 가를 방법이 롱프레스뿐이다. 마우스는 그 문제가 없어 언제나 끌 수 있고,
+   * 대신 <b>손잡이에서만</b> 시작한다(본문 클릭은 상세로 가야 한다).
+   */
+  const handleDrag = pointerFine && !dragMode && !offline;
   const {
     attributes,
     listeners,
     setNodeRef,
+    setActivatorNodeRef,
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: activity.id, disabled: !dragMode });
+  } = useSortable({ id: activity.id, disabled: !dragMode && !handleDrag });
 
-  const longPress = useLongPress(onEnterDragMode, !dragMode && !offline);
+  // 데스크톱에는 들어갈 모드가 없다.
+  const longPress = useLongPress(
+    onEnterDragMode,
+    !dragMode && !offline && !pointerFine,
+  );
 
   // 드래그 모드가 아니면 dnd 속성을 아예 붙이지 않는다. `disabled`인 sortable은
   // `role="button" aria-disabled="true"`를 남기는데, 그러면 행 전체가 "비활성 버튼"으로
   // 읽혀 안의 링크를 누를 수 없다(스크린리더에도 그렇게 들린다).
   const dragProps = dragMode ? { ...attributes, ...listeners } : {};
+
+  /**
+   * 손잡이에 붙는 것들. 행이 아니라 여기서만 드래그가 시작된다.
+   *
+   * <p>포인터를 행으로 흘려보내지 않는다 — 흘리면 스와이프(좌우)가 같이 깨어나 세로로 끄는
+   * 동안 행이 옆으로 밀린다. 손잡이 자신의 리스너는 이미 이 시점에 실행된 뒤다.
+   */
+  const handleProps = {
+    ...attributes,
+    ...listeners,
+    onPointerDown: (e: ReactPointerEvent) => {
+      listeners?.onPointerDown?.(e);
+      e.stopPropagation();
+    },
+  };
 
   /**
    * 버튼 위에서 시작한 포인터는 드래그로 넘기지 않는다.
@@ -117,7 +148,7 @@ export function ActivityRow({
       <div
         style={{ transform: `translateX(${swipe.offset}px)` }}
         className={cn(
-          "hover:bg-muted bg-background grid grid-cols-[52px_1fr_auto] items-start gap-2 rounded-lg px-2 py-2.5",
+          "group/row hover:bg-muted bg-background grid grid-cols-[52px_1fr_auto] items-start gap-2 rounded-lg px-2 py-2.5",
           !swipe.dragging && "transition-transform",
           isDragging && "bg-card ring-primary scale-[1.01] shadow-lg ring-2",
         )}
@@ -208,6 +239,47 @@ export function ActivityRow({
             </>
           ) : (
             <>
+              {/* 데스크톱 전용 순서 조작. 평소엔 숨어 있다가 행에 마우스를 올리거나
+                  키보드 포커스가 들어오면 나온다 — 늘 떠 있으면 줄마다 아이콘이 다섯 개다.
+                  위/아래 버튼은 장식이 아니라 <b>끌기의 대안</b>이다(WCAG 2.2 SC 2.5.7):
+                  끌기로 되는 일은 단일 포인터로도 돼야 한다. */}
+              {handleDrag && (
+                <span
+                  data-row-tools=""
+                  className="flex items-center opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100"
+                >
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`${activity.title} 위로`}
+                    disabled={!canMoveUp}
+                    onClick={onMoveUp}
+                    {...stopDrag}
+                  >
+                    <ChevronUp className="size-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`${activity.title} 아래로`}
+                    disabled={!canMoveDown}
+                    onClick={onMoveDown}
+                    {...stopDrag}
+                  >
+                    <ChevronDown className="size-4" />
+                  </Button>
+                  {/* 손잡이는 버튼이다 — 키보드로 잡고(Space) 화살표로 옮길 수 있어야 한다. */}
+                  <button
+                    ref={setActivatorNodeRef}
+                    type="button"
+                    aria-label={`${activity.title} 순서 바꾸기`}
+                    className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex size-8 cursor-grab items-center justify-center rounded-md focus-visible:ring-2 focus-visible:outline-none active:cursor-grabbing"
+                    {...handleProps}
+                  >
+                    <GripVertical className="size-4" />
+                  </button>
+                </span>
+              )}
               {activity.notifyEnabled && (
                 <Bell
                   aria-label="알림 켜짐"
