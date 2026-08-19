@@ -138,7 +138,9 @@ export function TripBoardPage() {
     isArchive ? { archive: true } : { date: requestedDate },
     { enabled: needsOwnQuery },
   );
-  const board = needsOwnQuery ? dayBoard : base;
+  // 아직 그 날짜의 응답이 없으면 기본 조회로 버틴다. 날짜 목록·여행 정보는 어느 응답에나
+  // 같이 들어 있어, 이것만으로 화면 뼈대(헤더·달력)가 그대로 선다 — 목록만 기다리면 된다.
+  const board = (needsOwnQuery ? dayBoard : base) ?? base;
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [deletingTrip, setDeletingTrip] = useState(false);
@@ -197,10 +199,19 @@ export function TripBoardPage() {
     );
   }
 
-  const selectedDate = isArchive ? null : board.selectedDate;
+  /**
+   * 고른 날짜. <b>응답이 아니라 URL이 정한다</b> — 날짜별 일정은 새로 받아와야 하지만
+   * "어느 날을 골랐는가"는 이미 알고 있다. 응답을 기다렸다 표시하면 달력 하이라이트가
+   * 한 박자 늦게 따라와, 누른 곳과 켜지는 곳이 어긋나 보인다.
+   */
+  const selectedDate = isArchive ? null : (requestedDate ?? board.selectedDate);
+  /** 아직 고른 날짜의 일정이 오지 않았다. 앞 날짜의 목록을 그 날의 것처럼 보여줄 수는 없다. */
+  const loadingDay = board.selectedDate !== selectedDate;
   const selectedIndex = board.days.findIndex((d) => d.date === selectedDate);
   // 실행취소를 기다리는 동안에는 이미 사라진 것처럼 보여야 한다(낙관적 반영).
-  const activities = board.activities.filter((a) => !pendingIds.includes(a.id));
+  const activities = loadingDay
+    ? []
+    : board.activities.filter((a) => !pendingIds.includes(a.id));
   /**
    * 구간을 <b>도착</b> 일정 id로 걸어 둔다 — 행을 그 일정 <b>바로 앞</b>에 그리기 위해서다.
    *
@@ -242,7 +253,7 @@ export function TripBoardPage() {
 
   /** 보고 있는 날짜. 보관함을 보고 있으면 없다. */
   const selectedDay =
-    board.days.find((day) => day.date === board.selectedDate) ?? null;
+    board.days.find((day) => day.date === selectedDate) ?? null;
   /** 보고 있는 날짜의 기준 도시. 보관함에는 날짜가 없어 첫날로 떨어진다. */
   const selectedCity = (selectedDay ?? board.days[0])?.baseCity ?? null;
 
@@ -719,7 +730,14 @@ export function TripBoardPage() {
 
       {dragMode && <DragModeBar onDone={() => setDragMode(false)} />}
 
-      {activities.length === 0 && (
+      {/* 날짜를 옮기는 중 — 목록만 비운다. 달력·헤더는 그대로 두어야 화면이 튀지 않는다. */}
+      {loadingDay && (
+        <EmptyState className="min-h-[30svh]">
+          <LoadingText />
+        </EmptyState>
+      )}
+
+      {!loadingDay && activities.length === 0 && (
         <EmptyState className="min-h-[30svh]">
           <p className="text-muted-foreground text-sm">
             {selectedDate === null

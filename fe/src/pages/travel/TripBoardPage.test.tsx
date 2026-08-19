@@ -111,14 +111,17 @@ function mockBoard(options: {
   stayMove?: unknown;
   /** `GET /trips/{id}/stays` 응답. 상세 시트·겹침 미리보기가 이 목록을 읽는다. */
   stays?: unknown[];
+  /** 그 날짜의 응답을 붙잡아 둔다. 응답 전 화면을 확인할 때 쓴다. */
+  hold?: (date: string) => Promise<void> | null;
 }) {
   const byDate = options.byDate ?? {};
   const archive = options.archive ?? [];
   server.use(
-    http.get(`${API_BASE}/travel/trips/:tripId/board`, ({ request }) => {
+    http.get(`${API_BASE}/travel/trips/:tripId/board`, async ({ request }) => {
       const url = new URL(request.url);
       const isArchive = url.searchParams.get("archive") === "true";
       const date = url.searchParams.get("date") ?? DAYS[0].date;
+      await options.hold?.(date);
       return HttpResponse.json({
         code: "OK",
         data: {
@@ -233,6 +236,38 @@ describe("TripBoardPage", () => {
 
       expect(await screen.findByText("디즈니씨")).toBeInTheDocument();
       expect(screen.getByText("10.25")).toBeInTheDocument();
+    });
+
+    it("날짜를 옮기는 동안 달력과 헤더가 그대로 있다 — 새로고침처럼 보이지 않게", async () => {
+      // 새 날짜 응답을 붙잡아 둔다. 그 사이 화면이 어떻게 보이는지가 이 테스트의 전부다.
+      let release = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = () => resolve();
+      });
+      mockBoard({
+        byDate: { "2026-10-24": [activity()], "2026-10-25": [] },
+        hold: (date) => (date === "2026-10-25" ? held : null),
+      });
+
+      renderBoard();
+      await screen.findByText("센소지");
+
+      await userEvent.click(screen.getByRole("button", { name: "다음 날짜" }));
+
+      // 응답을 기다리는 동안 — 달력·헤더는 그대로다(전체 로딩으로 갈아치우지 않는다).
+      expect(screen.getAllByRole("tab").length).toBeGreaterThan(1);
+      expect(screen.getByText("도쿄 3박 4일")).toBeInTheDocument();
+      // 선택 표시는 응답을 기다리지 않는다 — 누른 칸이 곧바로 켜진다.
+      expect(screen.getByRole("tab", { selected: true })).toHaveTextContent(
+        "25",
+      );
+      // 앞 날짜의 일정을 그 날의 것처럼 남겨두지도 않는다. 기다리는 건 목록뿐이다.
+      expect(screen.queryByText("센소지")).not.toBeInTheDocument();
+      expect(screen.getByText("불러오는 중…")).toBeInTheDocument();
+
+      release();
+      // 응답이 오면 그 날짜의 빈 상태로 바뀐다.
+      expect(await screen.findByText("일정이 없어요")).toBeInTheDocument();
     });
 
     it("달력을 접어도 선택일은 남는다 — 긴 여행에서 자리를 돌려준다", async () => {
