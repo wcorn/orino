@@ -47,18 +47,53 @@ resource "aws_s3_bucket_metric" "requests" {
   name   = "EntireBucket"
 }
 
+# 조건을 걸지 않는다 — 아래 두 규칙 중 하나는 항상 켜야 하기 때문이다.
+#
+# 만료 규칙은 버킷마다 다르지만(백업은 영구 보관, 로그는 30일), **묘비 청소는 모든
+# 버킷이 켜야 한다.** 안 켜면 지표가 오염되고, 오염된 지표는 오진을 만든다 — #1211 이
+# `NumberOfObjects` 289,271 을 보고 "블록이 회수되지 않는다"고 2 개월간 오진했는데,
+# 실제 객체는 35,250 이고 나머지 257,942 가 삭제 표식이었다. 자세한 경위는 #1232.
 resource "aws_s3_bucket_lifecycle_configuration" "this" {
-  count  = var.lifecycle_expiration_days > 0 ? 1 : 0
   bucket = aws_s3_bucket.this.id
 
+  # 만료 규칙을 먼저 둔다. rule 은 목록으로 비교되므로 순서가 바뀌면 이미 이 규칙을
+  # 가진 버킷(mysql-backup)의 diff 가 "id 가 바뀐다"처럼 보인다. 결과는 같지만
+  # 리뷰에서 오해를 사고, 오해를 사는 diff 는 다음번에 진짜 변경을 가린다.
+  #
+  # days 와 expired_object_delete_marker 는 같은 rule 에 못 들어간다(AWS 제약).
+  # 그래서 만료는 별도 rule 로 나누고, 필요 없는 버킷에서는 통째로 뺀다.
+  dynamic "rule" {
+    for_each = var.lifecycle_expiration_days > 0 ? [var.lifecycle_expiration_days] : []
+
+    content {
+      id     = "expire-after-${rule.value}-days"
+      status = "Enabled"
+
+      filter {}
+
+      expiration {
+        days = rule.value
+      }
+    }
+  }
+
+  # versioning 을 한 번이라도 켠 버킷은 DELETE 가 객체를 지우는 대신 삭제 표식을
+  # 남긴다. Suspended 로 되돌려도 이미 쌓인 표식은 스스로 사라지지 않는다.
+  #
+  # expired_object_delete_marker 는 **밑에 아무 버전도 남지 않은** 표식만 지운다.
+  # 살아 있는 데이터를 건드릴 수 없는 규칙이라 versioning 이 꺼진 버킷에서는 그냥
+  # 무동작이고, 켜진 적 있는 버킷에서만 청소가 일어난다. 그래서 전 버킷 공통이다.
+  #
+  # 표식 삭제는 lifecycle 이 수행하면 요금이 붙지 않는다. 이 규칙은 비용을 줄이려는
+  # 게 아니라 **NumberOfObjects 가 다시 실제 객체 수를 가리키게 하려는 것**이다.
   rule {
-    id     = "expire-after-${var.lifecycle_expiration_days}-days"
+    id     = "cleanup-expired-delete-markers"
     status = "Enabled"
 
     filter {}
 
     expiration {
-      days = var.lifecycle_expiration_days
+      expired_object_delete_marker = true
     }
   }
 }
