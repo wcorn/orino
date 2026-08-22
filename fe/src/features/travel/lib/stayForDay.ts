@@ -7,7 +7,7 @@
  *
  * ```
  * stayTonight(day)  = checkInDate <= day <  checkOutDate   오늘 밤 자는 곳
- * stayCheckout(day) = checkOutDate == day                  오늘 체크아웃하는 곳
+ * stayCheckout(day) = checkOutDate == day                  그날 체크아웃하는 곳
  * ```
  *
  * 보드 응답의 `stayTonight`·`stayCheckout`은 서버가 **같은 규칙으로** 채워 보낸다. 여기 규칙이
