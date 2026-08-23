@@ -194,5 +194,136 @@ describe("Sidebar", () => {
         screen.getByRole("link", { name: /일정 보드/ }).className,
       ).not.toContain("text-primary");
     });
+
+    it("전환이 3분할이다 — 여행 · 일상 · 링크", async () => {
+      renderSidebar("/home");
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: "여행" }),
+        ).toBeInTheDocument();
+      });
+      expect(screen.getByRole("button", { name: "일상" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "링크" })).toBeInTheDocument();
+    });
+
+    it("링크 경로에서는 링크 메뉴를 보여준다 — 일상 사이드바는 그대로다", async () => {
+      renderSidebar("/links");
+      await waitFor(() => {
+        expect(
+          screen.getByRole("link", { name: /링크 목록/ }),
+        ).toBeInTheDocument();
+      });
+      expect(
+        screen.getByRole("link", { name: /즐겨찾기/ }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: /학습 자료/ })).toBeNull();
+      expect(screen.queryByRole("link", { name: /여행 목록/ })).toBeNull();
+    });
+
+    it("/links/{slug} 에서도 링크 워크스페이스로 판정한다", async () => {
+      renderSidebar("/links/9dwqr");
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "링크" })).toHaveAttribute(
+          "aria-current",
+          "true",
+        );
+      });
+      // 상세는 「링크 목록」이 대표한다.
+      expect(
+        (await screen.findByRole("link", { name: /링크 목록/ })).className,
+      ).toContain("text-primary");
+    });
+
+    it("링크 워크스페이스가 아니면 링크 API를 부르지 않는다", async () => {
+      let called = false;
+      server.use(
+        http.get(`${API_BASE}/shortlinks`, () => {
+          called = true;
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              counts: { all: 0, active: 0, inactive: 0 },
+              favorites: [],
+              recent: [],
+            },
+          });
+        }),
+      );
+
+      renderSidebar("/home");
+      await waitFor(() => {
+        expect(
+          screen.getByRole("link", { name: /학습 자료/ }),
+        ).toBeInTheDocument();
+      });
+
+      expect(called).toBe(false);
+    });
+
+    it("링크 메뉴는 전체·즐겨찾기 개수를, 태그 섹션은 태그별 개수를 보여준다", async () => {
+      server.use(
+        http.get(`${API_BASE}/shortlinks`, () =>
+          HttpResponse.json({
+            code: "OK",
+            data: {
+              counts: { all: 34, active: 29, inactive: 5 },
+              favorites: [linkCard("jeju", true)],
+              recent: [linkCard("busan", false)],
+            },
+          }),
+        ),
+        http.get(`${API_BASE}/shortlinks/tags`, () =>
+          HttpResponse.json({
+            code: "OK",
+            data: [
+              { name: "가족", count: 9 },
+              { name: "여행", count: 7 },
+            ],
+          }),
+        ),
+      );
+
+      renderSidebar("/links");
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("link", { name: /링크 목록/ }),
+        ).toHaveTextContent("34");
+      });
+      expect(screen.getByRole("link", { name: /즐겨찾기/ })).toHaveTextContent(
+        "1",
+      );
+      const tag = await screen.findByRole("link", { name: /가족/ });
+      expect(tag).toHaveAttribute("href", "/links?tag=%EA%B0%80%EC%A1%B1");
+      expect(tag).toHaveTextContent("9");
+    });
+
+    it("즐겨찾기는 목록의 필터다 — ?favorite=1 에서만 활성이다", async () => {
+      renderSidebar("/links?favorite=1");
+
+      const favorite = await screen.findByRole("link", { name: /즐겨찾기/ });
+      expect(favorite).toHaveAttribute("href", "/links?favorite=1");
+      expect(favorite.className).toContain("text-primary");
+      expect(
+        screen.getByRole("link", { name: /링크 목록/ }).className,
+      ).not.toContain("text-primary");
+    });
   });
 });
+
+/** 사이드바 개수만 보는 테스트라 카드 내용은 최소로 채운다. */
+function linkCard(slug: string, favorite: boolean) {
+  return {
+    slug,
+    shortUrl: `https://s.orino.dev/${slug}`,
+    targetUrl: "https://img.orino.dev/a.jpg",
+    memo: null,
+    tags: [],
+    custom: true,
+    favorite,
+    state: "ACTIVE",
+    hasPassword: false,
+    visitCount: 0,
+    lastVisitedAt: null,
+  };
+}

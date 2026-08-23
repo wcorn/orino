@@ -7,13 +7,18 @@ import {
   FileText,
   Home,
   LayoutGrid,
+  Link2,
   Plane,
   Settings,
+  Star,
+  Tag,
   Wrench,
 } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 
 import { useReviewSummary } from "@/features/review/hooks/useReviewSummary";
+import { useLinks } from "@/features/shortlink/hooks/useLinks";
+import { useShortlinkTags } from "@/features/shortlink/hooks/useShortlinkTags";
 import type { TravelSummary } from "@/features/travel/api/travel";
 import { useTravelSummary } from "@/features/travel/hooks/useTravelSummary";
 import { travelKeys } from "@/features/travel/queryKeys";
@@ -33,6 +38,11 @@ interface NavItem {
    * 중간에 id가 끼어 접두어 비교로는 「여행 목록」과 구분되지 않는다.
    */
   matchPath?: (pathname: string) => boolean;
+  /**
+   * 검색 파라미터까지 봐야 하는 판정. 링크 쪽 「즐겨찾기」는 별도 라우트가 아니라
+   * 같은 목록의 필터(`/links?favorite=1`)라, pathname만으로는 「링크 목록」과 구분되지 않는다.
+   */
+  matchLocation?: (pathname: string, search: string) => boolean;
 }
 
 /** `/travel/trips/12/board` · `/travel/trips/12/map` */
@@ -79,9 +89,44 @@ const TRAVEL_NAV_ITEMS: NavItem[] = [
   { to: "/travel/settings", label: "설정", icon: Settings },
 ];
 
+/**
+ * 링크 메뉴. 「즐겨찾기」는 별도 라우트가 아니라 목록의 필터다 — 즐겨찾기만 보는 화면을
+ * 따로 만들면 같은 카드가 두 화면에 살고, 발급·편집 후 무엇을 갱신할지가 둘로 갈린다.
+ */
+const LINK_NAV_ITEMS: NavItem[] = [
+  {
+    to: "/links",
+    label: "링크 목록",
+    icon: Link2,
+    // 상세(`/links/{slug}`)도 이 항목이 대표한다.
+    matchLocation: (pathname, search) =>
+      (pathname === "/links" && !isFavoriteFilter(search)) ||
+      pathname.startsWith("/links/"),
+  },
+  {
+    to: "/links?favorite=1",
+    label: "즐겨찾기",
+    icon: Star,
+    matchLocation: (pathname, search) =>
+      pathname === "/links" && isFavoriteFilter(search),
+  },
+];
+
+function isFavoriteFilter(search: string): boolean {
+  return new URLSearchParams(search).get("favorite") === "1";
+}
+
 /** 여행 워크스페이스인지 — 경로 하나로 판정한다(별도 상태를 두면 새로고침에 어긋난다). */
 function isTravelWorkspace(pathname: string): boolean {
   return pathname === "/travel" || pathname.startsWith("/travel/");
+}
+
+/**
+ * 링크 워크스페이스인지. 여행과 같은 방식으로 <b>경로 하나로만</b> 판정한다 —
+ * 상태를 따로 들면 새로고침·뒤로가기에서 어긋난다.
+ */
+function isLinkWorkspace(pathname: string): boolean {
+  return pathname === "/links" || pathname.startsWith("/links/");
 }
 
 /** activePaths가 지정된 항목의 활성 여부 — 해당 경로이거나 그 하위 경로면 활성. */
@@ -95,19 +140,28 @@ interface SidebarProps {
 }
 
 export function Sidebar({ open, onClose }: SidebarProps) {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const travel = isTravelWorkspace(pathname);
+  const link = isLinkWorkspace(pathname);
 
   const { data: reviewData } = useReviewSummary();
   const reviewCount = reviewData?.counts.now ?? 0;
-  // 훅은 항상 호출하되(조건부 호출 금지) 일상 워크스페이스에서는 요청을 끈다 —
-  // 일상 화면이 여행 API를 부르기 시작하면 그건 일상 쪽 동작 변경이다.
+  // 훅은 항상 호출하되(조건부 호출 금지) 다른 워크스페이스에서는 요청을 끈다 —
+  // 일상 화면이 여행·링크 API를 부르기 시작하면 그건 일상 쪽 동작 변경이다.
   const { data: travelData } = useTravelSummary({ enabled: travel });
   const boardPath = travelData?.ongoing?.boardPath ?? "/travel/trips";
+  // 필터 없는 목록이라 키가 `/links` 화면의 기본 목록과 같다 — 사이드바를 지나온
+  // 사용자는 목록이 즉시 그려진다.
+  const { data: linkData } = useLinks({ enabled: link });
+  const { data: linkTags } = useShortlinkTags({ enabled: link });
 
-  const navItems = travel ? TRAVEL_NAV_ITEMS : DAILY_NAV_ITEMS;
+  const navItems = travel
+    ? TRAVEL_NAV_ITEMS
+    : link
+      ? LINK_NAV_ITEMS
+      : DAILY_NAV_ITEMS;
 
   /**
    * 여행으로 전환 — 진행 중 여행이 있으면 곧바로 그 보드로 들어간다.
@@ -123,6 +177,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const goToDaily = () => {
     navigate("/home");
+    onClose();
+  };
+
+  const goToLinks = () => {
+    navigate("/links");
     onClose();
   };
 
@@ -160,8 +219,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <WorkspaceButton
               label="일상"
               icon={LayoutGrid}
-              active={!travel}
+              active={!travel && !link}
               onClick={goToDaily}
+            />
+            <WorkspaceButton
+              label="링크"
+              icon={Link2}
+              active={link}
+              onClick={goToLinks}
             />
           </div>
         </div>
@@ -170,17 +235,27 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             const Icon = item.icon;
             const isReviewItem = item.to === "/planner/reviews";
             const isBoardItem = item.label === "일정 보드";
+            // 링크 메뉴의 우측 숫자. 아직 못 받았으면 자리를 비운다 — `0`은 "링크가 없다"는
+            // 뜻이고, 모르는 것과 다르다.
+            const count =
+              item.label === "링크 목록"
+                ? linkData?.counts.all
+                : item.label === "즐겨찾기"
+                  ? linkData?.favorites.length
+                  : undefined;
             return (
               <li key={item.label}>
                 <NavLink
                   to={isBoardItem ? boardPath : item.to}
                   end={item.to === "/home" || item.to === "/travel"}
                   className={({ isActive }) => {
-                    const active = item.matchPath
-                      ? item.matchPath(pathname)
-                      : item.activePaths
-                        ? matchesActivePaths(pathname, item.activePaths)
-                        : isActive;
+                    const active = item.matchLocation
+                      ? item.matchLocation(pathname, search)
+                      : item.matchPath
+                        ? item.matchPath(pathname)
+                        : item.activePaths
+                          ? matchesActivePaths(pathname, item.activePaths)
+                          : isActive;
                     return cn(
                       "flex h-9 items-center justify-between rounded-md px-3 text-sm font-medium transition-colors",
                       active
@@ -201,11 +276,47 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                       {reviewCount}
                     </span>
                   )}
+                  {count !== undefined && (
+                    <span className="text-xs tabular-nums opacity-70">
+                      {count}
+                    </span>
+                  )}
                 </NavLink>
               </li>
             );
           })}
         </ul>
+        {/* 태그 섹션 — 링크 워크스페이스에만 있다. 태그가 하나도 없으면 헤더도 그리지 않는다. */}
+        {link && linkTags && linkTags.length > 0 && (
+          <>
+            <p className="text-caption text-muted-foreground mx-3 mt-3 mb-1.5 font-semibold">
+              태그
+            </p>
+            <ul className="flex flex-col gap-0.5 px-2 pb-2">
+              {linkTags.map((tag) => (
+                <li key={tag.name}>
+                  <NavLink
+                    to={`/links?tag=${encodeURIComponent(tag.name)}`}
+                    className={cn(
+                      "flex h-8 items-center justify-between rounded-md px-3 text-[13px] transition-colors",
+                      new URLSearchParams(search).get("tag") === tag.name
+                        ? "bg-primary/10 text-primary"
+                        : "text-foreground/70 hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Tag className="size-3.5 shrink-0 opacity-70" />
+                      <span className="truncate">{tag.name}</span>
+                    </span>
+                    <span className="text-xs tabular-nums opacity-70">
+                      {tag.count}
+                    </span>
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </nav>
     </>
   );
@@ -230,7 +341,8 @@ function WorkspaceButton({
       aria-current={active ? "true" : undefined}
       onClick={onClick}
       className={cn(
-        "inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md text-[13px] font-medium transition-colors",
+        // gap이 5px다 — 224px 사이드바에서 3칸이 되면 1.5(6px)로는 아이콘과 라벨이 눌린다.
+        "inline-flex h-7 flex-1 items-center justify-center gap-[5px] rounded-md text-[13px] font-medium transition-colors",
         active
           ? "bg-background text-foreground shadow-sm"
           : "text-muted-foreground",

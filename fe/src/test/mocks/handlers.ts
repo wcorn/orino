@@ -96,6 +96,29 @@ export const handlers = [
     });
   }),
 
+  // 기본값: 링크 없음. `/select` 카드와 사이드바가 지나가므로 기본 핸들러를 둔다.
+  http.get(`${API_BASE}/shortlinks/summary`, () => {
+    return HttpResponse.json({
+      code: "OK",
+      data: { total: 0, visitsThisWeek: 0 },
+    });
+  }),
+
+  http.get(`${API_BASE}/shortlinks`, () => {
+    return HttpResponse.json({
+      code: "OK",
+      data: {
+        counts: { all: 0, active: 0, inactive: 0 },
+        favorites: [],
+        recent: [],
+      },
+    });
+  }),
+
+  http.get(`${API_BASE}/shortlinks/tags`, () => {
+    return HttpResponse.json({ code: "OK", data: [] });
+  }),
+
   // 기본값: 일정 없는 하루짜리 보드. 보드를 거쳐가는 테스트(생성 후 이동 등)가
   // 매번 핸들러를 세우지 않아도 되도록. 내용을 검증하는 테스트는 server.use로 덮어쓴다.
   http.get(`${API_BASE}/travel/trips/:tripId/board`, ({ params }) => {

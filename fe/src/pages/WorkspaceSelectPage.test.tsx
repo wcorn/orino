@@ -60,7 +60,7 @@ describe("WorkspaceSelectPage", () => {
     useAuthStore.setState({ accessToken: "valid-token" });
   });
 
-  it("두 워크스페이스 카드를 보여준다", async () => {
+  it("세 워크스페이스 카드를 보여준다 — 링크는 일상의 하위가 아니다", async () => {
     renderApp(["/select"]);
 
     await waitFor(() => {
@@ -70,6 +70,7 @@ describe("WorkspaceSelectPage", () => {
     });
     expect(screen.getByRole("button", { name: /여행/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /일상/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /링크/ })).toBeInTheDocument();
   });
 
   it("사이드바가 없다 — 선택 화면은 앱 셸 밖이다", async () => {
@@ -259,6 +260,66 @@ describe("WorkspaceSelectPage", () => {
     await waitFor(() => {
       expect(screen.getByText("안녕하세요 👋")).toBeInTheDocument();
     });
+  });
+
+  it("링크 카드는 발급 수와 이번 주 방문을 메타로 보여준다", async () => {
+    server.use(
+      http.get(`${API_BASE}/shortlinks/summary`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: { total: 34, visitsThisWeek: 128 },
+        }),
+      ),
+    );
+
+    renderApp(["/select"]);
+
+    const linkCard = await screen.findByRole("button", { name: /링크/ });
+    await waitFor(() => {
+      expect(linkCard).toHaveTextContent("링크 34개 · 이번 주 방문 128");
+    });
+    expect(linkCard).toHaveTextContent("짧은 주소 발급, QR, 방문 통계");
+  });
+
+  it("요약을 못 받으면 메타 줄 자체를 그리지 않는다 — 카드는 그대로 눌린다", async () => {
+    server.use(
+      http.get(`${API_BASE}/shortlinks/summary`, () =>
+        HttpResponse.json(
+          { code: "GLB-ERR-003", message: "내부 서버 오류입니다." },
+          { status: 500 },
+        ),
+      ),
+    );
+
+    renderApp(["/select"]);
+
+    const linkCard = await screen.findByRole("button", { name: /링크/ });
+    // `링크 0개`가 아니라 줄이 없다 — 0개인 것과 아직 모르는 것은 다르다.
+    await waitFor(() => {
+      expect(linkCard).not.toHaveTextContent(/링크 \d+개/);
+    });
+    expect(linkCard).not.toHaveTextContent(/이번 주 방문/);
+
+    await userEvent.click(linkCard);
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "링크" })).toBeInTheDocument();
+    });
+  });
+
+  it("링크 카드를 누르면 /links로 간다", async () => {
+    renderApp(["/select"]);
+
+    const linkCard = await screen.findByRole("button", { name: /링크/ });
+    await userEvent.click(linkCard);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "링크" })).toBeInTheDocument();
+    });
+    // 링크 워크스페이스로 들어왔으므로 사이드바 전환도 링크가 활성이다.
+    expect(screen.getByRole("button", { name: "링크" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
   });
 });
 
