@@ -26,6 +26,7 @@ import ds.project.orino.planner.shortlink.dto.SlugAvailableResponse;
 import ds.project.orino.planner.shortlink.dto.TagCount;
 import ds.project.orino.planner.shortlink.dto.TargetHistoryEntry;
 import ds.project.orino.planner.shortlink.dto.ToggleResponse;
+import ds.project.orino.planner.shortlink.og.OgPreviewService;
 import ds.project.orino.planner.shortlink.stats.VisitStatsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -71,6 +72,7 @@ public class ShortlinkService {
     private final TargetUrlValidator targetUrlValidator;
     private final ShortlinkProperties properties;
     private final VisitStatsService visitStatsService;
+    private final OgPreviewService ogPreviewService;
     private final BCryptPasswordEncoder passwordEncoder;
     private final Clock clock;
 
@@ -81,6 +83,7 @@ public class ShortlinkService {
                             TargetUrlValidator targetUrlValidator,
                             ShortlinkProperties properties,
                             VisitStatsService visitStatsService,
+                            OgPreviewService ogPreviewService,
                             BCryptPasswordEncoder passwordEncoder,
                             Clock clock) {
         this.shortlinkRepository = shortlinkRepository;
@@ -90,6 +93,7 @@ public class ShortlinkService {
         this.targetUrlValidator = targetUrlValidator;
         this.properties = properties;
         this.visitStatsService = visitStatsService;
+        this.ogPreviewService = ogPreviewService;
         this.passwordEncoder = passwordEncoder;
         this.clock = clock;
     }
@@ -158,6 +162,9 @@ public class ShortlinkService {
         List<String> tags = replaceTags(link.getId(), request.tags());
         Instant now = clock.instant();
         historyRepository.save(ShortlinkTargetHistory.initial(link.getId(), targetUrl, now));
+
+        // 프리뷰는 뒤따라 채운다. 여기서 기다리면 「붙여넣고 Enter」가 3초를 넘긴다(명세 §4.1).
+        ogPreviewService.fillAsync(link.getId(), targetUrl);
 
         // 방금 만든 링크는 방문이 없다. 세러 가지 않는다.
         return CreatedLink.of(toSummary(link, tags, 0L, null, now));

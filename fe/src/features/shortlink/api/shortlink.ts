@@ -212,3 +212,21 @@ export async function updateLink(
   );
   return data.data;
 }
+
+/**
+ * 목적지 OG 조회 결과. **실패에 이유가 없다** — 서버가 `{ ok: false }` 하나로만 답한다.
+ * "연결 거부"와 "타임아웃"을 구분해 주면 그게 곧 내부망 포트 스캐너다.
+ */
+export interface OgPreview {
+  ok: boolean;
+  title: string | null;
+  imageUrl: string | null;
+}
+
+export async function fetchOgPreview(url: string): Promise<OgPreview> {
+  const { data } = await client.get<ApiEnvelope<OgPreview>>(
+    "/shortlinks/og-preview",
+    { params: { url } },
+  );
+  return data.data;
+}

@@ -407,6 +407,47 @@ class ShortlinkControllerTest extends ApiTestSupport {
     }
 
     @Nested
+    @DisplayName("OG 프리뷰")
+    class OgPreview {
+
+        @Test
+        @DisplayName("내부 주소를 물어보면 ok:false 하나로 답한다 — 사유·상태·호스트가 없다")
+        void refusesInternalAddressesWithoutReason() throws Exception {
+            for (String url : new String[]{
+                    "http://127.0.0.1:3306",
+                    "http://169.254.169.254/latest/meta-data/",
+                    "http://10.244.1.7/",
+                    "http://localhost:6379"}) {
+                String body = mockMvc.perform(get("/api/shortlinks/og-preview")
+                                .param("url", url)
+                                .header(HttpHeaders.AUTHORIZATION, authHeader))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.ok").value(false))
+                        .andReturn().getResponse().getContentAsString();
+
+                // 응답에 실패의 성질이 드러나면 그게 곧 내부망 포트 스캐너다.
+                assertThat(body).doesNotContain("127.0.0.1", "169.254", "10.244", "localhost");
+                assertThat(body).doesNotContainIgnoringCase("refused", "timeout", "blocked");
+            }
+        }
+
+        @Test
+        @DisplayName("프리뷰가 실패해도 발급은 정상이다 — 둘은 분리된 경로다")
+        void issuingWorksWhenPreviewFails() throws Exception {
+            // 목적지가 내부 주소라 프리뷰는 반드시 실패한다. 발급은 그와 무관하다.
+            create("""
+                    {"targetUrl": "http://169.254.169.254/latest/meta-data/", "slug": "meta"}
+                    """)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.slug").value("meta"));
+
+            detail("meta").andExpect(status().isOk())
+                    // 프리뷰를 못 읽었으므로 og는 비어 있다. 링크는 멀쩡하다.
+                    .andExpect(jsonPath("$.data.og").isEmpty());
+        }
+    }
+
+    @Nested
     @DisplayName("상태 · 삭제 · 소유권")
     class StateAndOwnership {
 

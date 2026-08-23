@@ -130,3 +130,26 @@ management:
 # 목적지 자기참조 거부(명세 §4.3)도 이 호스트를 본다.
 shortlink:
   base-url: ${SHORTLINK_BASE_URL:https://s.orino.dev}
+  # OG 프리뷰는 사용자가 입력한 임의 URL을 클러스터 안에서 여는 유일한 경로다(아키텍처 §5).
+  # 기본 차단(사설·루프백·링크로컬·CGNAT)에 더해 k3s 대역을 설정에 적어 둔다 —
+  # 둘 다 10/8 안이라 이미 막히지만, 무엇을 막고 있는지 보이는 편이 낫다.
+  og-preview:
+    # 끄면 외부로 나가는 요청이 0이 된다. 문제가 생기면 여기서 끈다(D-11).
+    enabled: ${OG_PREVIEW_ENABLED:true}
+    timeout: ${OG_PREVIEW_TIMEOUT:3s}
+    max-body-bytes: ${OG_PREVIEW_MAX_BODY_BYTES:1048576}
+    max-redirects: ${OG_PREVIEW_MAX_REDIRECTS:3}
+    blocked-cidrs:
+      - 10.244.0.0/16   # k3s 파드
+      - 10.96.0.0/12    # k3s 서비스
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+# 테스트는 망을 타지 않는다. 발급마다 외부 요청이 나가면 테스트가 느려지고 결과가 흔들린다 —
+# 방어 자체는 SsrfGuardTest·OgPreviewClientTest가 실제 소켓으로 확인한다.
+shortlink:
+  og-preview:
+    enabled: false

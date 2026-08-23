@@ -19,10 +19,16 @@ dependencies {
     // 노트 이미지 업로드: MinIO(S3 호환) presigned PUT URL 발급
     implementation platform('software.amazon.awssdk:bom:2.34.0')
     implementation 'software.amazon.awssdk:s3'
+    // OG 프리뷰 fetch(#1243). DNS 해석 결과를 우리가 고른 IP로 고정해 연결해야 하는데
+    // (SSRF·DNS 재바인딩 방어), JDK HttpClient에는 DNS를 갈아끼울 자리가 없다.
+    // OkHttp의 Dns 인터페이스가 그 자리다 — 검사에 통과한 주소만 돌려준다.
+    implementation 'com.squareup.okhttp3:okhttp:5.2.1'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
+    // 리다이렉트·본문 크기 제한을 진짜 HTTP로 확인한다.
+    testImplementation 'com.squareup.okhttp3:mockwebserver3-junit5:5.2.1'
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
     testImplementation 'org.testcontainers:testcontainers-mysql'

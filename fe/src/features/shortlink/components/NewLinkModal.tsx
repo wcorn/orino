@@ -1,4 +1,4 @@
-import { Check, Lock } from "lucide-react";
+import { Check, Image as ImageIcon, Lock } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
 import type { CreatedLink, CreateLinkRequest } from "../api/shortlink";
+import { useOgPreview } from "../hooks/useOgPreview";
 import { useSlugAvailability } from "../hooks/useSlugAvailability";
 import { QrPanel } from "./QrPanel";
 import { ShortUrlText } from "./ShortUrlText";
@@ -46,6 +47,7 @@ export function NewLinkModal({
   const [tags, setTags] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const { taken, invalid, checkedSlug } = useSlugAvailability(slug);
+  const { preview, loading: previewLoading } = useOgPreview(targetUrl);
 
   const reset = () => {
     setTargetUrl("");
@@ -156,6 +158,34 @@ export function NewLinkModal({
             autoFocus
           />
         </FormField>
+
+        {/*
+          프리뷰는 비동기로 뒤따라 채운다. 느리거나 실패해도 제출을 막지 않는다(명세 §4.4) —
+          그래서 실패를 에러로 그리지 않고, 자리만 비운 채 안내 문구를 둔다.
+        */}
+        <div className="bg-muted flex items-center gap-2.5 rounded-lg p-2">
+          <span className="bg-card grid size-9 shrink-0 place-items-center overflow-hidden rounded-md">
+            {preview?.imageUrl ? (
+              <img
+                src={preview.imageUrl}
+                alt=""
+                className="size-full object-cover"
+              />
+            ) : (
+              <ImageIcon className="text-muted-foreground size-4" />
+            )}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-[13px] font-medium">
+              {previewLoading
+                ? "읽는 중…"
+                : (preview?.title ?? "미리보기 없음")}
+            </span>
+            <span className="text-muted-foreground block text-xs">
+              프리뷰는 확인용이에요. 못 읽어도 발급은 막지 않습니다.
+            </span>
+          </span>
+        </div>
 
         <FormField label="커스텀 슬러그 (선택)" htmlFor="slug">
           <Input
