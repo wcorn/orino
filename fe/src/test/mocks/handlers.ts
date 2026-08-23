@@ -100,7 +100,7 @@ export const handlers = [
   http.get(`${API_BASE}/shortlinks/summary`, () => {
     return HttpResponse.json({
       code: "OK",
-      data: { total: 0, visitsThisWeek: 0 },
+      data: { total: 0, visitsThisWeek: 0, baseUrl: "https://s.orino.dev" },
     });
   }),
 
@@ -117,6 +117,14 @@ export const handlers = [
 
   http.get(`${API_BASE}/shortlinks/tags`, () => {
     return HttpResponse.json({ code: "OK", data: [] });
+  }),
+
+  // 기본값: 프리뷰를 못 읽음. 실패가 기본이어야 "발급을 막지 않는다"가 늘 확인된다.
+  http.get(`${API_BASE}/shortlinks/og-preview`, () => {
+    return HttpResponse.json({
+      code: "OK",
+      data: { ok: false, title: null, imageUrl: null },
+    });
   }),
 
   // 기본값: 일정 없는 하루짜리 보드. 보드를 거쳐가는 테스트(생성 후 이동 등)가

@@ -5,6 +5,7 @@ import ds.project.orino.planner.shortlink.dto.CreatedLink;
 import ds.project.orino.planner.shortlink.dto.FavoriteResponse;
 import ds.project.orino.planner.shortlink.dto.LinkStatsResponse;
 import ds.project.orino.planner.shortlink.dto.ListStatusFilter;
+import ds.project.orino.planner.shortlink.dto.OgPreviewResponse;
 import ds.project.orino.planner.shortlink.dto.ShortlinkCreateRequest;
 import ds.project.orino.planner.shortlink.dto.ShortlinkDetail;
 import ds.project.orino.planner.shortlink.dto.ShortlinkListResponse;
@@ -13,6 +14,8 @@ import ds.project.orino.planner.shortlink.dto.ShortlinkUpdateRequest;
 import ds.project.orino.planner.shortlink.dto.SlugAvailableResponse;
 import ds.project.orino.planner.shortlink.dto.TagCount;
 import ds.project.orino.planner.shortlink.dto.ToggleResponse;
+import ds.project.orino.planner.shortlink.og.OgPreviewResult;
+import ds.project.orino.planner.shortlink.og.OgPreviewService;
 import ds.project.orino.planner.shortlink.service.ShortlinkService;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -40,9 +43,12 @@ import java.util.List;
 public class ShortlinkController {
 
     private final ShortlinkService shortlinkService;
+    private final OgPreviewService ogPreviewService;
 
-    public ShortlinkController(ShortlinkService shortlinkService) {
+    public ShortlinkController(ShortlinkService shortlinkService,
+                               OgPreviewService ogPreviewService) {
         this.shortlinkService = shortlinkService;
+        this.ogPreviewService = ogPreviewService;
     }
 
     /** {@code /select} 링크 카드의 메타 줄. */
@@ -70,6 +76,20 @@ public class ShortlinkController {
     @GetMapping("/tags")
     public ApiResponse<List<TagCount>> tags(@AuthenticationPrincipal Long memberId) {
         return ApiResponse.success(shortlinkService.tags(memberId));
+    }
+
+    /**
+     * 목적지 OG 조회. <b>발급 흐름을 막지 않는다</b> — 느리거나 죽어도
+     * {@code POST /api/shortlinks}는 정상 동작한다(명세 §4.4).
+     *
+     * <p>실패는 {@code {"ok": false}} 하나다. 이유를 나눠 주면 그게 곧 내부망 스캐너의 눈이다.
+     */
+    @GetMapping("/og-preview")
+    public ApiResponse<OgPreviewResponse> ogPreview(@RequestParam String url) {
+        OgPreviewResult result = ogPreviewService.preview(url);
+        return ApiResponse.success(result.isEmpty()
+                ? OgPreviewResponse.failed()
+                : new OgPreviewResponse(true, result.title(), result.imageUrl()));
     }
 
     /** 커스텀 슬러그 중복 검사. FE는 디바운스해서 부른다. */

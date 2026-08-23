@@ -140,7 +140,7 @@ describe("LinkListPage", () => {
       await screen.findByRole("button", { name: /새 링크/ }),
     );
     await userEvent.type(
-      await screen.findByLabelText("목적지 URL"),
+      await screen.findByLabelText(/목적지 URL/),
       "https://example.com",
     );
     await userEvent.type(screen.getByLabelText(/커스텀 슬러그/), "jeju");
@@ -149,6 +149,47 @@ describe("LinkListPage", () => {
     // 빠른 발급 바에도 같은 이름의 버튼이 있다 — 모달 안에서 찾는다.
     const modal = within(screen.getByRole("dialog"));
     expect(modal.getByRole("button", { name: "만들기" })).toBeDisabled();
+  });
+
+  it("프리뷰를 못 읽어도 발급은 막히지 않는다", async () => {
+    server.use(
+      http.get(`${API_BASE}/shortlinks/og-preview`, async () => {
+        // 느리게 답한다 — 프리뷰를 기다리느라 제출이 막히면 여기서 드러난다.
+        await delay(300);
+        return HttpResponse.json({
+          code: "OK",
+          data: { ok: false, title: null, imageUrl: null },
+        });
+      }),
+      http.post(`${API_BASE}/shortlinks`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            ...link({ slug: "9dwqr" }),
+            qrPayload: "https://s.orino.dev/9dwqr",
+          },
+        }),
+      ),
+    );
+
+    renderLinks();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /새 링크/ }),
+    );
+    const modal = within(screen.getByRole("dialog"));
+    await userEvent.type(
+      modal.getByLabelText(/목적지 URL/),
+      "https://example.com/photo.jpg",
+    );
+
+    // 프리뷰 자리는 비어 있어도 만들기는 눌린다.
+    expect(modal.getByText(/프리뷰는 확인용이에요/)).toBeInTheDocument();
+    expect(modal.getByRole("button", { name: "만들기" })).toBeEnabled();
+
+    await userEvent.click(modal.getByRole("button", { name: "만들기" }));
+    await waitFor(() => {
+      expect(screen.getByText("클립보드에 복사했어요")).toBeInTheDocument();
+    });
   });
 
   it("복사 버튼은 복사만 한다 — 행 이동을 일으키지 않는다", async () => {
