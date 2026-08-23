@@ -4,7 +4,11 @@ import ds.project.orino.domain.planner.shortlink.entity.Shortlink;
 import ds.project.orino.domain.planner.shortlink.entity.ShortlinkStatus;
 import ds.project.orino.domain.planner.shortlink.repository.ShortlinkRepository;
 import ds.project.orino.planner.shortlink.service.SlugPolicy;
+import ds.project.orino.planner.shortlink.visit.VisitContext;
+import ds.project.orino.planner.shortlink.visit.VisitRecorder;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -44,15 +48,20 @@ import java.util.Optional;
 @RequestMapping("/r")
 public class RedirectController {
 
+    private static final Logger log = LoggerFactory.getLogger(RedirectController.class);
+
     private final ShortlinkRepository shortlinkRepository;
     private final ShortlinkFailurePage failurePage;
+    private final VisitRecorder visitRecorder;
     private final Clock clock;
 
     public RedirectController(ShortlinkRepository shortlinkRepository,
                               ShortlinkFailurePage failurePage,
+                              VisitRecorder visitRecorder,
                               Clock clock) {
         this.shortlinkRepository = shortlinkRepository;
         this.failurePage = failurePage;
+        this.visitRecorder = visitRecorder;
         this.clock = clock;
     }
 
@@ -60,8 +69,32 @@ public class RedirectController {
     @Transactional(readOnly = true)
     public ResponseEntity<String> redirect(@PathVariable String slug, HttpServletRequest request) {
         return resolve(slug)
-                .map(link -> found(TargetUrlAssembler.assemble(link.getTargetUrl(), request.getQueryString())))
+                .map(link -> {
+                    recordVisit(link, request);
+                    return found(TargetUrlAssembler.assemble(
+                            link.getTargetUrl(), request.getQueryString()));
+                })
                 .orElseGet(this::notFound);
+    }
+
+    /**
+     * 방문을 비동기로 남긴다(명세 §6.5). <b>여는 데 실패한 링크는 세지 않는다</b> —
+     * 404로 끝난 요청은 방문이 아니다.
+     *
+     * <p>제출 자체가 실패할 수도 있다(스레드 풀 포화 등). 그것까지 여기서 삼킨다 —
+     * 통계를 잃는 것과 링크가 죽는 것은 비교 대상이 아니다.
+     */
+    private void recordVisit(Shortlink link, HttpServletRequest request) {
+        try {
+            // 요청 스코프 값은 지금 뽑는다. 비동기 스레드에서는 이 요청이 이미 끝나 있다.
+            VisitContext context = new VisitContext(
+                    request.getHeader(HttpHeaders.USER_AGENT),
+                    request.getHeader(HttpHeaders.REFERER),
+                    clock.instant());
+            visitRecorder.record(link.getId(), context);
+        } catch (RuntimeException e) {
+            log.warn("shortlink visit not submitted (slug={}): {}", link.getSlug(), e.getMessage());
+        }
     }
 
     /**
