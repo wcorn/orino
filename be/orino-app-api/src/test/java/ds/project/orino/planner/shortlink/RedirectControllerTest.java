@@ -185,8 +185,8 @@ class RedirectControllerTest extends ApiTestSupport {
         }
 
         @Test
-        @DisplayName("비밀번호가 걸린 링크는 확인 화면(#1244) 전까지 열어 주지 않는다")
-        void failsClosedForPasswordProtectedLink() throws Exception {
+        @DisplayName("비밀번호가 걸린 링크는 302가 아니라 확인 화면이다 — 404 단일의 예외")
+        void asksForPasswordInsteadOfRedirecting() throws Exception {
             mockMvc.perform(post("/api/shortlinks")
                     .header(HttpHeaders.AUTHORIZATION, authHeader)
                     .contentType(MediaType.APPLICATION_JSON)
@@ -194,7 +194,9 @@ class RedirectControllerTest extends ApiTestSupport {
                             {"targetUrl": "%s", "slug": "pwd", "password": "hunter2"}
                             """.formatted(TARGET)));
 
-            visit("/r/pwd").andExpect(status().isNotFound());
+            // #1237에서는 확인 화면이 없어 404로 닫아 뒀다. #1244가 그 자리를 열었다 —
+            // 이 링크에서만 "슬러그가 존재한다"가 드러난다(명세 §10 · D-10).
+            visit("/r/pwd").andExpect(status().isOk());
         }
     }
 
