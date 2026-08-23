@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+
+import { useDebouncedValue } from "@/shared/lib/useDebouncedValue";
 
 import { checkSlugAvailable } from "../api/shortlink";
 import { shortlinkKeys } from "../queryKeys";
@@ -15,7 +16,7 @@ const DEBOUNCE_MS = 300;
  * "쓸 수 없는 글자"를 나눠 보여 줄 수 있다.
  */
 export function useSlugAvailability(slug: string) {
-  const debounced = useDebounced(slug.trim(), DEBOUNCE_MS);
+  const debounced = useDebouncedValue(slug.trim(), DEBOUNCE_MS);
 
   const query = useQuery({
     queryKey: [...shortlinkKeys.all, "slug-available", debounced],
@@ -34,15 +35,4 @@ export function useSlugAvailability(slug: string) {
     /** 디바운스가 끝나 실제로 물어본 값. 화면이 미리보기에 쓴다. */
     checkedSlug: debounced,
   };
-}
-
-function useDebounced(value: string, delayMs: number): string {
-  const [debounced, setDebounced] = useState(value);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-
-  return debounced;
 }
