@@ -1,0 +1,75 @@
+{{- /*
+단축 URL 공개 표면(s.orino.dev). #1237 · Epic #1246.
+
+공개 주소는 s.orino.dev/{slug}이고 BE 내부 경로는 /r/{slug}다 — 여기서 재작성한다(D-3).
+BE 루트에 catch-all을 두면 스웨거·정적 리소스·오타 요청을 전부 삼키고 인증 예외를 루트로
+열어야 한다. 재작성하면 공개 표면이 permitAll("/r/**") 한 줄로 보인다.
+
+Gateway 호스트는 이미 *.orino.dev를 포함하므로 인증서·Gateway 변경이 없다.
+*/ -}}
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: shortlink
+  namespace: istio-ingress
+spec:
+  hosts:
+    - "s.orino.dev"
+  gateways:
+    - orino-gateway
+  http:
+    # 검색엔진에 공개 표면을 색인시키지 않는다. BE까지 보내지 않는다(아키텍처 §6).
+    - match:
+        - uri:
+            exact: /robots.txt
+      directResponse:
+        status: 200
+        body:
+          string: |
+            User-agent: *
+            Disallow: /
+      headers:
+        response:
+          set:
+            content-type: "text/plain; charset=utf-8"
+            cache-control: "no-store"
+
+    # 슬러그 문자셋(명세 §3)을 그대로 반영한다 — 32자 문자셋에서 l·o를 뺀 글자 + 2~9.
+    # 대문자도 통과시킨다: 대문자로 방문해도 같은 링크로 가야 하고(명세 §3), 소문자 정규화는
+    # BE가 한다. 여기서 대문자를 막으면 그 계약이 게이트웨이에서 먼저 깨진다.
+    # 길이 상한은 32다(커스텀 슬러그). 5자만 통과시키면 커스텀 슬러그가 전부 죽는다.
+    - match:
+        - uri:
+            regex: "^/[a-kmnp-zA-KMNP-Z2-9]{1,32}$"
+      rewrite:
+        uriRegexRewrite:
+          match: "^/(.*)$"
+          rewrite: "/r/\\1"
+      route:
+        - destination:
+            host: be.orino.svc.cluster.local
+            port:
+              number: 8080
+      # 리다이렉트는 DB 조회 한 번이다. api.orino.dev(10s)보다 짧게 잡아 공개 표면이
+      # 느린 요청으로 게이트웨이 커넥션을 오래 물지 않게 한다.
+      timeout: 5s
+      retries:
+        attempts: 2
+        retryOn: 5xx,reset,connect-failure
+        perTryTimeout: 2s
+
+    # 문자셋 밖 요청은 BE에 닿지 않는다. 스캐너 트래픽이 애플리케이션 스레드를 쓰지 않고,
+    # 응답은 BE의 실패 화면과 "같은 HTML"이어야 한다 — 화면이 갈리면 그 차이 자체가
+    # "이 슬러그는 형식이 맞다"는 정보다(D-7 · 명세 §7).
+    # 원본은 be/orino-app-api/src/main/resources/shortlink/404.html이고,
+    # ShortlinkFailurePageParityTest가 두 파일이 바이트 단위로 같은지 고정한다.
+    - directResponse:
+        status: 404
+        body:
+          string: {{ .Files.Get "files/shortlink-404.html" | quote }}
+      headers:
+        response:
+          set:
+            content-type: "text/html; charset=utf-8"
+            cache-control: "no-store"
+            referrer-policy: "no-referrer"

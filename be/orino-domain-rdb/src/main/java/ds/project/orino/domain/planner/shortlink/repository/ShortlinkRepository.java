@@ -19,6 +19,13 @@ public interface ShortlinkRepository extends JpaRepository<Shortlink, Long> {
     /** 관리 API 조회. 삭제된 링크는 없는 것과 같이 다룬다(목록에서 사라지고 상세는 404). */
     Optional<Shortlink> findBySlugAndMemberIdAndDeletedAtIsNull(String slug, Long memberId);
 
+    /**
+     * 공개 리다이렉트 조회. <b>멤버 스코프도 상태 조건도 걸지 않는다</b> — 방문자는 로그인하지
+     * 않고, 꺼짐·만료·삭제의 판정은 조회한 뒤 한곳에서 한다. 조건을 쿼리에 흩어 놓으면
+     * "넷이 같은 404"라는 계약(명세 §7)이 쿼리와 컨트롤러 양쪽에 걸쳐 버린다.
+     */
+    Optional<Shortlink> findBySlug(String slug);
+
     long countByMemberIdAndDeletedAtIsNull(Long memberId);
 
     /**

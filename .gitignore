@@ -58,3 +58,6 @@ dashboards/
 
 # Playwright MCP가 남기는 스냅샷·콘솔 로그(수동 확인용 산출물)
 .playwright-mcp/
+
+# helm dependency build가 내려받는 upstream chart. CI도 직접 빌드하므로 커밋하지 않는다.
+infra/helm/*/charts/
