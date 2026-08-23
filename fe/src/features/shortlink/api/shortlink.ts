@@ -141,3 +141,74 @@ export async function checkSlugAvailable(slug: string): Promise<boolean> {
   );
   return data.data.available;
 }
+
+/** 목적지 교체 이력 한 줄. 첫 줄이 현재 목적지, 마지막 줄이 최초 발급이다. */
+export interface TargetHistoryEntry {
+  targetUrl: string;
+  reason: string | null;
+  changedAt: string;
+}
+
+/** 상세 = 목록 카드 + 발급 시각 · 만료 · OG · 목적지 교체 이력. */
+export interface LinkDetail extends LinkSummary {
+  createdAt: string;
+  expiresAt: string | null;
+  /** OG 프리뷰(#1243). 지금은 항상 null이다. */
+  og: { title: string | null; imageUrl: string | null } | null;
+  targetHistory: TargetHistoryEntry[];
+}
+
+export interface LinkStats {
+  /** 사람 방문만. 집계 테이블에서 오므로 90일이 지나도 남는다. */
+  totalVisits: number;
+  /** 봇·프리뷰. 따로 센다 — 합치면 실제의 몇 배가 된다. */
+  botVisits: number;
+  last7Days: number;
+  /** 원시에서 나온다. 90일 넘게 방문이 없으면 null이 된다. */
+  lastVisitedAt: string | null;
+  daily: { date: string; count: number }[];
+  referrers: { domain: string; count: number }[];
+  devices: { device: string; ratio: number }[];
+  /** 판정 수단(#1241) 전까지는 빈 배열이다. */
+  countries: { country: string; ratio: number }[];
+}
+
+export interface UpdateLinkRequest {
+  targetUrl?: string;
+  /** 목적지가 실제로 바뀔 때만 이력에 실린다. */
+  targetChangeReason?: string;
+  memo?: string;
+  tags?: string[];
+  /** null을 명시하면 해제된다(생략은 "변경 없음"이다). */
+  expiresAt?: string | null;
+  password?: string | null;
+}
+
+export async function fetchLink(slug: string): Promise<LinkDetail> {
+  const { data } = await client.get<ApiEnvelope<LinkDetail>>(
+    `/shortlinks/${slug}`,
+  );
+  return data.data;
+}
+
+export async function fetchLinkStats(
+  slug: string,
+  range = "30d",
+): Promise<LinkStats> {
+  const { data } = await client.get<ApiEnvelope<LinkStats>>(
+    `/shortlinks/${slug}/stats`,
+    { params: { range } },
+  );
+  return data.data;
+}
+
+export async function updateLink(
+  slug: string,
+  body: UpdateLinkRequest,
+): Promise<LinkDetail> {
+  const { data } = await client.patch<ApiEnvelope<LinkDetail>>(
+    `/shortlinks/${slug}`,
+    body,
+  );
+  return data.data;
+}
