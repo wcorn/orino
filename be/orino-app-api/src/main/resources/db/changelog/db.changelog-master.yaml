@@ -109,3 +109,5 @@ databaseChangeLog:
       file: db/changelog/changes/054-create-travel-move.yaml
   - include:
       file: db/changelog/changes/055-create-shortlink-tables.yaml
+  - include:
+      file: db/changelog/changes/056-create-shortlink-visit-tables.yaml

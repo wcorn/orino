@@ -13,6 +13,7 @@ import ds.project.orino.planner.shortlink.config.ShortlinkProperties;
 import ds.project.orino.planner.shortlink.dto.CreatedLink;
 import ds.project.orino.planner.shortlink.dto.FavoriteResponse;
 import ds.project.orino.planner.shortlink.dto.LinkState;
+import ds.project.orino.planner.shortlink.dto.LinkStatsResponse;
 import ds.project.orino.planner.shortlink.dto.LinkSummary;
 import ds.project.orino.planner.shortlink.dto.ListStatusFilter;
 import ds.project.orino.planner.shortlink.dto.OgPreview;
@@ -25,6 +26,7 @@ import ds.project.orino.planner.shortlink.dto.SlugAvailableResponse;
 import ds.project.orino.planner.shortlink.dto.TagCount;
 import ds.project.orino.planner.shortlink.dto.TargetHistoryEntry;
 import ds.project.orino.planner.shortlink.dto.ToggleResponse;
+import ds.project.orino.planner.shortlink.stats.VisitStatsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,6 +59,10 @@ import java.util.stream.Collectors;
 public class ShortlinkService {
 
     private static final int MAX_TAG_LENGTH = 50;
+    /** 화면 기본 범위(화면 설계 §5의 「최근 30일 일별 막대」). */
+    private static final int DEFAULT_RANGE_DAYS = 30;
+    /** 1년. 그보다 긴 범위를 물어봐도 원시는 90일이라 유입 경로는 어차피 비어 있다. */
+    private static final int MAX_RANGE_DAYS = 365;
 
     private final ShortlinkRepository shortlinkRepository;
     private final ShortlinkTagRepository tagRepository;
@@ -64,6 +70,7 @@ public class ShortlinkService {
     private final SlugGenerator slugGenerator;
     private final TargetUrlValidator targetUrlValidator;
     private final ShortlinkProperties properties;
+    private final VisitStatsService visitStatsService;
     private final BCryptPasswordEncoder passwordEncoder;
     private final Clock clock;
 
@@ -73,6 +80,7 @@ public class ShortlinkService {
                             SlugGenerator slugGenerator,
                             TargetUrlValidator targetUrlValidator,
                             ShortlinkProperties properties,
+                            VisitStatsService visitStatsService,
                             BCryptPasswordEncoder passwordEncoder,
                             Clock clock) {
         this.shortlinkRepository = shortlinkRepository;
@@ -81,14 +89,16 @@ public class ShortlinkService {
         this.slugGenerator = slugGenerator;
         this.targetUrlValidator = targetUrlValidator;
         this.properties = properties;
+        this.visitStatsService = visitStatsService;
         this.passwordEncoder = passwordEncoder;
         this.clock = clock;
     }
 
-    /** {@code /select} 카드 메타. 이번 주 방문은 통계(#1240)가 붙기 전까지 0이다. */
+    /** {@code /select} 카드 메타. */
     public ShortlinkSummaryResponse summary(Long memberId) {
         return new ShortlinkSummaryResponse(
-                shortlinkRepository.countByMemberIdAndDeletedAtIsNull(memberId), 0L,
+                shortlinkRepository.countByMemberIdAndDeletedAtIsNull(memberId),
+                visitStatsService.visitsThisWeek(memberId),
                 properties.baseUrl());
     }
 
@@ -100,6 +110,10 @@ public class ShortlinkService {
         Instant now = clock.instant();
         List<Shortlink> links = shortlinkRepository.search(memberId, likePattern(query), blankToNull(tag));
         Map<Long, List<String>> tagsByLink = loadTags(links);
+        // 방문 수는 링크마다 세지 않고 한 번에 받아 온다 — 목록에서 N+1이 나는 자리다.
+        List<Long> ids = links.stream().map(Shortlink::getId).toList();
+        Map<Long, Long> visitTotals = visitStatsService.visitTotals(ids);
+        Map<Long, Instant> lastVisits = visitStatsService.lastVisits(ids);
 
         long active = links.stream().filter(link -> stateOf(link, now) == LinkState.ACTIVE).count();
         ShortlinkListResponse.Counts counts =
@@ -112,12 +126,12 @@ public class ShortlinkService {
 
         List<LinkSummary> favorites = visible.stream()
                 .filter(Shortlink::isFavorite)
-                .map(link -> toSummary(link, tagsByLink, now))
+                .map(link -> toSummary(link, tagsByLink, visitTotals, lastVisits, now))
                 .toList();
         // 즐겨찾기는 위 섹션에만 둔다 — 같은 카드가 두 번 나오면 목록 개수와 보이는 행이 어긋난다.
         List<LinkSummary> recent = visible.stream()
                 .filter(link -> !link.isFavorite())
-                .map(link -> toSummary(link, tagsByLink, now))
+                .map(link -> toSummary(link, tagsByLink, visitTotals, lastVisits, now))
                 .toList();
 
         return new ShortlinkListResponse(counts, favorites, recent);
@@ -145,12 +159,24 @@ public class ShortlinkService {
         Instant now = clock.instant();
         historyRepository.save(ShortlinkTargetHistory.initial(link.getId(), targetUrl, now));
 
-        return CreatedLink.of(toSummary(link, tags, now));
+        // 방금 만든 링크는 방문이 없다. 세러 가지 않는다.
+        return CreatedLink.of(toSummary(link, tags, 0L, null, now));
     }
 
     public ShortlinkDetail detail(Long memberId, String slug) {
         Shortlink link = getOwned(memberId, slug);
         return toDetail(link);
+    }
+
+    /**
+     * 방문 통계. 남의 링크·삭제된 링크는 여기서도 404다 — 통계가 존재를 알려주는 창구가
+     * 되면 안 된다.
+     *
+     * @param range {@code 7d}·{@code 30d} 형식. 형식이 아니거나 범위를 벗어나면 30일로 본다
+     */
+    public LinkStatsResponse stats(Long memberId, String slug, String range) {
+        Shortlink link = getOwned(memberId, slug);
+        return visitStatsService.stats(link.getId(), parseRangeDays(range));
     }
 
     /**
@@ -223,6 +249,22 @@ public class ShortlinkService {
     public SlugAvailableResponse slugAvailable(String slug) {
         return new SlugAvailableResponse(
                 !shortlinkRepository.existsBySlug(SlugPolicy.normalizeCustom(slug)));
+    }
+
+    /**
+     * {@code 30d} → 30. <b>잘못된 값에 에러를 내지 않는다</b> — 통계는 참고치이고, 범위 하나
+     * 때문에 화면이 비는 것보다 기본값으로 보여 주는 편이 낫다.
+     */
+    private int parseRangeDays(String range) {
+        if (range == null || !range.endsWith("d")) {
+            return DEFAULT_RANGE_DAYS;
+        }
+        try {
+            int days = Integer.parseInt(range.substring(0, range.length() - 1));
+            return days < 1 || days > MAX_RANGE_DAYS ? DEFAULT_RANGE_DAYS : days;
+        } catch (NumberFormatException e) {
+            return DEFAULT_RANGE_DAYS;
+        }
     }
 
     private String requireAvailable(String slug) {
@@ -329,15 +371,21 @@ public class ShortlinkService {
                 ? null
                 : new OgPreview(link.getOgTitle(), link.getOgImageUrl());
 
-        return ShortlinkDetail.of(toSummary(link, tags, clock.instant()),
+        return ShortlinkDetail.of(
+                toSummary(link, tags, visitStatsService.visitTotal(link.getId()),
+                        visitStatsService.lastVisit(link.getId()), clock.instant()),
                 link.getCreatedAt(), link.getExpiresAt(), og, history);
     }
 
-    private LinkSummary toSummary(Shortlink link, Map<Long, List<String>> tagsByLink, Instant now) {
-        return toSummary(link, tagsByLink.getOrDefault(link.getId(), List.of()), now);
+    private LinkSummary toSummary(Shortlink link, Map<Long, List<String>> tagsByLink,
+                                  Map<Long, Long> visitTotals, Map<Long, Instant> lastVisits,
+                                  Instant now) {
+        return toSummary(link, tagsByLink.getOrDefault(link.getId(), List.of()),
+                visitTotals.getOrDefault(link.getId(), 0L), lastVisits.get(link.getId()), now);
     }
 
-    private LinkSummary toSummary(Shortlink link, List<String> tags, Instant now) {
+    private LinkSummary toSummary(Shortlink link, List<String> tags,
+                                  long visitCount, Instant lastVisitedAt, Instant now) {
         return new LinkSummary(
                 link.getSlug(),
                 properties.shortUrl(link.getSlug()),
@@ -348,9 +396,8 @@ public class ShortlinkService {
                 link.isFavorite(),
                 stateOf(link, now),
                 link.hasPassword(),
-                // 방문 수·마지막 방문은 통계(#1240)가 채운다. 필드를 미리 내려 FE 계약을 고정한다.
-                0L,
-                null);
+                visitCount,
+                lastVisitedAt);
     }
 
     /**

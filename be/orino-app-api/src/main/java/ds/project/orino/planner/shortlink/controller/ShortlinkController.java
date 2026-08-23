@@ -3,6 +3,7 @@ package ds.project.orino.planner.shortlink.controller;
 import ds.project.orino.common.response.ApiResponse;
 import ds.project.orino.planner.shortlink.dto.CreatedLink;
 import ds.project.orino.planner.shortlink.dto.FavoriteResponse;
+import ds.project.orino.planner.shortlink.dto.LinkStatsResponse;
 import ds.project.orino.planner.shortlink.dto.ListStatusFilter;
 import ds.project.orino.planner.shortlink.dto.ShortlinkCreateRequest;
 import ds.project.orino.planner.shortlink.dto.ShortlinkDetail;
@@ -81,6 +82,20 @@ public class ShortlinkController {
     public ApiResponse<ShortlinkDetail> detail(@AuthenticationPrincipal Long memberId,
                                                @PathVariable String slug) {
         return ApiResponse.success(shortlinkService.detail(memberId, slug));
+    }
+
+    /**
+     * 방문 통계. {@code range}는 {@code 7d}·{@code 30d}처럼 준다(기본 30일).
+     *
+     * <p>범위는 <b>유입 경로·기기·국가에만</b> 걸린다 — 총 방문과 일별 추이는 집계 테이블에서
+     * 나오므로 범위 제한이 없다(명세 §8.3).
+     */
+    @GetMapping("/{slug}/stats")
+    public ApiResponse<LinkStatsResponse> stats(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable String slug,
+            @RequestParam(required = false, defaultValue = "30d") String range) {
+        return ApiResponse.success(shortlinkService.stats(memberId, slug, range));
     }
 
     /** 목적지·메모·태그·만료·비밀번호를 바꾼다. <b>슬러그는 받지 않는다</b>(명세 §5.2). */

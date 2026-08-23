@@ -7,6 +7,8 @@ import org.springframework.stereotype.Component;
 public class DbCleaner {
 
     private static final String[] TABLES_IN_FK_ORDER = {
+            "shortlink_visit_daily",
+            "shortlink_visit",
             "shortlink_target_history",
             "shortlink_tag",
             "shortlink",

@@ -1,0 +1,140 @@
+databaseChangeLog:
+  # 단축 URL 방문 통계 (#1240, Epic #1246).
+  #
+  # 원시(90일)와 집계(영구)를 방문 시점에 함께 쓴다 — 야간 집계 배치를 만들지 않는다(D-12).
+  # 원시가 지워져도 일별 막대 그래프는 영구히 남고, 주기 작업은 90일 정리 하나뿐이다.
+  #
+  # IP 컬럼이 없다. 없는 것이 설계다(명세 §8.1) — 국가는 판정 결과 2자만 남기고,
+  # User-Agent 원문과 전체 리퍼러 URL도 저장하지 않는다.
+
+  - changeSet:
+      id: 056-create-shortlink-visit
+      author: wcorn
+      comment: 방문 원시 기록. 90일 후 삭제한다. IP·UA 원문·전체 리퍼러를 담지 않는다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: shortlink_visit
+      changes:
+        - createTable:
+            tableName: shortlink_visit
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: shortlink_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_shortlink_visit_shortlink
+                    references: shortlink(id)
+                    deleteCascade: true
+              - column:
+                  name: visited_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              # 도메인까지만. 저장 시점에 잘라 넣는다 — 원시 테이블에도 전체 URL이 들어가지 않는다.
+              - column:
+                  name: referrer_domain
+                  type: VARCHAR(255)
+              # MOBILE · DESKTOP · TABLET · UNKNOWN. @Enumerated(STRING).
+              - column:
+                  name: device
+                  type: VARCHAR(20)
+              # ISO 3166-1 alpha-2. 판정 수단(GeoLite2)은 #1241에서 붙는다 — 그때까지 NULL이다.
+              - column:
+                  name: country
+                  type: CHAR(2)
+              - column:
+                  name: is_bot
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: shortlink_visit
+            indexName: idx_visit_link_time
+            columns:
+              - column:
+                  name: shortlink_id
+              - column:
+                  name: visited_at
+                  descending: true
+        # 90일 정리 배치가 쓴다.
+        - createIndex:
+            tableName: shortlink_visit
+            indexName: idx_visit_time
+            columns:
+              - column:
+                  name: visited_at
+      # 자동 롤백은 FK가 물고 있는 인덱스를 먼저 지우려 든다(055와 같은 이유).
+      rollback:
+        - dropTable:
+            tableName: shortlink_visit
+
+  - changeSet:
+      id: 056-create-shortlink-visit-daily
+      author: wcorn
+      comment: 일별 집계. 영구 보존이라 원시를 지워도 막대 그래프는 남는다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: shortlink_visit_daily
+      changes:
+        - createTable:
+            tableName: shortlink_visit_daily
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: shortlink_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_shortlink_visit_daily_shortlink
+                    references: shortlink(id)
+                    deleteCascade: true
+              # KST 날짜다. 화면의 "오늘"과 어긋나면 안 된다(발급자는 1인이고 KST에 산다).
+              - column:
+                  name: visit_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: visit_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: bot_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        # UPSERT 키. 방문 시점에 INSERT ... ON DUPLICATE KEY UPDATE로 누적한다.
+        - createIndex:
+            tableName: shortlink_visit_daily
+            indexName: uk_visit_daily
+            unique: true
+            columns:
+              - column:
+                  name: shortlink_id
+              - column:
+                  name: visit_date
+      rollback:
+        - dropTable:
+            tableName: shortlink_visit_daily
