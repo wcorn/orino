@@ -88,7 +88,8 @@ public class ShortlinkService {
     /** {@code /select} 카드 메타. 이번 주 방문은 통계(#1240)가 붙기 전까지 0이다. */
     public ShortlinkSummaryResponse summary(Long memberId) {
         return new ShortlinkSummaryResponse(
-                shortlinkRepository.countByMemberIdAndDeletedAtIsNull(memberId), 0L);
+                shortlinkRepository.countByMemberIdAndDeletedAtIsNull(memberId), 0L,
+                properties.baseUrl());
     }
 
     /**
