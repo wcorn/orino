@@ -46,6 +46,8 @@ export function NewLinkModal({
   const [memo, setMemo] = useState("");
   const [tags, setTags] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [passwordOn, setPasswordOn] = useState(false);
+  const [password, setPassword] = useState("");
   const { taken, invalid, checkedSlug } = useSlugAvailability(slug);
   const { preview, loading: previewLoading } = useOgPreview(targetUrl);
 
@@ -55,6 +57,8 @@ export function NewLinkModal({
     setMemo("");
     setTags("");
     setExpiresAt("");
+    setPasswordOn(false);
+    setPassword("");
   };
 
   const close = (next: boolean) => {
@@ -69,6 +73,10 @@ export function NewLinkModal({
     if (!targetUrl.trim() || taken || invalid) {
       return;
     }
+    // 스위치만 켜고 비우면 보호가 걸리지 않는다. 조용히 넘어가지 않고 여기서 멈춘다.
+    if (passwordOn && !password.trim()) {
+      return;
+    }
     onCreate({
       targetUrl: targetUrl.trim(),
       slug: slug.trim() || undefined,
@@ -76,6 +84,7 @@ export function NewLinkModal({
       tags: splitTags(tags),
       // 날짜만 받아 그날 끝으로 잡는다 — "12월 31일까지"는 그날 자정까지라는 뜻이다.
       expiresAt: expiresAt ? `${expiresAt}T23:59:59+09:00` : undefined,
+      password: passwordOn && password ? password : undefined,
     });
   };
 
@@ -231,27 +240,48 @@ export function NewLinkModal({
         </FormField>
 
         {/*
-          비밀번호는 켜는 순간 방문자가 확인 화면을 거쳐야 하는데, 그 화면이 아직 없다(#1244).
-          지금 켤 수 있게 두면 사용자가 자기 링크를 조용히 못 열게 만든다 — 그래서 자리는
-          두되 잠가 둔다.
+          기본 꺼짐이다(명세 §10). 켠 링크만 확인 화면을 거치고, 그 링크에서만
+          "이 슬러그는 존재한다"가 드러난다 — 전체 표면의 성질이 바뀌지는 않는다.
         */}
-        <div className="bg-muted flex items-center justify-between gap-3 rounded-lg px-3 py-2.5">
-          <span className="text-muted-foreground flex items-center gap-2 text-[13px]">
-            <Lock className="size-3.5" />
-            비밀번호 보호 — 켜면 확인 화면을 한 번 거칩니다
-          </span>
-          <Switch checked={false} disabled onCheckedChange={() => {}} />
+        <div className="bg-muted flex flex-col gap-2 rounded-lg px-3 py-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground flex items-center gap-2 text-[13px]">
+              <Lock className="size-3.5" />
+              비밀번호 보호 — 켜면 확인 화면을 한 번 거칩니다
+            </span>
+            <Switch
+              aria-label="비밀번호 보호"
+              checked={passwordOn}
+              onCheckedChange={(next) => {
+                setPasswordOn(next);
+                if (!next) {
+                  setPassword("");
+                }
+              }}
+            />
+          </div>
+          {passwordOn && (
+            <Input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              aria-label="비밀번호"
+              placeholder="방문자가 입력할 비밀번호"
+              autoComplete="new-password"
+            />
+          )}
         </div>
-        <p className="text-muted-foreground -mt-2 text-xs">
-          확인 화면이 붙기 전까지는 켤 수 없어요.
-        </p>
 
         <Modal.Footer
           submitLabel="만들기"
           pending={pending}
           pendingLabel="만드는 중..."
           submitDisabled={
-            pending || targetUrl.trim() === "" || taken || invalid
+            pending ||
+            targetUrl.trim() === "" ||
+            taken ||
+            invalid ||
+            (passwordOn && password.trim() === "")
           }
         />
       </form>

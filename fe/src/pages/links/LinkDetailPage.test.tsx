@@ -214,6 +214,59 @@ describe("LinkDetailPage", () => {
     expect(within(items[1]).getByText(AUG).className).toContain("line-through");
   });
 
+  it("비밀번호는 스위치로 걸고 끄는 즉시 해제된다 — 해제에는 확인을 더 묻지 않는다", async () => {
+    let cleared: unknown = undefined;
+    server.use(
+      http.patch(`${API_BASE}/shortlinks/jeju`, async ({ request }) => {
+        cleared = await request.json();
+        return HttpResponse.json({
+          code: "OK",
+          data: detail({ hasPassword: false }),
+        });
+      }),
+    );
+    mockDetail(detail({ hasPassword: true }));
+
+    renderDetail();
+    const toggle = await screen.findByRole("switch", { name: /비밀번호 보호/ });
+    expect(toggle).toBeChecked();
+
+    await userEvent.click(toggle);
+
+    // 생략이 아니라 null을 명시해야 서버가 해제로 읽는다.
+    await waitFor(() => {
+      expect(cleared).toEqual({ password: null });
+    });
+  });
+
+  it("비밀번호를 걸 때는 값을 한 번 받는다 — 빈 값으로는 걸리지 않는다", async () => {
+    let sent: unknown = undefined;
+    server.use(
+      http.patch(`${API_BASE}/shortlinks/jeju`, async ({ request }) => {
+        sent = await request.json();
+        return HttpResponse.json({
+          code: "OK",
+          data: detail({ hasPassword: true }),
+        });
+      }),
+    );
+
+    renderDetail();
+    await userEvent.click(
+      await screen.findByRole("switch", { name: /비밀번호 보호/ }),
+    );
+
+    const modal = within(await screen.findByRole("dialog"));
+    expect(modal.getByRole("button", { name: "걸기" })).toBeDisabled();
+
+    await userEvent.type(modal.getByLabelText("비밀번호"), "hunter2");
+    await userEvent.click(modal.getByRole("button", { name: "걸기" }));
+
+    await waitFor(() => {
+      expect(sent).toEqual({ password: "hunter2" });
+    });
+  });
+
   it("통계를 못 받아도 주소·목적지·이력은 뜬다", async () => {
     server.use(
       http.get(`${API_BASE}/shortlinks/jeju/stats`, () =>

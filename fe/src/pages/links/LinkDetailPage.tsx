@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingText } from "@/components/ui/loading-text";
 import type { LinkState } from "@/features/shortlink/api/shortlink";
+import { PasswordCard } from "@/features/shortlink/components/PasswordCard";
 import { QrPanel } from "@/features/shortlink/components/QrPanel";
 import { ShortUrlText } from "@/features/shortlink/components/ShortUrlText";
 import { StatsPanel } from "@/features/shortlink/components/StatsPanel";
@@ -120,6 +121,14 @@ export function LinkDetailPage() {
           </div>
 
           {link.memo && <p className="text-[13px]">{link.memo}</p>}
+
+          <PasswordCard
+            hasPassword={link.hasPassword}
+            pending={update.isPending}
+            onSet={(password) => update.mutate({ password })}
+            // null을 명시해야 해제된다 — 생략은 "변경 없음"이다(API 설계 §2).
+            onClear={() => update.mutate({ password: null })}
+          />
         </div>
 
         {/* 꺼진 링크의 QR은 내보내지 않는다 — 목록 행과 같은 규칙이다. */}
