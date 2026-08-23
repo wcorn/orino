@@ -42,6 +42,10 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/**",
                                 "/api/integrations/google/oauth/callback",
+                                // 단축 URL 공개 리다이렉트(s.orino.dev/{slug} → /r/{slug}).
+                                // orino의 유일한 비인증 기능 표면이고, 그 크기가 이 한 줄이다.
+                                // 관리 API(/api/shortlinks/**)는 여전히 토큰 뒤에 있다.
+                                "/r/**",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**"
                         ).permitAll()
