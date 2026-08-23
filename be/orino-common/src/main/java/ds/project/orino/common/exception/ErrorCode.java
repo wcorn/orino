@@ -75,7 +75,19 @@ public enum ErrorCode {
      */
     TRAVEL_EXTERNAL_REJECTED("TRAVEL-ERR-021",
             "지금은 장소 정보를 새로 가져올 수 없어요. 이미 담아 둔 장소는 그대로 쓸 수 있어요.",
-            503);
+            503),
+
+    // SHORTLINK (단축 URL)
+    // 이 코드들은 전부 관리 API 전용이다. 공개 리다이렉트(/r/**)는 envelope를 쓰지 않고
+    // HTML 404 한 장으로만 답한다 — 에러 코드를 내보내는 순간 그것 자체가 정보다(명세 §7).
+    SHORTLINK_INVALID_TARGET("SL-ERR-001", "지원하지 않는 주소 형식입니다.", 400),
+    SHORTLINK_SELF_REFERENCE("SL-ERR-002", "목적지가 단축 주소일 수 없습니다.", 400),
+    // 삭제한 링크의 슬러그에도 이 코드가 난다. 그게 영구 점유다(명세 §3.1) —
+    // 삭제된 것인지 살아 있는 것인지 구분해 알려주지 않는다.
+    SHORTLINK_SLUG_TAKEN("SL-ERR-003", "이미 사용 중인 주소입니다.", 409),
+    SHORTLINK_INVALID_SLUG("SL-ERR-004", "사용할 수 없는 문자가 있습니다.", 400),
+    SHORTLINK_SLUG_EXHAUSTED("SL-ERR-005", "주소를 만들지 못했습니다. 다시 시도해 주세요.", 500),
+    SHORTLINK_NOT_FOUND("SL-ERR-006", "존재하지 않는 링크입니다.", 404);
 
     private final String code;
     private final String message;
