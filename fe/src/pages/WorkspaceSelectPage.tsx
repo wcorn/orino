@@ -1,4 +1,11 @@
-import { CheckSquare, LayoutGrid, MapPin, Plane } from "lucide-react";
+import {
+  ChartColumn,
+  CheckSquare,
+  LayoutGrid,
+  Link2,
+  MapPin,
+  Plane,
+} from "lucide-react";
 import type { ComponentType } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -7,6 +14,7 @@ import { Toaster } from "@/components/Toaster";
 import { Badge } from "@/components/ui/badge";
 import { usePlannerCalendar } from "@/features/planner/hooks/usePlannerCalendar";
 import { useReviewSummary } from "@/features/review/hooks/useReviewSummary";
+import { useShortlinkSummary } from "@/features/shortlink/hooks/useShortlinkSummary";
 import type { TravelSummary } from "@/features/travel/api/travel";
 import { useTravelSummary } from "@/features/travel/hooks/useTravelSummary";
 import { formatCities, formatTodayCity } from "@/features/travel/lib/cityPath";
@@ -79,6 +87,7 @@ export function WorkspaceSelectPage() {
   // 오늘 하루치 피드에서 루틴 인스턴스만 센다. Google 미연동이면 조회가 실패하고,
   // 그때는 메타 줄을 그리지 않는다(더미 텍스트 대신 빈 자리).
   const { data: feed } = usePlannerCalendar(today(), today());
+  const { data: shortlink } = useShortlinkSummary();
 
   const reviewCount = review?.counts.now ?? 0;
   const routineCount =
@@ -86,6 +95,11 @@ export function WorkspaceSelectPage() {
   const { badge, badgeVariant, meta, to } = travelCardContent(travel);
 
   const dailyMeta = routineCount > 0 ? `오늘 루틴 ${routineCount}개` : null;
+  // 요약을 못 받았으면(실패·미수신) 메타 줄을 그리지 않는다. 링크가 0개인 것과
+  // 아직 모르는 것은 다르고, `링크 0개`는 그 차이를 지워 버린다.
+  const linkMeta = shortlink
+    ? `링크 ${shortlink.total}개 · 이번 주 방문 ${shortlink.visitsThisWeek}`
+    : null;
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -120,6 +134,22 @@ export function WorkspaceSelectPage() {
               metaIcon={CheckSquare}
               meta={dailyMeta}
               onClick={() => navigate("/home")}
+            />
+            {/*
+              링크는 일상의 하위 메뉴가 아니라 세 번째 워크스페이스다(명세 §9 · D-1).
+              데이터도 흐름도 일상과 공유하지 않고, 진입 빈도는 높지만 체류가 짧다(발급 3초)
+              — 하위 메뉴로 넣으면 그 3초를 위해 두 번 들어가야 한다.
+            */}
+            <WorkspaceCard
+              title="링크"
+              description="짧은 주소 발급, QR, 방문 통계"
+              icon={Link2}
+              // 브랜드 톤(bg-accent)은 여행 전용이다. 링크는 일상과 같은 중립 톤.
+              iconClassName="bg-muted"
+              badge={null}
+              metaIcon={ChartColumn}
+              meta={linkMeta}
+              onClick={() => navigate("/links")}
             />
           </div>
         </div>
@@ -157,7 +187,9 @@ function WorkspaceCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "bg-card ring-foreground/10 flex flex-1 basis-[260px] flex-col gap-3.5 rounded-xl p-5 text-left ring-1",
+        // basis는 200px다 — 카드 3장 + gap 32 = 632px로 max-w-[680px] 안에 한 줄로 선다.
+        // (260px이면 3장이 680을 넘겨 둘·하나로 접힌다. 그 아래 폭에서는 원래대로 wrap.)
+        "bg-card ring-foreground/10 flex flex-1 basis-[200px] flex-col gap-3.5 rounded-xl p-5 text-left ring-1",
         "hover:ring-primary transition-all duration-150 hover:-translate-y-px",
       )}
     >

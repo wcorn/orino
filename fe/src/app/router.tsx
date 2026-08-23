@@ -17,6 +17,8 @@ import {
   importLifelog,
   importLifelogFlowDetail,
   importLifelogFlows,
+  importLinkDetail,
+  importLinkList,
   importMaterialDetail,
   importMaterialList,
   importNotes,
@@ -61,6 +63,8 @@ const TripMapPage = lazy(importTripMap);
 const TravelSettingsPage = lazy(importTravelSettings);
 const TravelToolsPage = lazy(importTravelTools);
 const ActivityDetailPage = lazy(importActivityDetail);
+const LinkListPage = lazy(importLinkList);
+const LinkDetailPage = lazy(importLinkDetail);
 
 function RouteFallback() {
   return (
@@ -199,6 +203,24 @@ export function AppRouter() {
             element={
               <Suspense fallback={<RouteFallback />}>
                 <LifelogFlowDetailPage />
+              </Suspense>
+            }
+          />
+          {/* 링크 워크스페이스. 경로 키는 id가 아니라 slug다 — 슬러그는 불변이고 사용자가
+              실제로 보고 부르는 식별자다(결정 기록 D-5). 화면은 #1239·#1242에서 채운다. */}
+          <Route
+            path="/links"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <LinkListPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/links/:slug"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <LinkDetailPage />
               </Suspense>
             }
           />
