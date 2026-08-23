@@ -465,7 +465,9 @@ class ShortlinkControllerTest extends ApiTestSupport {
                             .header(HttpHeaders.AUTHORIZATION, authHeader))
                     .andExpect(jsonPath("$.data.total").value(1))
                     // 통계(#1240) 전까지 0. 필드는 미리 내려 FE 계약을 고정한다.
-                    .andExpect(jsonPath("$.data.visitsThisWeek").value(0));
+                    .andExpect(jsonPath("$.data.visitsThisWeek").value(0))
+                    // 발급 모달이 만들기 전에 「17자」를 보여 주려면 도메인을 알아야 한다.
+                    .andExpect(jsonPath("$.data.baseUrl").value("https://s.orino.dev"));
         }
     }
 
