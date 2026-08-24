@@ -13,6 +13,11 @@ import { ShortUrlText } from "./ShortUrlText";
 
 interface LinkRowProps {
   link: LinkSummary;
+  /**
+   * 좁은 화면. 방문 수 칸과 QR을 접어 <b>주소 · 목적지 두 줄</b>로 줄인다(화면 설계 §6).
+   * QR은 상세 화면에 그대로 있다.
+   */
+  compact?: boolean;
   onShowQr: (link: LinkSummary) => void;
   onToggle: (link: LinkSummary) => void;
   onFavorite: (link: LinkSummary) => void;
@@ -32,6 +37,7 @@ const STATE_BADGE: Record<string, string> = {
  */
 export function LinkRow({
   link,
+  compact = false,
   onShowQr,
   onToggle,
   onFavorite,
@@ -102,7 +108,8 @@ export function LinkRow({
         <p className="text-muted-foreground truncate text-[13px]">
           {link.targetUrl}
         </p>
-        {(link.memo || link.tags.length > 0) && (
+        {/* 좁은 화면에서는 메모·태그 줄을 접는다 — 두 줄 안에 주소와 목적지가 들어와야 한다. */}
+        {!compact && (link.memo || link.tags.length > 0) && (
           <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
             {link.memo}
             {link.tags.map((tag) => (
@@ -114,22 +121,24 @@ export function LinkRow({
         )}
       </div>
 
-      <div className="flex w-24 flex-none flex-col items-end">
-        <span className="text-[15px] font-semibold tabular-nums">
-          {link.visitCount}
-        </span>
-        <span className="text-muted-foreground text-xs">
-          {formatLastVisit(link.lastVisitedAt)}
-        </span>
-      </div>
+      {!compact && (
+        <div className="flex w-24 flex-none flex-col items-end">
+          <span className="text-[15px] font-semibold tabular-nums">
+            {link.visitCount}
+          </span>
+          <span className="text-muted-foreground text-xs">
+            {formatLastVisit(link.lastVisitedAt)}
+          </span>
+        </div>
+      )}
 
       {!pending && (
         <div
           className="flex flex-none items-center gap-1"
           onClick={(event) => event.stopPropagation()}
         >
-          {/* 지금 열리지 않는 주소의 QR은 내보내지 않는다. */}
-          {!inactive && (
+          {/* 지금 열리지 않는 주소의 QR은 내보내지 않는다. 좁은 화면에서는 상세로 미룬다. */}
+          {!inactive && !compact && (
             <Button
               type="button"
               variant="ghost"

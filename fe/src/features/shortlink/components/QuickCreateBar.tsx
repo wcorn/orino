@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 interface QuickCreateBarProps {
   onCreate: (targetUrl: string) => void;
   pending: boolean;
+  /** 좁은 화면. 안내 문구를 줄이고 버튼을 눈에 띄게 바꾼다(화면 설계 §6). */
+  compact?: boolean;
 }
 
 /**
@@ -17,7 +19,11 @@ interface QuickCreateBarProps {
  * 그래서 여기에는 <b>입력칸 하나와 버튼 하나뿐</b>이다. 메모 · 태그 · 만료 · 비밀번호는
  * 모달에 있고, 모달은 옵션이지 기본이 아니다.
  */
-export function QuickCreateBar({ onCreate, pending }: QuickCreateBarProps) {
+export function QuickCreateBar({
+  onCreate,
+  pending,
+  compact = false,
+}: QuickCreateBarProps) {
   const [value, setValue] = useState("");
 
   const submit = (event: FormEvent) => {
@@ -43,12 +49,17 @@ export function QuickCreateBar({ onCreate, pending }: QuickCreateBarProps) {
         value={value}
         onChange={(event) => setValue(event.target.value)}
         aria-label="빠른 발급 URL"
-        placeholder="URL 붙여넣고 Enter — 짧은 주소가 바로 만들어지고 클립보드에 복사돼요"
+        placeholder={
+          compact
+            ? "URL 붙여넣기"
+            : "URL 붙여넣고 Enter — 짧은 주소가 바로 만들어지고 클립보드에 복사돼요"
+        }
         className="border-none bg-transparent shadow-none focus-visible:ring-0"
       />
       <Button
         type="submit"
-        variant="secondary"
+        // 모바일에서는 이 버튼이 발급의 주 경로다 — 눈에 띄는 쪽으로 둔다(화면 설계 §6).
+        variant={compact ? "default" : "secondary"}
         size="sm"
         disabled={pending || value.trim() === ""}
       >

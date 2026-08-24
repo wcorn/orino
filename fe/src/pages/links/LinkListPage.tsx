@@ -23,6 +23,7 @@ import { useLinkMutations } from "@/features/shortlink/hooks/useLinkMutations";
 import { useLinks } from "@/features/shortlink/hooks/useLinks";
 import { useShortlinkSummary } from "@/features/shortlink/hooks/useShortlinkSummary";
 import { cn } from "@/lib/utils";
+import { useIsNarrow } from "@/shared/lib/useIsNarrow";
 
 type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
 
@@ -56,6 +57,9 @@ export function LinkListPage() {
 
   const { data, isPending, isError } = useLinks({ query, status, tag });
   const { data: summary } = useShortlinkSummary();
+  // 모바일 발급 빈도가 이 모듈의 성패다(명세 §5.4). 좁은 화면에서는 목록을 줄이고
+  // 빠른 발급 바를 제목 바로 아래에 그대로 둔다(화면 설계 §6).
+  const narrow = useIsNarrow();
   const { create, toggle, favorite, remove } = useLinkMutations();
 
   const submitCreate = (body: CreateLinkRequest, fromModal: boolean) => {
@@ -83,21 +87,32 @@ export function LinkListPage() {
   return (
     <div className="mx-auto flex max-w-[720px] flex-col gap-5">
       <PageHeader
-        title="링크"
-        description="s.orino.dev · 자동 발급 5자, 최종 17자"
+        // 좁은 화면에서는 제목을 28px로 줄이고, 설명 자리에 실제 숫자를 둔다.
+        title={narrow ? <span className="text-[28px]">링크</span> : "링크"}
+        description={
+          narrow
+            ? summary &&
+              `${summary.total}개 · 이번 주 방문 ${summary.visitsThisWeek}`
+            : "s.orino.dev · 자동 발급 5자, 최종 17자"
+        }
         actions={
-          <Button type="button" onClick={() => setModalOpen(true)}>
-            <Plus className="size-4" />새 링크
-          </Button>
+          // 좁은 화면에서는 빠른 발급 바가 바로 아래 있다 — 같은 일을 하는 버튼을 겹쳐 두지 않는다.
+          narrow ? undefined : (
+            <Button type="button" onClick={() => setModalOpen(true)}>
+              <Plus className="size-4" />새 링크
+            </Button>
+          )
         }
       />
 
       <QuickCreateBar
+        compact={narrow}
         pending={create.isPending}
         onCreate={(targetUrl) => submitCreate({ targetUrl }, false)}
       />
 
-      <div className="flex flex-wrap items-center gap-2">
+      {/* 칩은 접지 않고 가로로 흘린다 — 좁은 화면에서 줄바꿈되면 목록이 아래로 밀린다. */}
+      <div className="flex items-center gap-2 overflow-x-auto md:flex-wrap md:overflow-visible">
         <div className="relative min-w-[200px] flex-1">
           <Search className="text-muted-foreground pointer-events-none absolute top-2.5 left-2.5 size-3.5" />
           <Input
@@ -115,7 +130,7 @@ export function LinkListPage() {
             aria-pressed={status === chip.value}
             onClick={() => setStatus(chip.value)}
             className={cn(
-              "h-8 rounded-lg px-3 text-[13px] transition-colors",
+              "h-8 shrink-0 rounded-lg px-3 text-[13px] transition-colors",
               status === chip.value
                 ? "bg-secondary text-secondary-foreground"
                 : "border-border text-muted-foreground hover:bg-muted border",
@@ -169,6 +184,7 @@ export function LinkListPage() {
             <LinkRow
               key={link.slug}
               link={link}
+              compact={narrow}
               onShowQr={setQrTarget}
               onToggle={(target) => toggle.mutate(target.slug)}
               onFavorite={(target) => favorite.mutate(target.slug)}
@@ -184,6 +200,7 @@ export function LinkListPage() {
             <LinkRow
               key={link.slug}
               link={link}
+              compact={narrow}
               onShowQr={setQrTarget}
               onToggle={(target) => toggle.mutate(target.slug)}
               onFavorite={(target) => favorite.mutate(target.slug)}
