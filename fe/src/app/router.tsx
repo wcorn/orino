@@ -14,6 +14,7 @@ import {
   importActivityDetail,
   importHome,
   importIntegrations,
+  importLedgerDashboard,
   importLifelog,
   importLifelogFlowDetail,
   importLifelogFlows,
@@ -65,6 +66,7 @@ const TravelToolsPage = lazy(importTravelTools);
 const ActivityDetailPage = lazy(importActivityDetail);
 const LinkListPage = lazy(importLinkList);
 const LinkDetailPage = lazy(importLinkDetail);
+const LedgerDashboardPage = lazy(importLedgerDashboard);
 
 function RouteFallback() {
   return (
@@ -224,6 +226,19 @@ export function AppRouter() {
               </Suspense>
             }
           />
+          {/* 가계부 워크스페이스. 화면은 후속 이슈(#1259~)에서 채우고 여기서는 라우트 자리를
+              잡는다. `/ledger` 자체에 착지점이 있어야 한다 — 아래 폴백의 splat은 `/ledger`도
+              잡으므로, 이 라우트가 없으면 같은 경로로 되돌리는 리다이렉트가 반복된다. */}
+          <Route
+            path="/ledger"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <LedgerDashboardPage />
+              </Suspense>
+            }
+          />
+          {/* 아직 없는 가계부 하위 경로는 랜딩이 아니라 가계부 홈으로 보낸다(여행 선례). */}
+          <Route path="/ledger/*" element={<Navigate to="/ledger" replace />} />
           {/* 여행 워크스페이스. 화면은 후속 이슈에서 채우고 여기서는 라우트 자리를 잡는다.
               푸시 알림 클릭이 /travel/* 딥링크로 들어오므로 선택 화면으로 되돌리지 않는다. */}
           <Route
