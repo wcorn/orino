@@ -255,13 +255,20 @@ public class LedgerAssetService {
 
     // --- 내부 ---
 
+    /**
+     * 그룹 합계.
+     *
+     * <p>신용카드의 미결제 사용액은 <b>빼야 한다</b> — 그건 자산이 아니라 빚이다. 더하면
+     * 카드사 그룹의 합계가 양수로 나와 「이만큼 있다」로 읽히고, 그 합을 다 더한 값이
+     * 화면 맨 위의 총자산과 어긋난다(실제로 어긋났다).
+     */
     private long subtotal(List<AssetView> members) {
         long sum = 0;
         for (AssetView view : members) {
             if (view.balance() != null) {
                 sum += view.balance();
             } else if (view.unpaidAmount() != null) {
-                sum += view.unpaidAmount();
+                sum -= view.unpaidAmount();
             }
         }
         return sum;

@@ -203,6 +203,22 @@ class LedgerAssetControllerTest extends ApiTestSupport {
         }
 
         @Test
+        @DisplayName("그룹 합계는 카드 빚을 빼고 센다 — 다 더하면 총자산과 맞아야 한다")
+        void groupSubtotalSubtractsCardDebt() throws Exception {
+            long checking = asset("급여통장", "CHECKING");
+            long card = asset("신한 Deep Dream", "CREDIT_CARD");
+
+            income(checking, 1000000);
+            expense(card, 180000);
+
+            // 빚을 더하면 그룹 합계가 1,180,000으로 나와 「이만큼 있다」로 읽힌다.
+            mockMvc.perform(get("/api/ledger/assets")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.groups[0].subtotal").value(820000))
+                    .andExpect(jsonPath("$.data.netWorth").value(820000));
+        }
+
+        @Test
         @DisplayName("카드로 들어온 이체는 대금 납부다 — 빚이 그만큼 준다")
         void paymentReducesLiability() throws Exception {
             long checking = asset("급여통장", "CHECKING");

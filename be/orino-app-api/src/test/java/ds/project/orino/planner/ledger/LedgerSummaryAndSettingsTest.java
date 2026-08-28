@@ -4,6 +4,7 @@ import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
+import ds.project.orino.support.FixedClockConfig;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.StubExternalsConfig;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +15,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
+import java.time.Clock;
 import java.time.LocalDate;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -21,14 +23,22 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** 요약과 설정(#1259). v1이 답할 수 없는 값은 {@code null}로 남는다. */
-@Import(StubExternalsConfig.class)
+/**
+ * 요약과 설정(#1259). v1이 답할 수 없는 값은 {@code null}로 남는다.
+ *
+ * <p><b>시계를 못박는다.</b> 이 클래스는 「이번 달 구간」을 단언하는데, 실시각을 쓰면
+ * 월말에만 깨진다 — 예정으로 넣은 「오늘+3일」이 다음 달로 넘어가 구간 밖이 되기 때문이다.
+ * 실제로 8월 29일에 그렇게 깨졌다. 날짜 경계를 보는 테스트는 날짜를 정해 두고 봐야 한다.
+ */
+@Import({StubExternalsConfig.class, FixedClockConfig.class})
 class LedgerSummaryAndSettingsTest extends ApiTestSupport {
 
     @Autowired
     private MemberRepository memberRepository;
     @Autowired
     private DbCleaner dbCleaner;
+    @Autowired
+    private Clock clock;
 
     private String authHeader;
     private long checking;
@@ -39,6 +49,11 @@ class LedgerSummaryAndSettingsTest extends ApiTestSupport {
         memberRepository.save(MemberFixture.create());
         authHeader = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc);
         checking = LedgerFixture.createAsset(mockMvc, authHeader, "급여통장", "CHECKING");
+    }
+
+    /** 고정 시계 기준 오늘(2026-01-15). 실시각을 쓰면 월말에만 깨진다. */
+    private LocalDate today() {
+        return LocalDate.ofInstant(clock.instant(), TEST_ZONE);
     }
 
     @Test
@@ -57,10 +72,10 @@ class LedgerSummaryAndSettingsTest extends ApiTestSupport {
     void estimateAddsScheduled() throws Exception {
         LedgerFixture.createTransaction(mockMvc, authHeader, """
                 {"type": "EXPENSE", "amount": 120000, "assetId": %d, "occurredOn": "%s"}
-                """.formatted(checking, LocalDate.now(TEST_ZONE)));
+                """.formatted(checking, today()));
         LedgerFixture.createTransaction(mockMvc, authHeader, """
                 {"type": "EXPENSE", "amount": 30000, "assetId": %d, "occurredOn": "%s"}
-                """.formatted(checking, LocalDate.now(TEST_ZONE).plusDays(3)));
+                """.formatted(checking, today().plusDays(3)));
 
         mockMvc.perform(get("/api/ledger/summary")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
@@ -75,11 +90,11 @@ class LedgerSummaryAndSettingsTest extends ApiTestSupport {
         long savings = LedgerFixture.createAsset(mockMvc, authHeader, "비상금", "SAVINGS");
         LedgerFixture.createTransaction(mockMvc, authHeader, """
                 {"type": "EXPENSE", "amount": 4500, "assetId": %d, "occurredOn": "%s"}
-                """.formatted(checking, LocalDate.now(TEST_ZONE)));
+                """.formatted(checking, today()));
         LedgerFixture.createTransaction(mockMvc, authHeader, """
                 {"type": "TRANSFER", "amount": 100000, "assetId": %d,
                  "counterAssetId": %d, "occurredOn": "%s"}
-                """.formatted(checking, savings, LocalDate.now(TEST_ZONE)));
+                """.formatted(checking, savings, today()));
 
         mockMvc.perform(get("/api/ledger/summary")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))

@@ -1,0 +1,108 @@
+import { useQuery } from "@tanstack/react-query";
+
+import {
+  fetchAssetDetail,
+  fetchAssets,
+  fetchAssetTransactions,
+  fetchCategories,
+  fetchFxRate,
+  fetchLedgerSummary,
+  fetchSettings,
+  fetchSuggestions,
+  fetchTransactions,
+  type LedgerFlow,
+  type TrendRange,
+} from "../api/ledger";
+import { ledgerKeys } from "../queryKeys";
+
+/** 자산 목록. 잔액은 서버가 원장에서 파생해 준다 — 화면이 다시 더하지 않는다. */
+export function useLedgerAssets(enabled = true) {
+  return useQuery({
+    queryKey: ledgerKeys.assets,
+    queryFn: fetchAssets,
+    staleTime: 30 * 1000,
+    enabled,
+  });
+}
+
+export function useLedgerAssetDetail(id: number, range: TrendRange) {
+  return useQuery({
+    queryKey: ledgerKeys.asset(id, range),
+    queryFn: () => fetchAssetDetail(id, range),
+    staleTime: 30 * 1000,
+    enabled: Number.isFinite(id),
+  });
+}
+
+export function useLedgerAssetTransactions(id: number) {
+  return useQuery({
+    queryKey: ledgerKeys.assetTransactions(id),
+    queryFn: () => fetchAssetTransactions(id),
+    staleTime: 30 * 1000,
+    enabled: Number.isFinite(id),
+  });
+}
+
+/**
+ * 카테고리. **처음 부르는 순간 서버가 기본 프리셋 13종을 심는다**(D-14) —
+ * 그래서 입력 모달이 열리자마자 고를 것이 있다.
+ */
+export function useLedgerCategories(flow?: LedgerFlow) {
+  return useQuery({
+    queryKey: ledgerKeys.categories(flow),
+    queryFn: () => fetchCategories(flow),
+    // 카테고리는 자주 바뀌지 않는다. 입력 모달이 열릴 때마다 다시 부르지 않는다.
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useLedgerTransactions(from?: string, to?: string) {
+  return useQuery({
+    queryKey: ledgerKeys.transactions(from, to),
+    queryFn: () => fetchTransactions({ from, to }),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useLedgerSettings() {
+  return useQuery({
+    queryKey: ledgerKeys.settings,
+    queryFn: fetchSettings,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useLedgerSummary(enabled = true) {
+  return useQuery({
+    queryKey: ledgerKeys.summary,
+    queryFn: fetchLedgerSummary,
+    staleTime: 30 * 1000,
+    enabled,
+  });
+}
+
+/** 내용 자동완성. 두 글자부터 부른다 — 한 글자로는 후보가 너무 넓다. */
+export function useTransactionSuggestions(keyword: string) {
+  const trimmed = keyword.trim();
+  return useQuery({
+    queryKey: ledgerKeys.suggestions(trimmed),
+    queryFn: () => fetchSuggestions(trimmed),
+    enabled: trimmed.length >= 2,
+    staleTime: 60 * 1000,
+  });
+}
+
+/**
+ * 환율. **못 가져와도 실패가 아니다** — `rate: null`이 오고 화면은 직접 입력을 받는다.
+ * 원화면 부르지 않는다.
+ */
+export function useFxRate(currency: string | null) {
+  return useQuery({
+    queryKey: ledgerKeys.fxRate(currency ?? ""),
+    queryFn: () => fetchFxRate(currency as string),
+    enabled: currency != null && currency !== "KRW",
+    staleTime: 60 * 60 * 1000,
+    // 고시가 없는 것은 재시도로 해결되지 않는다. 기다리게 두면 입력이 멈춘다.
+    retry: false,
+  });
+}
