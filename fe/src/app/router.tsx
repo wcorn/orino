@@ -17,6 +17,7 @@ import {
   importIntegrations,
   importLedgerAssetDetail,
   importLedgerAssets,
+  importLedgerBulkInput,
   importLedgerDashboard,
   importLedgerSettings,
   importLedgerStats,
@@ -78,6 +79,7 @@ const LedgerAssetDetailPage = lazy(importLedgerAssetDetail);
 const LedgerTransactionsPage = lazy(importLedgerTransactions);
 const LedgerSettingsPage = lazy(importLedgerSettings);
 const LedgerStatsPage = lazy(importLedgerStats);
+const LedgerBulkInputPage = lazy(importLedgerBulkInput);
 
 function RouteFallback() {
   return (
@@ -271,6 +273,14 @@ export function AppRouter() {
               element={
                 <Suspense fallback={<RouteFallback />}>
                   <LedgerTransactionsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/ledger/transactions/bulk"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <LedgerBulkInputPage />
                 </Suspense>
               }
             />

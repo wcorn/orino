@@ -1,7 +1,12 @@
 package ds.project.orino.planner.ledger.transaction;
 
 import ds.project.orino.common.response.ApiResponse;
+import ds.project.orino.planner.ledger.receipt.LedgerReceiptDtos;
+import ds.project.orino.planner.ledger.receipt.LedgerReceiptService;
+import ds.project.orino.planner.ledger.transaction.dto.BulkCreateRequest;
+import ds.project.orino.planner.ledger.transaction.dto.BulkCreateResponse;
 import ds.project.orino.planner.ledger.transaction.dto.BulkRequest;
+import ds.project.orino.planner.ledger.transaction.dto.DuplicateRequest;
 import ds.project.orino.planner.ledger.transaction.dto.BulkResponse;
 import ds.project.orino.planner.ledger.transaction.dto.RefundRequest;
 import ds.project.orino.planner.ledger.transaction.dto.RefundResponse;
@@ -36,9 +41,12 @@ import java.util.List;
 public class LedgerTransactionController {
 
     private final LedgerTransactionService transactionService;
+    private final LedgerReceiptService receiptService;
 
-    public LedgerTransactionController(LedgerTransactionService transactionService) {
+    public LedgerTransactionController(LedgerTransactionService transactionService,
+                                       LedgerReceiptService receiptService) {
         this.transactionService = transactionService;
+        this.receiptService = receiptService;
     }
 
     /**
@@ -96,6 +104,44 @@ public class LedgerTransactionController {
                                               @PathVariable Long id,
                                               @Valid @RequestBody RefundRequest request) {
         return ApiResponse.success(transactionService.refund(memberId, id, request));
+    }
+
+    /**
+     * 다건 입력(`LDG-015`). <b>한 트랜잭션이다</b> — 한 줄이 거부되면 전부 들어가지 않는다.
+     * 「7건 성공 3건 실패」로 끝나면 어디까지 적었는지 사람이 다시 맞춰야 한다.
+     */
+    @PostMapping("/bulk-create")
+    public ApiResponse<BulkCreateResponse> bulkCreate(
+            @AuthenticationPrincipal Long memberId,
+            @Valid @RequestBody BulkCreateRequest request) {
+        return ApiResponse.success(
+                transactionService.createAll(memberId, request.transactions()));
+    }
+
+    /** 내역 복사(`LDG-014`). 날짜는 오늘과 원본 중에 고른다. */
+    @PostMapping("/{id}/duplicate")
+    public ApiResponse<TransactionCreatedResponse> duplicate(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @RequestBody(required = false) DuplicateRequest request) {
+        boolean useToday = request == null || !Boolean.FALSE.equals(request.useToday());
+        return ApiResponse.success(transactionService.duplicate(memberId, id, useToday));
+    }
+
+    /** 영수증 첨부 목록. 바이트는 MinIO에 있고 여기서는 키와 주소만 준다. */
+    @GetMapping("/{id}/receipts")
+    public ApiResponse<List<LedgerReceiptDtos.View>> receipts(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id) {
+        return ApiResponse.success(receiptService.list(memberId, id));
+    }
+
+    @PostMapping("/{id}/receipts")
+    public ApiResponse<LedgerReceiptDtos.View> attachReceipt(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @Valid @RequestBody LedgerReceiptDtos.AttachRequest request) {
+        return ApiResponse.success(receiptService.attach(memberId, id, request));
     }
 
     /** 일괄 편집·삭제. 미분류 정리가 수십 건을 한 번에 넘긴다. */

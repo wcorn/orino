@@ -2,6 +2,9 @@ import {
   ArrowDown,
   ChevronLeft,
   ChevronRight,
+  Copy,
+  Ellipsis,
+  Paperclip,
   Plus,
   Search,
 } from "lucide-react";
@@ -15,12 +18,15 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { LoadingText } from "@/components/ui/loading-text";
+import { Menu, MenuItem } from "@/components/ui/menu";
 import type {
   DateGroup,
   MonthTotals,
   TransactionView,
 } from "@/features/ledger/api/ledger";
+import { ReceiptsModal } from "@/features/ledger/components/ReceiptsModal";
 import { useTransactionModal } from "@/features/ledger/components/transactionModalContext";
+import { useDuplicateTransaction } from "@/features/ledger/hooks/useLedgerMutations";
 import {
   useLedgerSettings,
   useLedgerTransactions,
@@ -56,6 +62,10 @@ const STATUS_CHIPS: { value: StatusFilter; label: string }[] = [
 export function LedgerTransactionsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { openTransactionModal } = useTransactionModal();
+  const duplicate = useDuplicateTransaction();
+  const [receiptTarget, setReceiptTarget] = useState<TransactionView | null>(
+    null,
+  );
   const { data: settings } = useLedgerSettings();
 
   const offset = Number(searchParams.get("offset") ?? "0") || 0;
@@ -199,8 +209,16 @@ export function LedgerTransactionsPage() {
             todayLine={data.todayLine}
             // 기준선은 「전체」일 때만 그린다 — 한쪽만 보는 중이면 나눌 것이 없다.
             showTodayLine={status === "ALL"}
+            onDuplicate={(id, useToday) => duplicate.mutate({ id, useToday })}
+            onOpenReceipts={setReceiptTarget}
           />
         ))}
+
+      <ReceiptsModal
+        transactionId={receiptTarget?.id ?? null}
+        title={receiptTarget?.title ?? "거래"}
+        onClose={() => setReceiptTarget(null)}
+      />
     </div>
   );
 }
@@ -228,10 +246,14 @@ function TransactionGroup({
   group,
   todayLine,
   showTodayLine,
+  onDuplicate,
+  onOpenReceipts,
 }: {
   group: DateGroup;
   todayLine: string;
   showTodayLine: boolean;
+  onDuplicate: (id: number, useToday: boolean) => void;
+  onOpenReceipts: (transaction: TransactionView) => void;
 }) {
   return (
     <section className="flex flex-col">
@@ -257,7 +279,12 @@ function TransactionGroup({
       <ul>
         {group.items.map((item) => (
           <li key={item.id}>
-            <TransactionRow transaction={item} todayLine={todayLine} />
+            <TransactionRow
+              transaction={item}
+              todayLine={todayLine}
+              onDuplicate={onDuplicate}
+              onOpenReceipts={onOpenReceipts}
+            />
           </li>
         ))}
       </ul>
@@ -268,9 +295,13 @@ function TransactionGroup({
 function TransactionRow({
   transaction,
   todayLine,
+  onDuplicate,
+  onOpenReceipts,
 }: {
   transaction: TransactionView;
   todayLine: string;
+  onDuplicate: (id: number, useToday: boolean) => void;
+  onOpenReceipts: (transaction: TransactionView) => void;
 }) {
   // 부호는 그 줄에서 실제로 일어난 일이다. 환불이면 돈이 돌아왔으므로 `+`다 —
   // 「지출이 줄었다」는 합계의 이야기이고, 그건 서버가 계산해 헤더에 담아 준다.
@@ -319,19 +350,49 @@ function TransactionRow({
           .filter(Boolean)
           .join(" · ")}
       </span>
-      <span
-        className={cn(
-          "text-right text-sm tabular-nums",
-          scheduled ? "text-muted-foreground" : amountToneClass(flow),
-        )}
-      >
-        {formatSigned(transaction.amount, flow)}
-        {/* 외화는 보조 표기다. 본문 금액은 언제나 서버가 확정한 원화다(D-13). */}
-        {transaction.fx && (
-          <span className="text-muted-foreground block text-[11px]">
-            {transaction.fx.amount} {transaction.fx.currency}
-          </span>
-        )}
+      <span className="flex items-center justify-end gap-1">
+        <span
+          className={cn(
+            "text-right text-sm tabular-nums",
+            scheduled ? "text-muted-foreground" : amountToneClass(flow),
+          )}
+        >
+          {formatSigned(transaction.amount, flow)}
+          {/* 외화는 보조 표기다. 본문 금액은 언제나 서버가 확정한 원화다(D-13). */}
+          {transaction.fx && (
+            <span className="text-muted-foreground block text-[11px]">
+              {transaction.fx.amount} {transaction.fx.currency}
+            </span>
+          )}
+        </span>
+        {/*
+          복사(LDG-014) — 템플릿으로 만들 만큼 반복되진 않지만 이번 달에 두 번 나오는 지출용.
+          hover에만 나타나면 터치 화면에서 닿지 않으므로 항상 둔다.
+        */}
+        <Menu
+          trigger={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`${transaction.title ?? "거래"} 메뉴`}
+            >
+              <Ellipsis className="size-3.5" />
+            </Button>
+          }
+        >
+          <MenuItem onClick={() => onDuplicate(transaction.id, true)}>
+            <Copy className="size-3.5" />
+            오늘 날짜로 복사
+          </MenuItem>
+          <MenuItem onClick={() => onDuplicate(transaction.id, false)}>
+            원본 날짜로 복사
+          </MenuItem>
+          <MenuItem onClick={() => onOpenReceipts(transaction)}>
+            <Paperclip className="size-3.5" />
+            영수증
+          </MenuItem>
+        </Menu>
       </span>
     </div>
   );

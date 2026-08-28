@@ -5,6 +5,9 @@ export const ledgerKeys = {
   all: ["ledger"] as const,
   summary: ["ledger", "summary"] as const,
   dashboard: ["ledger", "dashboard"] as const,
+  templates: ["ledger", "templates"] as const,
+  receipts: (transactionId: number) =>
+    ["ledger", "receipts", transactionId] as const,
   stats: (period?: string) => ["ledger", "stats", period ?? ""] as const,
   settings: ["ledger", "settings"] as const,
   assets: ["ledger", "assets"] as const,

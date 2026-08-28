@@ -3,6 +3,9 @@ package ds.project.orino.planner.ledger;
 import ds.project.orino.common.response.ApiResponse;
 import ds.project.orino.planner.ledger.fx.LedgerFxRateResponse;
 import ds.project.orino.planner.ledger.fx.LedgerFxService;
+import ds.project.orino.planner.ledger.receipt.LedgerReceiptDtos;
+import ds.project.orino.planner.ledger.receipt.LedgerReceiptService;
+import ds.project.orino.planner.ledger.receipt.LedgerReceiptStorageService;
 import ds.project.orino.planner.ledger.settings.LedgerSettingsService;
 import ds.project.orino.planner.ledger.stats.LedgerStatsResponse;
 import ds.project.orino.planner.ledger.stats.LedgerStatsService;
@@ -13,8 +16,11 @@ import ds.project.orino.planner.ledger.summary.LedgerSummaryService;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -32,15 +38,21 @@ public class LedgerController {
     private final LedgerSettingsService settingsService;
     private final LedgerFxService fxService;
     private final LedgerStatsService statsService;
+    private final LedgerReceiptStorageService receiptStorageService;
+    private final LedgerReceiptService receiptService;
 
     public LedgerController(LedgerSummaryService summaryService,
                             LedgerSettingsService settingsService,
                             LedgerFxService fxService,
-                            LedgerStatsService statsService) {
+                            LedgerStatsService statsService,
+                            LedgerReceiptStorageService receiptStorageService,
+                            LedgerReceiptService receiptService) {
         this.summaryService = summaryService;
         this.settingsService = settingsService;
         this.fxService = fxService;
         this.statsService = statsService;
+        this.receiptStorageService = receiptStorageService;
+        this.receiptService = receiptService;
     }
 
     /** {@code /select} 가계부 카드와 대시보드가 함께 쓴다. v1.5 값들은 아직 {@code null}이다. */
@@ -66,6 +78,26 @@ public class LedgerController {
             @RequestParam(required = false) String period) {
         return ApiResponse.success(
                 statsService.stats(memberId, period == null ? null : YearMonth.parse(period)));
+    }
+
+    /**
+     * 영수증 업로드용 presigned URL. 바이트는 BE를 거치지 않고 브라우저가 MinIO에 직접 PUT 한다 —
+     * 일상기록과 <b>같은 버킷</b>을 쓰고 prefix만 다르다.
+     */
+    @PostMapping("/receipts/upload-url")
+    public ApiResponse<LedgerReceiptDtos.UploadUrl> receiptUploadUrl(
+            @AuthenticationPrincipal Long memberId,
+            @Valid @RequestBody LedgerReceiptDtos.UploadUrlRequest request) {
+        return ApiResponse.success(
+                receiptStorageService.createUploadUrl(memberId, request.contentType()));
+    }
+
+    /** 첨부를 뗀다. <b>오브젝트는 지우지 않는다</b> — 되돌릴 수 있어야 한다. */
+    @DeleteMapping("/receipts/{id}")
+    public ApiResponse<Void> detachReceipt(@AuthenticationPrincipal Long memberId,
+                                           @PathVariable Long id) {
+        receiptService.detach(memberId, id);
+        return ApiResponse.success();
     }
 
     @GetMapping("/settings")

@@ -8,9 +8,11 @@ import {
   fetchDashboard,
   fetchFxRate,
   fetchLedgerSummary,
+  fetchReceipts,
   fetchSettings,
   fetchStats,
   fetchSuggestions,
+  fetchTemplates,
   fetchTransactions,
   type LedgerFlow,
   type TrendRange,
@@ -80,6 +82,25 @@ export function useLedgerStats(period?: string) {
     queryKey: ledgerKeys.stats(period),
     queryFn: () => fetchStats(period),
     staleTime: 30 * 1000,
+  });
+}
+
+/** 빠른 입력 템플릿. 많이 쓴 순으로 온다 — 대시보드 칩이 이 순서를 그대로 쓴다. */
+export function useLedgerTemplates() {
+  return useQuery({
+    queryKey: ledgerKeys.templates,
+    queryFn: fetchTemplates,
+    staleTime: 60 * 1000,
+  });
+}
+
+/** 영수증 첨부. 거래를 열었을 때만 부른다 — 목록에서는 필요 없다. */
+export function useLedgerReceipts(transactionId: number | null) {
+  return useQuery({
+    queryKey: ledgerKeys.receipts(transactionId ?? 0),
+    queryFn: () => fetchReceipts(transactionId as number),
+    enabled: transactionId != null,
+    staleTime: 60 * 1000,
   });
 }
 

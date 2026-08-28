@@ -1,3 +1,4 @@
+import { Bookmark } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,10 @@ import type {
   SuggestionView,
   TransactionCreateRequest,
 } from "../api/ledger";
-import { useCreateTransaction } from "../hooks/useLedgerMutations";
+import {
+  useCreateTemplate,
+  useCreateTransaction,
+} from "../hooks/useLedgerMutations";
 import {
   useFxRate,
   useLedgerAssets,
@@ -90,6 +94,7 @@ export function TransactionModal({
   const { data: categories } = useLedgerCategories(flow);
   const fx = useFxRate(currency === "KRW" ? null : currency);
   const create = useCreateTransaction();
+  const createTemplate = useCreateTemplate();
 
   // 숨긴 자산은 고르게 두지 않는다 — 해지한 카드로 오늘 결제할 수는 없다.
   const assets = (assetList?.groups ?? [])
@@ -359,6 +364,35 @@ export function TransactionModal({
           내역」으로 남습니다. 날짜를 미래로 잡으면 자동으로 예정으로
           저장됩니다.
         </p>
+
+        {/*
+          템플릿으로 저장(LDG-013) — 같은 커피를 매일 다시 적지 않게 하는 진입점이다.
+          지금 적고 있는 값을 그대로 담는다. 날짜는 담지 않는다: 템플릿은 언제나 오늘로 적힌다.
+        */}
+        {canSave && (
+          <button
+            type="button"
+            onClick={() =>
+              createTemplate.mutate({
+                name:
+                  title.trim() ||
+                  `${flow === "INCOME" ? "수입" : "지출"} ${amount}`,
+                txType: flow,
+                amount: amount as number,
+                assetId: Number(assetId),
+                categoryId:
+                  childCategoryId || parentCategoryId
+                    ? Number(childCategoryId || parentCategoryId)
+                    : null,
+                title: title.trim() || null,
+              })
+            }
+            className="text-muted-foreground hover:text-foreground flex w-fit items-center gap-1.5 text-[13px] transition-colors"
+          >
+            <Bookmark className="size-3.5" />
+            템플릿으로 저장
+          </button>
+        )}
 
         <Modal.Footer>
           {/* 여러 건을 이어 적는 사람이 매번 `N`을 다시 누르지 않게 한다. */}
