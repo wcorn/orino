@@ -73,6 +73,28 @@ export interface LedgerMockOptions {
   };
   /** 잔액 맞추기 응답의 차액. 0이면 조정 거래를 만들지 않았다는 뜻이다. */
   reconcileDifference?: number;
+  templates?: {
+    id: number;
+    name: string;
+    txType: string;
+    amount: number;
+    assetId: number;
+    assetName: string | null;
+    categoryId: number | null;
+    categoryName: string | null;
+    title: string | null;
+    useCount: number;
+  }[];
+  receipts?: {
+    id: number;
+    objectKey: string;
+    url: string;
+    contentType: string | null;
+    byteSize: number | null;
+    displayOrder: number;
+  }[];
+  /** 다건 입력에서 서버가 거부하는 상황. 전부-아니면-전무를 확인할 때 쓴다. */
+  bulkFails?: boolean;
   assets?: ReturnType<typeof assetView>[];
   groups?: unknown[];
   transactions?: ReturnType<typeof transactionView>[];
@@ -90,6 +112,8 @@ export interface LedgerMockOptions {
  */
 export function mockLedgerApi(options: LedgerMockOptions = {}) {
   const created: Record<string, unknown>[] = [];
+  const duplicated: Record<string, unknown>[] = [];
+  const bulkSent: Record<string, unknown>[][] = [];
   const assets = options.assets ?? [assetView()];
   const transactions = options.transactions ?? [];
 
@@ -232,6 +256,61 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
         balanceAfter: 950000,
       }),
     ),
+    http.get(`${API_BASE}/ledger/templates`, () => ok(options.templates ?? [])),
+    http.post(`${API_BASE}/ledger/templates`, () =>
+      ok({
+        id: 99,
+        name: "새 템플릿",
+        txType: "EXPENSE",
+        amount: 4500,
+        assetId: 1,
+        assetName: "급여통장",
+        categoryId: null,
+        categoryName: null,
+        title: null,
+        useCount: 0,
+      }),
+    ),
+    http.post(`${API_BASE}/ledger/templates/:id/apply`, () =>
+      ok({
+        transaction: transactionView({ title: "출근 커피" }),
+        savedAs: "CONFIRMED",
+      }),
+    ),
+    http.post(
+      `${API_BASE}/ledger/transactions/:id/duplicate`,
+      async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        duplicated.push(body);
+        return ok({
+          transaction: transactionView({ id: 77 }),
+          savedAs: "CONFIRMED",
+        });
+      },
+    ),
+    http.post(
+      `${API_BASE}/ledger/transactions/bulk-create`,
+      async ({ request }) => {
+        const body = (await request.json()) as {
+          transactions: Record<string, unknown>[];
+        };
+        if (options.bulkFails) {
+          // 한 줄이라도 잘못되면 서버가 통째로 거부한다 — 부분 성공 응답이 없다.
+          return HttpResponse.json(
+            { code: "LDG-ERR-001", message: "존재하지 않는 자산입니다." },
+            { status: 404 },
+          );
+        }
+        bulkSent.push(body.transactions);
+        return ok({
+          created: body.transactions.map(() => transactionView()),
+          scheduledCount: 0,
+        });
+      },
+    ),
+    http.get(`${API_BASE}/ledger/transactions/:id/receipts`, () =>
+      ok(options.receipts ?? []),
+    ),
     http.post(`${API_BASE}/ledger/transactions`, async ({ request }) => {
       const body = (await request.json()) as Record<string, unknown>;
       created.push(body);
@@ -249,7 +328,7 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
     }),
   );
 
-  return created;
+  return Object.assign(created, { duplicated, bulkSent });
 }
 
 function groupByDate(transactions: ReturnType<typeof transactionView>[]) {

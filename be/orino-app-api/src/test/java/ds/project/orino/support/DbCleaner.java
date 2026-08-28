@@ -8,6 +8,8 @@ public class DbCleaner {
 
     private static final String[] TABLES_IN_FK_ORDER = {
             // 가계부 — 자기참조(refund_of_id)와 자산 FK가 있어 원장부터 지운다.
+            "ledger_transaction_receipt",
+            "ledger_transaction_template",
             "ledger_transaction_tag",
             "ledger_transaction",
             "ledger_tag",

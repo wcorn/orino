@@ -1,4 +1,4 @@
-import { ArrowRight, Plus, ReceiptText } from "lucide-react";
+import { ArrowRight, Plus, ReceiptText, Rows3 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
@@ -6,7 +6,11 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { LoadingText } from "@/components/ui/loading-text";
 import { useTransactionModal } from "@/features/ledger/components/transactionModalContext";
-import { useLedgerDashboard } from "@/features/ledger/hooks/useLedgerQueries";
+import { useApplyTemplate } from "@/features/ledger/hooks/useLedgerMutations";
+import {
+  useLedgerDashboard,
+  useLedgerTemplates,
+} from "@/features/ledger/hooks/useLedgerQueries";
 import { formatAmount } from "@/features/ledger/lib/money";
 
 /**
@@ -23,7 +27,9 @@ import { formatAmount } from "@/features/ledger/lib/money";
  */
 export function LedgerDashboardPage() {
   const { data, isPending, isError } = useLedgerDashboard();
+  const { data: templates } = useLedgerTemplates();
   const { openTransactionModal } = useTransactionModal();
+  const apply = useApplyTemplate();
 
   return (
     <div className="mx-auto flex max-w-[880px] flex-col gap-6">
@@ -79,6 +85,32 @@ export function LedgerDashboardPage() {
             </Alert>
           )}
 
+          {/*
+            빠른 입력 칩. #1261에서 자리만 잡아 뒀던 곳에 실제 템플릿이 붙는다.
+            한 번 누르면 오늘 날짜로 기록되고, 누를수록 위로 올라온다.
+          */}
+          {templates && templates.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <h2 className="text-[13px] font-semibold">빠른 입력</h2>
+              <div className="flex flex-wrap gap-2">
+                {templates.slice(0, 6).map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    disabled={apply.isPending}
+                    onClick={() => apply.mutate(template.id)}
+                    className="border-border hover:bg-muted flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] transition-colors disabled:opacity-50"
+                  >
+                    <span>{template.name}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {formatAmount(template.amount)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
           <section className="flex flex-col gap-2">
             <h2 className="text-[13px] font-semibold">바로 가기</h2>
             <div className="flex flex-wrap gap-2">
@@ -102,6 +134,15 @@ export function LedgerDashboardPage() {
                 render={<Link to="/ledger/stats" />}
               >
                 통계
+              </Button>
+              {/* 카드 명세서를 보며 몰아 적을 때 쓴다. 파일로 못 받는 경우가 실제로 많다. */}
+              <Button
+                type="button"
+                variant="outline"
+                render={<Link to="/ledger/transactions/bulk" />}
+              >
+                <Rows3 className="size-4" />
+                여러 건 적기
               </Button>
             </div>
           </section>

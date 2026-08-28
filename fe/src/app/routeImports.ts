@@ -112,6 +112,10 @@ export const importLedgerTransactions = () =>
   import("../pages/ledger/LedgerTransactionsPage").then((m) => ({
     default: m.LedgerTransactionsPage,
   }));
+export const importLedgerBulkInput = () =>
+  import("../pages/ledger/LedgerBulkInputPage").then((m) => ({
+    default: m.LedgerBulkInputPage,
+  }));
 export const importLedgerStats = () =>
   import("../pages/ledger/LedgerStatsPage").then((m) => ({
     default: m.LedgerStatsPage,

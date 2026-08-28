@@ -3,14 +3,23 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/shared/lib/toast";
 
 import {
+  applyTemplate,
   type AssetCreateRequest,
   type AssetUpdateRequest,
+  attachReceipt,
+  bulkCreateTransactions,
   createAsset,
+  createReceiptUploadUrl,
+  createTemplate,
   createTransaction,
+  deleteTemplate,
   deleteTransaction,
+  detachReceipt,
+  duplicateTransaction,
   reconcileAsset,
   type ReconcileRequest,
   type SettingsUpdateRequest,
+  type TemplateCreateRequest,
   type TransactionCreatedResponse,
   type TransactionCreateRequest,
   type TransactionUpdateRequest,
@@ -122,6 +131,130 @@ export function useReconcileAsset() {
       );
     },
     onError: () => toast("잔액을 맞추지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+/**
+ * 템플릿으로 한 건 적기. 저장 결과 문구는 일반 입력과 같은 규칙을 쓴다 —
+ * 어느 길로 적었든 「예정으로 갔다」는 반드시 알려야 한다.
+ */
+export function useApplyTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => applyTemplate(id),
+    onSuccess: (result) =>
+      toast(
+        result.savedAs === "SCHEDULED"
+          ? "미래 날짜라 예정으로 저장했어요"
+          : "저장했어요",
+        result.savedAs === "SCHEDULED" ? "info" : "success",
+      ),
+    onError: () => toast("저장하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+export function useCreateTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: TemplateCreateRequest) => createTemplate(body),
+    onSuccess: () => toast("템플릿으로 저장했어요"),
+    onError: () => toast("템플릿을 만들지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+export function useDeleteTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => deleteTemplate(id),
+    onError: () => toast("템플릿을 지우지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+/** 내역 복사. 기본은 오늘 날짜다 — 대개 「같은 걸 오늘 또 썼다」이다. */
+export function useDuplicateTransaction() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, useToday }: { id: number; useToday: boolean }) =>
+      duplicateTransaction(id, useToday),
+    onSuccess: () => toast("복사했어요"),
+    onError: () => toast("복사하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+/**
+ * 다건 입력. 서버가 한 트랜잭션으로 처리하므로 <b>전부 들어갔거나 하나도 안 들어갔거나</b>다 —
+ * 실패했을 때 「몇 건은 됐다」고 말하지 않는다.
+ */
+export function useBulkCreateTransactions() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (transactions: TransactionCreateRequest[]) =>
+      bulkCreateTransactions(transactions),
+    onSuccess: (result) => {
+      const scheduled = result.scheduledCount;
+      toast(
+        scheduled > 0
+          ? `${result.created.length}건을 저장했어요 — 그중 ${scheduled}건은 예정입니다`
+          : `${result.created.length}건을 저장했어요`,
+        "success",
+      );
+    },
+    onError: () => toast("한 줄이라도 잘못되면 전부 저장하지 않아요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+/**
+ * 영수증 첨부. 바이트는 브라우저가 MinIO에 직접 PUT 하고, 서버에는 키만 보낸다 —
+ * 파일이 BE를 거치지 않는다.
+ */
+export function useAttachReceipt() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      transactionId,
+      file,
+    }: {
+      transactionId: number;
+      file: File;
+    }) => {
+      const target = await createReceiptUploadUrl(file.type);
+      const uploaded = await fetch(target.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!uploaded.ok) {
+        throw new Error("upload failed");
+      }
+      return attachReceipt(transactionId, {
+        objectKey: target.objectKey,
+        contentType: file.type,
+        byteSize: file.size,
+      });
+    },
+    onError: () => toast("영수증을 올리지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+export function useDetachReceipt() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => detachReceipt(id),
+    onError: () => toast("영수증을 떼지 못했어요.", "error"),
     onSettled: () => invalidateAll(queryClient),
   });
 }

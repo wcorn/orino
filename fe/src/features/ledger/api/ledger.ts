@@ -382,6 +382,145 @@ export async function fetchSuggestions(
   return data.data;
 }
 
+/**
+ * 빠른 입력 템플릿(`LDG-013`). 날짜가 없다 — 템플릿으로 적는 건은 언제나 오늘이다.
+ *
+ * `useCount` 많은 순으로 온다. 순서를 사람이 관리하게 하지 않는다.
+ */
+export interface TemplateView {
+  id: number;
+  name: string;
+  txType: LedgerFlow;
+  amount: number;
+  assetId: number;
+  assetName: string | null;
+  categoryId: number | null;
+  categoryName: string | null;
+  title: string | null;
+  useCount: number;
+}
+
+export interface TemplateCreateRequest {
+  name: string;
+  txType: LedgerFlow;
+  amount: number;
+  assetId: number;
+  categoryId?: number | null;
+  title?: string | null;
+}
+
+export async function fetchTemplates(): Promise<TemplateView[]> {
+  const { data } =
+    await client.get<ApiEnvelope<TemplateView[]>>("/ledger/templates");
+  return data.data;
+}
+
+export async function createTemplate(
+  body: TemplateCreateRequest,
+): Promise<TemplateView> {
+  const { data } = await client.post<ApiEnvelope<TemplateView>>(
+    "/ledger/templates",
+    body,
+  );
+  return data.data;
+}
+
+export async function deleteTemplate(id: number): Promise<void> {
+  await client.delete(`/ledger/templates/${id}`);
+}
+
+/** 한 번 눌러 오늘 날짜로 기록한다. 쓸 때마다 순위가 오른다. */
+export async function applyTemplate(
+  id: number,
+): Promise<TransactionCreatedResponse> {
+  const { data } = await client.post<ApiEnvelope<TransactionCreatedResponse>>(
+    `/ledger/templates/${id}/apply`,
+  );
+  return data.data;
+}
+
+/** 내역 복사(`LDG-014`). 기본은 오늘 날짜다. */
+export async function duplicateTransaction(
+  id: number,
+  useToday: boolean,
+): Promise<TransactionCreatedResponse> {
+  const { data } = await client.post<ApiEnvelope<TransactionCreatedResponse>>(
+    `/ledger/transactions/${id}/duplicate`,
+    { useToday },
+  );
+  return data.data;
+}
+
+/**
+ * 다건 입력(`LDG-015`) 결과.
+ *
+ * 서버가 **한 트랜잭션**으로 처리한다 — 「7건 성공 3건 실패」 같은 응답이 없다.
+ */
+export interface BulkCreateResponse {
+  created: TransactionView[];
+  scheduledCount: number;
+}
+
+export async function bulkCreateTransactions(
+  transactions: TransactionCreateRequest[],
+): Promise<BulkCreateResponse> {
+  const { data } = await client.post<ApiEnvelope<BulkCreateResponse>>(
+    "/ledger/transactions/bulk-create",
+    { transactions },
+  );
+  return data.data;
+}
+
+export interface ReceiptView {
+  id: number;
+  objectKey: string;
+  url: string;
+  contentType: string | null;
+  byteSize: number | null;
+  displayOrder: number;
+}
+
+export interface ReceiptUploadUrl {
+  uploadUrl: string;
+  publicUrl: string;
+  objectKey: string;
+}
+
+export async function createReceiptUploadUrl(
+  contentType: string,
+): Promise<ReceiptUploadUrl> {
+  const { data } = await client.post<ApiEnvelope<ReceiptUploadUrl>>(
+    "/ledger/receipts/upload-url",
+    { contentType },
+  );
+  return data.data;
+}
+
+export async function fetchReceipts(
+  transactionId: number,
+): Promise<ReceiptView[]> {
+  const { data } = await client.get<ApiEnvelope<ReceiptView[]>>(
+    `/ledger/transactions/${transactionId}/receipts`,
+  );
+  return data.data;
+}
+
+export async function attachReceipt(
+  transactionId: number,
+  body: { objectKey: string; contentType?: string; byteSize?: number },
+): Promise<ReceiptView> {
+  const { data } = await client.post<ApiEnvelope<ReceiptView>>(
+    `/ledger/transactions/${transactionId}/receipts`,
+    body,
+  );
+  return data.data;
+}
+
+/** 첨부를 뗀다. **오브젝트는 남는다** — 되돌릴 수 있어야 한다. */
+export async function detachReceipt(id: number): Promise<void> {
+  await client.delete(`/ledger/receipts/${id}`);
+}
+
 export async function fetchSettings(): Promise<SettingsView> {
   const { data } =
     await client.get<ApiEnvelope<SettingsView>>("/ledger/settings");

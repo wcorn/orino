@@ -1,0 +1,181 @@
+databaseChangeLog:
+  # 가계부 입력 편의 (#1270, Epic #1257).
+  #
+  # 입력 마찰이 곧 이탈이다. 성공 지표가 「주 5일 이상 기록 · 1건당 30초」인데, 그건 첫 입력이
+  # 아니라 200번째 입력에서 갈린다 — 같은 커피를 매일 다시 적으면 안 쓰게 된다.
+  #
+  # 두 테이블이 한 파일에 있는 것은 슬라이스가 같아서가 아니라 <b>같은 변경에서 함께 쓰이기</b>
+  # 때문이다(템플릿 v1.5 · 영수증 v2). 쓰지 않는 테이블을 미리 세워 두지 않는다는 규칙은 그대로다.
+
+  - changeSet:
+      id: 058-create-ledger-transaction-template
+      author: wcorn
+      comment: 빠른 입력 템플릿. 많이 쓴 순으로 대시보드 칩에 노출한다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_transaction_template
+      changes:
+        - createTable:
+            tableName: ledger_transaction_template
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name
+                  type: VARCHAR(60)
+                  constraints:
+                    nullable: false
+              # 기록할 값. 날짜는 담지 않는다 — 템플릿은 언제나 「오늘」로 적힌다.
+              - column:
+                  name: tx_type
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: amount
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: asset_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: category_id
+                  type: BIGINT
+              - column:
+                  name: title
+                  type: VARCHAR(120)
+              # 순서를 사람이 관리하게 하지 않는다. 많이 쓴 것이 위로 온다.
+              - column:
+                  name: use_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: ledger_transaction_template
+            baseColumnNames: asset_id
+            constraintName: fk_ledger_template_asset
+            referencedTableName: ledger_asset
+            referencedColumnNames: id
+        - addForeignKeyConstraint:
+            baseTableName: ledger_transaction_template
+            baseColumnNames: category_id
+            constraintName: fk_ledger_template_category
+            referencedTableName: ledger_category
+            referencedColumnNames: id
+        - createIndex:
+            tableName: ledger_transaction_template
+            indexName: idx_ledger_template_member_use
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: use_count
+                  descending: true
+      rollback:
+        - dropTable:
+            tableName: ledger_transaction_template
+
+  - changeSet:
+      id: 058-create-ledger-transaction-receipt
+      author: wcorn
+      comment: 영수증 첨부. 오브젝트는 MinIO에 있고 여기에는 키만 남는다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_transaction_receipt
+      changes:
+        - createTable:
+            tableName: ledger_transaction_receipt
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: transaction_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # MinIO 오브젝트 키. 일상기록과 같은 버킷을 쓰고 prefix만 다르다 —
+              # 새 저장소를 만들지 않는다.
+              - column:
+                  name: object_key
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: content_type
+                  type: VARCHAR(60)
+              - column:
+                  name: byte_size
+                  type: BIGINT
+              - column:
+                  name: display_order
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        # 거래를 소프트 삭제해도 이 행은 남는다. CASCADE를 걸지 않는 것이 그래서다 —
+        # 되돌리기가 가능해야 하고, 오브젝트 정리는 보존 배치의 몫이다.
+        - addForeignKeyConstraint:
+            baseTableName: ledger_transaction_receipt
+            baseColumnNames: transaction_id
+            constraintName: fk_ledger_receipt_transaction
+            referencedTableName: ledger_transaction
+            referencedColumnNames: id
+        - createIndex:
+            tableName: ledger_transaction_receipt
+            indexName: idx_ledger_receipt_transaction
+            columns:
+              - column:
+                  name: transaction_id
+              - column:
+                  name: display_order
+      rollback:
+        - dropTable:
+            tableName: ledger_transaction_receipt

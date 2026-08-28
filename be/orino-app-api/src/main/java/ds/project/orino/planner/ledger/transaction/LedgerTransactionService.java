@@ -19,6 +19,7 @@ import ds.project.orino.planner.ledger.common.LedgerBootstrap;
 import ds.project.orino.planner.ledger.common.LedgerClock;
 import ds.project.orino.planner.ledger.common.LedgerNames;
 import ds.project.orino.planner.ledger.fx.LedgerFxService;
+import ds.project.orino.planner.ledger.transaction.dto.BulkCreateResponse;
 import ds.project.orino.planner.ledger.transaction.dto.BulkRequest;
 import ds.project.orino.planner.ledger.transaction.dto.BulkResponse;
 import ds.project.orino.planner.ledger.transaction.dto.FxInput;
@@ -94,7 +95,65 @@ public class LedgerTransactionService {
     @Transactional
     public TransactionCreatedResponse create(Long memberId, TransactionCreateRequest request) {
         bootstrap.ensureSeeded(memberId);
+        return saveOne(memberId, request);
+    }
 
+    /**
+     * 다건 입력(`LDG-015`) — 카드 명세서를 보며 몰아 적을 때 쓴다.
+     *
+     * <p><b>한 트랜잭션이다.</b> 열 줄 중 하나가 거부되면 아홉 줄도 들어가지 않는다 — 일부만
+     * 들어간 원장은 「어디까지 적었더라」를 사람이 다시 맞춰야 하고, 그건 몰아 적는 이유를 없앤다.
+     *
+     * <p>가져오기(#1268)와 겹치지 않는다. 그건 파일이 있을 때고, 이건 화면을 보며 손으로 옮길 때다 —
+     * 카드 명세서 PDF처럼 파일로 못 받는 경우가 실제로 많다.
+     */
+    @Transactional
+    public BulkCreateResponse createAll(Long memberId, List<TransactionCreateRequest> requests) {
+        bootstrap.ensureSeeded(memberId);
+
+        int scheduled = 0;
+        List<TransactionView> created = new ArrayList<>();
+        for (TransactionCreateRequest request : requests) {
+            TransactionCreatedResponse saved = saveOne(memberId, request);
+            created.add(saved.transaction());
+            if (saved.savedAs() == LedgerTransactionStatus.SCHEDULED) {
+                scheduled++;
+            }
+        }
+        return new BulkCreateResponse(created, scheduled);
+    }
+
+    /**
+     * 내역 복사(`LDG-014`) — 템플릿으로 만들 만큼 반복되진 않지만 이번 달에 두 번 나오는 지출용.
+     *
+     * @param useToday 오늘 날짜로 적을지. 아니면 원본 날짜를 그대로 쓴다
+     */
+    @Transactional
+    public TransactionCreatedResponse duplicate(Long memberId, Long id, boolean useToday) {
+        LedgerTransaction origin = requireTransaction(memberId, id);
+        LocalDate occurredOn = useToday ? clock.today() : origin.getOccurredOn();
+
+        // 복사본은 새 거래다. 상쇄 연결(refundOfId)과 자동 기록 표식은 따라가지 않는다 —
+        // 따라가면 원본과 같은 회차로 잡혀 UNIQUE에 걸리거나 환불이 두 번 세어진다.
+        TransactionCreateRequest request = new TransactionCreateRequest(
+                origin.getType(),
+                origin.getAmount(),
+                occurredOn,
+                origin.getOccurredAt(),
+                origin.getAssetId(),
+                origin.getCounterAssetId(),
+                origin.getCategoryId(),
+                origin.getTitle(),
+                origin.getMemo(),
+                currentTags(memberId, origin.getId()),
+                origin.isEstimated(),
+                origin.hasFx()
+                        ? new FxInput(origin.getFxCurrency(), origin.getFxAmount(), origin.getFxRate())
+                        : null);
+        return saveOne(memberId, request);
+    }
+
+    private TransactionCreatedResponse saveOne(Long memberId, TransactionCreateRequest request) {
         LedgerFlow type = request.type();
         LedgerAsset asset = requireAsset(memberId, request.assetId());
         Long counterAssetId = resolveCounterAsset(memberId, type, asset, request.counterAssetId());
