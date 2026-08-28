@@ -1,0 +1,621 @@
+databaseChangeLog:
+  # 가계부(Ledger) v1 스키마 (#1259, Epic #1257).
+  #
+  # 이 모듈이 성립하는 최소 집합이다 — 자산 · 카테고리 · 거래 원장. 카드 사이클·정기 항목·예산은
+  # 각각 058·059에서 붙는다. 여기에 미리 컬럼만 세워 두지 않는다: 값이 없는 컬럼은
+  # Hibernate validate만 통과시킬 뿐 아무것도 말해 주지 않고, 나중에 어느 슬라이스가
+  # 무엇을 채우는지 흐려진다.
+  #
+  # 두 가지가 특히 중요하다.
+  # 1) 금액은 전부 원 단위 BIGINT다(데이터 모델 §0). DECIMAL도 DOUBLE도 쓰지 않는다 —
+  #    원화에 소수점이 없고, 부동소수는 합계를 반복하면 1원씩 어긋난다. 외화만 예외이고
+  #    그 값은 원화 환산액의 「근거」로만 남는다.
+  # 2) ledger_asset에 balance 컬럼이 없다(D-8). 잔액은 원장에서 파생한다 — 저장한 잔액과
+  #    원장이 어긋나는 순간이 수동 가계부가 신뢰를 잃는 전형적 경로다.
+  #
+  # 불리언은 BIT(1)이다 — BOOLEAN으로 적으면 Hibernate validate가 깨진다(DB-Migration 문서).
+
+  - changeSet:
+      id: 057-create-ledger-settings
+      author: wcorn
+      comment: 회원별 가계부 설정. 월 시작일은 예산 기간에만 쓰고 카드 사이클과 무관하다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_settings
+      changes:
+        - createTable:
+            tableName: ledger_settings
+            columns:
+              # 1:1이라 member_id가 곧 PK다. 회원당 설정이 둘일 수 없음을 DB가 보장한다.
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              # 1~28 또는 99(말일). 급여일 기준으로 쓰면 25가 된다.
+              - column:
+                  name: month_start_day
+                  type: TINYINT
+                  defaultValueNumeric: 1
+                  constraints:
+                    nullable: false
+              # AS_IS · PREV_BUSINESS_DAY
+              - column:
+                  name: month_start_weekend_policy
+                  type: VARCHAR(20)
+                  defaultValue: AS_IS
+                  constraints:
+                    nullable: false
+              - column:
+                  name: default_asset_id
+                  type: BIGINT
+              # SPEND(소비 기준) · BILLING(청구 기준). 관점 전환 자체는 v2다.
+              - column:
+                  name: default_perspective
+                  type: VARCHAR(20)
+                  defaultValue: SPEND
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: ledger_settings
+
+  - changeSet:
+      id: 057-create-ledger-asset-group
+      author: wcorn
+      comment: 자산 그룹(은행·카드사). 접힘 상태를 서버에 둔다 — 기기가 바뀌어도 유지된다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_asset_group
+      changes:
+        - createTable:
+            tableName: ledger_asset_group
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name
+                  type: VARCHAR(60)
+                  constraints:
+                    nullable: false
+              # BANK · CARD_ISSUER · ETC
+              - column:
+                  name: kind
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: display_order
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: collapsed
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: ledger_asset_group
+            indexName: idx_ledger_asset_group_member
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: display_order
+      rollback:
+        - dropTable:
+            tableName: ledger_asset_group
+
+  - changeSet:
+      id: 057-create-ledger-asset
+      author: wcorn
+      comment: 자산. balance 컬럼이 없다 — 잔액은 원장에서 파생한다(D-8).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_asset
+      changes:
+        - createTable:
+            tableName: ledger_asset
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # NULL이면 화면의 「그 외」 묶음. 그룹은 표시 수단이지 소속 조건이 아니다.
+              - column:
+                  name: group_id
+                  type: BIGINT
+              - column:
+                  name: name
+                  type: VARCHAR(60)
+                  constraints:
+                    nullable: false
+              # CASH · CHECKING · SAVINGS · DEBIT_CARD · CREDIT_CARD · PREPAID
+              - column:
+                  name: type
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: account_last4
+                  type: VARCHAR(4)
+              - column:
+                  name: display_order
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              # 해지·닫음. 자산을 지우지 않는다 — 지우면 과거 내역이 갈 곳을 잃는다.
+              - column:
+                  name: hidden
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: closed_reason
+                  type: VARCHAR(30)
+              - column:
+                  name: maturity_date
+                  type: DATE
+              - column:
+                  name: target_amount
+                  type: BIGINT
+              # 체크카드는 필수다(D-4·LDG-ERR-019). 잔액 계산에서만 이 계좌로 전가한다 —
+              # 거래 자체는 체크카드에 붙어 있어야 "이 카드로 얼마 썼나"에 답할 수 있다.
+              - column:
+                  name: linked_asset_id
+                  type: BIGINT
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: ledger_asset
+            baseColumnNames: group_id
+            constraintName: fk_ledger_asset_group
+            referencedTableName: ledger_asset_group
+            referencedColumnNames: id
+        - addForeignKeyConstraint:
+            baseTableName: ledger_asset
+            baseColumnNames: linked_asset_id
+            constraintName: fk_ledger_asset_linked
+            referencedTableName: ledger_asset
+            referencedColumnNames: id
+        - createIndex:
+            tableName: ledger_asset
+            indexName: idx_ledger_asset_member_group
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: group_id
+              - column:
+                  name: display_order
+      rollback:
+        - dropTable:
+            tableName: ledger_asset
+
+  - changeSet:
+      id: 057-create-ledger-category
+      author: wcorn
+      comment: 카테고리. 2단까지만이고 flow(지출/수입/이체)별로 세트가 분리된다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_category
+      changes:
+        - createTable:
+            tableName: ledger_category
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # NULL이면 대분류. 2단까지만 — 손자는 거부한다(LDG-ERR-015).
+              - column:
+                  name: parent_id
+                  type: BIGINT
+              # EXPENSE · INCOME · TRANSFER. 거래 유형과 다르면 거부한다(LDG-ERR-005).
+              - column:
+                  name: flow
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name
+                  type: VARCHAR(40)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: color
+                  type: VARCHAR(20)
+              # lucide 아이콘명.
+              - column:
+                  name: icon
+                  type: VARCHAR(40)
+              - column:
+                  name: display_order
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              # 통합의 결과물. 원본을 지우지 않고 여기 남긴다 — 거래는 따라가되 흔적은 남는다.
+              - column:
+                  name: archived
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: ledger_category
+            baseColumnNames: parent_id
+            constraintName: fk_ledger_category_parent
+            referencedTableName: ledger_category
+            referencedColumnNames: id
+        - createIndex:
+            tableName: ledger_category
+            indexName: idx_ledger_category_member_flow
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: flow
+              - column:
+                  name: display_order
+      rollback:
+        - dropTable:
+            tableName: ledger_category
+
+  - changeSet:
+      id: 057-create-ledger-tag
+      author: wcorn
+      comment: 거래 태그. 이름은 회원 안에서 유일하다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_tag
+      changes:
+        - createTable:
+            tableName: ledger_tag
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name
+                  type: VARCHAR(40)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: ledger_tag
+            columnNames: member_id, name
+            constraintName: uk_ledger_tag_member_name
+      rollback:
+        - dropTable:
+            tableName: ledger_tag
+
+  - changeSet:
+      id: 057-create-ledger-transaction
+      author: wcorn
+      comment: 원장. asset_id는 NOT NULL이고 금액은 항상 양수다 — 부호는 type이 정한다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_transaction
+      changes:
+        - createTable:
+            tableName: ledger_transaction
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # EXPENSE · INCOME · TRANSFER. 이체는 지출·수입 합계에 절대 잡히지 않는다.
+              - column:
+                  name: type
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              # CONFIRMED · SCHEDULED. 예정은 잔액을 바꾸지 않지만 숨기지도 않는다.
+              - column:
+                  name: status
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              # 소비·발생 일자. 통계와 타임라인의 기준은 청구일이 아니라 이 날짜다.
+              - column:
+                  name: occurred_on
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: occurred_at
+                  type: DATETIME(6)
+              # 원 단위. 항상 양수다 — 음수를 허용하면 합계 질의마다 부호 규칙이 갈린다.
+              - column:
+                  name: amount
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # NULL 불가. 자산 없는 거래를 허용하면 카드별·은행별 뷰와 잔액이 전부 무너진다.
+              - column:
+                  name: asset_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: counter_asset_id
+                  type: BIGINT
+              # NULL = 미분류. 허용한다 — 기록을 막느니 나중에 채운다.
+              - column:
+                  name: category_id
+                  type: BIGINT
+              - column:
+                  name: title
+                  type: VARCHAR(120)
+              - column:
+                  name: memo
+                  type: VARCHAR(500)
+              # MANUAL · RECURRING · SCHEDULED_ONE_OFF · CARD_PAYMENT · INSTALLMENT
+              # · ADJUSTMENT · REFUND · IMPORT
+              - column:
+                  name: source
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              # 「예상 금액」 표시. 확정 때 실제 금액으로 고쳐야 함을 화면이 알린다.
+              - column:
+                  name: estimated
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              # 자동 기록(v1.5)의 출처와 그 회차 예정일. 컬럼과 UNIQUE를 v1에서 미리 만든다 —
+              # 둘 다 NULL이라 수동 입력과 충돌하지 않고, 중복 방지 지점을 나중에 옮기지 않는다.
+              - column:
+                  name: recurring_id
+                  type: BIGINT
+              - column:
+                  name: occurrence_date
+                  type: DATE
+              # 상쇄 대상 원 거래. 환불은 원 거래를 지우지 않고 반대 거래를 만든다.
+              - column:
+                  name: refund_of_id
+                  type: BIGINT
+              # 통화 코드. NULL이면 원화 거래다. 셋(currency·amount·rate)은 함께 있거나 함께 없다.
+              - column:
+                  name: fx_currency
+                  type: CHAR(3)
+              - column:
+                  name: fx_amount
+                  type: DECIMAL(18,2)
+              # 거래 시점에 고정한다. 조회 시점으로 재계산하면 과거 지출액이 매일 바뀐다.
+              - column:
+                  name: fx_rate
+                  type: DECIMAL(18,6)
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              # 소프트 삭제. 되돌릴 수 있어야 하고, 원장은 지우지 않는다.
+              - column:
+                  name: deleted_at
+                  type: DATETIME(6)
+        - addForeignKeyConstraint:
+            baseTableName: ledger_transaction
+            baseColumnNames: asset_id
+            constraintName: fk_ledger_tx_asset
+            referencedTableName: ledger_asset
+            referencedColumnNames: id
+        - addForeignKeyConstraint:
+            baseTableName: ledger_transaction
+            baseColumnNames: counter_asset_id
+            constraintName: fk_ledger_tx_counter_asset
+            referencedTableName: ledger_asset
+            referencedColumnNames: id
+        - addForeignKeyConstraint:
+            baseTableName: ledger_transaction
+            baseColumnNames: category_id
+            constraintName: fk_ledger_tx_category
+            referencedTableName: ledger_category
+            referencedColumnNames: id
+        - addForeignKeyConstraint:
+            baseTableName: ledger_transaction
+            baseColumnNames: refund_of_id
+            constraintName: fk_ledger_tx_refund_of
+            referencedTableName: ledger_transaction
+            referencedColumnNames: id
+        # 자동 기록 중복 방지의 집행 지점이다(D-2). 스케줄러가 두 번 돌아도, 재기동으로
+        # 밀린 회차를 따라잡아도 DB가 두 번째 INSERT를 거부한다. 「replica 1 전제」에
+        # 기대지 않는다 — 원장 중복은 잔액·통계·청구서·예산이 전부 틀어지고 월말에야 드러난다.
+        # MySQL은 NULL을 UNIQUE 대상에서 제외하므로 수동 입력(둘 다 NULL)과 충돌하지 않는다.
+        - addUniqueConstraint:
+            tableName: ledger_transaction
+            columnNames: recurring_id, occurrence_date
+            constraintName: uk_ledger_tx_recurring_occurrence
+        - createIndex:
+            tableName: ledger_transaction
+            indexName: idx_ledger_tx_member_date
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: occurred_on
+                  descending: true
+              - column:
+                  name: id
+                  descending: true
+        - createIndex:
+            tableName: ledger_transaction
+            indexName: idx_ledger_tx_asset_date
+            columns:
+              - column:
+                  name: asset_id
+              - column:
+                  name: occurred_on
+                  descending: true
+        # 통계·예산과 미분류 정리를 함께 커버한다(category_id IS NULL도 이 인덱스를 탄다).
+        - createIndex:
+            tableName: ledger_transaction
+            indexName: idx_ledger_tx_category_date
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: category_id
+              - column:
+                  name: occurred_on
+      rollback:
+        - dropTable:
+            tableName: ledger_transaction
+
+  - changeSet:
+      id: 057-create-ledger-transaction-tag
+      author: wcorn
+      comment: 거래 ↔ 태그 다대다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_transaction_tag
+      changes:
+        - createTable:
+            tableName: ledger_transaction_tag
+            columns:
+              - column:
+                  name: transaction_id
+                  type: BIGINT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tag_id
+                  type: BIGINT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: ledger_transaction_tag
+            baseColumnNames: transaction_id
+            constraintName: fk_ledger_tx_tag_transaction
+            referencedTableName: ledger_transaction
+            referencedColumnNames: id
+            onDelete: CASCADE
+        - addForeignKeyConstraint:
+            baseTableName: ledger_transaction_tag
+            baseColumnNames: tag_id
+            constraintName: fk_ledger_tx_tag_tag
+            referencedTableName: ledger_tag
+            referencedColumnNames: id
+            onDelete: CASCADE
+      rollback:
+        - dropTable:
+            tableName: ledger_transaction_tag
