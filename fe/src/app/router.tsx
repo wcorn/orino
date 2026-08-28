@@ -6,6 +6,7 @@ import { LoadingText } from "@/components/ui/loading-text";
 
 import { PrivateRoute } from "../features/auth/components/PrivateRoute";
 import { PublicRoute } from "../features/auth/components/PublicRoute";
+import { LedgerLayout } from "../features/ledger/components/LedgerLayout";
 import { PlannerLayout } from "../features/planner/components/PlannerLayout";
 import { LandingPage } from "../pages/LandingPage";
 import { LoginPage } from "../pages/LoginPage";
@@ -14,7 +15,11 @@ import {
   importActivityDetail,
   importHome,
   importIntegrations,
+  importLedgerAssetDetail,
+  importLedgerAssets,
   importLedgerDashboard,
+  importLedgerSettings,
+  importLedgerTransactions,
   importLifelog,
   importLifelogFlowDetail,
   importLifelogFlows,
@@ -67,6 +72,10 @@ const ActivityDetailPage = lazy(importActivityDetail);
 const LinkListPage = lazy(importLinkList);
 const LinkDetailPage = lazy(importLinkDetail);
 const LedgerDashboardPage = lazy(importLedgerDashboard);
+const LedgerAssetsPage = lazy(importLedgerAssets);
+const LedgerAssetDetailPage = lazy(importLedgerAssetDetail);
+const LedgerTransactionsPage = lazy(importLedgerTransactions);
+const LedgerSettingsPage = lazy(importLedgerSettings);
 
 function RouteFallback() {
   return (
@@ -226,19 +235,57 @@ export function AppRouter() {
               </Suspense>
             }
           />
-          {/* 가계부 워크스페이스. 화면은 후속 이슈(#1259~)에서 채우고 여기서는 라우트 자리를
-              잡는다. `/ledger` 자체에 착지점이 있어야 한다 — 아래 폴백의 splat은 `/ledger`도
-              잡으므로, 이 라우트가 없으면 같은 경로로 되돌리는 리다이렉트가 반복된다. */}
-          <Route
-            path="/ledger"
-            element={
-              <Suspense fallback={<RouteFallback />}>
-                <LedgerDashboardPage />
-              </Suspense>
-            }
-          />
-          {/* 아직 없는 가계부 하위 경로는 랜딩이 아니라 가계부 홈으로 보낸다(여행 선례). */}
-          <Route path="/ledger/*" element={<Navigate to="/ledger" replace />} />
+          {/* 가계부 워크스페이스. `LedgerLayout`이 입력 모달과 `N` 단축키를 이 안에서만
+              연다 — AppLayout에 붙이면 여행·일상 화면에서 누른 `N`까지 가로챈다.
+              `/ledger` 자체에 착지점이 있어야 한다: 아래 폴백의 splat은 `/ledger`도 잡으므로,
+              이 라우트가 없으면 같은 경로로 되돌리는 리다이렉트가 반복된다. */}
+          <Route element={<LedgerLayout />}>
+            <Route
+              path="/ledger"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <LedgerDashboardPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/ledger/assets"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <LedgerAssetsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/ledger/assets/:assetId"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <LedgerAssetDetailPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/ledger/transactions"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <LedgerTransactionsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/ledger/settings"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <LedgerSettingsPage />
+                </Suspense>
+              }
+            />
+            {/* 아직 없는 가계부 하위 경로는 랜딩이 아니라 가계부 홈으로 보낸다(여행 선례). */}
+            <Route
+              path="/ledger/*"
+              element={<Navigate to="/ledger" replace />}
+            />
+          </Route>
           {/* 여행 워크스페이스. 화면은 후속 이슈에서 채우고 여기서는 라우트 자리를 잡는다.
               푸시 알림 클릭이 /travel/* 딥링크로 들어오므로 선택 화면으로 되돌리지 않는다. */}
           <Route
