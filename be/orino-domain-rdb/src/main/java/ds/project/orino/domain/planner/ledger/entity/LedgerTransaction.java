@@ -103,6 +103,17 @@ public class LedgerTransaction {
     @Column(name = "refund_of_id")
     private Long refundOfId;
 
+    /**
+     * 편입된 청구서. 카드 사용 건이 어느 사이클에 들어갔는지이고, <b>산식의 출발점</b>이다.
+     * 카드가 아닌 자산의 거래에서는 언제나 {@code null}이다.
+     */
+    @Column(name = "statement_id")
+    private Long statementId;
+
+    /** 할부 원 거래에 붙는다. 회차는 {@code ledger_installment_round}에 따로 있다. */
+    @Column(name = "installment_id")
+    private Long installmentId;
+
     @Column(name = "fx_currency", length = 3)
     private String fxCurrency;
 
@@ -304,6 +315,22 @@ public class LedgerTransaction {
 
     public Long getRefundOfId() {
         return refundOfId;
+    }
+
+    public void updateStatementId(Long statementId) {
+        this.statementId = statementId;
+    }
+
+    public Long getStatementId() {
+        return statementId;
+    }
+
+    public void updateInstallmentId(Long installmentId) {
+        this.installmentId = installmentId;
+    }
+
+    public Long getInstallmentId() {
+        return installmentId;
     }
 
     public String getFxCurrency() {

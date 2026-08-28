@@ -34,6 +34,16 @@ public record TransactionCreateRequest(
         @Size(max = 500) String memo,
         List<String> tags,
         Boolean estimated,
-        FxInput fx
+        FxInput fx,
+        /** 신용카드 할부. 원 거래에는 <b>전액</b>이 적히고 회차는 따로 만들어진다. */
+        InstallmentInput installment
 ) {
+
+    /**
+     * @param months       2~60. 카드사가 파는 범위 밖은 입력 실수로 본다
+     * @param interestFree 무이자 여부. <b>부채 계산에는 영향이 없다</b> —
+     *                     갚기로 한 원금은 무이자든 아니든 이미 빚이다
+     */
+    public record InstallmentInput(int months, Boolean interestFree) {
+    }
 }

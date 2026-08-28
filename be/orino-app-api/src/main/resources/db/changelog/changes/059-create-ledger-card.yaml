@@ -1,0 +1,390 @@
+databaseChangeLog:
+  # 신용카드 청구서 (#1262, Epic #1257 v1.5). 이 모듈의 심장이다.
+  #
+  # 수동 가계부가 무너지는 지점이 전부 여기다 — 카드 사용과 카드 대금을 같은 것으로 세거나,
+  # 이월 잔액을 새 지출로 세면 같은 돈이 두 번 잡힌다.
+  #
+  # 신용카드 컬럼을 v1(057)에 미리 넣지 않은 이유가 여기서 드러난다: 사이클 설정 없이 서 있던
+  # 컬럼들은 아무것도 말해 주지 않았을 것이고, 이제야 값이 생긴다.
+
+  - changeSet:
+      id: 059-alter-ledger-asset-credit-card
+      author: wcorn
+      comment: 신용카드 사이클·결제일·결제 계좌·한도. 카드가 아닌 자산에서는 전부 NULL이다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: ledger_asset
+                columnName: payment_day
+      changes:
+        - addColumn:
+            tableName: ledger_asset
+            columns:
+              # 대금이 빠져나갈 계좌. 결제 처리의 기본값이지 강제는 아니다 —
+              # 그날 다른 통장에서 냈다면 그쪽으로 적어야 원장이 맞다.
+              - column:
+                  name: payment_asset_id
+                  type: BIGINT
+              # 정산 구간(1~28 또는 99=말일)과 결제일. 셋이 함께 있어야 사이클이 성립한다.
+              - column:
+                  name: cycle_start_day
+                  type: TINYINT
+              - column:
+                  name: cycle_close_day
+                  type: TINYINT
+              - column:
+                  name: payment_day
+                  type: TINYINT
+              - column:
+                  name: credit_limit
+                  type: BIGINT
+        - addForeignKeyConstraint:
+            baseTableName: ledger_asset
+            baseColumnNames: payment_asset_id
+            constraintName: fk_ledger_asset_payment_asset
+            referencedTableName: ledger_asset
+            referencedColumnNames: id
+      # FK가 컬럼을 물고 있으면 MySQL이 DROP을 거부한다 — 제약을 먼저 떼야 한다.
+      # 자동 롤백은 그 순서를 모른다(055·056과 같은 이유).
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableName: ledger_asset
+            constraintName: fk_ledger_asset_payment_asset
+        - dropColumn:
+            tableName: ledger_asset
+            columns:
+              - column:
+                  name: payment_asset_id
+              - column:
+                  name: cycle_start_day
+              - column:
+                  name: cycle_close_day
+              - column:
+                  name: payment_day
+              - column:
+                  name: credit_limit
+
+  - changeSet:
+      id: 059-create-ledger-statement
+      author: wcorn
+      comment: 청구서. 청구액은 저장하지 않고 조회 시 계산한다 — 산식을 그대로 보여주기 위해서다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_statement
+      changes:
+        - createTable:
+            tableName: ledger_statement
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: card_asset_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: cycle_start
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: cycle_end
+                  type: DATE
+                  constraints:
+                    nullable: false
+              # 영업일 보정을 마친 결제 예정일. HolidayQueryService를 재사용한다.
+              - column:
+                  name: payment_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              # COLLECTING · CONFIRMED · PARTIAL · PAID.
+              # 미납은 상태가 아니다 — 결제일이 지났는데 안 냈다는 사실에서 파생한다.
+              - column:
+                  name: status
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              # 이월 잔액. 청구액에는 들어가지만 지출 합계에는 절대 안 들어간다 —
+              # 이미 쓸 때 잡혔고, 갚는 행위는 지출이 아니다(명세 §7.5).
+              - column:
+                  name: carried_over_amount
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              # 리볼빙 수수료·연체 이자. 이것만 「이자/수수료」 카테고리의 새 지출이 된다.
+              - column:
+                  name: interest_fee_amount
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: adjustment_amount
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              # 차액의 원인. 「왜 이 금액이지」에 답하려면 숫자만으로는 부족하다.
+              - column:
+                  name: adjustment_category_id
+                  type: BIGINT
+              - column:
+                  name: discount_amount
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: paid_amount
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: paid_on
+                  type: DATE
+              - column:
+                  name: payment_transaction_id
+                  type: BIGINT
+              - column:
+                  name: carried_to_statement_id
+                  type: BIGINT
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: ledger_statement
+            baseColumnNames: card_asset_id
+            constraintName: fk_ledger_statement_card
+            referencedTableName: ledger_asset
+            referencedColumnNames: id
+        # 한 카드의 한 사이클은 하나뿐이다. 스케줄러가 두 번 돌아도 두 장이 생기지 않는다.
+        - addUniqueConstraint:
+            tableName: ledger_statement
+            columnNames: card_asset_id, cycle_start
+            constraintName: uk_ledger_statement_cycle
+        - createIndex:
+            tableName: ledger_statement
+            indexName: idx_ledger_statement_member_payment
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: payment_date
+      rollback:
+        - dropTable:
+            tableName: ledger_statement
+
+  - changeSet:
+      id: 059-create-ledger-installment
+      author: wcorn
+      comment: 할부. 원 거래 1건 + 회차 N행. 부채는 잔여 원금 전액이다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_installment
+      changes:
+        - createTable:
+            tableName: ledger_installment
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # 결제 시점 전액이 적힌 원 거래. 소비 관점은 이 한 건을 본다.
+              - column:
+                  name: transaction_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: months
+                  type: TINYINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: interest_free
+                  type: BIT(1)
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: principal
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # ACTIVE · SETTLED · CANCELED
+              - column:
+                  name: status
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: ledger_installment
+            baseColumnNames: transaction_id
+            constraintName: fk_ledger_installment_transaction
+            referencedTableName: ledger_transaction
+            referencedColumnNames: id
+      rollback:
+        - dropTable:
+            tableName: ledger_installment
+
+  - changeSet:
+      id: 059-create-ledger-installment-round
+      author: wcorn
+      comment: 할부 회차. 청구 관점은 이 금액이 각 청구월에 잡힌다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_installment_round
+      changes:
+        - createTable:
+            tableName: ledger_installment_round
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: installment_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: round_no
+                  type: TINYINT
+                  constraints:
+                    nullable: false
+              # `2026-09`. 어느 청구월에 들어가는 회차인지.
+              - column:
+                  name: billing_month
+                  type: CHAR(7)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: amount
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statement_id
+                  type: BIGINT
+              - column:
+                  name: settled
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: ledger_installment_round
+            baseColumnNames: installment_id
+            constraintName: fk_ledger_round_installment
+            referencedTableName: ledger_installment
+            referencedColumnNames: id
+            onDelete: CASCADE
+        - addForeignKeyConstraint:
+            baseTableName: ledger_installment_round
+            baseColumnNames: statement_id
+            constraintName: fk_ledger_round_statement
+            referencedTableName: ledger_statement
+            referencedColumnNames: id
+        - addUniqueConstraint:
+            tableName: ledger_installment_round
+            columnNames: installment_id, round_no
+            constraintName: uk_ledger_round
+      rollback:
+        - dropTable:
+            tableName: ledger_installment_round
+
+  - changeSet:
+      id: 059-alter-ledger-transaction-card
+      author: wcorn
+      comment: 거래를 청구서·할부에 연결한다. 사용 건이 어느 사이클에 편입됐는지가 산식의 출발점이다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: ledger_transaction
+                columnName: statement_id
+      changes:
+        - addColumn:
+            tableName: ledger_transaction
+            columns:
+              - column:
+                  name: statement_id
+                  type: BIGINT
+              - column:
+                  name: installment_id
+                  type: BIGINT
+        - addForeignKeyConstraint:
+            baseTableName: ledger_transaction
+            baseColumnNames: statement_id
+            constraintName: fk_ledger_tx_statement
+            referencedTableName: ledger_statement
+            referencedColumnNames: id
+        - createIndex:
+            tableName: ledger_transaction
+            indexName: idx_ledger_tx_statement
+            columns:
+              - column:
+                  name: statement_id
+      # 여기도 같다. FK와 인덱스를 먼저 떼고 컬럼을 지운다.
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableName: ledger_transaction
+            constraintName: fk_ledger_tx_statement
+        - dropIndex:
+            tableName: ledger_transaction
+            indexName: idx_ledger_tx_statement
+        - dropColumn:
+            tableName: ledger_transaction
+            columns:
+              - column:
+                  name: statement_id
+              - column:
+                  name: installment_id

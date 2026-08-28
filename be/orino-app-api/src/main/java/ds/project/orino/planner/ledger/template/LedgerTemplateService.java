@@ -123,6 +123,8 @@ public class LedgerTemplateService {
                 null,
                 List.of(),
                 false,
+                null,
+                // 템플릿은 반복해서 쓰는 것이라 할부를 담지 않는다 — 매번 새 할부가 열린다.
                 null));
     }
 
