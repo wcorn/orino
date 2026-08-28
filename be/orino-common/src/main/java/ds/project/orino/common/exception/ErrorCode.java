@@ -87,7 +87,29 @@ public enum ErrorCode {
     SHORTLINK_SLUG_TAKEN("SL-ERR-003", "이미 사용 중인 주소입니다.", 409),
     SHORTLINK_INVALID_SLUG("SL-ERR-004", "사용할 수 없는 문자가 있습니다.", 400),
     SHORTLINK_SLUG_EXHAUSTED("SL-ERR-005", "주소를 만들지 못했습니다. 다시 시도해 주세요.", 500),
-    SHORTLINK_NOT_FOUND("SL-ERR-006", "존재하지 않는 링크입니다.", 404);
+    SHORTLINK_NOT_FOUND("SL-ERR-006", "존재하지 않는 링크입니다.", 404),
+
+    // LEDGER (가계부)
+    // 여기서 막지 않으면 원장이 조용히 틀어진다. 잘못된 값을 받아 두고 나중에 고치는 길이
+    // 이 모듈에는 없다 — 어긋남은 월말 대사에서야 드러나고, 그때는 어느 줄이 원인인지 모른다.
+    LEDGER_ASSET_NOT_FOUND("LDG-ERR-001", "존재하지 않는 자산입니다.", 404),
+    // 모든 거래는 자산에 붙는다(확정 명세 §3-1). 이 제약 하나가 카드별·은행별 뷰와
+    // 잔액 정합성을 전부 만든다.
+    LEDGER_ASSET_REQUIRED("LDG-ERR-002", "자산 없이는 거래를 만들 수 없습니다.", 400),
+    LEDGER_TRANSFER_SAME_ASSET("LDG-ERR-003", "출금과 입금 자산이 같습니다.", 400),
+    LEDGER_TRANSFER_COUNTER_REQUIRED("LDG-ERR-004", "이체는 대상 자산이 필요합니다.", 400),
+    LEDGER_CATEGORY_FLOW_MISMATCH("LDG-ERR-005", "카테고리 종류가 거래 유형과 다릅니다.", 400),
+    LEDGER_TRANSACTION_NOT_FOUND("LDG-ERR-006", "존재하지 않는 거래입니다.", 404),
+    LEDGER_CATEGORY_CYCLE("LDG-ERR-014", "카테고리를 자기 하위로 옮길 수 없습니다.", 400),
+    LEDGER_CATEGORY_TOO_DEEP("LDG-ERR-015", "카테고리는 2단까지만 만들 수 있습니다.", 400),
+    // 연결 계좌 없는 체크카드는 잔액이 어디서도 빠지지 않는 유령 자산이 된다(D-4).
+    LEDGER_DEBIT_CARD_LINK_REQUIRED("LDG-ERR-019", "체크카드는 연결 계좌가 필요합니다.", 400),
+    LEDGER_FX_UNSUPPORTED_CURRENCY("LDG-ERR-020", "환율 고시에 없는 통화입니다.", 400),
+    // 셋 중 하나만 오면 거부한다. 환산 근거가 반쪽이면 나중에 검증할 수 없다.
+    LEDGER_FX_INCOMPLETE("LDG-ERR-021", "외화 정보는 통화·금액·환율이 함께 있어야 합니다.", 400),
+    // 022는 명세 표에 없던 자리다. 자산에는 「존재하지 않는다」(001)가 있는데 카테고리에는
+    // 없어서, 없는 카테고리를 붙이면 흐름 불일치(005)로 둘러대야 했다 — 원인을 감추는 코드다.
+    LEDGER_CATEGORY_NOT_FOUND("LDG-ERR-022", "존재하지 않는 카테고리입니다.", 404);
 
     private final String code;
     private final String message;
