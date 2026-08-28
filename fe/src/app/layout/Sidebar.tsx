@@ -1,21 +1,32 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
+  CalendarClock,
   CalendarDays,
   Camera,
+  ChartColumn,
+  Check,
   CheckSquare,
+  ChevronsUpDown,
+  CreditCard,
   FileText,
   Home,
   LayoutGrid,
   Link2,
   Plane,
+  ReceiptText,
+  Repeat,
   Settings,
   Star,
   Tag,
+  Target,
+  Upload,
+  Wallet,
   Wrench,
 } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 
+import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { useReviewSummary } from "@/features/review/hooks/useReviewSummary";
 import { useLinks } from "@/features/shortlink/hooks/useLinks";
 import { useShortlinkTags } from "@/features/shortlink/hooks/useShortlinkTags";
@@ -49,6 +60,8 @@ interface NavItem {
 const BOARD_PATH = /^\/travel\/trips\/\d+\/(board|map)$/;
 /** `/travel/trips` · `/travel/trips/new` · `/travel/trips/12/edit` (목록과 생성·수정 폼) */
 const TRIP_LIST_PATH = /^\/travel\/trips(\/new|\/\d+\/edit)?$/;
+/** `/ledger/cards` · `/ledger/cards/12/statements` (카드 목록과 그 카드의 청구서) */
+const LEDGER_CARD_PATH = /^\/ledger\/cards(\/\d+\/statements)?$/;
 
 const DAILY_NAV_ITEMS: NavItem[] = [
   { to: "/home", label: "홈", icon: Home },
@@ -112,6 +125,38 @@ const LINK_NAV_ITEMS: NavItem[] = [
   },
 ];
 
+/**
+ * 가계부 메뉴(화면 설계 §2.2). 스타일은 위 세 세트와 <b>100% 동일</b>하다.
+ *
+ * <p>우측 숫자(미분류·미납·정기 항목 수)는 여기 붙지 않는다 — `GET /api/ledger/summary`가
+ * 아직 없다. `0`을 그려 두면 「없다」와 「모른다」가 같아 보이므로, 숫자는 BE가 생긴 뒤
+ * 붙인다(#1264 · #1265).
+ */
+const LEDGER_NAV_ITEMS: NavItem[] = [
+  { to: "/ledger", label: "홈", icon: Home },
+  { to: "/ledger/transactions", label: "내역", icon: ReceiptText },
+  { to: "/ledger/upcoming", label: "예정", icon: CalendarClock },
+  {
+    to: "/ledger/assets",
+    label: "자산",
+    icon: Wallet,
+    // 자산 상세(`/ledger/assets/:id`)도 이 항목이 대표한다.
+    activePaths: ["/ledger/assets"],
+  },
+  {
+    to: "/ledger/cards",
+    label: "카드 청구서",
+    icon: CreditCard,
+    // 청구서는 `/ledger/cards/12/statements`라 접두어 비교로 목록과 구분되지 않는다.
+    matchPath: (pathname) => LEDGER_CARD_PATH.test(pathname),
+  },
+  { to: "/ledger/recurring", label: "정기 항목", icon: Repeat },
+  { to: "/ledger/budget", label: "예산", icon: Target },
+  { to: "/ledger/stats", label: "통계", icon: ChartColumn },
+  { to: "/ledger/import", label: "가져오기", icon: Upload },
+  { to: "/ledger/settings", label: "설정", icon: Settings },
+];
+
 function isFavoriteFilter(search: string): boolean {
   return new URLSearchParams(search).get("favorite") === "1";
 }
@@ -129,10 +174,34 @@ function isLinkWorkspace(pathname: string): boolean {
   return pathname === "/links" || pathname.startsWith("/links/");
 }
 
+/** 가계부 워크스페이스인지. 위 둘과 같은 방식 — 경로 하나로만 판정한다. */
+function isLedgerWorkspace(pathname: string): boolean {
+  return pathname === "/ledger" || pathname.startsWith("/ledger/");
+}
+
 /** activePaths가 지정된 항목의 활성 여부 — 해당 경로이거나 그 하위 경로면 활성. */
 function matchesActivePaths(pathname: string, paths: string[]): boolean {
   return paths.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
+
+/** 「홈」이 여럿이라 접두어 매칭으로는 하위 경로에서도 활성이 된다. 그 셋만 정확히 일치시킨다. */
+const EXACT_MATCH_PATHS = ["/home", "/travel", "/ledger"];
+
+type WorkspaceKey = "travel" | "daily" | "link" | "ledger";
+
+const WORKSPACE_LABELS: Record<WorkspaceKey, string> = {
+  travel: "여행",
+  daily: "일상",
+  link: "링크",
+  ledger: "가계부",
+};
+
+const WORKSPACE_ICONS: Record<WorkspaceKey, typeof Home> = {
+  travel: Plane,
+  daily: LayoutGrid,
+  link: Link2,
+  ledger: Wallet,
+};
 
 interface SidebarProps {
   open: boolean;
@@ -145,6 +214,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const queryClient = useQueryClient();
   const travel = isTravelWorkspace(pathname);
   const link = isLinkWorkspace(pathname);
+  const ledger = isLedgerWorkspace(pathname);
 
   const { data: reviewData } = useReviewSummary();
   const reviewCount = reviewData?.counts.now ?? 0;
@@ -157,11 +227,21 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const { data: linkData } = useLinks({ enabled: link });
   const { data: linkTags } = useShortlinkTags({ enabled: link });
 
+  const current: WorkspaceKey = travel
+    ? "travel"
+    : link
+      ? "link"
+      : ledger
+        ? "ledger"
+        : "daily";
+
   const navItems = travel
     ? TRAVEL_NAV_ITEMS
     : link
       ? LINK_NAV_ITEMS
-      : DAILY_NAV_ITEMS;
+      : ledger
+        ? LEDGER_NAV_ITEMS
+        : DAILY_NAV_ITEMS;
 
   /**
    * 여행으로 전환 — 진행 중 여행이 있으면 곧바로 그 보드로 들어간다.
@@ -185,6 +265,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     onClose();
   };
 
+  const goToLedger = () => {
+    navigate("/ledger");
+    onClose();
+  };
+
+  const goToSelect = () => {
+    navigate("/select");
+    onClose();
+  };
+
+  const CurrentIcon = WORKSPACE_ICONS[current];
+
   return (
     <>
       {open && (
@@ -205,30 +297,54 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         )}
       >
         <div className="p-2 pb-0">
-          <div
-            role="group"
-            aria-label="워크스페이스"
-            className="bg-muted flex gap-0.5 rounded-lg p-1"
+          {/*
+            세그먼트가 아니라 드롭다운이다 — 224px 폭에 4칸을 넣으면 아이콘과 라벨이 눌린다
+            (3칸에서 이미 gap을 6→5px로 좁혔다). 워크스페이스가 더 늘어도 트리거 폭은 그대로다.
+          */}
+          <Menu
+            align="start"
+            // 사이드바 w-56(224px)에서 좌우 패딩 p-2를 뺀 값 — 트리거와 폭이 정확히 맞는다.
+            popupClassName="w-52"
+            trigger={
+              <button
+                type="button"
+                aria-label={`워크스페이스 전환 — 현재 ${WORKSPACE_LABELS[current]}`}
+                className="bg-muted flex h-9 w-full items-center gap-2 rounded-lg pr-2 pl-2.5 text-[13px] font-medium"
+              >
+                <CurrentIcon className="size-3.5 shrink-0" />
+                <span className="flex-1 text-left">
+                  {WORKSPACE_LABELS[current]}
+                </span>
+                <ChevronsUpDown className="text-muted-foreground size-3.5 shrink-0" />
+              </button>
+            }
           >
-            <WorkspaceButton
-              label="여행"
-              icon={Plane}
-              active={travel}
+            <WorkspaceMenuItem
+              workspace="travel"
+              current={current}
               onClick={goToTravel}
             />
-            <WorkspaceButton
-              label="일상"
-              icon={LayoutGrid}
-              active={!travel && !link}
+            <WorkspaceMenuItem
+              workspace="daily"
+              current={current}
               onClick={goToDaily}
             />
-            <WorkspaceButton
-              label="링크"
-              icon={Link2}
-              active={link}
+            <WorkspaceMenuItem
+              workspace="link"
+              current={current}
               onClick={goToLinks}
             />
-          </div>
+            <WorkspaceMenuItem
+              workspace="ledger"
+              current={current}
+              onClick={goToLedger}
+            />
+            <MenuSeparator />
+            <MenuItem onClick={goToSelect}>
+              <LayoutGrid className="size-3.5 shrink-0 opacity-70" />
+              선택 화면으로
+            </MenuItem>
+          </Menu>
         </div>
         <ul className="flex flex-col gap-0.5 p-2">
           {navItems.map((item) => {
@@ -247,7 +363,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <li key={item.label}>
                 <NavLink
                   to={isBoardItem ? boardPath : item.to}
-                  end={item.to === "/home" || item.to === "/travel"}
+                  end={EXACT_MATCH_PATHS.includes(item.to)}
                   className={({ isActive }) => {
                     const active = item.matchLocation
                       ? item.matchLocation(pathname, search)
@@ -322,34 +438,29 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   );
 }
 
-interface WorkspaceButtonProps {
-  label: string;
-  icon: typeof Home;
-  active: boolean;
+interface WorkspaceMenuItemProps {
+  workspace: WorkspaceKey;
+  current: WorkspaceKey;
   onClick: () => void;
 }
 
-function WorkspaceButton({
-  label,
-  icon: Icon,
-  active,
+/** 스위처 항목. 지금 있는 곳에는 `Check`를 둔다 — 열었을 때 어디인지가 먼저 보여야 한다. */
+function WorkspaceMenuItem({
+  workspace,
+  current,
   onClick,
-}: WorkspaceButtonProps) {
+}: WorkspaceMenuItemProps) {
+  const Icon = WORKSPACE_ICONS[workspace];
+  const active = workspace === current;
   return (
-    <button
-      type="button"
+    <MenuItem
       aria-current={active ? "true" : undefined}
       onClick={onClick}
-      className={cn(
-        // gap이 5px다 — 224px 사이드바에서 3칸이 되면 1.5(6px)로는 아이콘과 라벨이 눌린다.
-        "inline-flex h-7 flex-1 items-center justify-center gap-[5px] rounded-md text-[13px] font-medium transition-colors",
-        active
-          ? "bg-background text-foreground shadow-sm"
-          : "text-muted-foreground",
-      )}
+      className="text-[13px]"
     >
-      <Icon className="size-3.5" />
-      {label}
-    </button>
+      <Icon className="size-3.5 shrink-0" />
+      <span className="flex-1">{WORKSPACE_LABELS[workspace]}</span>
+      {active && <Check className="text-primary size-3.5 shrink-0" />}
+    </MenuItem>
   );
 }

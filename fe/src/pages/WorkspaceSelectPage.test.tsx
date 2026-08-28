@@ -60,7 +60,7 @@ describe("WorkspaceSelectPage", () => {
     useAuthStore.setState({ accessToken: "valid-token" });
   });
 
-  it("세 워크스페이스 카드를 보여준다 — 링크는 일상의 하위가 아니다", async () => {
+  it("네 워크스페이스 카드를 보여준다 — 링크도 가계부도 일상의 하위가 아니다", async () => {
     renderApp(["/select"]);
 
     await waitFor(() => {
@@ -71,6 +71,7 @@ describe("WorkspaceSelectPage", () => {
     expect(screen.getByRole("button", { name: /여행/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /일상/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /링크/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /가계부/ })).toBeInTheDocument();
   });
 
   it("사이드바가 없다 — 선택 화면은 앱 셸 밖이다", async () => {
@@ -315,11 +316,46 @@ describe("WorkspaceSelectPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "링크" })).toBeInTheDocument();
     });
-    // 링크 워크스페이스로 들어왔으므로 사이드바 전환도 링크가 활성이다.
-    expect(screen.getByRole("button", { name: "링크" })).toHaveAttribute(
-      "aria-current",
-      "true",
-    );
+    // 링크 워크스페이스로 들어왔으므로 사이드바 스위처도 링크를 가리킨다.
+    expect(
+      screen.getByRole("button", { name: "워크스페이스 전환 — 현재 링크" }),
+    ).toBeInTheDocument();
+  });
+
+  it("가계부 카드는 요약이 없어 배지도 메타도 그리지 않는다", async () => {
+    renderApp(["/select"]);
+
+    const ledgerCard = await screen.findByRole("button", { name: /가계부/ });
+    expect(ledgerCard).toHaveTextContent("내역, 카드 청구서, 정기 항목, 예산");
+    // `미납 0`도 `이번 달 예상 0`도 그리지 않는다 — 없는 것과 모르는 것은 다르다.
+    expect(ledgerCard).not.toHaveTextContent(/미납/);
+    expect(ledgerCard).not.toHaveTextContent(/이번 달 예상/);
+  });
+
+  it("가계부 카드를 누르면 /ledger로 간다", async () => {
+    renderApp(["/select"]);
+
+    const ledgerCard = await screen.findByRole("button", { name: /가계부/ });
+    await userEvent.click(ledgerCard);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "가계부" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", { name: "워크스페이스 전환 — 현재 가계부" }),
+    ).toBeInTheDocument();
+  });
+
+  it("아직 없는 가계부 하위 경로는 가계부 홈으로 보낸다 — 랜딩으로 튕기지 않는다", async () => {
+    renderApp(["/ledger/budget"]);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "가계부" }),
+      ).toBeInTheDocument();
+    });
   });
 });
 

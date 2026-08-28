@@ -21,7 +21,9 @@ export default defineConfig({
     {
       name: "built",
       // 링크 스펙은 빌드 결과에서도 돈다(#1245) — 지연 로드 청크가 실제로 붙는지까지 본다.
-      testMatch: /(service-worker|offline|shortlink-links)\.spec\.ts/,
+      // 진입 동선도 같은 이유로 넣는다: /ledger 청크가 실제로 붙어야 워크스페이스에 들어간다.
+      testMatch:
+        /(service-worker|offline|shortlink-links|workspace-nav)\.spec\.ts/,
       use: { browserName: "chromium", baseURL: "http://localhost:4173" },
     },
     // 여행은 Android Chrome 전용이다. 드래그·스와이프는 마우스와 터치의 동작이 달라
@@ -30,7 +32,8 @@ export default defineConfig({
       name: "mobile-touch",
       // 링크는 모바일 발급 빈도가 성패다(명세 §5.4). 좁은 화면에서 행이 접혀도
       // 발급·복사·이동이 그대로인지 같은 스펙으로 확인한다.
-      testMatch: /(travel-board-.*|shortlink-links)\.spec\.ts/,
+      // 진입 동선은 모바일에서 사이드바가 드로어로 접힌다 — 스위처가 거기서도 눌려야 한다.
+      testMatch: /(travel-board-.*|shortlink-links|workspace-nav)\.spec\.ts/,
       use: {
         browserName: "chromium",
         viewport: { width: 412, height: 915 },
