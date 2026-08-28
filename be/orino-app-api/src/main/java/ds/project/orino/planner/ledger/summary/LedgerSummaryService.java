@@ -4,12 +4,12 @@ import ds.project.orino.domain.planner.ledger.entity.LedgerSettings;
 import ds.project.orino.domain.planner.ledger.repository.LedgerTransactionRepository;
 import ds.project.orino.planner.ledger.common.LedgerBootstrap;
 import ds.project.orino.planner.ledger.common.LedgerClock;
+import ds.project.orino.planner.ledger.common.LedgerPeriods;
 import ds.project.orino.planner.ledger.transaction.LedgerTransactionService;
 import ds.project.orino.planner.ledger.transaction.dto.TransactionListResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 
 /**
  * 요약. v1이 답할 수 있는 것만 채우고 나머지는 {@code null}로 둔다.
@@ -39,12 +39,11 @@ public class LedgerSummaryService {
     @Transactional
     public LedgerSummaryResponse summary(Long memberId) {
         LedgerSettings settings = bootstrap.ensureSettings(memberId);
-        LocalDate today = clock.today();
-        LocalDate start = periodStart(today, settings.getMonthStartDay());
-        LocalDate end = periodEnd(start, settings.getMonthStartDay());
+        LedgerPeriods.Period period =
+                LedgerPeriods.containing(clock.today(), settings.getMonthStartDay());
 
         TransactionListResponse.MonthTotals totals =
-                transactionService.totals(memberId, start, end);
+                transactionService.totals(memberId, period.start(), period.end());
 
         return new LedgerSummaryResponse(
                 totals.expense() + totals.scheduledExpense(),
@@ -54,31 +53,31 @@ public class LedgerSummaryService {
                 null,
                 null,
                 null,
-                new LedgerSummaryResponse.Period(start, end));
+                new LedgerSummaryResponse.Period(period.start(), period.end()));
     }
 
     /**
-     * 이번 달 구간의 시작. 월 시작일이 25일이면 8월 20일은 아직 <b>7월 25일 시작 구간</b>이다.
+     * 대시보드. v1은 <b>이미 쓴 돈 · 이번 달 수입 · 정리할 내역</b> 셋이다.
+     *
+     * <p>2축 요약·미납 경고·다가오는 결제를 <b>빈 값으로 내려보내지 않는다</b>(D-7).
+     * 화면이 그 자리를 비워 두면 고장난 것처럼 보이고, 0으로 채우면 「없다」는 거짓말이 된다.
+     * 값이 아니라 <b>필드 자체가 없다</b> — v1.5에서 생긴다.
      */
-    private LocalDate periodStart(LocalDate today, int monthStartDay) {
-        if (monthStartDay == LedgerSettings.LAST_DAY_OF_MONTH) {
-            LocalDate thisMonthLastDay = today.withDayOfMonth(today.lengthOfMonth());
-            return today.isBefore(thisMonthLastDay)
-                    ? lastDayOf(today.minusMonths(1))
-                    : thisMonthLastDay;
-        }
-        LocalDate candidate = today.withDayOfMonth(Math.min(monthStartDay, today.lengthOfMonth()));
-        return today.isBefore(candidate) ? candidate.minusMonths(1) : candidate;
-    }
+    @Transactional
+    public LedgerDashboardResponse dashboard(Long memberId) {
+        LedgerSettings settings = bootstrap.ensureSettings(memberId);
+        LedgerPeriods.Period period =
+                LedgerPeriods.containing(clock.today(), settings.getMonthStartDay());
 
-    private LocalDate periodEnd(LocalDate start, int monthStartDay) {
-        if (monthStartDay == LedgerSettings.LAST_DAY_OF_MONTH) {
-            return lastDayOf(start.plusMonths(1)).minusDays(1);
-        }
-        return start.plusMonths(1).minusDays(1);
-    }
+        TransactionListResponse.MonthTotals totals =
+                transactionService.totals(memberId, period.start(), period.end());
 
-    private LocalDate lastDayOf(LocalDate date) {
-        return date.withDayOfMonth(date.lengthOfMonth());
+        return new LedgerDashboardResponse(
+                new LedgerDashboardResponse.Spending(totals.expense()),
+                new LedgerDashboardResponse.Income(totals.income()),
+                new LedgerDashboardResponse.Todo(
+                        transactionRepository.countUncategorized(memberId)),
+                new LedgerDashboardResponse.Period(
+                        period.start(), period.end(), settings.getMonthStartDay()));
     }
 }

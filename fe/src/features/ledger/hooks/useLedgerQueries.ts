@@ -5,9 +5,11 @@ import {
   fetchAssets,
   fetchAssetTransactions,
   fetchCategories,
+  fetchDashboard,
   fetchFxRate,
   fetchLedgerSummary,
   fetchSettings,
+  fetchStats,
   fetchSuggestions,
   fetchTransactions,
   type LedgerFlow,
@@ -60,6 +62,23 @@ export function useLedgerTransactions(from?: string, to?: string) {
   return useQuery({
     queryKey: ledgerKeys.transactions(from, to),
     queryFn: () => fetchTransactions({ from, to }),
+    staleTime: 30 * 1000,
+  });
+}
+
+/** 대시보드. v1.5 블록은 서버가 아예 안 내린다 — 화면도 그 자리를 그리지 않는다. */
+export function useLedgerDashboard() {
+  return useQuery({
+    queryKey: ledgerKeys.dashboard,
+    queryFn: fetchDashboard,
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useLedgerStats(period?: string) {
+  return useQuery({
+    queryKey: ledgerKeys.stats(period),
+    queryFn: () => fetchStats(period),
     staleTime: 30 * 1000,
   });
 }

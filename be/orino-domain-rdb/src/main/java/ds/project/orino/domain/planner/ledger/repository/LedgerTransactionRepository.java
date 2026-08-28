@@ -100,31 +100,51 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
                                              @Param("to") LocalDate to);
 
     /**
-     * 자산 상세의 카테고리 분포. 미분류(NULL)도 한 칸을 차지한다 — 안 보이면 정리하지 않는다.
+     * 카테고리별 합계 — <b>유형과 출처까지 묶어서</b> 준다.
+     *
+     * <p>출처가 필요한 이유는 환불이다. 상쇄 거래는 반대 방향으로 적히지만 원 거래의 카테고리를
+     * 물려받으므로, 「그 카테고리의 지출이 줄었다」로 읽으려면 두 줄을 함께 봐야 한다.
+     * 환불을 통째로 빼 버리면 환불한 돈이 영원히 지출로 남는다.
+     *
+     * <p>미분류(NULL)도 한 칸을 차지한다 — 안 보이면 정리하지 않는다.
+     */
+    @Query("""
+            SELECT t.categoryId AS categoryId, t.type AS type, t.source AS source,
+                   SUM(t.amount) AS total, COUNT(t.id) AS count
+            FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.status = :status
+              AND t.deletedAt IS NULL
+              AND t.occurredOn BETWEEN :from AND :to
+            GROUP BY t.categoryId, t.type, t.source
+            """)
+    List<CategoryFlowTotal> sumByCategoryAndFlow(@Param("memberId") Long memberId,
+                                                 @Param("status") LedgerTransactionStatus status,
+                                                 @Param("from") LocalDate from,
+                                                 @Param("to") LocalDate to);
+
+    /**
+     * 위와 같지만 자산으로 좁힌다.
      *
      * <p>{@code assetIds}가 복수인 이유는 체크카드다. 카드로 쓴 돈은 연결 계좌에서 빠지므로
      * 그 계좌의 분포에도 함께 잡혀야 한다 — 빠지면 잔액과 분포가 서로 다른 이야기를 한다.
      */
     @Query("""
-            SELECT t.categoryId AS categoryId, SUM(t.amount) AS total, COUNT(t.id) AS count
+            SELECT t.categoryId AS categoryId, t.type AS type, t.source AS source,
+                   SUM(t.amount) AS total, COUNT(t.id) AS count
             FROM LedgerTransaction t
             WHERE t.memberId = :memberId
               AND t.assetId IN :assetIds
-              AND t.type = :type
-              AND t.source <> :excludedSource
               AND t.status = :status
               AND t.deletedAt IS NULL
               AND t.occurredOn BETWEEN :from AND :to
-            GROUP BY t.categoryId
-            ORDER BY SUM(t.amount) DESC
+            GROUP BY t.categoryId, t.type, t.source
             """)
-    List<CategoryTotal> sumByCategoryForAsset(@Param("memberId") Long memberId,
-                                              @Param("assetIds") Collection<Long> assetIds,
-                                              @Param("type") LedgerFlow type,
-                                              @Param("excludedSource") LedgerTransactionSource excludedSource,
-                                              @Param("status") LedgerTransactionStatus status,
-                                              @Param("from") LocalDate from,
-                                              @Param("to") LocalDate to);
+    List<CategoryFlowTotal> sumByCategoryAndFlowForAssets(@Param("memberId") Long memberId,
+                                                          @Param("assetIds") Collection<Long> assetIds,
+                                                          @Param("status") LedgerTransactionStatus status,
+                                                          @Param("from") LocalDate from,
+                                                          @Param("to") LocalDate to);
 
     /** 대시보드의 「정리할 내역」. 이체는 애초에 분류 대상이 아니라 세지 않는다. */
     @Query("""
@@ -189,9 +209,13 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
         long getTotal();
     }
 
-    /** 카테고리별 합계 한 줄. {@code categoryId}가 null이면 미분류다. */
-    interface CategoryTotal {
+    /** 카테고리·유형·출처별 합계 한 줄. {@code categoryId}가 null이면 미분류다. */
+    interface CategoryFlowTotal {
         Long getCategoryId();
+
+        LedgerFlow getType();
+
+        LedgerTransactionSource getSource();
 
         long getTotal();
 

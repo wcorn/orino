@@ -8,6 +8,8 @@ import {
   createAsset,
   createTransaction,
   deleteTransaction,
+  reconcileAsset,
+  type ReconcileRequest,
   type SettingsUpdateRequest,
   type TransactionCreatedResponse,
   type TransactionCreateRequest,
@@ -97,6 +99,29 @@ export function useUpdateAsset() {
     mutationFn: ({ id, body }: { id: number; body: AssetUpdateRequest }) =>
       updateAsset(id, body),
     onError: () => toast("자산을 수정하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+/**
+ * 잔액 맞추기. 차이가 0이면 서버가 거래를 만들지 않고 그 사실을 알려 준다 —
+ * 「이미 맞아요」와 「20,000원을 조정했어요」는 사용자에게 다른 소식이다.
+ */
+export function useReconcileAsset() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: ReconcileRequest }) =>
+      reconcileAsset(id, body),
+    onSuccess: (result) => {
+      toast(
+        result.adjustmentTransactionId === null
+          ? "이미 맞아요 — 조정할 것이 없었어요"
+          : "잔액을 맞췄어요",
+        result.adjustmentTransactionId === null ? "info" : "success",
+      );
+    },
+    onError: () => toast("잔액을 맞추지 못했어요.", "error"),
     onSettled: () => invalidateAll(queryClient),
   });
 }

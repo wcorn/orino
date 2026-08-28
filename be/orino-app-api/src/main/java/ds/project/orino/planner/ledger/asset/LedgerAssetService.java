@@ -19,8 +19,10 @@ import ds.project.orino.planner.ledger.asset.dto.AssetListResponse;
 import ds.project.orino.planner.ledger.asset.dto.AssetRequests;
 import ds.project.orino.planner.ledger.asset.dto.AssetTransactionsResponse;
 import ds.project.orino.planner.ledger.asset.dto.AssetView;
+import ds.project.orino.planner.ledger.asset.dto.ReconcileDtos;
 import ds.project.orino.planner.ledger.common.LedgerBalances;
 import ds.project.orino.planner.ledger.common.LedgerBootstrap;
+import ds.project.orino.planner.ledger.common.LedgerCategorySpending;
 import ds.project.orino.planner.ledger.common.LedgerClock;
 import ds.project.orino.planner.ledger.common.LedgerNames;
 import ds.project.orino.planner.ledger.transaction.dto.TransactionView;
@@ -398,20 +400,69 @@ public class LedgerAssetService {
         };
     }
 
+    /**
+     * 이 자산의 지출 분포. <b>통계 화면과 같은 규칙</b>을 쓴다({@link LedgerCategorySpending}) —
+     * 이체는 빠지고 환불은 그 카테고리를 깎는다. 두 화면이 각자 세면 같은 달의 「식비」가
+     * 두 값이 된다.
+     */
     private List<AssetDetailResponse.CategoryShare> categoryShare(Long memberId, LedgerAsset asset,
                                                                   Set<Long> owned,
                                                                   LocalDate from, LocalDate to) {
         LedgerNames names = new LedgerNames(List.of(),
                 categoryRepository.findAllByMemberIdOrderByDisplayOrderAscIdAsc(memberId));
         List<AssetDetailResponse.CategoryShare> shares = new ArrayList<>();
-        for (LedgerTransactionRepository.CategoryTotal row : transactionRepository.sumByCategoryForAsset(
-                memberId, owned, LedgerFlow.EXPENSE, LedgerTransactionSource.REFUND,
-                LedgerTransactionStatus.CONFIRMED, from, to)) {
+        for (LedgerCategorySpending.Bucket bucket : LedgerCategorySpending.netExpense(
+                transactionRepository.sumByCategoryAndFlowForAssets(
+                        memberId, owned, LedgerTransactionStatus.CONFIRMED, from, to))) {
             shares.add(new AssetDetailResponse.CategoryShare(
-                    row.getCategoryId(), names.categoryName(row.getCategoryId()),
-                    row.getTotal(), row.getCount()));
+                    bucket.categoryId(), names.categoryName(bucket.categoryId()),
+                    bucket.amount(), bucket.count()));
         }
         return shares;
+    }
+
+    /**
+     * 잔액 맞추기(`LDG-004`) — 실제 잔액을 받아 차액을 「조정」 거래로 만든다.
+     *
+     * <p>어긋난 원장을 <b>포기하지 않고 드러내서 복구하는</b> 장치다. 잔액을 컬럼으로 저장하지
+     * 않기로 한 이상(D-8) 어긋남은 반드시 생기고, 그때 고칠 길이 없으면 사람은 가계부를 버린다.
+     *
+     * <p><b>차이가 0이면 아무것도 만들지 않는다.</b> 어긋남을 감추지 않되 없는 거래를 만들지도
+     * 않는다 — 0원짜리 조정 줄이 매달 쌓이면 그것대로 원장이 지저분해진다.
+     *
+     * <p>조정 거래는 <b>미분류</b>다. 「돈이 어디로 갔는지 모른다」가 사실이고, 그 상태로
+     * 「정리할 내역」에 남아 나중에 채워지는 것이 맞다.
+     */
+    @Transactional
+    public ReconcileDtos.Response reconcile(Long memberId, Long id, ReconcileDtos.Request request) {
+        LedgerAsset asset = requireAsset(memberId, id);
+        if (!asset.getType().holdsBalance()) {
+            // 카드에는 맞출 잔액이 없다. 신용카드의 차이는 청구서로 푸는 문제다(v1.5).
+            throw new CustomException(ErrorCode.BAD_REQUEST,
+                    "잔액을 갖는 자산에서만 맞출 수 있습니다.");
+        }
+
+        List<LedgerAsset> assets = assetRepository.findAllByMemberIdOrderByDisplayOrderAscIdAsc(memberId);
+        long derived = balances(memberId, assets).balanceOf(asset.getId());
+        long difference = request.actualBalance() - derived;
+        if (difference == 0) {
+            return new ReconcileDtos.Response(null, 0, derived);
+        }
+
+        LedgerTransaction adjustment = new LedgerTransaction(
+                memberId,
+                difference > 0 ? LedgerFlow.INCOME : LedgerFlow.EXPENSE,
+                LedgerTransactionStatus.CONFIRMED,
+                request.occurredOn() != null ? request.occurredOn() : clock.today(),
+                Math.abs(difference),
+                asset.getId(),
+                LedgerTransactionSource.ADJUSTMENT);
+        adjustment.updateTitle("잔액 조정");
+        adjustment.updateMemo(request.memo());
+        transactionRepository.save(adjustment);
+
+        return new ReconcileDtos.Response(
+                adjustment.getId(), difference, request.actualBalance());
     }
 
     /**
