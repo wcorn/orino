@@ -116,7 +116,14 @@ public enum ErrorCode {
     LEDGER_STATEMENT_ALREADY_PAID("LDG-ERR-008", "이미 납부가 끝난 청구서입니다.", 409),
     LEDGER_PAYMENT_EXCEEDS_BILLED("LDG-ERR-009", "결제 금액이 청구액을 넘습니다.", 400),
     LEDGER_NOT_A_CREDIT_CARD("LDG-ERR-010", "신용카드가 아닌 자산입니다.", 400),
-    LEDGER_INSTALLMENT_MONTHS_OUT_OF_RANGE("LDG-ERR-016", "할부 개월 수가 범위를 벗어났습니다.", 400);
+    LEDGER_INSTALLMENT_MONTHS_OUT_OF_RANGE("LDG-ERR-016", "할부 개월 수가 범위를 벗어났습니다.", 400),
+
+    // 정기 항목 — 규칙이 반쪽이면 새벽에 조용히 아무것도 안 적힌다. 저장 시점에 막는다.
+    LEDGER_RECURRING_NOT_FOUND("LDG-ERR-011", "존재하지 않는 정기 항목입니다.", 404),
+    LEDGER_RECURRING_INVALID_RULE("LDG-ERR-012", "정기 항목 설정이 올바르지 않습니다.", 400),
+    // 카드 대금은 자동 기록의 유일한 제외 대상이다(확정 명세 §7.2) — 잔고 부족·리볼빙·
+    // 선결제 때문에 실제 출금액을 앱이 알 수 없어서, 정기 항목으로 만드는 길 자체를 막는다.
+    LEDGER_RECURRING_CARD_PAYMENT("LDG-ERR-013", "카드 대금은 정기 항목으로 만들 수 없습니다.", 400);
 
     private final String code;
     private final String message;

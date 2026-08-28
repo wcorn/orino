@@ -30,6 +30,22 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
     List<LedgerTransaction> findAllByMemberIdAndIdInAndDeletedAtIsNull(
             Long memberId, Collection<Long> ids);
 
+    /**
+     * 그 회차로 적힌 행. <b>삭제된 것도 가져온다.</b>
+     *
+     * <p>되돌리거나 미납 처리해도 행은 남고, {@code UNIQUE(recurring_id, occurrence_date)}가
+     * 그 자리를 계속 잡고 있다. 미납이 뒤늦게 빠졌을 때 새로 넣는 대신 <b>이 행을 되살리는</b>
+     * 것이 정확하기도 하다 — 안 빠진 게 아니라 늦게 빠진 것이니까.
+     */
+    Optional<LedgerTransaction> findByRecurringIdAndOccurrenceDate(
+            Long recurringId, LocalDate occurrenceDate);
+
+    /** 그 정기 항목으로 적힌 것들. 소급 해지 일괄 되돌리기가 이 목록을 쓴다. */
+    List<LedgerTransaction> findAllByRecurringIdAndDeletedAtIsNull(Long recurringId);
+
+    /** 한 번이라도 적혔는가. 무료 체험 종료 임박 신호가 이 사실로 갈린다. */
+    boolean existsByRecurringIdAndDeletedAtIsNull(Long recurringId);
+
     /** 상쇄 거래들. 원 거래를 지우지 않으므로 「이 거래가 얼마나 환불됐나」는 여기서 나온다. */
     List<LedgerTransaction> findAllByMemberIdAndRefundOfIdAndDeletedAtIsNull(
             Long memberId, Long refundOfId);

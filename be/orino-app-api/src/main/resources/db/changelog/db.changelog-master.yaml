@@ -117,3 +117,5 @@ databaseChangeLog:
       file: db/changelog/changes/058-create-ledger-template-receipt.yaml
   - include:
       file: db/changelog/changes/059-create-ledger-card.yaml
+  - include:
+      file: db/changelog/changes/060-create-ledger-recurring.yaml

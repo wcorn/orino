@@ -241,6 +241,16 @@ public class LedgerTransaction {
         this.deletedAt = deletedAt;
     }
 
+    /**
+     * 되살린다. 미납으로 뺐던 회차가 뒤늦게 실제로 빠졌을 때의 경로다.
+     *
+     * <p>새 행을 넣지 않는다. {@code UNIQUE(recurring_id, occurrence_date)}가 그 자리를
+     * 잡고 있기도 하지만, 되살리는 편이 사실에 맞다 — <b>안 빠진 게 아니라 늦게 빠졌다.</b>
+     */
+    public void restore() {
+        this.deletedAt = null;
+    }
+
     public boolean isDeleted() {
         return deletedAt != null;
     }

@@ -46,6 +46,25 @@ public class BusinessDays {
         return date;
     }
 
+    /**
+     * 그날이 영업일이면 그대로, 아니면 <b>뒤</b>로 미룬 첫 영업일.
+     *
+     * <p>카드 결제일에는 쓰지 않는다. 정기 항목이 「다음 영업일」 정책을 고를 수 있어서
+     * 있는 방향이다 — 실제로 그렇게 빠지는 자동이체가 있다(확정 명세 §6.2).
+     */
+    @Transactional(readOnly = true)
+    public LocalDate nextBusinessDayOrSame(LocalDate date) {
+        Set<LocalDate> holidays = holidaysForward(date);
+        LocalDate cursor = date;
+        for (int i = 0; i < MAX_SHIFT_DAYS; i++) {
+            if (isBusinessDay(cursor, holidays)) {
+                return cursor;
+            }
+            cursor = cursor.plusDays(1);
+        }
+        return date;
+    }
+
     private boolean isBusinessDay(LocalDate date, Set<LocalDate> holidays) {
         return date.getDayOfWeek() != DayOfWeek.SATURDAY
                 && date.getDayOfWeek() != DayOfWeek.SUNDAY
@@ -54,8 +73,16 @@ public class BusinessDays {
 
     /** 한 번에 읽어 둔다 — 하루씩 물어보면 연휴마다 질의가 늘어난다. */
     private Set<LocalDate> holidaysAround(LocalDate date) {
+        return holidaysBetween(date.minusDays(MAX_SHIFT_DAYS), date);
+    }
+
+    private Set<LocalDate> holidaysForward(LocalDate date) {
+        return holidaysBetween(date, date.plusDays(MAX_SHIFT_DAYS));
+    }
+
+    private Set<LocalDate> holidaysBetween(LocalDate from, LocalDate to) {
         Set<LocalDate> dates = new HashSet<>();
-        holidayRepository.findByDateBetween(date.minusDays(MAX_SHIFT_DAYS), date)
+        holidayRepository.findByDateBetween(from, to)
                 .forEach(holiday -> dates.add(holiday.getDate()));
         return dates;
     }
