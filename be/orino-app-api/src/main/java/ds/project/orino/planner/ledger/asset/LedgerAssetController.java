@@ -6,6 +6,7 @@ import ds.project.orino.planner.ledger.asset.dto.AssetListResponse;
 import ds.project.orino.planner.ledger.asset.dto.AssetRequests;
 import ds.project.orino.planner.ledger.asset.dto.AssetTransactionsResponse;
 import ds.project.orino.planner.ledger.asset.dto.AssetView;
+import ds.project.orino.planner.ledger.asset.dto.ReconcileDtos;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -67,6 +68,18 @@ public class LedgerAssetController {
     public ApiResponse<AssetTransactionsResponse> transactions(
             @AuthenticationPrincipal Long memberId, @PathVariable Long id) {
         return ApiResponse.success(assetService.transactions(memberId, id));
+    }
+
+    /**
+     * 잔액 맞추기(`LDG-004`). 차이가 0이면 조정 거래를 만들지 않고
+     * {@code adjustmentTransactionId}가 {@code null}로 온다.
+     */
+    @PostMapping("/assets/{id}/reconcile")
+    public ApiResponse<ReconcileDtos.Response> reconcile(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @Valid @RequestBody ReconcileDtos.Request request) {
+        return ApiResponse.success(assetService.reconcile(memberId, id, request));
     }
 
     @GetMapping("/asset-groups")

@@ -3,6 +3,8 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
 
+import { useToastStore } from "@/shared/lib/toast";
+
 import { server } from "./mocks/server";
 
 // jsdom의 window.scrollTo는 "Not implemented" 스텁이라, 윈도우 스크롤 기준
@@ -134,5 +136,8 @@ beforeAll(() => server.listen());
 afterEach(() => {
   server.resetHandlers();
   cleanup();
+  // 스낵바는 모듈 레벨 store에 산다 — cleanup()이 DOM을 걷어내도 남는다.
+  // 남겨 두면 다음 테스트에서 같은 문구가 둘이 되어 `findByText`가 터진다(실제로 겪었다).
+  useToastStore.setState({ toasts: [] });
 });
 afterAll(() => server.close());

@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Scale } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { TrendPoint, TrendRange } from "@/features/ledger/api/ledger";
+import { ReconcileModal } from "@/features/ledger/components/ReconcileModal";
 import {
   useLedgerAssetDetail,
   useLedgerAssetTransactions,
@@ -48,6 +49,7 @@ export function LedgerAssetDetailPage() {
   const { assetId } = useParams();
   const id = Number(assetId);
   const [range, setRange] = useState<TrendRange>("MONTH");
+  const [reconcileOpen, setReconcileOpen] = useState(false);
 
   const detail = useLedgerAssetDetail(id, range);
   const rows = useLedgerAssetTransactions(id);
@@ -66,14 +68,27 @@ export function LedgerAssetDetailPage() {
           asset?.linkedAssetName && `${asset.linkedAssetName}에서 출금`
         }
         actions={
-          <Button
-            type="button"
-            variant="ghost"
-            render={<Link to="/ledger/assets" />}
-          >
-            <ArrowLeft className="size-4" />
-            자산 목록
-          </Button>
+          <>
+            {/* 잔액을 갖는 자산에만 맞출 것이 있다. 카드의 차이는 청구서로 푼다(v1.5). */}
+            {asset?.balance != null && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setReconcileOpen(true)}
+              >
+                <Scale className="size-4" />
+                잔액 맞추기
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="ghost"
+              render={<Link to="/ledger/assets" />}
+            >
+              <ArrowLeft className="size-4" />
+              자산 목록
+            </Button>
+          </>
         }
       />
 
@@ -188,6 +203,16 @@ export function LedgerAssetDetailPage() {
             )}
           </section>
         </>
+      )}
+
+      {asset?.balance != null && (
+        <ReconcileModal
+          open={reconcileOpen}
+          onOpenChange={setReconcileOpen}
+          assetId={asset.id}
+          assetName={asset.name}
+          derivedBalance={asset.balance}
+        />
       )}
     </div>
   );

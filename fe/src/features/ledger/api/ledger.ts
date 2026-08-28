@@ -406,6 +406,85 @@ export async function updateSettings(
   return data.data;
 }
 
+/**
+ * 대시보드. **v1은 세 값뿐이다** — 이미 쓴 돈 · 이번 달 수입 · 정리할 내역.
+ *
+ * 2축 요약·미납·다가오는 결제는 **필드 자체가 없다**(D-7). 서버가 안 내리는 것을 화면이
+ * 빈 카드로 그리면 고장난 것처럼 보인다.
+ */
+export interface LedgerDashboard {
+  spending: { spent: number };
+  income: { amount: number };
+  todo: { uncategorized: number };
+  period: { start: string; end: string; monthStartDay: number };
+}
+
+export async function fetchDashboard(): Promise<LedgerDashboard> {
+  const { data } =
+    await client.get<ApiEnvelope<LedgerDashboard>>("/ledger/dashboard");
+  return data.data;
+}
+
+export interface CategoryStat {
+  /** `null`이면 미분류. */
+  categoryId: number | null;
+  categoryName: string | null;
+  amount: number;
+  count: number;
+  /** 0~1. 서버가 계산해 준다 — 화면이 다시 나누지 않는다. */
+  share: number;
+}
+
+export interface StatsComparisonBucket {
+  start: string;
+  end: string;
+  total: number;
+  /** 이번 − 그때. 양수면 더 썼다. */
+  diff: number;
+}
+
+export interface LedgerStats {
+  period: { start: string; end: string; label: string };
+  total: number;
+  byCategory: CategoryStat[];
+  comparison: {
+    previousPeriod: StatsComparisonBucket;
+    previousYear: StatsComparisonBucket;
+  };
+}
+
+/** `period`는 `YYYY-MM`. 생략하면 지금 속한 구간이다. */
+export async function fetchStats(period?: string): Promise<LedgerStats> {
+  const { data } = await client.get<ApiEnvelope<LedgerStats>>("/ledger/stats", {
+    params: period ? { period } : undefined,
+  });
+  return data.data;
+}
+
+export interface ReconcileRequest {
+  actualBalance: number;
+  occurredOn?: string;
+  memo?: string | null;
+}
+
+export interface ReconcileResponse {
+  /** 차이가 0이면 `null` — 없는 거래를 만들지 않는다. */
+  adjustmentTransactionId: number | null;
+  difference: number;
+  balanceAfter: number;
+}
+
+export async function reconcileAsset(
+  id: number,
+  body: ReconcileRequest,
+): Promise<ReconcileResponse> {
+  const { data } = await client.post<ApiEnvelope<ReconcileResponse>>(
+    `/ledger/assets/${id}/reconcile`,
+    body,
+  );
+  return data.data;
+}
+
 export async function fetchLedgerSummary(): Promise<LedgerSummary> {
   const { data } =
     await client.get<ApiEnvelope<LedgerSummary>>("/ledger/summary");

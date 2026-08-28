@@ -60,6 +60,9 @@ export function LedgerTransactionsPage() {
 
   const offset = Number(searchParams.get("offset") ?? "0") || 0;
   const status = (searchParams.get("status") ?? "ALL") as StatusFilter;
+  // 대시보드의 「정리하기」가 넘겨주는 필터. 별도 상태가 아니라 쿼리라서,
+  // 정리하다 새로고침해도 같은 목록으로 돌아온다.
+  const uncategorizedOnly = searchParams.get("uncategorized") === "1";
   const [query, setQuery] = useState("");
 
   const period = useMemo(
@@ -80,7 +83,12 @@ export function LedgerTransactionsPage() {
     setSearchParams(searchParams);
   };
 
-  const groups = filterGroups(data?.groups ?? [], status, query);
+  const groups = filterGroups(
+    data?.groups ?? [],
+    status,
+    query,
+    uncategorizedOnly,
+  );
   const empty = groups.length === 0;
 
   return (
@@ -150,6 +158,20 @@ export function LedgerTransactionsPage() {
           </button>
         ))}
       </div>
+
+      {uncategorizedOnly && (
+        <div className="text-muted-foreground flex items-center gap-2 text-[13px]">
+          카테고리가 없는 건만 보는 중 — 채우면 목록에서 사라져요
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={() => setParam("uncategorized", null)}
+          >
+            해제
+          </Button>
+        </div>
+      )}
 
       {data && <TotalsBar totals={data.monthTotals} />}
 
@@ -320,6 +342,7 @@ function filterGroups(
   groups: DateGroup[],
   status: StatusFilter,
   query: string,
+  uncategorizedOnly: boolean,
 ): DateGroup[] {
   const keyword = query.trim().toLowerCase();
   return groups
@@ -330,6 +353,13 @@ function filterGroups(
           return false;
         }
         if (status === "SCHEDULED" && item.status !== "SCHEDULED") {
+          return false;
+        }
+        // 이체는 애초에 분류 대상이 아니라 「정리할 것」에서도 빠진다.
+        if (
+          uncategorizedOnly &&
+          (item.categoryId !== null || item.type === "TRANSFER")
+        ) {
           return false;
         }
         if (keyword === "") {

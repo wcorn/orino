@@ -4,6 +4,8 @@ import type { LedgerFlow, TrendRange } from "./api/ledger";
 export const ledgerKeys = {
   all: ["ledger"] as const,
   summary: ["ledger", "summary"] as const,
+  dashboard: ["ledger", "dashboard"] as const,
+  stats: (period?: string) => ["ledger", "stats", period ?? ""] as const,
   settings: ["ledger", "settings"] as const,
   assets: ["ledger", "assets"] as const,
   asset: (id: number, range: TrendRange) =>
