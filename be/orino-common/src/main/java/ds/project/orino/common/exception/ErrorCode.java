@@ -109,7 +109,14 @@ public enum ErrorCode {
     LEDGER_FX_INCOMPLETE("LDG-ERR-021", "외화 정보는 통화·금액·환율이 함께 있어야 합니다.", 400),
     // 022는 명세 표에 없던 자리다. 자산에는 「존재하지 않는다」(001)가 있는데 카테고리에는
     // 없어서, 없는 카테고리를 붙이면 흐름 불일치(005)로 둘러대야 했다 — 원인을 감추는 코드다.
-    LEDGER_CATEGORY_NOT_FOUND("LDG-ERR-022", "존재하지 않는 카테고리입니다.", 404);
+    LEDGER_CATEGORY_NOT_FOUND("LDG-ERR-022", "존재하지 않는 카테고리입니다.", 404),
+
+    // 카드 청구서 — 여기가 이 모듈의 심장이라 실패도 또렷해야 한다.
+    LEDGER_STATEMENT_NOT_FOUND("LDG-ERR-007", "존재하지 않는 청구서입니다.", 404),
+    LEDGER_STATEMENT_ALREADY_PAID("LDG-ERR-008", "이미 납부가 끝난 청구서입니다.", 409),
+    LEDGER_PAYMENT_EXCEEDS_BILLED("LDG-ERR-009", "결제 금액이 청구액을 넘습니다.", 400),
+    LEDGER_NOT_A_CREDIT_CARD("LDG-ERR-010", "신용카드가 아닌 자산입니다.", 400),
+    LEDGER_INSTALLMENT_MONTHS_OUT_OF_RANGE("LDG-ERR-016", "할부 개월 수가 범위를 벗어났습니다.", 400);
 
     private final String code;
     private final String message;

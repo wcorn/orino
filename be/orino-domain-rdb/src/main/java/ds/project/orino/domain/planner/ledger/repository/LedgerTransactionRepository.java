@@ -146,6 +146,30 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
                                                           @Param("from") LocalDate from,
                                                           @Param("to") LocalDate to);
 
+    /**
+     * 청구서에 편입된 사용 건의 합계 — <b>유형·출처별</b>로 준다.
+     *
+     * <p>산식이 사용 합계와 환불을 따로 보여줘야 하므로 여기서 합쳐 주지 않는다.
+     * 「왜 이 금액이지」에 답하려면 항목이 남아 있어야 한다(확정 명세 §7.4).
+     *
+     * <p><b>할부 원 거래는 뺀다.</b> 그 돈은 회차로 각 청구월에 나뉘어 들어가므로, 산 달의
+     * 사용 합계에도 넣으면 <b>같은 금액이 두 번 청구된다</b>. 원 거래의 전액은 소비 관점(통계)과
+     * 부채가 보고, 청구서는 회차만 본다 — 두 관점이 갈라지는 지점이 정확히 여기다(§10.1).
+     */
+    @Query("""
+            SELECT t.type AS type, t.source AS source, SUM(t.amount) AS total
+            FROM LedgerTransaction t
+            WHERE t.statementId = :statementId
+              AND t.deletedAt IS NULL
+              AND t.installmentId IS NULL
+            GROUP BY t.type, t.source
+            """)
+    List<StatementFlowTotal> sumByStatement(@Param("statementId") Long statementId);
+
+    /** 그 청구서에 편입된 사용 건들. 화면이 「무엇을 썼나」를 펼쳐 보여준다. */
+    List<LedgerTransaction> findAllByStatementIdAndDeletedAtIsNullOrderByOccurredOnAscIdAsc(
+            Long statementId);
+
     /** 대시보드의 「정리할 내역」. 이체는 애초에 분류 대상이 아니라 세지 않는다. */
     @Query("""
             SELECT COUNT(t.id) FROM LedgerTransaction t
@@ -205,6 +229,15 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
         LedgerTransactionSource getSource();
 
         LedgerTransactionStatus getStatus();
+
+        long getTotal();
+    }
+
+    /** 청구서 안의 유형·출처별 합계 한 줄. */
+    interface StatementFlowTotal {
+        LedgerFlow getType();
+
+        LedgerTransactionSource getSource();
 
         long getTotal();
     }

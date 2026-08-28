@@ -15,6 +15,8 @@ import ds.project.orino.domain.planner.ledger.repository.LedgerCategoryRepositor
 import ds.project.orino.domain.planner.ledger.repository.LedgerTagRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerTransactionRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerTransactionTagRepository;
+import ds.project.orino.planner.ledger.card.LedgerInstallmentService;
+import ds.project.orino.planner.ledger.card.LedgerStatementAssigner;
 import ds.project.orino.planner.ledger.common.LedgerBootstrap;
 import ds.project.orino.planner.ledger.common.LedgerClock;
 import ds.project.orino.planner.ledger.common.LedgerNames;
@@ -72,6 +74,8 @@ public class LedgerTransactionService {
     private final LedgerTagRepository tagRepository;
     private final LedgerFxService fxService;
     private final LedgerBootstrap bootstrap;
+    private final LedgerStatementAssigner statementAssigner;
+    private final LedgerInstallmentService installmentService;
     private final LedgerClock clock;
 
     public LedgerTransactionService(LedgerTransactionRepository transactionRepository,
@@ -81,6 +85,8 @@ public class LedgerTransactionService {
                                     LedgerTagRepository tagRepository,
                                     LedgerFxService fxService,
                                     LedgerBootstrap bootstrap,
+                                    LedgerStatementAssigner statementAssigner,
+                                    LedgerInstallmentService installmentService,
                                     LedgerClock clock) {
         this.transactionRepository = transactionRepository;
         this.transactionTagRepository = transactionTagRepository;
@@ -89,6 +95,8 @@ public class LedgerTransactionService {
         this.tagRepository = tagRepository;
         this.fxService = fxService;
         this.bootstrap = bootstrap;
+        this.statementAssigner = statementAssigner;
+        this.installmentService = installmentService;
         this.clock = clock;
     }
 
@@ -149,7 +157,10 @@ public class LedgerTransactionService {
                 origin.isEstimated(),
                 origin.hasFx()
                         ? new FxInput(origin.getFxCurrency(), origin.getFxAmount(), origin.getFxRate())
-                        : null);
+                        : null,
+                // 할부는 복사하지 않는다. 같은 물건을 또 할부로 샀다는 뜻이 아니라
+                // 회차가 두 벌 생겨 빚이 두 배로 잡힌다.
+                null);
         return saveOne(memberId, request);
     }
 
@@ -182,6 +193,17 @@ public class LedgerTransactionService {
             tx.applyFx(money.currency(), money.fxAmount(), money.fxRate());
         }
         transactionRepository.save(tx);
+
+        // 카드 사용 건은 그 순간 사이클에 편입된다 — 산식의 출발점이다(#1262).
+        // 나중에 날짜로 훑어 찾으면 사이클 설정을 바꿨을 때 결제까지 끝난 청구서의 금액이 변한다.
+        if (type == LedgerFlow.EXPENSE) {
+            statementAssigner.resolveFor(asset, request.occurredOn())
+                    .ifPresent(statement -> tx.updateStatementId(statement.getId()));
+        }
+        if (request.installment() != null) {
+            installmentService.open(tx, request.installment().months(),
+                    !Boolean.FALSE.equals(request.installment().interestFree()));
+        }
 
         List<String> tags = replaceTags(memberId, tx.getId(), request.tags());
         return new TransactionCreatedResponse(view(memberId, tx, tags), status);

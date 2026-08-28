@@ -9,6 +9,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -74,6 +76,29 @@ public class LedgerAsset {
      */
     @Column(name = "linked_asset_id")
     private Long linkedAssetId;
+
+    /**
+     * 대금이 빠져나갈 계좌. 결제 처리의 <b>기본값</b>이지 강제는 아니다 —
+     * 그날 다른 통장에서 냈다면 그쪽으로 적어야 원장이 맞는다.
+     */
+    @Column(name = "payment_asset_id")
+    private Long paymentAssetId;
+
+    /** 정산 시작일·마감일·결제일(1~28 또는 99=말일). <b>셋이 함께 있어야</b> 사이클이 성립한다. */
+    @JdbcTypeCode(SqlTypes.TINYINT)
+    @Column(name = "cycle_start_day")
+    private Integer cycleStartDay;
+
+    @JdbcTypeCode(SqlTypes.TINYINT)
+    @Column(name = "cycle_close_day")
+    private Integer cycleCloseDay;
+
+    @JdbcTypeCode(SqlTypes.TINYINT)
+    @Column(name = "payment_day")
+    private Integer paymentDay;
+
+    @Column(name = "credit_limit")
+    private Long creditLimit;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -187,6 +212,51 @@ public class LedgerAsset {
 
     public Long getLinkedAssetId() {
         return linkedAssetId;
+    }
+
+    /** 사이클 설정이 다 갖춰졌는지. 하나라도 비면 청구서를 만들 수 없다. */
+    public boolean hasBillingCycle() {
+        return type == LedgerAssetType.CREDIT_CARD
+                && cycleStartDay != null && cycleCloseDay != null && paymentDay != null;
+    }
+
+    public void updateBillingCycle(Integer cycleStartDay, Integer cycleCloseDay,
+                                   Integer paymentDay, Long paymentAssetId, Long creditLimit) {
+        if (cycleStartDay != null) {
+            this.cycleStartDay = cycleStartDay;
+        }
+        if (cycleCloseDay != null) {
+            this.cycleCloseDay = cycleCloseDay;
+        }
+        if (paymentDay != null) {
+            this.paymentDay = paymentDay;
+        }
+        if (paymentAssetId != null) {
+            this.paymentAssetId = paymentAssetId;
+        }
+        if (creditLimit != null) {
+            this.creditLimit = creditLimit;
+        }
+    }
+
+    public Long getPaymentAssetId() {
+        return paymentAssetId;
+    }
+
+    public Integer getCycleStartDay() {
+        return cycleStartDay;
+    }
+
+    public Integer getCycleCloseDay() {
+        return cycleCloseDay;
+    }
+
+    public Integer getPaymentDay() {
+        return paymentDay;
+    }
+
+    public Long getCreditLimit() {
+        return creditLimit;
     }
 
     public Instant getCreatedAt() {
