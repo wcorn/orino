@@ -11,14 +11,12 @@ import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
 import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -34,7 +32,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>핵심은 <b>제목을 언제 읽느냐</b>다. 예약할 때 저장해두면 제목만 고친 일정이 옛 제목으로
  * 알림된다 — §4.2 재계산 트리거에 "제목 변경"이 없기 때문이다.
  */
-@Import(StubExternalsConfig.class)
 class NotificationDispatchTest extends ApiTestSupport {
 
 

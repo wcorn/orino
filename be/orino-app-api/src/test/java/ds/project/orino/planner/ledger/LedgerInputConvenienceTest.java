@@ -7,13 +7,11 @@ import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -33,7 +31,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>여기서 가장 중요한 것은 <b>다건 입력의 전부-아니면-전무</b>다. 일부만 들어간 원장은
  * 「어디까지 적었더라」를 사람이 다시 맞춰야 하고, 그건 몰아 적는 이유를 없앤다.
  */
-@Import(StubExternalsConfig.class)
 class LedgerInputConvenienceTest extends ApiTestSupport {
 
     @Autowired

@@ -12,7 +12,7 @@ import ds.project.orino.domain.planner.review.entity.ReviewSchedule;
 import ds.project.orino.domain.planner.review.repository.ReviewScheduleRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
+import ds.project.orino.support.FixedClock;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.planner.review.sm2.Sm2Calculator;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,7 +20,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
@@ -33,7 +32,7 @@ import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Import(FixedClockConfig.class)
+@FixedClock
 @DisplayName("복습 일정 백필 (#1001 간격 · #1003 학습일)")
 class ReviewScheduleBackfillServiceTest extends ApiTestSupport {
 

@@ -5,15 +5,13 @@ import ds.project.orino.planner.ledger.upcoming.ScheduledPromotionScheduler;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
+import ds.project.orino.support.FixedClock;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -38,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>시계를 못박는다(2026-01-15, 목요일). 예정은 오늘로부터 세는 값이라 실시각으로는
  * 매일 다른 결과가 난다.
  */
-@Import({StubExternalsConfig.class, FixedClockConfig.class})
+@FixedClock
 class LedgerUpcomingTest extends ApiTestSupport {
 
     private static final LocalDate TODAY = LocalDate.of(2026, 1, 15);

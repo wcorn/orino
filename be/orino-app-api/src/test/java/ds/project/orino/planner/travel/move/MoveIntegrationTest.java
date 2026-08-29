@@ -8,14 +8,12 @@ import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
 import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
@@ -39,7 +37,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 질문은 사라졌고, 대신 <b>적어 둔 값이 어디까지 따라오는가</b>를 고정한다 — 순서를 바꿔도,
  * 날짜가 달라도, 다른 여행에서도 같은 두 장소면 같은 이동이다.
  */
-@Import(StubExternalsConfig.class)
 class MoveIntegrationTest extends ApiTestSupport {
 
     private static final BigDecimal SENSOJI_LAT = new BigDecimal("35.7147651");

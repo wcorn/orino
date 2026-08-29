@@ -13,14 +13,12 @@ import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
 import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -47,7 +45,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 // 스텁 조합을 새로 만들지 않는다 — 조합이 늘 때마다 Spring 컨텍스트가 하나씩 더 뜨고,
 // 각각이 커넥션 풀을 물고 있어 전체 실행에서 OutOfMemoryError로 무너진다.
-@Import(StubExternalsConfig.class)
 class StayControllerTest extends ApiTestSupport {
 
     @Autowired

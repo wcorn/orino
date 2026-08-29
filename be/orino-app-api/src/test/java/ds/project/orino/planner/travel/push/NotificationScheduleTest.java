@@ -11,14 +11,12 @@ import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
 import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -40,7 +38,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>가장 틀리기 쉬운 것은 <b>벽시계 → UTC 환산</b>이다. 일정은 여행 타임존의 벽시계 값으로
  * 저장되는데 스케줄러는 UTC로 돈다 — 여기서 어긋나면 알림이 몇 시간씩 밀린다.
  */
-@Import(StubExternalsConfig.class)
 class NotificationScheduleTest extends ApiTestSupport {
 
 

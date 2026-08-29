@@ -7,7 +7,7 @@ import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
+import ds.project.orino.support.FixedClock;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.TravelCityFixture;
 import jakarta.persistence.EntityManagerFactory;
@@ -16,7 +16,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>고정 시각 {@code 2026-01-15T02:00Z}. 여행 기간은 2026-10-24~10-27로 두어 예정 상태에서
  * 편집하는 상황을 본다.
  */
-@Import(FixedClockConfig.class)
+@FixedClock
 class ActivityControllerTest extends ApiTestSupport {
 
     private static final String DAY1 = "2026-10-24";
