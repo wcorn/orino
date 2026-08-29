@@ -14,12 +14,15 @@ import {
 import { renderWithRouter } from "@/test/render";
 
 function renderAt(path: string, options: LedgerMockOptions = {}) {
-  mockLedgerApi(options);
-  return renderWithRouter(
-    <Providers>
-      <AppRouter />
-    </Providers>,
-    { initialEntries: [path] },
+  const sent = mockLedgerApi(options);
+  return Object.assign(
+    renderWithRouter(
+      <Providers>
+        <AppRouter />
+      </Providers>,
+      { initialEntries: [path] },
+    ),
+    { sent },
   );
 }
 
@@ -222,6 +225,35 @@ describe("설정 화면", () => {
 
     expect(
       await screen.findByText(/카드 결제일과 정기 항목 주기는 이 값에 따라/),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * 카테고리 속성(#1267 · `LDG-051`).
+   *
+   * <p>세금·보험료를 카드 실적에서 빼는 규칙은 카드사마다 다르다. 코드에 박으면 누군가는
+   * 반드시 틀린 숫자를 보게 되므로 <b>카테고리의 속성</b>으로 둔다.
+   */
+  it("카테고리마다 실적 제외를 켤 수 있다", async () => {
+    const user = userEvent.setup();
+    const { sent } = renderAt("/ledger/settings");
+
+    await user.click(await screen.findByLabelText("식비 실적 제외"));
+
+    await waitFor(() =>
+      expect(sent.categoryAttributes).toContainEqual({
+        excludeFromCardGoal: true,
+      }),
+    );
+  });
+
+  it("통계 기본 관점을 정해도 청구서·예정은 따라오지 않는다고 적는다", async () => {
+    renderAt("/ledger/settings");
+
+    expect(
+      await screen.findByText(
+        /청구서·예정·잔액 곡선은 이 값과 상관없이 언제나 청구 기준입니다/,
+      ),
     ).toBeInTheDocument();
   });
 });

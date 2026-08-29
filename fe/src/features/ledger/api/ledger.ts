@@ -289,6 +289,9 @@ export interface AssetTransactionRow {
   runningBalance: number | null;
 }
 
+/** 고정비인가 변동비인가(`LDG-061`). `null`이면 아직 정하지 않았다. */
+export type LedgerCostType = "FIXED" | "VARIABLE";
+
 export interface CategoryView {
   id: number;
   flow: LedgerFlow;
@@ -298,7 +301,31 @@ export interface CategoryView {
   icon: string | null;
   displayOrder: number;
   archived: boolean;
+  /** `null`이면 아직 정하지 않았다 — 「모른다」와 「변동비다」는 다르다. */
+  costType: LedgerCostType | null;
+  /** 카드 실적에서 뺀다. 세금·보험료처럼 카드사가 안 세는 것들. */
+  excludeFromCardGoal: boolean;
+  /** 연간 결산에서 뺀다. 저축·투자처럼 「쓴 돈」이 아니라 자산 이동인 것들. */
+  excludeFromSettlement: boolean;
   children: CategoryView[];
+}
+
+export interface CategoryAttributesRequest {
+  costType?: LedgerCostType | null;
+  clearCostType?: boolean;
+  excludeFromCardGoal?: boolean;
+  excludeFromSettlement?: boolean;
+}
+
+export async function updateCategoryAttributes(
+  id: number,
+  body: CategoryAttributesRequest,
+): Promise<CategoryView> {
+  const { data } = await client.patch<ApiEnvelope<CategoryView>>(
+    `/ledger/categories/${id}`,
+    body,
+  );
+  return data.data;
 }
 
 export interface SettingsView {
@@ -724,21 +751,152 @@ export interface StatsComparisonBucket {
   diff: number;
 }
 
+/**
+ * 소비 기준 / 청구 기준(`LDG-086` · 확정 명세 §10.1).
+ *
+ * **청구서·예정·예상 잔액 화면은 이 값과 무관하게 항상 청구 기준이다.** 그 API들은
+ * `perspective` 파라미터를 아예 받지 않는다.
+ */
+export type LedgerPerspective = "SPEND" | "BILLING";
+
+export interface AssetStat {
+  assetId: number;
+  assetName: string | null;
+  amount: number;
+  share: number;
+}
+
+/**
+ * 고정 대 변동.
+ *
+ * `unclassified`는 **속성을 아직 안 정한 카테고리**의 지출이다. 변동비에 몰아넣지 않는다 —
+ * 그러면 아무도 분류하지 않은 가계부에서 「변동비가 100%」라는 거짓말이 나온다.
+ */
+export interface FixedVsVariable {
+  fixed: number;
+  variable: number;
+  unclassified: number;
+}
+
+export interface MonthlyPoint {
+  month: string;
+  expense: number;
+  income: number;
+  fixed: number;
+  variable: number;
+  /**
+   * 속성을 안 정한 카테고리의 지출. **셋을 더해야 `expense`가 된다** —
+   * 빼고 그리면 막대가 그 달 지출보다 짧아지고, 왜 짧은지는 화면에 안 나온다.
+   */
+  unclassified: number;
+  /** 아직 오지 않은 달은 `null`이다. */
+  netWorth: number | null;
+}
+
+export interface LedgerSettlement {
+  year: number;
+  income: number;
+  expense: number;
+  /** 수입이 없으면 `null` — 0은 「하나도 못 모았다」로 읽히는데 사실은 「셀 수 없다」다. */
+  savingRate: number | null;
+  highestMonth: string | null;
+  lowestMonth: string | null;
+}
+
+/**
+ * 다른 관점으로 보면 얼마가 달라지는가. **서버가 계산해 준다** — 화면이 다시 세면
+ * 어느 쪽이 맞는지 알 수 없다(D-13).
+ *
+ * `reason`은 벌어지지 않으면 `null`이다. 원인이 둘이면 둘 다 말한다.
+ */
+export interface PerspectiveDiff {
+  other: LedgerPerspective;
+  otherTotal: number;
+  diff: number;
+  reason: string | null;
+}
+
 export interface LedgerStats {
   period: { start: string; end: string; label: string };
+  perspective: LedgerPerspective;
   total: number;
   byCategory: CategoryStat[];
+  byAsset: AssetStat[];
+  fixedVsVariable: FixedVsVariable;
+  monthly: MonthlyPoint[];
+  settlement: LedgerSettlement;
   comparison: {
     previousPeriod: StatsComparisonBucket;
     previousYear: StatsComparisonBucket;
   };
+  perspectiveDiff: PerspectiveDiff;
 }
 
-/** `period`는 `YYYY-MM`. 생략하면 지금 속한 구간이다. */
-export async function fetchStats(period?: string): Promise<LedgerStats> {
+/** `period`는 `YYYY-MM`. 생략하면 지금 속한 구간, 관점을 생략하면 설정의 기본값이다. */
+export async function fetchStats(
+  period?: string,
+  perspective?: LedgerPerspective,
+): Promise<LedgerStats> {
   const { data } = await client.get<ApiEnvelope<LedgerStats>>("/ledger/stats", {
-    params: period ? { period } : undefined,
+    params: {
+      ...(period ? { period } : {}),
+      ...(perspective ? { perspective } : {}),
+    },
   });
+  return data.data;
+}
+
+export interface SearchRequest {
+  from: string;
+  to: string;
+  type?: LedgerFlow | null;
+  assetId?: number | null;
+  categoryId?: number | null;
+  minAmount?: number | null;
+  maxAmount?: number | null;
+  keyword?: string | null;
+}
+
+export interface SearchResponse {
+  items: TransactionView[];
+  count: number;
+  total: number;
+  /** 상한에 걸려 잘렸는가. **숨기지 않는다** — 모르고 일괄 편집하면 일부만 바뀐다. */
+  truncated: boolean;
+}
+
+export async function searchTransactions(
+  body: SearchRequest,
+): Promise<SearchResponse> {
+  const { data } = await client.post<ApiEnvelope<SearchResponse>>(
+    "/ledger/stats/search",
+    body,
+  );
+  return data.data;
+}
+
+/** 예상 잔액 곡선(§8.4). **관점 파라미터가 없다** — 언제나 청구 기준이다. */
+export interface BalanceCurvePoint {
+  date: string;
+  delta: number;
+  balance: number;
+}
+
+export interface BalanceCurve {
+  from: string;
+  to: string;
+  currentBalance: number;
+  points: BalanceCurvePoint[];
+  minBalance: MinBalance;
+  /** 잔액이 처음 마이너스가 되는 날. 없으면 `null` — 0으로 두면 오늘이 된다. */
+  firstNegativeDate: string | null;
+}
+
+export async function fetchBalanceCurve(days = 30): Promise<BalanceCurve> {
+  const { data } = await client.get<ApiEnvelope<BalanceCurve>>(
+    "/ledger/upcoming/balance-curve",
+    { params: { days } },
+  );
   return data.data;
 }
 
@@ -836,6 +994,19 @@ export interface StatementView {
   carriedToStatementId: number | null;
 }
 
+/** 실적 집계 기준. **카드 속성이지 전역 설정이 아니다**(§7.6). */
+export type UsageGoalBasis = "APPROVAL" | "BILLING";
+
+export interface UsageGoalView {
+  goalAmount: number;
+  basis: UsageGoalBasis;
+  counted: number;
+  /** 조건까지 남은 금액. 「88,000원 더 쓰면 충족」이 이 값이다. */
+  remaining: number;
+  achieved: boolean;
+  month: string;
+}
+
 export interface CardView {
   id: number;
   name: string;
@@ -851,6 +1022,8 @@ export interface CardView {
   /** 미결제 사용액. **잔액이 아니라 부채**다. */
   unpaidAmount: number;
   currentStatement: StatementView | null;
+  /** 실적을 안 걸어 둔 카드는 `null`이다 — 0%로 그리면 「못 채웠다」로 읽힌다. */
+  usageGoal: UsageGoalView | null;
 }
 
 export interface CardListResponse {
@@ -865,6 +1038,19 @@ export interface StatementPayRequest {
   paymentAssetId?: number | null;
   /** **실제 출금일**. 비우면 청구서의 결제일이지만, 다르면 실제가 맞다. */
   paidOn?: string | null;
+}
+
+export interface UsageGoalRequest {
+  /** `null`이면 조건을 지운다 — 0으로 두면 「0원만 채우면 된다」가 되어 언제나 달성이다. */
+  goalAmount: number | null;
+  basis: UsageGoalBasis | null;
+}
+
+export async function updateUsageGoal(
+  cardId: number,
+  body: UsageGoalRequest,
+): Promise<void> {
+  await client.patch(`/ledger/cards/${cardId}/usage-goal`, body);
 }
 
 export async function fetchCards(): Promise<CardListResponse> {

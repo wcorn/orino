@@ -7,10 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingText } from "@/components/ui/loading-text";
-import type { CardView } from "@/features/ledger/api/ledger";
+import type { CardView, UsageGoalView } from "@/features/ledger/api/ledger";
 import { useLedgerCards } from "@/features/ledger/hooks/useLedgerQueries";
 import { formatAmount, MINUS } from "@/features/ledger/lib/money";
 import { cycleLabel, limitUsage } from "@/features/ledger/lib/statement";
+import { cn } from "@/lib/utils";
 
 /**
  * 카드 목록 `/ledger/cards`.
@@ -117,6 +118,9 @@ function CardRow({ card }: { card: CardView }) {
         </div>
       )}
 
+      {/* 실적은 카드마다 기준이 다르다 — 배지가 어느 기준인지 말한다(§7.6). */}
+      {card.usageGoal && <UsageGoal goal={card.usageGoal} />}
+
       {card.currentStatement && (
         <span className="text-muted-foreground flex items-center gap-1 text-[13px]">
           {card.currentStatement.paymentDate}에{" "}
@@ -125,5 +129,47 @@ function CardRow({ card }: { card: CardView }) {
         </span>
       )}
     </Link>
+  );
+}
+
+/**
+ * 카드 실적 진행(`LDG-037`).
+ *
+ * <p><b>기준을 배지로 적는다.</b> 승인이냐 청구냐는 카드사·상품마다 다르고, 어느 기준인지
+ * 모르면 채운 금액이 맞는지 사람이 확인할 방법이 없다.
+ *
+ * <p>조건을 안 걸어 둔 카드는 이 블록 자체가 없다 — 0%로 그리면 「하나도 못 채웠다」로
+ * 읽히는데 사실은 「조건이 없다」다.
+ */
+function UsageGoal({ goal }: { goal: UsageGoalView }) {
+  const filled = Math.min((goal.counted / goal.goalAmount) * 100, 100);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+        <span className="flex items-center gap-2">
+          실적
+          <Badge variant="outline">
+            {goal.basis === "APPROVAL" ? "승인 기준" : "청구 기준"}
+          </Badge>
+        </span>
+        <span className="tabular-nums">
+          {formatAmount(goal.counted)} / {formatAmount(goal.goalAmount)}
+        </span>
+      </span>
+      <span className="bg-muted h-1.5 overflow-hidden rounded-full">
+        <span
+          className={cn(
+            "block h-full rounded-full",
+            goal.achieved ? "bg-success" : "bg-primary",
+          )}
+          style={{ width: `${filled}%` }}
+        />
+      </span>
+      <span className="text-muted-foreground text-[13px]">
+        {goal.achieved
+          ? "이번 달 조건을 채웠어요"
+          : `${formatAmount(goal.remaining)}원 더 쓰면 다음 달 조건 충족`}
+      </span>
+    </div>
   );
 }

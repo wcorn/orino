@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingText } from "@/components/ui/loading-text";
 import type { UpcomingItem, UpcomingKind } from "@/features/ledger/api/ledger";
+import { BalanceCurve } from "@/features/ledger/components/BalanceCurve";
 import { OverdueAlert } from "@/features/ledger/components/OverdueAlert";
 import { useLedgerUpcoming } from "@/features/ledger/hooks/useLedgerQueries";
 import {
@@ -44,7 +45,8 @@ const RANGES = [30, 90, 366];
  * <p>「월말에 얼마 남나」보다 <b>「중간에 모자라지 않나」</b>가 먼저다. 최저 예상 잔액이
  * 스탯 한 칸을 차지하고, 그 날짜와 이유가 경고로 따로 나온다.
  *
- * <p>예상 잔액 곡선은 v2(#1267)다. 이번엔 숫자만.
+ * <p>v2에서 <b>예상 잔액 곡선</b>이 붙었다(§8.4) — 숫자만으로는 「월말에 얼마 남나」밖에
+ * 못 답하고, 「중간에 모자라지 않나」는 곡선이라야 보인다.
  */
 export function LedgerUpcomingPage() {
   const [days, setDays] = useState(RANGES[0]);
@@ -95,6 +97,9 @@ export function LedgerUpcomingPage() {
             />
             <StatCard label="예정 건수" value={String(data.stats.count)} />
           </div>
+
+          {/* 곡선은 「중간에 모자라지 않나」를 한눈에 보여준다(v2 · §8.4). */}
+          <BalanceCurve days={data.days} />
 
           {/*
             월말 숫자만 보면 괜찮아 보이는 달이 있다. 바닥이 언제인지, 무엇 때문인지가

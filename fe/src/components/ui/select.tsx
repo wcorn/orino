@@ -12,6 +12,8 @@ interface SelectProps<T extends string> {
   onValueChange: (value: T) => void;
   options: SelectOption<T>[];
   ariaLabelledby?: string;
+  /** 보이는 라벨이 없을 때(표 안의 셀 등) 대신 읽을 이름. */
+  ariaLabel?: string;
   /** 비활성. 켤 수 없는 설정을 감추지 않고 회색으로 남겨 무엇이 있는지 알린다. */
   disabled?: boolean;
 }
@@ -22,6 +24,7 @@ function Select<T extends string>({
   onValueChange,
   options,
   ariaLabelledby,
+  ariaLabel,
   disabled = false,
 }: SelectProps<T>) {
   const labelOf = (v: T) => options.find((o) => o.value === v)?.label;
@@ -33,6 +36,7 @@ function Select<T extends string>({
     >
       <SelectPrimitive.Trigger
         aria-labelledby={ariaLabelledby}
+        aria-label={ariaLabel}
         className="border-input bg-background focus-visible:ring-ring/30 flex h-9 items-center justify-between gap-2 rounded-md border px-3 text-sm shadow-xs focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
       >
         <SelectPrimitive.Value>

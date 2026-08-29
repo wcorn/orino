@@ -120,6 +120,8 @@ export function cardView(overrides: Record<string, unknown> = {}) {
     hasCycle: true,
     unpaidAmount: 842000,
     currentStatement: statementView(),
+    // 조건을 안 걸어 둔 카드가 기본이다. 0%로 그리면 「못 채웠다」로 읽힌다.
+    usageGoal: null,
     ...overrides,
   };
 }
@@ -236,6 +238,57 @@ export interface LedgerMockOptions {
       share: number;
     }[];
     previousTotal?: number;
+    /**
+     * 관점별 합계. 넘기면 `?perspective=`가 이 표를 탄다 —
+     * <b>토글이 정말 다른 숫자를 부르는지</b>는 이렇게만 확인할 수 있다.
+     */
+    byPerspective?: Partial<Record<"SPEND" | "BILLING", number>>;
+    perspectiveDiff?: {
+      other?: "SPEND" | "BILLING";
+      otherTotal?: number;
+      diff?: number;
+      reason?: string | null;
+    };
+    byAsset?: {
+      assetId: number;
+      assetName: string | null;
+      amount: number;
+      share: number;
+    }[];
+    fixedVsVariable?: {
+      fixed: number;
+      variable: number;
+      unclassified: number;
+    };
+    monthly?: {
+      month: string;
+      expense: number;
+      income: number;
+      fixed: number;
+      variable: number;
+      unclassified: number;
+      netWorth: number | null;
+    }[];
+    settlement?: {
+      year?: number;
+      income?: number;
+      expense?: number;
+      savingRate?: number | null;
+      highestMonth?: string | null;
+      lowestMonth?: string | null;
+    };
+  };
+  /** 복합 검색 결과. `truncated`를 켜면 「잘렸다」 경고를 확인할 수 있다. */
+  search?: {
+    items?: ReturnType<typeof transactionView>[];
+    total?: number;
+    truncated?: boolean;
+  };
+  balanceCurve?: {
+    currentBalance?: number;
+    points?: { date: string; delta: number; balance: number }[];
+    minBalance?: { date: string; amount: number; reason: string | null };
+    firstNegativeDate?: string | null;
   };
   /** 잔액 맞추기 응답의 차액. 0이면 조정 거래를 만들지 않았다는 뜻이다. */
   reconcileDifference?: number;
@@ -279,6 +332,8 @@ export interface LedgerMockOptions {
 export function mockLedgerApi(options: LedgerMockOptions = {}) {
   const created: Record<string, unknown>[] = [];
   const occurrenceActions: Record<string, unknown>[] = [];
+  /** 카테고리 속성 PATCH 본문. 화면이 무엇을 보냈는지로만 확인할 수 있다. */
+  const categoryAttributes: Record<string, unknown>[] = [];
   const payments: Record<string, unknown>[] = [];
   const budgets: Record<string, unknown>[] = [];
   const duplicated: Record<string, unknown>[] = [];
@@ -342,10 +397,32 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
           icon: null,
           displayOrder: 0,
           archived: false,
+          costType: null,
+          excludeFromCardGoal: false,
+          excludeFromSettlement: false,
           children: [],
         },
       ]),
     ),
+    http.patch(`${API_BASE}/ledger/categories/:id`, async ({ request }) => {
+      categoryAttributes.push(
+        (await request.json()) as Record<string, unknown>,
+      );
+      return ok({
+        id: 21,
+        flow: "EXPENSE",
+        name: "식비",
+        parentId: null,
+        color: null,
+        icon: null,
+        displayOrder: 0,
+        archived: false,
+        costType: "VARIABLE",
+        excludeFromCardGoal: false,
+        excludeFromSettlement: false,
+        children: [],
+      });
+    }),
     http.get(`${API_BASE}/ledger/settings`, () =>
       ok({
         monthStartDay: options.monthStartDay ?? 1,
@@ -610,11 +687,49 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
         period: { start: "2026-08-01", end: "2026-08-31" },
       }),
     ),
-    http.get(`${API_BASE}/ledger/stats`, () =>
-      ok({
+    http.get(`${API_BASE}/ledger/stats`, ({ request }) => {
+      const asked =
+        (new URL(request.url).searchParams.get("perspective") as
+          | "SPEND"
+          | "BILLING"
+          | null) ?? "SPEND";
+      const base = options.stats?.total ?? 0;
+      // 관점별 합계를 안 넘겼으면 둘이 같다 — 할부가 없는 달이 그렇다.
+      const total = options.stats?.byPerspective?.[asked] ?? base;
+      const other = asked === "SPEND" ? "BILLING" : "SPEND";
+      const otherTotal = options.stats?.byPerspective?.[other] ?? base;
+
+      return ok({
         period: { start: "2026-08-01", end: "2026-08-31", label: "2026-08" },
-        total: options.stats?.total ?? 0,
+        perspective: asked,
+        total,
         byCategory: options.stats?.byCategory ?? [],
+        byAsset: options.stats?.byAsset ?? [],
+        fixedVsVariable: options.stats?.fixedVsVariable ?? {
+          fixed: 0,
+          variable: 0,
+          unclassified: total,
+        },
+        monthly: options.stats?.monthly ?? [],
+        settlement: {
+          year: 2026,
+          income: 0,
+          expense: total,
+          savingRate: null,
+          highestMonth: null,
+          lowestMonth: null,
+          ...options.stats?.settlement,
+        },
+        perspectiveDiff: {
+          other,
+          otherTotal,
+          diff: otherTotal - total,
+          reason:
+            otherTotal === total
+              ? null
+              : (options.stats?.perspectiveDiff?.reason ?? "할부 때문"),
+          ...options.stats?.perspectiveDiff,
+        },
         comparison: {
           previousPeriod: {
             start: "2026-07-01",
@@ -630,7 +745,41 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
             diff: options.stats?.total ?? 0,
           },
         },
-      }),
+      });
+    }),
+    http.post(`${API_BASE}/ledger/stats/search`, () => {
+      const items = options.search?.items ?? [];
+      return ok({
+        items,
+        count: items.length,
+        total:
+          options.search?.total ??
+          items.reduce((sum, item) => sum + item.amount, 0),
+        truncated: options.search?.truncated ?? false,
+      });
+    }),
+    http.get(`${API_BASE}/ledger/upcoming/balance-curve`, () => {
+      const points = options.balanceCurve?.points ?? [];
+      const lowest = points.reduce<number | null>(
+        (min, point) =>
+          min === null || point.balance < min ? point.balance : min,
+        null,
+      );
+      return ok({
+        from: "2026-08-28",
+        to: "2026-09-27",
+        currentBalance: options.balanceCurve?.currentBalance ?? 0,
+        points,
+        minBalance: options.balanceCurve?.minBalance ?? {
+          date: points[0]?.date ?? "2026-08-28",
+          amount: lowest ?? 0,
+          reason: null,
+        },
+        firstNegativeDate: options.balanceCurve?.firstNegativeDate ?? null,
+      });
+    }),
+    http.patch(`${API_BASE}/ledger/cards/:id/usage-goal`, () =>
+      HttpResponse.json({ code: "OK", data: null }),
     ),
     http.post(`${API_BASE}/ledger/assets/:id/reconcile`, () =>
       ok({
@@ -716,6 +865,7 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
     duplicated,
     bulkSent,
     occurrenceActions,
+    categoryAttributes,
     payments,
     budgets,
   });

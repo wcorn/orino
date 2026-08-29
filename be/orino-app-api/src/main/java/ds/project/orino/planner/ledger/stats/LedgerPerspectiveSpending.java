@@ -79,7 +79,37 @@ public class LedgerPerspectiveSpending {
                             memberId, LedgerTransactionStatus.CONFIRMED,
                             period.start(), period.end()));
         }
-        return billingBuckets(memberId, period);
+        return billingBuckets(memberId, period, Grouping.CATEGORY);
+    }
+
+    /**
+     * 같은 구간을 <b>자산별</b>로 센다.
+     *
+     * <p>카테고리와 같은 관점·같은 합계를 쓴다. 한쪽만 소비 기준으로 두면 청구 기준 화면에
+     * 합계에 없는 돈이 섞이고, 비율의 분모가 제 것이 아니게 된다.
+     *
+     * <p>할부 회차는 <b>원 거래의 카드</b>로 센다 — 「어느 카드가 이 청구를 만들었나」가 질문이다.
+     */
+    public List<LedgerCategorySpending.Bucket> byAsset(Long memberId,
+                                                       LedgerPeriods.Period period,
+                                                       LedgerPerspective perspective) {
+        if (perspective == LedgerPerspective.SPEND) {
+            List<LedgerCategorySpending.Bucket> buckets = new ArrayList<>();
+            for (LedgerTransactionRepository.AssetTotal row : transactionRepository
+                    .sumExpenseByAsset(memberId, LedgerTransactionStatus.CONFIRMED,
+                            period.start(), period.end())) {
+                buckets.add(new LedgerCategorySpending.Bucket(
+                        row.getAssetId(), row.getTotal(), 0));
+            }
+            return buckets;
+        }
+        return billingBuckets(memberId, period, Grouping.ASSET);
+    }
+
+    /** 무엇으로 묶는가. 청구 기준 집계는 묶는 열만 다르고 나머지 규칙은 똑같다. */
+    private enum Grouping {
+        CATEGORY,
+        ASSET
     }
 
     /**
@@ -94,7 +124,8 @@ public class LedgerPerspectiveSpending {
      * </ol>
      */
     private List<LedgerCategorySpending.Bucket> billingBuckets(Long memberId,
-                                                                LedgerPeriods.Period period) {
+                                                                LedgerPeriods.Period period,
+                                                                Grouping grouping) {
         LocalDate from = period.start().minusMonths(BILLING_LOOKBACK_MONTHS);
         List<LedgerTransaction> rows = transactionRepository
                 .findAllByMemberIdAndDeletedAtIsNullAndOccurredOnBetweenOrderByOccurredOnDescIdDesc(
@@ -118,10 +149,10 @@ public class LedgerPerspectiveSpending {
                     || billedOn.isAfter(period.end())) {
                 continue;
             }
-            add(byCategory, row.getCategoryId(), signedAmount(row));
+            add(byCategory, keyOf(row, grouping), signedAmount(row));
         }
 
-        addInstallmentRounds(memberId, period, byCategory);
+        addInstallmentRounds(memberId, period, byCategory, grouping);
         return toBuckets(byCategory);
     }
 
@@ -130,7 +161,7 @@ public class LedgerPerspectiveSpending {
      * 청구되지 않은 돈이라 청구 기준에 들어갈 자리가 없다.
      */
     private void addInstallmentRounds(Long memberId, LedgerPeriods.Period period,
-                                      Map<Long, long[]> byCategory) {
+                                      Map<Long, long[]> byCategory, Grouping grouping) {
         List<LedgerInstallment> installments = installmentRepository
                 .findAllByMemberIdAndStatus(memberId, LedgerInstallment.Status.ACTIVE);
         if (installments.isEmpty()) {
@@ -140,7 +171,7 @@ public class LedgerPerspectiveSpending {
         for (LedgerInstallment installment : installments) {
             transactionRepository.findById(installment.getTransactionId())
                     .ifPresent(tx -> categoryByInstallment.put(
-                            installment.getId(), tx.getCategoryId()));
+                            installment.getId(), keyOf(tx, grouping)));
         }
 
         List<LedgerStatement> statements = statementRepository.findAllByMemberIdAndPaymentDateBetween(
@@ -179,6 +210,11 @@ public class LedgerPerspectiveSpending {
      * <p>환불은 <b>그 카테고리의 지출을 깎는다</b> — 「수입이 늘었다」가 아니다(§4.3).
      * 이체는 0이다. 소비 기준 질의와 같은 규칙이라 두 관점이 같은 뜻의 숫자를 낸다.
      */
+    /** 미분류(카테고리 없음)는 {@code null}이지만, 자산은 언제나 있다(모든 거래가 자산에 붙는다). */
+    private Long keyOf(LedgerTransaction row, Grouping grouping) {
+        return grouping == Grouping.ASSET ? row.getAssetId() : row.getCategoryId();
+    }
+
     private long signedAmount(LedgerTransaction row) {
         boolean refund = row.getSource() == LedgerTransactionSource.REFUND;
         if (refund) {
