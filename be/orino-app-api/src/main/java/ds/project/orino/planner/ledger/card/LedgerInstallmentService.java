@@ -43,7 +43,7 @@ public class LedgerInstallmentService {
     }
 
     /**
-     * 할부를 연다. 첫 회차는 이 거래가 편입된 청구서의 결제월이다.
+     * 할부를 연다. 첫 회차는 이 거래가 편입된 청구서의 결제월이고, <b>그 청구서에 바로 붙는다</b>.
      *
      * <p>나눠떨어지지 않는 나머지는 <b>첫 회차</b>가 받는다. 마지막에 몰면 「끝났는 줄 알았는데
      * 더 나왔다」가 되고, 카드사도 대개 첫 회차에 붙인다.
@@ -58,7 +58,10 @@ public class LedgerInstallmentService {
                 interestFree, transaction.getAmount()));
         transaction.updateInstallmentId(installment.getId());
 
-        YearMonth firstBillingMonth = firstBillingMonthOf(transaction);
+        LedgerStatement statement = statementOf(transaction);
+        YearMonth firstBillingMonth = statement == null
+                ? YearMonth.from(transaction.getOccurredOn())
+                : YearMonth.from(statement.getPaymentDate());
         long base = transaction.getAmount() / months;
         long remainder = transaction.getAmount() - base * months;
 
@@ -69,7 +72,14 @@ public class LedgerInstallmentService {
                     installment.getId(), i + 1,
                     firstBillingMonth.plusMonths(i).toString(), amount));
         }
-        roundRepository.saveAll(rounds);
+        List<LedgerInstallmentRound> saved = roundRepository.saveAll(rounds);
+
+        // 1회차는 여기서 붙인다(#1279). 사이클 전환은 <b>다음 사이클을 열 때</b>만 회차를
+        // 붙이는데, 1회차가 붙어야 할 청구서는 카드를 긁는 순간 이미 서 있다 — 그래서
+        // 여기서 붙이지 않으면 모든 할부의 1회차가 어느 청구서에도 안 들어간다.
+        if (statement != null) {
+            saved.get(0).attachTo(statement.getId());
+        }
         return installment;
     }
 
@@ -109,13 +119,14 @@ public class LedgerInstallmentService {
      * <p>사이클이 등록된 카드면 그 거래가 편입된 청구서의 <b>결제월</b>이다 — 할부 1회차는
      * 그 청구서와 함께 빠진다. 사이클이 없으면 산 달을 그대로 쓴다.
      */
-    private YearMonth firstBillingMonthOf(LedgerTransaction transaction) {
+    /**
+     * 이 거래가 편입된 청구서. 없으면 {@code null}이다 — 사이클을 아직 등록하지 않은
+     * 카드이거나 카드가 아닌 자산이라는 뜻이고, 그건 오류가 아니다.
+     */
+    private LedgerStatement statementOf(LedgerTransaction transaction) {
         if (transaction.getStatementId() == null) {
-            return YearMonth.from(transaction.getOccurredOn());
+            return null;
         }
-        return statementRepository.findById(transaction.getStatementId())
-                .map(LedgerStatement::getPaymentDate)
-                .map(YearMonth::from)
-                .orElseGet(() -> YearMonth.from(transaction.getOccurredOn()));
+        return statementRepository.findById(transaction.getStatementId()).orElse(null);
     }
 }

@@ -83,6 +83,10 @@ class LedgerUpcomingTest extends ApiTestSupport {
     @DisplayName("네 출처가 한 목록으로 모인다")
     class FourSources {
 
+        /**
+         * 60일을 본다 — 1회차는 산 달 청구서에 붙어 카드 대금에 들어가므로(#1279),
+         * 「할부 잔여」로 따로 서는 것은 <b>그다음 달 회차</b>부터다.
+         */
         @Test
         @DisplayName("정기 회차 · 직접 예약 · 카드 대금 · 할부 잔여가 모두 나온다")
         void allFour() throws Exception {
@@ -93,26 +97,34 @@ class LedgerUpcomingTest extends ApiTestSupport {
 
             mockMvc.perform(get("/api/ledger/upcoming")
                             .header(HttpHeaders.AUTHORIZATION, authHeader)
-                            .param("days", "30"))
+                            .param("days", "60"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.stats.byKind.RECURRING").value(1))
+                    .andExpect(jsonPath("$.data.stats.byKind.RECURRING").value(2))
                     .andExpect(jsonPath("$.data.stats.byKind.ONE_OFF").value(1))
                     .andExpect(jsonPath("$.data.stats.byKind.CARD_PAYMENT").value(1))
                     .andExpect(jsonPath("$.data.stats.byKind.INSTALLMENT").value(1))
-                    .andExpect(jsonPath("$.data.items", hasSize(4)));
+                    .andExpect(jsonPath("$.data.items", hasSize(5)));
         }
 
-        /** 붙은 회차를 함께 세면 그 청구서의 청구액과 같은 돈이 두 번 잡힌다. */
+        /**
+         * 붙은 회차를 함께 세면 그 청구서의 청구액과 같은 돈이 두 번 잡힌다.
+         *
+         * <p>1회차는 산 달 청구서에 붙으므로 카드 대금 <b>안에</b> 있고, 예정 목록에는
+         * 「할부 잔여」로 따로 서지 않는다 — 30일 안에서는 카드 대금 한 줄이 전부다.
+         */
         @Test
         @DisplayName("청구서에 붙은 할부 회차는 예정에 따로 나오지 않는다")
         void attachedRoundIsNotCountedTwice() throws Exception {
             installment(300000, "2026-01-09");
 
-            // 1월 회차는 그 달 청구서에 붙는다(첫 청구월은 2026-02) — 2월 회차만 남는다.
             mockMvc.perform(get("/api/ledger/upcoming")
                             .header(HttpHeaders.AUTHORIZATION, authHeader)
                             .param("days", "30"))
-                    .andExpect(jsonPath("$.data.stats.byKind.INSTALLMENT").value(1));
+                    .andExpect(jsonPath("$.data.stats.byKind.INSTALLMENT").doesNotExist())
+                    .andExpect(jsonPath("$.data.items", hasSize(1)))
+                    .andExpect(jsonPath("$.data.items[0].kind").value("CARD_PAYMENT"))
+                    // 300,000 ÷ 3 = 100,000. 카드 대금이 그 1회차를 담는다.
+                    .andExpect(jsonPath("$.data.items[0].amount").value(100000));
         }
 
         @Test
