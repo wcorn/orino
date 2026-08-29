@@ -32,9 +32,14 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build and Test
+      # `build`가 아니라 `check`다. bootJar는 image-scan 잡이 Dockerfile builder 스테이지에서
+      # 어차피 만들고, 여기서 또 만들 이유가 없다.
+      - name: Test and Checkstyle
         working-directory: be
-        run: ./gradlew build
+        env:
+          # 러너는 잡이 끝나면 통째로 버려진다. 남은 컨테이너를 걷어낼 ryuk를 띄울 이유가 없다.
+          TESTCONTAINERS_RYUK_DISABLED: 'true'
+        run: ./gradlew check
 
   image-scan:
     runs-on: ubuntu-latest

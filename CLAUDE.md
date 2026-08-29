@@ -42,6 +42,7 @@ cd be
 ./gradlew bootRun        # Run
 ./gradlew test           # Run all tests
 ./gradlew check          # 테스트 + Checkstyle (maxWarnings = 0)
+./gradlew test -Pcoverage  # 커버리지까지 (jacoco는 기본으로 꺼져 있다)
 ./gradlew clean build    # Clean and rebuild
 ```
 
@@ -118,9 +119,12 @@ npm run test:e2e:ui   # E2E tests with UI
 - `playwright.config.ts`는 chromium(데스크톱) · built(preview) · mobile-touch 세 프로젝트다.
   입력 장치나 화면 폭으로 갈리는 동작을 넣으면 같은 스펙이 프로젝트마다 다르게 돈다.
 - pre-commit 훅(husky + lint-staged, BE Checkstyle)을 `--no-verify`로 우회하지 않는다.
-- CI는 경로별로 나뉜다: `be/**` → BE CI(Gradle build + Trivy), `fe/**` → FE CI,
+- CI는 경로별로 나뉜다: `be/**` → BE CI(Gradle check + Trivy), `fe/**` → FE CI,
   `infra/**` → Infra CI(yamllint · helm lint · kubeconform), `infra/terraform/**` → Terraform,
   `infra/ansible/**` → Ansible.
+- main에 `be/**`가 들어가면 BE Gradle Cache가 따로 돈다. PR CI가 읽을 Gradle 캐시를 채우는
+  워크플로우다 — setup-gradle은 기본 브랜치에서만 캐시를 쓰기 때문에 이게 없으면 모든 PR이
+  콜드 캐시로 시작한다. 지우지 않는다.
 - Trivy 이미지 스캔(CRITICAL/HIGH)은 무시 목록으로 덮지 않고 의존성 버전을 올려 해결한다.
 
 ## Infra / GitOps
