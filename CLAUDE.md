@@ -113,7 +113,8 @@ npm run test:e2e:ui   # E2E tests with UI
 | Infra (Helm) | `helm lint infra/helm/<app>` · `helm template infra/helm/<app> \| kubeconform -strict` |
 | Terraform | `cd infra/terraform && terraform fmt -check -recursive` |
 
-- FE CI는 유닛 뒤에 **E2E까지** 돌린다. 바꾼 화면 이름으로 스펙을 골라 일부만 돌리면 놓친다 —
+- FE CI는 유닛 잡(format · lint · vitest · build)과 E2E 잡을 **병렬로** 돌린다.
+  로컬에서도 둘 다 통과시켜야 한다 — 바꾼 화면 이름으로 스펙을 골라 일부만 돌리면 놓친다.
   다른 스펙이 그 화면을 지나갈 수 있다(전체 실행 ~50초).
 - `playwright.config.ts`는 chromium(데스크톱) · built(preview) · mobile-touch 세 프로젝트다.
   입력 장치나 화면 폭으로 갈리는 동작을 넣으면 같은 스펙이 프로젝트마다 다르게 돈다.

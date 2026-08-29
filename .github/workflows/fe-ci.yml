@@ -5,14 +5,19 @@ on:
     branches: [ main ]
     paths:
       - 'fe/**'
+      # 워크플로우 자신이 바뀌어도 돈다. 이게 없으면 CI 정의를 고친 PR에서 그 CI가
+      # 한 번도 돌지 않은 채 머지된다.
+      - '.github/workflows/fe-ci.yml'
 
 # 같은 PR에 새 커밋이 푸시되면 진행 중인 이전 실행을 취소한다
 concurrency:
   group: fe-ci-${{ github.ref }}
   cancel-in-progress: true
 
+# 유닛 계열(format·lint·vitest)과 E2E 계열(build·playwright)은 서로를 기다릴 이유가 없다.
+# 한 잡에 몰아 두면 wall-clock이 둘의 합이 된다 — 나눠서 둘 중 긴 쪽만 기다린다.
 jobs:
-  build:
+  unit:
     runs-on: ubuntu-latest
 
     steps:
@@ -41,15 +46,55 @@ jobs:
         working-directory: fe
         run: npm test
 
+      # 타입 체크(tsc -b)가 여기 붙어 있다. E2E 잡도 webServer가 빌드하며 같은 걸 돌리지만,
+      # 유닛 잡에서 먼저 깨져 주는 편이 원인을 찾기 쉽다.
       - name: Build
         working-directory: fe
         run: npm run build
 
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: fe/package-lock.json
+
+      - name: Install dependencies
+        working-directory: fe
+        run: npm ci
+
+      # 브라우저 바이너리는 Playwright 버전에만 달려 있다. 버전을 키로 걸어 두면
+      # 의존성이 바뀌어도 그대로 재사용된다(매번 새로 받으면 42초다).
+      - name: Resolve Playwright version
+        id: playwright
+        working-directory: fe
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
       # E2E는 유닛 테스트가 못 보는 것을 본다 — 서비스워커·오프라인·실제 드래그.
       # CI에 없으면 깨져도 아무도 모른다(#1098에서 실제로 그랬다).
       - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: fe
         run: npx playwright install --with-deps chromium
+
+      # 캐시가 맞았어도 OS 의존 라이브러리는 러너에 없다. 바이너리 다운로드만 건너뛴다.
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: fe
+        run: npx playwright install-deps chromium
 
       - name: E2E
         working-directory: fe
