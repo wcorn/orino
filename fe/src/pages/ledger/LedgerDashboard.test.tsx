@@ -10,6 +10,7 @@ import {
   type LedgerMockOptions,
   mockLedgerApi,
   transactionView,
+  upcomingItem,
 } from "@/features/ledger/ledgerFixtures";
 import { renderWithRouter } from "@/test/render";
 
@@ -24,11 +25,11 @@ function renderAt(path: string, options: LedgerMockOptions = {}) {
 }
 
 /**
- * 대시보드 · 통계 · 잔액 맞추기(#1261).
+ * 대시보드 · 통계 · 잔액 맞추기(#1261 · #1265).
  *
- * <p>대시보드 테스트의 절반은 <b>없는 것을 확인하는 일</b>이다. v1에 예정·미납·2축 요약이
- * 없는 것은 미완성이 아니라 결정이고(D-7), 나중에 누가 「빈 카드라도 넣자」고 하면
- * 이 테스트가 막는다.
+ * <p>v1에서는 이 테스트의 절반이 <b>없는 것을 확인하는 일</b>이었다 — 예정·미납·2축 요약이
+ * 없는 것은 미완성이 아니라 결정이었기 때문이다(D-7). v1.5에서 예정이 생겨 그 자리가
+ * 채워졌고, 이제 확인할 것은 <b>두 축이 섞이지 않았는가</b>다.
  */
 describe("가계부 대시보드", () => {
   beforeEach(() => {
@@ -37,7 +38,7 @@ describe("가계부 대시보드", () => {
 
   it("이미 쓴 돈과 이번 달 수입을 보여준다", async () => {
     renderAt("/ledger", {
-      dashboard: { spent: 1240000, income: 3850000 },
+      dashboard: { spent: 1240000, scheduled: 180000, income: 3850000 },
     });
 
     expect(await screen.findByText("1,240,000")).toBeInTheDocument();
@@ -45,14 +46,79 @@ describe("가계부 대시보드", () => {
     expect(screen.getByText(/2026년 8월 · 월 시작일 1일/)).toBeInTheDocument();
   });
 
-  it("예정·미납·2축 요약을 그리지 않는다 — 빈 카드가 있으면 고장난 것처럼 보인다", async () => {
-    renderAt("/ledger", { dashboard: { spent: 1240000 } });
+  /**
+   * 두 카드가 <b>서로 다른 값</b>을 말해야 한다. 카드로 쓴 돈은 소비에 한 번, 대금에 또 한 번
+   * 세어지기 쉽고 그러면 「이번 달 얼마 쓰나」가 두 배가 된다(확정 명세 §8.2).
+   */
+  it("2축 요약 — 소비와 현금 유출이 다른 숫자를 답한다", async () => {
+    renderAt("/ledger", {
+      dashboard: {
+        spent: 1240000,
+        scheduled: 180000,
+        balance: 1500000,
+        remainingOutflow: 1062000,
+      },
+    });
 
-    await screen.findByText("1,240,000");
-    expect(screen.queryByText(/앞으로 쓸 돈/)).toBeNull();
-    expect(screen.queryByText(/미납/)).toBeNull();
-    expect(screen.queryByText(/다가오는 결제/)).toBeNull();
-    expect(screen.queryByText(/월말/)).toBeNull();
+    // 소비 축: 이미 쓴 돈 + 앞으로 쓸 돈.
+    expect(await screen.findByText("이번 달 소비")).toBeInTheDocument();
+    expect(screen.getByText("1,420,000")).toBeInTheDocument();
+    // 현금 축: 통장 잔액 − 남은 예정 출금. 소비와 다른 숫자다.
+    expect(screen.getByText("통장에서 나갈 돈")).toBeInTheDocument();
+    expect(screen.getByText("438,000")).toBeInTheDocument();
+    expect(
+      screen.getByText(/예정 거래는 잔액을 바꾸지 않습니다/),
+    ).toBeInTheDocument();
+  });
+
+  it("2단 게이지 — 확정분과 예정분을 따로 칠한다", async () => {
+    renderAt("/ledger", {
+      dashboard: { spent: 800000, scheduled: 200000 },
+      budget: { totalAmount: 2000000 },
+    });
+
+    expect(
+      await screen.findByLabelText(
+        "예산 2,000,000 중 확정 800,000, 예정 200,000",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("확정 40% · 예정 10%")).toBeInTheDocument();
+  });
+
+  /** <b>「무시」에 해당하는 버튼이 없다.</b> 확정하거나 건너뛰어야만 사라진다(§6.4). */
+  it("미납 경고에 닫기 버튼이 없다", async () => {
+    renderAt("/ledger", {
+      dashboard: { overdue: 1 },
+      upcoming: [
+        upcomingItem({
+          title: "실손보험",
+          amount: 42300,
+          overdue: true,
+          dday: -26,
+          date: "2026-08-02",
+          occurrenceDate: "2026-08-02",
+        }),
+      ],
+    });
+
+    const alert = within(await screen.findByRole("alert"));
+    expect(alert.getByText(/미납 1건/)).toBeInTheDocument();
+    expect(alert.getByRole("button", { name: "확정" })).toBeInTheDocument();
+    expect(alert.getByRole("button", { name: "건너뛰기" })).toBeInTheDocument();
+    // 「무시」에 해당하는 버튼이 없다. 눈에 거슬리는 게 목적이다.
+    expect(alert.queryByRole("button", { name: /닫기|무시|해제/ })).toBeNull();
+  });
+
+  /** 순자산만 크게 보여주지 않는다 — 부채가 안 보이면 좋아 보이는 이유를 알 수 없다. */
+  it("자산 요약은 총자산·부채·순자산 세 줄이다", async () => {
+    renderAt("/ledger", {
+      dashboard: { totalAssets: 6410300, liabilities: 1700500 },
+    });
+
+    expect(await screen.findByText("총자산")).toBeInTheDocument();
+    expect(screen.getByText("부채")).toBeInTheDocument();
+    expect(screen.getByText("순자산")).toBeInTheDocument();
+    expect(screen.getByText("4,709,800")).toBeInTheDocument();
   });
 
   it("정리할 내역이 없으면 그 줄도 없다 — 0건은 할 일이 아니다", async () => {

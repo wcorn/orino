@@ -52,14 +52,55 @@ export function transactionView(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** 예정 한 줄. 파생이라 거래 id가 없는 것이 기본이다. */
+export function upcomingItem(overrides: Record<string, unknown> = {}) {
+  return {
+    kind: "RECURRING",
+    date: "2026-08-31",
+    dday: 3,
+    title: "넷플릭스 프리미엄",
+    amount: 17000,
+    flow: "EXPENSE",
+    isTransfer: false,
+    overdue: false,
+    estimated: false,
+    categoryId: null,
+    assetId: 1,
+    assetName: "급여통장",
+    transactionId: null,
+    recurringId: 12,
+    occurrenceDate: "2026-08-31",
+    statementId: null,
+    installmentId: null,
+    ...overrides,
+  };
+}
+
 export interface LedgerMockOptions {
-  /** 대시보드가 내리는 세 값. v1.5 블록은 **필드 자체가 없다**(D-7). */
   dashboard?: {
     spent?: number;
+    scheduled?: number;
     income?: number;
     uncategorized?: number;
+    overdue?: number;
     monthStartDay?: number;
+    balance?: number;
+    remainingOutflow?: number;
+    totalAssets?: number;
+    liabilities?: number;
   };
+  /** 예정 4출처. 대시보드·내역 타임라인·예정 화면·캘린더가 모두 이 목록을 읽는다. */
+  upcoming?: ReturnType<typeof upcomingItem>[];
+  /** 예산. 대시보드의 2단 게이지가 `totalAmount`를 쓴다. */
+  budget?: { totalAmount?: number; spent?: number; scheduled?: number };
+  calendarDays?: {
+    date: string;
+    income?: number;
+    expense?: number;
+    scheduledIncome?: number;
+    scheduledExpense?: number;
+    scheduledTransfer?: number;
+  }[];
   stats?: {
     total: number;
     byCategory: {
@@ -112,6 +153,7 @@ export interface LedgerMockOptions {
  */
 export function mockLedgerApi(options: LedgerMockOptions = {}) {
   const created: Record<string, unknown>[] = [];
+  const occurrenceActions: Record<string, unknown>[] = [];
   const duplicated: Record<string, unknown>[] = [];
   const bulkSent: Record<string, unknown>[][] = [];
   const assets = options.assets ?? [assetView()];
@@ -214,16 +256,152 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
         source: "ECB",
       });
     }),
-    http.get(`${API_BASE}/ledger/dashboard`, () =>
-      ok({
-        spending: { spent: options.dashboard?.spent ?? 0 },
+    http.get(`${API_BASE}/ledger/dashboard`, () => {
+      const spent = options.dashboard?.spent ?? 0;
+      const scheduled = options.dashboard?.scheduled ?? 0;
+      const balance = options.dashboard?.balance ?? 0;
+      const remainingOutflow = options.dashboard?.remainingOutflow ?? 0;
+      return ok({
+        spending: { spent, scheduled, estimate: spent + scheduled },
+        cashflow: {
+          balance,
+          remainingOutflow,
+          remainingInflow: 0,
+          monthEndBalance: balance - remainingOutflow,
+          minBalance: {
+            amount: balance - remainingOutflow,
+            date: "2026-09-14",
+            reason: remainingOutflow > 0 ? "카드 대금" : null,
+          },
+        },
         income: { amount: options.dashboard?.income ?? 0 },
-        todo: { uncategorized: options.dashboard?.uncategorized ?? 0 },
+        netWorth: {
+          totalAssets: options.dashboard?.totalAssets ?? 0,
+          liabilities: options.dashboard?.liabilities ?? 0,
+          netWorth:
+            (options.dashboard?.totalAssets ?? 0) -
+            (options.dashboard?.liabilities ?? 0),
+        },
+        upcoming: options.upcoming ?? [],
+        todo: {
+          uncategorized: options.dashboard?.uncategorized ?? 0,
+          overdue: options.dashboard?.overdue ?? 0,
+        },
         period: {
           start: "2026-08-01",
           end: "2026-08-31",
           monthStartDay: options.dashboard?.monthStartDay ?? 1,
         },
+      });
+    }),
+    http.get(`${API_BASE}/ledger/upcoming`, () => {
+      const items = options.upcoming ?? [];
+      const byKind: Record<string, number> = {};
+      for (const item of items) {
+        byKind[item.kind as string] = (byKind[item.kind as string] ?? 0) + 1;
+      }
+      const outflow = items.reduce(
+        (sum, item) =>
+          sum + (item.flow === "INCOME" ? 0 : (item.amount as number)),
+        0,
+      );
+      const balance = options.dashboard?.balance ?? 0;
+      return ok({
+        from: "2026-08-28",
+        to: "2026-09-27",
+        days: 30,
+        stats: {
+          outflow,
+          income: 0,
+          currentBalance: balance,
+          expectedBalance: balance - outflow,
+          minBalance: {
+            amount: balance - outflow,
+            date: "2026-09-14",
+            reason: items.length > 0 ? (items[0].title as string) : null,
+          },
+          count: items.length,
+          byKind,
+        },
+        items,
+      });
+    }),
+    http.get(`${API_BASE}/ledger/transactions/calendar`, () =>
+      ok({
+        month: "2026-08",
+        todayLine: "2026-08-28",
+        days: (options.calendarDays ?? []).map((day) => ({
+          income: 0,
+          expense: 0,
+          scheduledIncome: 0,
+          scheduledExpense: 0,
+          scheduledTransfer: 0,
+          ...day,
+        })),
+      }),
+    ),
+    http.get(`${API_BASE}/ledger/budget`, () =>
+      ok({
+        period: "2026-08",
+        periodStart: "2026-08-01",
+        periodEnd: "2026-08-31",
+        totalAmount: options.budget?.totalAmount ?? 0,
+        fixedCostTotal: 0,
+        spendable: options.budget?.totalAmount ?? 0,
+        spent: options.budget?.spent ?? 0,
+        scheduled: options.budget?.scheduled ?? 0,
+        remaining:
+          (options.budget?.totalAmount ?? 0) - (options.budget?.spent ?? 0),
+        daysLeft: 4,
+        dailyAllowance: 0,
+        categories: [],
+      }),
+    ),
+    http.patch(
+      `${API_BASE}/ledger/upcoming/occurrence`,
+      async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        occurrenceActions.push(body);
+        return ok({
+          recurringId: body.recurringId,
+          name: "넷플릭스 프리미엄",
+          occurrenceDate: body.occurrenceDate,
+          date: body.movedTo ?? body.occurrenceDate,
+          amount: body.amount ?? 17000,
+          action: body.action,
+          overdue: body.action === "UNPAID",
+          transactionId: null,
+        });
+      },
+    ),
+    http.post(
+      `${API_BASE}/ledger/upcoming/occurrence/confirm`,
+      async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        occurrenceActions.push(body);
+        return ok({
+          recurringId: body.recurringId,
+          name: "실손보험",
+          occurrenceDate: body.occurrenceDate,
+          date: body.actualDate,
+          amount: 42300,
+          action: "MOVE",
+          overdue: false,
+          transactionId: 91,
+        });
+      },
+    ),
+    // 사이드바가 워크스페이스 안에서 미납 배지를 그리려고 부른다.
+    http.get(`${API_BASE}/ledger/summary`, () =>
+      ok({
+        monthEstimate: 0,
+        monthSpent: options.dashboard?.spent ?? 0,
+        monthScheduled: 0,
+        uncategorizedCount: options.dashboard?.uncategorized ?? 0,
+        monthEndBalance: 0,
+        remainingOutflow: options.dashboard?.remainingOutflow ?? 0,
+        overdueCount: options.dashboard?.overdue ?? 0,
+        period: { start: "2026-08-01", end: "2026-08-31" },
       }),
     ),
     http.get(`${API_BASE}/ledger/stats`, () =>
@@ -328,7 +506,7 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
     }),
   );
 
-  return Object.assign(created, { duplicated, bulkSent });
+  return Object.assign(created, { duplicated, bulkSent, occurrenceActions });
 }
 
 function groupByDate(transactions: ReturnType<typeof transactionView>[]) {

@@ -119,7 +119,11 @@ test.describe("워크스페이스 진입 동선", () => {
 
     await expect(switcher(page, "가계부")).toBeVisible();
     // 가계부 메뉴가 서 있다(스타일은 다른 세트와 같고, 여기서는 자리만 본다).
-    await expect(page.getByRole("link", { name: "내역" })).toBeVisible();
+    // 이름이 정확히 「내역」인 것으로 찾는다 — 대시보드 헤더의 「내역 보기」도 링크라
+    // 부분 일치로는 둘이 걸린다.
+    await expect(
+      page.getByRole("link", { name: "내역", exact: true }),
+    ).toBeVisible();
 
     await switcher(page, "가계부").click();
     await page.getByRole("menuitem", { name: "링크" }).click();

@@ -27,6 +27,7 @@ import {
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
+import { useLedgerSummary } from "@/features/ledger/hooks/useLedgerQueries";
 import { useReviewSummary } from "@/features/review/hooks/useReviewSummary";
 import { useLinks } from "@/features/shortlink/hooks/useLinks";
 import { useShortlinkTags } from "@/features/shortlink/hooks/useShortlinkTags";
@@ -226,6 +227,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   // 사용자는 목록이 즉시 그려진다.
   const { data: linkData } = useLinks({ enabled: link });
   const { data: linkTags } = useShortlinkTags({ enabled: link });
+  // 미납은 사이드바에서도 계속 보인다 — 확정하거나 건너뛰어야만 사라진다(확정 명세 §6.4).
+  const { data: ledgerSummary } = useLedgerSummary(ledger);
+  const overdueCount = ledgerSummary?.overdueCount ?? 0;
 
   const current: WorkspaceKey = travel
     ? "travel"
@@ -350,6 +354,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           {navItems.map((item) => {
             const Icon = item.icon;
             const isReviewItem = item.to === "/planner/reviews";
+            const isUpcomingItem = item.to === "/ledger/upcoming";
             const isBoardItem = item.label === "일정 보드";
             // 링크 메뉴의 우측 숫자. 아직 못 받았으면 자리를 비운다 — `0`은 "링크가 없다"는
             // 뜻이고, 모르는 것과 다르다.
@@ -384,6 +389,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     <Icon className="size-4" />
                     {item.label}
                   </span>
+                  {/*
+                    미납 배지에 dismiss가 없는 것과 같은 이유로 여기서도 끄지 못한다.
+                    눈에 거슬리는 게 목적이다.
+                  */}
+                  {isUpcomingItem && overdueCount > 0 && (
+                    <span
+                      aria-label={`미납 ${overdueCount}건`}
+                      className="bg-destructive inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold text-white"
+                    >
+                      {overdueCount}
+                    </span>
+                  )}
                   {isReviewItem && reviewCount > 0 && (
                     <span
                       aria-label={`미완료 ${reviewCount}건`}
