@@ -6,12 +6,17 @@ import {
   fetchAssetTransactions,
   fetchBudget,
   fetchCalendar,
+  fetchCards,
   fetchCategories,
   fetchDashboard,
   fetchFxRate,
   fetchLedgerSummary,
   fetchReceipts,
+  fetchRecurring,
+  fetchRecurringHistory,
   fetchSettings,
+  fetchStatements,
+  fetchStatementTransactions,
   fetchStats,
   fetchSuggestions,
   fetchTemplates,
@@ -180,5 +185,52 @@ export function useLedgerBudget(period?: string) {
     queryKey: ledgerKeys.budget(period),
     queryFn: () => fetchBudget(period),
     staleTime: 30 * 1000,
+  });
+}
+
+/** 카드 목록. 사이드바가 가리키는 곳이자 청구서로 들어가는 입구다(D-11). */
+export function useLedgerCards() {
+  return useQuery({
+    queryKey: ledgerKeys.cards,
+    queryFn: fetchCards,
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useLedgerStatements(cardId: number) {
+  return useQuery({
+    queryKey: ledgerKeys.statements(cardId),
+    queryFn: () => fetchStatements(cardId),
+    staleTime: 30 * 1000,
+    enabled: Number.isFinite(cardId),
+  });
+}
+
+/** 그 청구서에 편입된 거래들. 「왜 이 금액인가」의 마지막 한 단계다. */
+export function useStatementTransactions(statementId: number | null) {
+  return useQuery({
+    queryKey: ledgerKeys.statementTransactions(statementId ?? 0),
+    queryFn: () => fetchStatementTransactions(statementId as number),
+    enabled: statementId != null,
+    staleTime: 30 * 1000,
+  });
+}
+
+/** 정기 항목. 목록·스탯·점검 신호·미납이 한 응답에 온다 — 이 화면은 점검 도구다. */
+export function useLedgerRecurring() {
+  return useQuery({
+    queryKey: ledgerKeys.recurring,
+    queryFn: fetchRecurring,
+    staleTime: 30 * 1000,
+  });
+}
+
+/** 금액 변경 이력 + 미발생 이력. 열었을 때만 부른다. */
+export function useRecurringHistory(id: number | null) {
+  return useQuery({
+    queryKey: ledgerKeys.recurringHistory(id ?? 0),
+    queryFn: () => fetchRecurringHistory(id as number),
+    enabled: id != null,
+    staleTime: 60 * 1000,
   });
 }

@@ -158,7 +158,8 @@ test.describe("워크스페이스 진입 동선", () => {
   test("아직 없는 가계부 하위 경로는 가계부 홈으로 보낸다", async ({
     page,
   }) => {
-    await page.goto("/ledger/budget");
+    // 가져오기는 v2라 아직 라우트가 없다.
+    await page.goto("/ledger/import");
 
     await expect(page).toHaveURL(/\/ledger$/);
     await expect(page.getByRole("heading", { name: "가계부" })).toBeVisible();

@@ -76,6 +76,88 @@ export function upcomingItem(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** 청구서 한 장. 산식은 서버가 계산한 값이라 목에서도 합을 맞춰 둔다. */
+export function statementView(overrides: Record<string, unknown> = {}) {
+  const breakdown = {
+    usage: 842000,
+    installment: 0,
+    carriedOver: 0,
+    interestFee: 0,
+    adjustment: 0,
+    refund: 0,
+    discount: 0,
+    billed: 842000,
+    paid: 0,
+    remaining: 842000,
+    ...((overrides.breakdown as Record<string, number>) ?? {}),
+  };
+  return {
+    id: 7,
+    cardAssetId: 3,
+    cycleStart: "2026-08-01",
+    cycleEnd: "2026-08-31",
+    paymentDate: "2026-09-14",
+    status: "COLLECTING",
+    overdue: false,
+    paidOn: null,
+    carriedToStatementId: null,
+    ...overrides,
+    breakdown,
+  };
+}
+
+export function cardView(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 3,
+    name: "신한 Deep Dream",
+    accountLast4: "1234",
+    cycleStartDay: 1,
+    cycleCloseDay: 99,
+    paymentDay: 14,
+    paymentAssetId: 1,
+    paymentAssetName: "급여통장",
+    creditLimit: 5000000,
+    hasCycle: true,
+    unpaidAmount: 842000,
+    currentStatement: statementView(),
+    ...overrides,
+  };
+}
+
+/** 정기 항목 한 줄. 주기 문구·월 환산·다음 결제일은 서버가 만들어 준다. */
+export function recurringView(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 12,
+    name: "넷플릭스 프리미엄",
+    kind: "SUBSCRIPTION",
+    txType: "EXPENSE",
+    amount: 17000,
+    amountType: "FIXED",
+    assetId: 1,
+    assetName: "급여통장",
+    counterAssetId: null,
+    categoryId: null,
+    categoryName: null,
+    freqType: "MONTHLY_DAY",
+    freqInterval: null,
+    freqDay: 31,
+    freqMonth: null,
+    freqLabel: "매월 31일",
+    businessDayPolicy: "AS_IS",
+    startDate: "2026-01-31",
+    endDate: null,
+    pausedFrom: null,
+    pausedTo: null,
+    status: "ACTIVE",
+    endedOn: null,
+    cancelUrl: null,
+    memo: null,
+    nextDate: "2026-08-31",
+    monthlyEquivalent: 17000,
+    ...overrides,
+  };
+}
+
 export interface LedgerMockOptions {
   dashboard?: {
     spent?: number;
@@ -100,6 +182,49 @@ export interface LedgerMockOptions {
     scheduledIncome?: number;
     scheduledExpense?: number;
     scheduledTransfer?: number;
+  }[];
+  cards?: ReturnType<typeof cardView>[];
+  installmentOutstanding?: number;
+  statements?: ReturnType<typeof statementView>[];
+  statementTransactions?: ReturnType<typeof transactionView>[];
+  recurring?: ReturnType<typeof recurringView>[];
+  recurringStats?: {
+    monthlyFixedTotal?: number;
+    yearlyTotal?: number;
+    subscriptionCount?: number;
+    activeCount?: number;
+  };
+  recurringSignals?: Partial<{
+    priceIncreased: {
+      recurringId: number;
+      name: string;
+      from: number;
+      to: number;
+      changedOn: string;
+    }[];
+    trialEnding: {
+      recurringId: number;
+      name: string;
+      endsOn: string;
+      amount: number;
+    }[];
+    longUnchanged: number[];
+    noEndDate: number[];
+  }>;
+  recurringOverdue?: {
+    recurringId: number;
+    name: string;
+    occurrenceDate: string;
+    amount: number;
+    daysOverdue: number;
+    note: string | null;
+  }[];
+  budgetCategories?: {
+    categoryId: number | null;
+    name: string;
+    amount: number;
+    spent: number;
+    scheduled: number;
   }[];
   stats?: {
     total: number;
@@ -154,6 +279,8 @@ export interface LedgerMockOptions {
 export function mockLedgerApi(options: LedgerMockOptions = {}) {
   const created: Record<string, unknown>[] = [];
   const occurrenceActions: Record<string, unknown>[] = [];
+  const payments: Record<string, unknown>[] = [];
+  const budgets: Record<string, unknown>[] = [];
   const duplicated: Record<string, unknown>[] = [];
   const bulkSent: Record<string, unknown>[][] = [];
   const assets = options.assets ?? [assetView()];
@@ -340,6 +467,85 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
         })),
       }),
     ),
+    http.get(`${API_BASE}/ledger/cards`, () =>
+      ok({
+        cards: options.cards ?? [],
+        installmentOutstanding: options.installmentOutstanding ?? 0,
+      }),
+    ),
+    http.get(`${API_BASE}/ledger/cards/:id/statements`, () =>
+      ok(options.statements ?? []),
+    ),
+    http.get(`${API_BASE}/ledger/statements/:id/transactions`, () =>
+      ok(options.statementTransactions ?? []),
+    ),
+    http.post(`${API_BASE}/ledger/statements/:id/pay`, async ({ request }) => {
+      const body = (await request.json()) as Record<string, unknown>;
+      payments.push(body);
+      const base = options.statements?.[0] ?? statementView();
+      const remaining = (base.breakdown as Record<string, number>).remaining;
+      const paid = (body.amount as number | null) ?? remaining;
+      return ok(
+        statementView({
+          ...base,
+          status: paid >= remaining ? "PAID" : "PARTIAL",
+          paidOn: body.paidOn ?? base.paymentDate,
+          breakdown: {
+            ...(base.breakdown as Record<string, number>),
+            paid,
+            remaining: Math.max(remaining - paid, 0),
+          },
+        }),
+      );
+    }),
+    http.get(`${API_BASE}/ledger/recurring`, () =>
+      ok({
+        items: options.recurring ?? [],
+        stats: {
+          monthlyFixedTotal: options.recurringStats?.monthlyFixedTotal ?? 0,
+          yearlyTotal: options.recurringStats?.yearlyTotal ?? 0,
+          subscriptionCount: options.recurringStats?.subscriptionCount ?? 0,
+          activeCount: options.recurringStats?.activeCount ?? 0,
+        },
+        signals: {
+          priceIncreased: options.recurringSignals?.priceIncreased ?? [],
+          trialEnding: options.recurringSignals?.trialEnding ?? [],
+          longUnchanged: options.recurringSignals?.longUnchanged ?? [],
+          noEndDate: options.recurringSignals?.noEndDate ?? [],
+        },
+        overdue: options.recurringOverdue ?? [],
+      }),
+    ),
+    http.get(`${API_BASE}/ledger/recurring/:id/history`, () =>
+      ok({ amounts: [], missed: [] }),
+    ),
+    http.post(`${API_BASE}/ledger/recurring/:id/end`, () =>
+      ok({ reverted: 0, message: "해지했습니다." }),
+    ),
+    http.post(`${API_BASE}/ledger/recurring/:id/pause`, () =>
+      ok(recurringView({ status: "PAUSED" })),
+    ),
+    http.post(`${API_BASE}/ledger/recurring/:id/resume`, () =>
+      ok(recurringView()),
+    ),
+    http.put(`${API_BASE}/ledger/budget`, async ({ request }) => {
+      const body = (await request.json()) as Record<string, unknown>;
+      budgets.push(body);
+      return ok({
+        period: "2026-08",
+        periodStart: "2026-08-01",
+        periodEnd: "2026-08-31",
+        totalAmount: body.totalAmount as number,
+        fixedCostTotal: 0,
+        spendable: body.totalAmount as number,
+        spent: options.budget?.spent ?? 0,
+        scheduled: options.budget?.scheduled ?? 0,
+        remaining: (body.totalAmount as number) - (options.budget?.spent ?? 0),
+        daysLeft: 4,
+        dailyAllowance: 0,
+        categories: options.budgetCategories ?? [],
+      });
+    }),
     http.get(`${API_BASE}/ledger/budget`, () =>
       ok({
         period: "2026-08",
@@ -354,7 +560,7 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
           (options.budget?.totalAmount ?? 0) - (options.budget?.spent ?? 0),
         daysLeft: 4,
         dailyAllowance: 0,
-        categories: [],
+        categories: options.budgetCategories ?? [],
       }),
     ),
     http.patch(
@@ -506,7 +712,13 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
     }),
   );
 
-  return Object.assign(created, { duplicated, bulkSent, occurrenceActions });
+  return Object.assign(created, {
+    duplicated,
+    bulkSent,
+    occurrenceActions,
+    payments,
+    budgets,
+  });
 }
 
 function groupByDate(transactions: ReturnType<typeof transactionView>[]) {

@@ -796,6 +796,288 @@ export interface BudgetResponse {
   categories: BudgetCategoryProgress[];
 }
 
+/** 청구서의 네 상태. **「미납」이 여기 없다** — 미납은 상태가 아니라 판정이다(D-8). */
+export type StatementStatus = "COLLECTING" | "CONFIRMED" | "PARTIAL" | "PAID";
+
+/**
+ * 청구액 산식(확정 명세 §7.4).
+ *
+ * ```
+ * 청구액 = 사용 + 할부 회차 + 이월 + 이자·수수료 + 차액 − 환불 − 할인
+ * ```
+ *
+ * **합계만 주면 카드사 앱과 다를 때 어디가 다른지 알 방법이 없다.** 화면은 이 일곱 항목을
+ * 그대로 그린다 — 다시 계산하지 않는다.
+ */
+export interface StatementBreakdown {
+  usage: number;
+  installment: number;
+  carriedOver: number;
+  interestFee: number;
+  adjustment: number;
+  refund: number;
+  discount: number;
+  billed: number;
+  paid: number;
+  remaining: number;
+}
+
+export interface StatementView {
+  id: number;
+  cardAssetId: number;
+  cycleStart: string;
+  cycleEnd: string;
+  paymentDate: string;
+  status: StatementStatus;
+  /** 결제일이 지났는데 아직 안 냈다. **저장값이 아니라 판정**이다. */
+  overdue: boolean;
+  breakdown: StatementBreakdown;
+  paidOn: string | null;
+  carriedToStatementId: number | null;
+}
+
+export interface CardView {
+  id: number;
+  name: string;
+  accountLast4: string | null;
+  cycleStartDay: number | null;
+  cycleCloseDay: number | null;
+  paymentDay: number | null;
+  paymentAssetId: number | null;
+  paymentAssetName: string | null;
+  creditLimit: number | null;
+  /** 사이클이 없으면 청구서가 만들어지지 않는다. 오류가 아니라 「아직 등록 안 함」이다. */
+  hasCycle: boolean;
+  /** 미결제 사용액. **잔액이 아니라 부채**다. */
+  unpaidAmount: number;
+  currentStatement: StatementView | null;
+}
+
+export interface CardListResponse {
+  cards: CardView[];
+  /** 할부 잔여 원금 합계. 청구 여부와 무관하게 이미 갚기로 한 돈이다. */
+  installmentOutstanding: number;
+}
+
+export interface StatementPayRequest {
+  /** 비우면 **남은 전액**. 일부만 내면 잔액이 다음 청구서로 이월된다. */
+  amount?: number | null;
+  paymentAssetId?: number | null;
+  /** **실제 출금일**. 비우면 청구서의 결제일이지만, 다르면 실제가 맞다. */
+  paidOn?: string | null;
+}
+
+export async function fetchCards(): Promise<CardListResponse> {
+  const { data } =
+    await client.get<ApiEnvelope<CardListResponse>>("/ledger/cards");
+  return data.data;
+}
+
+export async function fetchStatements(
+  cardId: number,
+): Promise<StatementView[]> {
+  const { data } = await client.get<ApiEnvelope<StatementView[]>>(
+    `/ledger/cards/${cardId}/statements`,
+  );
+  return data.data;
+}
+
+export async function fetchStatementTransactions(
+  statementId: number,
+): Promise<TransactionView[]> {
+  const { data } = await client.get<ApiEnvelope<TransactionView[]>>(
+    `/ledger/statements/${statementId}/transactions`,
+  );
+  return data.data;
+}
+
+/** 결제 처리. **자동으로 적지 않는다** — 실제 출금액을 앱이 알 수 없다(§7.2). */
+export async function payStatement(
+  statementId: number,
+  body: StatementPayRequest,
+): Promise<StatementView> {
+  const { data } = await client.post<ApiEnvelope<StatementView>>(
+    `/ledger/statements/${statementId}/pay`,
+    body,
+  );
+  return data.data;
+}
+
+/** 정기 항목의 종류. **표시·필터용 라벨일 뿐** — 동작은 전부 같다(§6.1). */
+export type RecurringKind =
+  | "SUBSCRIPTION"
+  | "FIXED_COST"
+  | "INSURANCE"
+  | "TRANSFER"
+  | "INCOME";
+
+export type RecurringStatus = "ACTIVE" | "PAUSED" | "ENDED";
+
+export type FrequencyType =
+  | "WEEKLY"
+  | "MONTHLY_DAY"
+  | "MONTHLY_LAST"
+  | "EVERY_N_MONTHS"
+  | "YEARLY"
+  | "EVERY_N_DAYS";
+
+export interface RecurringView {
+  id: number;
+  name: string;
+  kind: RecurringKind;
+  txType: LedgerFlow;
+  amount: number;
+  /** `VARIABLE`이면 예상액이다 — 화면이 `~152,000`으로 적는다. */
+  amountType: "FIXED" | "VARIABLE";
+  assetId: number;
+  assetName: string | null;
+  counterAssetId: number | null;
+  categoryId: number | null;
+  categoryName: string | null;
+  freqType: FrequencyType;
+  freqInterval: number | null;
+  freqDay: number | null;
+  freqMonth: number | null;
+  /** `매월 25일`. **서버가 만든다** — 화면마다 조립하면 같은 규칙이 다르게 읽힌다. */
+  freqLabel: string;
+  businessDayPolicy: "AS_IS" | "PREV" | "NEXT";
+  startDate: string;
+  endDate: string | null;
+  pausedFrom: string | null;
+  pausedTo: string | null;
+  status: RecurringStatus;
+  endedOn: string | null;
+  cancelUrl: string | null;
+  memo: string | null;
+  nextDate: string | null;
+  /** 월 환산액. 연간 구독은 ÷12다. */
+  monthlyEquivalent: number;
+}
+
+/** 점검 신호 4종(§6.6). 「이거 아직도 내고 있었나」를 찾아내는 것이 목적이다. */
+export interface RecurringSignals {
+  priceIncreased: {
+    recurringId: number;
+    name: string;
+    from: number;
+    to: number;
+    changedOn: string;
+  }[];
+  trialEnding: {
+    recurringId: number;
+    name: string;
+    endsOn: string;
+    amount: number;
+  }[];
+  longUnchanged: number[];
+  noEndDate: number[];
+}
+
+export interface RecurringOverdue {
+  recurringId: number;
+  name: string;
+  occurrenceDate: string;
+  amount: number;
+  daysOverdue: number;
+  note: string | null;
+}
+
+export interface RecurringListResponse {
+  items: RecurringView[];
+  stats: {
+    monthlyFixedTotal: number;
+    yearlyTotal: number;
+    subscriptionCount: number;
+    activeCount: number;
+  };
+  signals: RecurringSignals;
+  overdue: RecurringOverdue[];
+}
+
+export interface RecurringHistoryResponse {
+  amounts: {
+    effectiveFrom: string;
+    amount: number;
+    changeFromAmount: number | null;
+  }[];
+  /** 건너뛰기·되돌리기·미납. **몇 달째 되돌리고 있는지**가 여기서 보인다. */
+  missed: {
+    occurrenceDate: string;
+    action: OccurrenceAction;
+    note: string | null;
+  }[];
+}
+
+/**
+ * 해지. `revertPostedAfter`에 **기본값이 없다** — 이미 원장에 들어간 것을 되돌리는 유일한
+ * 경로라 사람이 매번 답해야 한다.
+ */
+export interface RecurringEndRequest {
+  endedOn: string;
+  revertPostedAfter: boolean;
+}
+
+export async function fetchRecurring(): Promise<RecurringListResponse> {
+  const { data } =
+    await client.get<ApiEnvelope<RecurringListResponse>>("/ledger/recurring");
+  return data.data;
+}
+
+export async function fetchRecurringHistory(
+  id: number,
+): Promise<RecurringHistoryResponse> {
+  const { data } = await client.get<ApiEnvelope<RecurringHistoryResponse>>(
+    `/ledger/recurring/${id}/history`,
+  );
+  return data.data;
+}
+
+export async function pauseRecurring(
+  id: number,
+  body: { from: string; to?: string | null },
+): Promise<RecurringView> {
+  const { data } = await client.post<ApiEnvelope<RecurringView>>(
+    `/ledger/recurring/${id}/pause`,
+    body,
+  );
+  return data.data;
+}
+
+export async function resumeRecurring(id: number): Promise<RecurringView> {
+  const { data } = await client.post<ApiEnvelope<RecurringView>>(
+    `/ledger/recurring/${id}/resume`,
+  );
+  return data.data;
+}
+
+export async function endRecurring(
+  id: number,
+  body: RecurringEndRequest,
+): Promise<{ reverted: number; message: string }> {
+  const { data } = await client.post<
+    ApiEnvelope<{ reverted: number; message: string }>
+  >(`/ledger/recurring/${id}/end`, body);
+  return data.data;
+}
+
+export interface BudgetPutRequest {
+  totalAmount: number;
+  categories?: { categoryId: number; amount: number }[];
+}
+
+/** **통째로 갈아 끼운다** — 보낸 카테고리 목록이 곧 그 달의 전부다. */
+export async function putBudget(
+  period: string,
+  body: BudgetPutRequest,
+): Promise<BudgetResponse> {
+  const { data } = await client.put<ApiEnvelope<BudgetResponse>>(
+    "/ledger/budget",
+    body,
+    { params: { period } },
+  );
+  return data.data;
+}
+
 export async function fetchBudget(period?: string): Promise<BudgetResponse> {
   const { data } = await client.get<ApiEnvelope<BudgetResponse>>(
     "/ledger/budget",

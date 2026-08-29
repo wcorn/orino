@@ -29,6 +29,14 @@ export const ledgerKeys = {
   upcomingAll: ["ledger", "upcoming"] as const,
   calendar: (month: string) => ["ledger", "calendar", month] as const,
   budget: (period?: string) => ["ledger", "budget", period ?? ""] as const,
+  cards: ["ledger", "cards"] as const,
+  statements: (cardId: number) =>
+    ["ledger", "cards", cardId, "statements"] as const,
+  statementTransactions: (statementId: number) =>
+    ["ledger", "statements", statementId, "transactions"] as const,
+  recurring: ["ledger", "recurring"] as const,
+  recurringHistory: (id: number) =>
+    ["ledger", "recurring", id, "history"] as const,
   suggestions: (keyword: string) => ["ledger", "suggest", keyword] as const,
   fxRate: (currency: string) => ["ledger", "fx", currency] as const,
 };
