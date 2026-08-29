@@ -117,6 +117,38 @@ public class LedgerRecurring {
     @Column(length = 500)
     private String memo;
 
+    // ── 보험 속성(v2) ───────────────────────────────────────────────────────────
+    // 종류가 INSURANCE일 때만 채워진다. 동작은 여전히 다른 종류와 같다 — 표시용 정보다.
+
+    @Column(length = 60)
+    private String insurer;
+
+    @Column(name = "product_name", length = 80)
+    private String productName;
+
+    @Column(name = "policy_no", length = 60)
+    private String policyNo;
+
+    @Column(name = "insured_person", length = 40)
+    private String insuredPerson;
+
+    /** 보장이 끝나는 날. <b>납입 종료와 다르다</b> — 납입이 끝나도 보장은 남는 상품이 흔하다. */
+    @Column(name = "coverage_until")
+    private LocalDate coverageUntil;
+
+    /** 납입이 끝나는 날. 이 날짜 뒤로는 회차가 서지 않는다. */
+    @Column(name = "payment_until")
+    private LocalDate paymentUntil;
+
+    /** 갱신형이면 몇 달마다 갱신되는가. 갱신 때 오르는 상품이라 미리 보여야 한다. */
+    @JdbcTypeCode(SqlTypes.SMALLINT)
+    @Column(name = "renewal_cycle_months")
+    private Integer renewalCycleMonths;
+
+    /** 실손·종신·정기·자동차·연금·기타. */
+    @Column(name = "insurance_kind", length = 20)
+    private String insuranceKind;
+
     /**
      * 자동 기록의 하한. 등록 시점에 {@code max(startDate, 오늘)}로 박힌다.
      *
@@ -224,6 +256,53 @@ public class LedgerRecurring {
         this.status = LedgerRecurringStatus.ENDED;
     }
 
+    /** 보험 속성을 한 번에 채운다. 종류가 보험이 아니면 전부 비어 있는 것이 정상이다. */
+    public void updateInsurance(String insurer, String productName, String policyNo,
+                                String insuredPerson, LocalDate coverageUntil,
+                                LocalDate paymentUntil, Integer renewalCycleMonths,
+                                String insuranceKind) {
+        this.insurer = insurer;
+        this.productName = productName;
+        this.policyNo = policyNo;
+        this.insuredPerson = insuredPerson;
+        this.coverageUntil = coverageUntil;
+        this.paymentUntil = paymentUntil;
+        this.renewalCycleMonths = renewalCycleMonths;
+        this.insuranceKind = insuranceKind;
+    }
+
+    public String getInsurer() {
+        return insurer;
+    }
+
+    public String getProductName() {
+        return productName;
+    }
+
+    public String getPolicyNo() {
+        return policyNo;
+    }
+
+    public String getInsuredPerson() {
+        return insuredPerson;
+    }
+
+    public LocalDate getCoverageUntil() {
+        return coverageUntil;
+    }
+
+    public LocalDate getPaymentUntil() {
+        return paymentUntil;
+    }
+
+    public Integer getRenewalCycleMonths() {
+        return renewalCycleMonths;
+    }
+
+    public String getInsuranceKind() {
+        return insuranceKind;
+    }
+
     /**
      * 그날 회차가 살아 있는가. 정지 구간과 해지일과 종료일을 함께 본다.
      *
@@ -235,6 +314,10 @@ public class LedgerRecurring {
             return false;
         }
         if (endDate != null && date.isAfter(endDate)) {
+            return false;
+        }
+        // 납입이 끝나면 회차도 끝난다. 보장은 남지만 돈은 더 안 나간다.
+        if (paymentUntil != null && date.isAfter(paymentUntil)) {
             return false;
         }
         if (endedOn != null && !date.isBefore(endedOn)) {

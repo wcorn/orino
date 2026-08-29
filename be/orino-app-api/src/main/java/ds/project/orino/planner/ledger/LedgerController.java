@@ -1,15 +1,18 @@
 package ds.project.orino.planner.ledger;
 
 import ds.project.orino.common.response.ApiResponse;
+import ds.project.orino.domain.planner.ledger.entity.LedgerPerspective;
 import ds.project.orino.planner.ledger.fx.LedgerFxRateResponse;
 import ds.project.orino.planner.ledger.fx.LedgerFxService;
 import ds.project.orino.planner.ledger.receipt.LedgerReceiptDtos;
 import ds.project.orino.planner.ledger.receipt.LedgerReceiptService;
 import ds.project.orino.planner.ledger.receipt.LedgerReceiptStorageService;
 import ds.project.orino.planner.ledger.settings.LedgerSettingsService;
+import ds.project.orino.planner.ledger.settings.dto.SettingsDtos;
+import ds.project.orino.planner.ledger.stats.LedgerSearchDtos;
+import ds.project.orino.planner.ledger.stats.LedgerSearchService;
 import ds.project.orino.planner.ledger.stats.LedgerStatsResponse;
 import ds.project.orino.planner.ledger.stats.LedgerStatsService;
-import ds.project.orino.planner.ledger.settings.dto.SettingsDtos;
 import ds.project.orino.planner.ledger.summary.LedgerDashboardResponse;
 import ds.project.orino.planner.ledger.summary.LedgerSummaryResponse;
 import ds.project.orino.planner.ledger.summary.LedgerSummaryService;
@@ -38,6 +41,7 @@ public class LedgerController {
     private final LedgerSettingsService settingsService;
     private final LedgerFxService fxService;
     private final LedgerStatsService statsService;
+    private final LedgerSearchService searchService;
     private final LedgerReceiptStorageService receiptStorageService;
     private final LedgerReceiptService receiptService;
 
@@ -45,39 +49,57 @@ public class LedgerController {
                             LedgerSettingsService settingsService,
                             LedgerFxService fxService,
                             LedgerStatsService statsService,
+                            LedgerSearchService searchService,
                             LedgerReceiptStorageService receiptStorageService,
                             LedgerReceiptService receiptService) {
         this.summaryService = summaryService;
         this.settingsService = settingsService;
         this.fxService = fxService;
         this.statsService = statsService;
+        this.searchService = searchService;
         this.receiptStorageService = receiptStorageService;
         this.receiptService = receiptService;
     }
 
-    /** {@code /select} 가계부 카드와 대시보드가 함께 쓴다. v1.5 값들은 아직 {@code null}이다. */
+    /** {@code /select} 가계부 카드와 대시보드가 함께 쓴다. */
     @GetMapping("/summary")
     public ApiResponse<LedgerSummaryResponse> summary(@AuthenticationPrincipal Long memberId) {
         return ApiResponse.success(summaryService.summary(memberId));
     }
 
-    /**
-     * 대시보드. <b>v1은 셋만 내린다</b> — 이미 쓴 돈 · 이번 달 수입 · 정리할 내역.
-     * 2축 요약·미납·다가오는 결제는 필드 자체가 없다(D-7).
-     */
+    /** 대시보드. <b>2축 요약</b>이 중심이다 — 소비와 현금 유출은 다른 질문에 답한다(§8.2). */
     @GetMapping("/dashboard")
     public ApiResponse<LedgerDashboardResponse> dashboard(
             @AuthenticationPrincipal Long memberId) {
         return ApiResponse.success(summaryService.dashboard(memberId));
     }
 
-    /** 카테고리 통계. {@code period}가 없으면 지금 속한 구간이다. */
+    /**
+     * 통계. {@code period}가 없으면 지금 속한 구간, {@code perspective}가 없으면 설정의 기본값이다.
+     *
+     * <p><b>청구서·예정·예상 잔액 API는 이 파라미터를 받지 않는다</b> — 그쪽은 언제나 청구
+     * 기준이고, 「9월 14일에 얼마 빠지나」에 소비 관점이 낄 자리가 없다(§10.1).
+     */
     @GetMapping("/stats")
     public ApiResponse<LedgerStatsResponse> stats(
             @AuthenticationPrincipal Long memberId,
-            @RequestParam(required = false) String period) {
-        return ApiResponse.success(
-                statsService.stats(memberId, period == null ? null : YearMonth.parse(period)));
+            @RequestParam(required = false) String period,
+            @RequestParam(required = false) LedgerPerspective perspective) {
+        return ApiResponse.success(statsService.stats(
+                memberId, period == null ? null : YearMonth.parse(period), perspective));
+    }
+
+    /**
+     * 복합 검색(§10.2). 결과를 그대로 일괄 편집({@code POST /transactions/bulk})에 넘긴다.
+     *
+     * <p>일괄 편집 엔드포인트를 여기 또 만들지 않는다 — 같은 일을 하는 문이 둘이 되면
+     * 한쪽만 고쳐지는 날이 온다.
+     */
+    @PostMapping("/stats/search")
+    public ApiResponse<LedgerSearchDtos.SearchResponse> search(
+            @AuthenticationPrincipal Long memberId,
+            @Valid @RequestBody LedgerSearchDtos.SearchRequest request) {
+        return ApiResponse.success(searchService.search(memberId, request));
     }
 
     /**
