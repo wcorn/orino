@@ -119,3 +119,5 @@ databaseChangeLog:
       file: db/changelog/changes/059-create-ledger-card.yaml
   - include:
       file: db/changelog/changes/060-create-ledger-recurring.yaml
+  - include:
+      file: db/changelog/changes/061-create-ledger-budget.yaml

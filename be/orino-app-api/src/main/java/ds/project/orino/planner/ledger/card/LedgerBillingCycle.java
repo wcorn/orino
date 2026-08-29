@@ -74,6 +74,16 @@ public final class LedgerBillingCycle {
     }
 
     /** 그 달에 실제로 존재하는 날. 말일(99)과 짧은 달을 함께 처리한다. */
+    /**
+     * 그 청구월의 결제일. 할부 잔여 회차가 언제 빠지는지를 여기서 얻는다.
+     *
+     * <p>회차는 {@code billingMonth}(결제일이 속한 달)만 알고 있다 — 아직 어느 청구서에도
+     * 붙지 않았으므로 사이클을 되짚을 수 없고, 되짚을 필요도 없다.
+     */
+    public static LocalDate paymentDateIn(LedgerAsset card, YearMonth billingMonth) {
+        return dayIn(billingMonth, card.getPaymentDay());
+    }
+
     private static LocalDate dayIn(YearMonth month, int day) {
         if (day == LedgerSettings.LAST_DAY_OF_MONTH) {
             return month.atEndOfMonth();
