@@ -1,9 +1,11 @@
 import {
   ArrowDown,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Copy,
   Ellipsis,
+  List,
   Paperclip,
   Plus,
   Search,
@@ -19,18 +21,27 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { LoadingText } from "@/components/ui/loading-text";
 import { Menu, MenuItem } from "@/components/ui/menu";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
   DateGroup,
   MonthTotals,
   TransactionView,
+  UpcomingItem,
 } from "@/features/ledger/api/ledger";
+import { LedgerCalendar } from "@/features/ledger/components/LedgerCalendar";
 import { ReceiptsModal } from "@/features/ledger/components/ReceiptsModal";
+import { ScheduledRowActions } from "@/features/ledger/components/ScheduledRowActions";
 import { useTransactionModal } from "@/features/ledger/components/transactionModalContext";
 import { useDuplicateTransaction } from "@/features/ledger/hooks/useLedgerMutations";
 import {
   useLedgerSettings,
   useLedgerTransactions,
+  useLedgerUpcoming,
 } from "@/features/ledger/hooks/useLedgerQueries";
+import {
+  formatDday,
+  UPCOMING_KIND_LABELS,
+} from "@/features/ledger/lib/balance";
 import {
   amountToneClass,
   dDayFrom,
@@ -49,12 +60,31 @@ const STATUS_CHIPS: { value: StatusFilter; label: string }[] = [
   { value: "SCHEDULED", label: "예정만" },
 ];
 
+/** 기본 30일. 「더 보기」로 넓힌다 — 최대 12개월이고 그 너머는 예정이 아니라 추측이다. */
+const UPCOMING_RANGES = [30, 90, 366];
+
+/** 원장에 실체화된 줄과 파생 예정 줄이 한 타임라인 위에 섞여 있다. */
+type TimelineRow =
+  | { key: string; kind: "LEDGER"; transaction: TransactionView }
+  | { key: string; kind: "UPCOMING"; item: UpcomingItem };
+
+interface TimelineGroup {
+  date: string;
+  income: number;
+  expense: number;
+  rows: TimelineRow[];
+}
+
 /**
  * 내역 `/ledger/transactions`.
  *
  * <p><b>오늘 기준선 하나를 두고 과거와 예정이 한 스크롤로 이어진다.</b> 두 목록으로 나누지
  * 않는다 — 「앞으로 얼마 나가나」는 이미 쓴 돈과 같은 자리에서 읽혀야 하는 질문이다
  * (확정 명세 §8.3).
+ *
+ * <p>예정은 <b>네 출처</b>에서 온다. 원장에 있는 것은 직접 예약뿐이고 정기 회차·카드 대금·
+ * 할부 잔여는 파생이라, 원장만 그리면 「14일에 카드값 84만이 빠진다」가 이 화면에서 통째로
+ * 빠진다 — 그게 이 모듈이 막으려는 바로 그 놀람이다.
  *
  * <p>월 이동·필터·검색은 <b>URL 쿼리</b>에 둔다(링크 워크스페이스 선례). 별도 상태를 두면
  * 새로고침·뒤로가기에서 화면과 주소가 어긋난다.
@@ -66,10 +96,12 @@ export function LedgerTransactionsPage() {
   const [receiptTarget, setReceiptTarget] = useState<TransactionView | null>(
     null,
   );
+  const [upcomingDays, setUpcomingDays] = useState(UPCOMING_RANGES[0]);
   const { data: settings } = useLedgerSettings();
 
   const offset = Number(searchParams.get("offset") ?? "0") || 0;
   const status = (searchParams.get("status") ?? "ALL") as StatusFilter;
+  const view = searchParams.get("view") === "calendar" ? "calendar" : "list";
   // 대시보드의 「정리하기」가 넘겨주는 필터. 별도 상태가 아니라 쿼리라서,
   // 정리하다 새로고침해도 같은 목록으로 돌아온다.
   const uncategorizedOnly = searchParams.get("uncategorized") === "1";
@@ -83,6 +115,8 @@ export function LedgerTransactionsPage() {
   // 이번 구간이면 앞으로 30일치 예정까지 함께 본다 — 예정이 안 보이면 이 화면의 절반이 없다.
   const to = offset === 0 ? undefined : period.end;
   const { data, isPending, isError } = useLedgerTransactions(period.start, to);
+  // 지난 달을 보는 중에는 파생 예정이 없다 — 파생 회차는 언제나 오늘 이후다.
+  const { data: upcoming } = useLedgerUpcoming(upcomingDays);
 
   const setParam = (key: string, value: string | null) => {
     if (value === null) {
@@ -93,11 +127,14 @@ export function LedgerTransactionsPage() {
     setSearchParams(searchParams);
   };
 
-  const groups = filterGroups(
-    data?.groups ?? [],
-    status,
-    query,
-    uncategorizedOnly,
+  const groups = useMemo(
+    () =>
+      buildTimeline(
+        data?.groups ?? [],
+        offset === 0 ? (upcoming?.items ?? []) : [],
+        { status, query, uncategorizedOnly },
+      ),
+    [data?.groups, upcoming?.items, offset, status, query, uncategorizedOnly],
   );
   const empty = groups.length === 0;
 
@@ -137,6 +174,24 @@ export function LedgerTransactionsPage() {
             <ChevronRight className="size-4" />
           </Button>
         </div>
+
+        <Tabs
+          value={view}
+          onValueChange={(value) =>
+            setParam("view", value === "calendar" ? "calendar" : null)
+          }
+        >
+          <TabsList>
+            <TabsTrigger value="list">
+              <List />
+              리스트
+            </TabsTrigger>
+            <TabsTrigger value="calendar">
+              <CalendarDays />
+              캘린더
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
         <div className="relative min-w-[180px] flex-1">
           <Search className="text-muted-foreground pointer-events-none absolute top-2.5 left-2.5 size-3.5" />
@@ -190,29 +245,57 @@ export function LedgerTransactionsPage() {
         <Alert variant="destructive">내역을 불러오지 못했어요.</Alert>
       )}
 
-      {data && empty && (
-        <EmptyState className="min-h-[30svh]">
-          <p className="text-muted-foreground text-sm">
-            이 기간에 적힌 거래가 없어요.
-          </p>
-          <Button type="button" onClick={openTransactionModal}>
-            거래 입력
-          </Button>
-        </EmptyState>
-      )}
+      {view === "calendar" ? (
+        <LedgerCalendar month={period.start.slice(0, 7)} />
+      ) : (
+        data && (
+          <>
+            {empty && (
+              <EmptyState className="min-h-[30svh]">
+                <p className="text-muted-foreground text-sm">
+                  이 기간에 적힌 거래가 없어요.
+                </p>
+                <Button type="button" onClick={openTransactionModal}>
+                  거래 입력
+                </Button>
+              </EmptyState>
+            )}
 
-      {data &&
-        groups.map((group) => (
-          <TransactionGroup
-            key={group.date}
-            group={group}
-            todayLine={data.todayLine}
-            // 기준선은 「전체」일 때만 그린다 — 한쪽만 보는 중이면 나눌 것이 없다.
-            showTodayLine={status === "ALL"}
-            onDuplicate={(id, useToday) => duplicate.mutate({ id, useToday })}
-            onOpenReceipts={setReceiptTarget}
-          />
-        ))}
+            {groups.map((group) => (
+              <TimelineSection
+                key={group.date}
+                group={group}
+                todayLine={data.todayLine}
+                // 기준선은 「전체」일 때만 그린다 — 한쪽만 보는 중이면 나눌 것이 없다.
+                showTodayLine={status === "ALL"}
+                onDuplicate={(id, useToday) =>
+                  duplicate.mutate({ id, useToday })
+                }
+                onOpenReceipts={setReceiptTarget}
+              />
+            ))}
+
+            {offset === 0 &&
+              UPCOMING_RANGES.some((value) => value > upcomingDays) && (
+                <div className="flex justify-center pt-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setUpcomingDays(
+                        UPCOMING_RANGES.find((value) => value > upcomingDays) ??
+                          upcomingDays,
+                      )
+                    }
+                  >
+                    더 보기 — 최대 12개월
+                  </Button>
+                </div>
+              )}
+          </>
+        )
+      )}
 
       <ReceiptsModal
         transactionId={receiptTarget?.id ?? null}
@@ -242,14 +325,14 @@ function TotalsBar({ totals }: { totals: MonthTotals }) {
   );
 }
 
-function TransactionGroup({
+function TimelineSection({
   group,
   todayLine,
   showTodayLine,
   onDuplicate,
   onOpenReceipts,
 }: {
-  group: DateGroup;
+  group: TimelineGroup;
   todayLine: string;
   showTodayLine: boolean;
   onDuplicate: (id: number, useToday: boolean) => void;
@@ -277,14 +360,18 @@ function TransactionGroup({
         </span>
       </div>
       <ul>
-        {group.items.map((item) => (
-          <li key={item.id}>
-            <TransactionRow
-              transaction={item}
-              todayLine={todayLine}
-              onDuplicate={onDuplicate}
-              onOpenReceipts={onOpenReceipts}
-            />
+        {group.rows.map((row) => (
+          <li key={row.key}>
+            {row.kind === "LEDGER" ? (
+              <TransactionRow
+                transaction={row.transaction}
+                todayLine={todayLine}
+                onDuplicate={onDuplicate}
+                onOpenReceipts={onOpenReceipts}
+              />
+            ) : (
+              <DerivedRow item={row.item} />
+            )}
           </li>
         ))}
       </ul>
@@ -307,12 +394,11 @@ function TransactionRow({
   // 「지출이 줄었다」는 합계의 이야기이고, 그건 서버가 계산해 헤더에 담아 준다.
   const flow = transaction.type;
   const scheduled = transaction.status === "SCHEDULED";
-  const dDay = scheduled ? dDayFrom(todayLine, transaction.occurredOn) : 0;
 
   return (
     <div
       className={cn(
-        "grid grid-cols-[minmax(0,1fr)_108px] items-center gap-3 px-4 py-2.5 md:grid-cols-[minmax(0,1fr)_132px_108px]",
+        "group grid grid-cols-[minmax(0,1fr)_108px] items-center gap-3 px-4 py-2.5 md:grid-cols-[minmax(0,1fr)_132px_108px]",
         // 예정은 확정과 시각적으로 구분되되 같은 타임라인 위에 남는다.
         scheduled && "bg-muted",
       )}
@@ -329,8 +415,10 @@ function TransactionRow({
         {scheduled && (
           <>
             <Badge variant="secondary">예정</Badge>
+            {/* 직접 예약은 규칙이 만든 회차가 아니다 — 원장에 이미 행이 있다. */}
+            <Badge variant="outline">직접 예약</Badge>
             <span className="text-muted-foreground shrink-0 text-[13px] tabular-nums">
-              D{dDay >= 0 ? `-${dDay}` : `+${-dDay}`}
+              {formatDday(dDayFrom(todayLine, transaction.occurredOn))}
             </span>
           </>
         )}
@@ -343,6 +431,9 @@ function TransactionRow({
         {/* 미분류는 경고다 — 쌓이면 통계가 무의미해진다. */}
         {transaction.categoryId === null && transaction.type !== "TRANSFER" && (
           <Badge variant="warning">미분류</Badge>
+        )}
+        {scheduled && (
+          <ScheduledRowActions item={fromTransaction(transaction)} />
         )}
       </span>
       <span className="text-muted-foreground hidden truncate text-[13px] md:block">
@@ -398,38 +489,149 @@ function TransactionRow({
   );
 }
 
-/** 검색·필터는 이미 받아 온 목록 위에서 건다 — 글자를 칠 때마다 서버를 다시 부르지 않는다. */
-function filterGroups(
-  groups: DateGroup[],
-  status: StatusFilter,
-  query: string,
-  uncategorizedOnly: boolean,
-): DateGroup[] {
-  const keyword = query.trim().toLowerCase();
-  return groups
-    .map((group) => ({
-      ...group,
-      items: group.items.filter((item) => {
-        if (status === "CONFIRMED" && item.status !== "CONFIRMED") {
-          return false;
-        }
-        if (status === "SCHEDULED" && item.status !== "SCHEDULED") {
-          return false;
-        }
-        // 이체는 애초에 분류 대상이 아니라 「정리할 것」에서도 빠진다.
-        if (
-          uncategorizedOnly &&
-          (item.categoryId !== null || item.type === "TRANSFER")
-        ) {
-          return false;
-        }
-        if (keyword === "") {
-          return true;
-        }
-        return [item.title, item.categoryName, item.assetName]
+/** 원장에 없는 예정 — 정기 회차·카드 대금·할부 잔여. 파생이라 거래 id가 없다. */
+function DerivedRow({ item }: { item: UpcomingItem }) {
+  return (
+    <div className="bg-muted group grid grid-cols-[minmax(0,1fr)_108px] items-center gap-3 px-4 py-2.5 md:grid-cols-[minmax(0,1fr)_132px_108px]">
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="text-muted-foreground truncate text-sm">
+          {item.title ?? UPCOMING_KIND_LABELS[item.kind]}
+        </span>
+        <Badge variant="secondary">예정</Badge>
+        <span className="text-muted-foreground shrink-0 text-[13px] tabular-nums">
+          {formatDday(item.dday)}
+        </span>
+        {/* 이체 성격은 소비가 아니다 — 배지를 하나 더 달아 그 사실을 표시한다. */}
+        {item.isTransfer && <Badge variant="outline">이체</Badge>}
+        {item.overdue && <Badge variant="destructive">미납</Badge>}
+        <ScheduledRowActions item={item} />
+      </span>
+      <span className="text-muted-foreground hidden truncate text-[13px] md:block">
+        {[UPCOMING_KIND_LABELS[item.kind], item.assetName]
           .filter(Boolean)
-          .some((text) => (text as string).toLowerCase().includes(keyword));
-      }),
-    }))
-    .filter((group) => group.items.length > 0);
+          .join(" · ")}
+      </span>
+      <span className="text-muted-foreground text-right text-sm tabular-nums">
+        {formatSigned(item.amount, item.flow)}
+      </span>
+    </div>
+  );
+}
+
+/** 직접 예약 줄도 같은 인라인 액션을 쓴다 — 가는 곳만 다르다. */
+function fromTransaction(transaction: TransactionView): UpcomingItem {
+  return {
+    kind: "ONE_OFF",
+    date: transaction.occurredOn,
+    dday: 0,
+    title: transaction.title,
+    amount: transaction.amount,
+    flow: transaction.type,
+    isTransfer: transaction.type === "TRANSFER",
+    overdue: false,
+    estimated: transaction.estimated,
+    categoryId: transaction.categoryId,
+    assetId: transaction.assetId,
+    assetName: transaction.assetName,
+    transactionId: transaction.id,
+    recurringId: null,
+    occurrenceDate: null,
+    statementId: null,
+    installmentId: null,
+  };
+}
+
+/**
+ * 원장 줄과 파생 예정을 <b>한 타임라인</b>으로 합친다.
+ *
+ * <p>직접 예약은 이미 원장에 있으므로 파생 쪽에서 뺀다 — 넣으면 같은 줄이 두 번 보이고,
+ * 그건 이 화면에서 「돈을 두 번 셌다」로 읽힌다.
+ *
+ * <p>검색·필터는 이미 받아 온 목록 위에서 건다 — 글자를 칠 때마다 서버를 다시 부르지 않는다.
+ */
+function buildTimeline(
+  groups: DateGroup[],
+  upcoming: UpcomingItem[],
+  filters: {
+    status: StatusFilter;
+    query: string;
+    uncategorizedOnly: boolean;
+  },
+): TimelineGroup[] {
+  const keyword = filters.query.trim().toLowerCase();
+  const byDate = new Map<string, TimelineGroup>();
+
+  for (const group of groups) {
+    const rows: TimelineRow[] = [];
+    for (const item of group.items) {
+      if (filters.status === "CONFIRMED" && item.status !== "CONFIRMED") {
+        continue;
+      }
+      if (filters.status === "SCHEDULED" && item.status !== "SCHEDULED") {
+        continue;
+      }
+      // 이체는 애초에 분류 대상이 아니라 「정리할 것」에서도 빠진다.
+      if (
+        filters.uncategorizedOnly &&
+        (item.categoryId !== null || item.type === "TRANSFER")
+      ) {
+        continue;
+      }
+      if (
+        keyword !== "" &&
+        !matches(keyword, [item.title, item.categoryName, item.assetName])
+      ) {
+        continue;
+      }
+      rows.push({ key: `tx-${item.id}`, kind: "LEDGER", transaction: item });
+    }
+    if (rows.length > 0) {
+      byDate.set(group.date, {
+        date: group.date,
+        income: group.income,
+        expense: group.expense,
+        rows,
+      });
+    }
+  }
+
+  if (filters.status !== "CONFIRMED" && !filters.uncategorizedOnly) {
+    for (const item of upcoming) {
+      // 직접 예약은 원장에 이미 있다. 여기서 또 넣으면 한 건이 두 줄이 된다.
+      if (item.kind === "ONE_OFF") {
+        continue;
+      }
+      const title = item.title ?? UPCOMING_KIND_LABELS[item.kind];
+      if (keyword !== "" && !matches(keyword, [title, item.assetName])) {
+        continue;
+      }
+      const group = byDate.get(item.date) ?? {
+        date: item.date,
+        income: 0,
+        expense: 0,
+        rows: [],
+      };
+      group.rows.push({ key: derivedKey(item), kind: "UPCOMING", item });
+      byDate.set(item.date, group);
+    }
+  }
+
+  return [...byDate.values()].sort((left, right) =>
+    left.date < right.date ? -1 : 1,
+  );
+}
+
+function matches(keyword: string, texts: (string | null)[]): boolean {
+  return texts
+    .filter(Boolean)
+    .some((text) => (text as string).toLowerCase().includes(keyword));
+}
+
+function derivedKey(item: UpcomingItem): string {
+  return [
+    item.kind,
+    item.date,
+    item.recurringId ?? item.statementId ?? item.installmentId ?? 0,
+    item.occurrenceDate ?? "",
+  ].join(":");
 }

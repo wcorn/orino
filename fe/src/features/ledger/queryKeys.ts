@@ -24,6 +24,11 @@ export const ledgerKeys = {
   transactions: (from?: string, to?: string) =>
     ["ledger", "transactions", from ?? "", to ?? ""] as const,
   transactionLists: ["ledger", "transactions"] as const,
+  /** 예정. 조회 일수가 키에 들어간다 — 「더 보기」가 다른 캐시여야 이전 범위로 즉시 돌아온다. */
+  upcoming: (days: number) => ["ledger", "upcoming", days] as const,
+  upcomingAll: ["ledger", "upcoming"] as const,
+  calendar: (month: string) => ["ledger", "calendar", month] as const,
+  budget: (period?: string) => ["ledger", "budget", period ?? ""] as const,
   suggestions: (keyword: string) => ["ledger", "suggest", keyword] as const,
   fxRate: (currency: string) => ["ledger", "fx", currency] as const,
 };

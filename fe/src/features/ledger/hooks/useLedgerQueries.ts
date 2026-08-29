@@ -4,6 +4,8 @@ import {
   fetchAssetDetail,
   fetchAssets,
   fetchAssetTransactions,
+  fetchBudget,
+  fetchCalendar,
   fetchCategories,
   fetchDashboard,
   fetchFxRate,
@@ -14,6 +16,7 @@ import {
   fetchSuggestions,
   fetchTemplates,
   fetchTransactions,
+  fetchUpcoming,
   type LedgerFlow,
   type TrendRange,
 } from "../api/ledger";
@@ -144,5 +147,38 @@ export function useFxRate(currency: string | null) {
     staleTime: 60 * 60 * 1000,
     // 고시가 없는 것은 재시도로 해결되지 않는다. 기다리게 두면 입력이 멈춘다.
     retry: false,
+  });
+}
+
+/**
+ * 예정 목록 — 네 출처의 UNION.
+ *
+ * <p>캐시하지 않는다는 서버 쪽 결정과 짝을 이룬다: 12개월 × 정기 항목 20개면 240행 수준이라
+ * 그냥 다시 부른다. 대신 <b>일수를 키에 넣어</b> 「더 보기」로 넓혔다가 돌아와도 즉시 그려진다.
+ */
+export function useLedgerUpcoming(days = 30) {
+  return useQuery({
+    queryKey: ledgerKeys.upcoming(days),
+    queryFn: () => fetchUpcoming(days),
+    staleTime: 30 * 1000,
+  });
+}
+
+/** 캘린더. 달을 옮길 때마다 다른 캐시여야 뒤로 돌아왔을 때 이전 달이 즉시 그려진다. */
+export function useLedgerCalendar(month: string, enabled = true) {
+  return useQuery({
+    queryKey: ledgerKeys.calendar(month),
+    queryFn: () => fetchCalendar(month),
+    staleTime: 30 * 1000,
+    enabled,
+  });
+}
+
+/** 예산. 대시보드의 2단 게이지와 예산 화면이 같은 값을 읽는다. */
+export function useLedgerBudget(period?: string) {
+  return useQuery({
+    queryKey: ledgerKeys.budget(period),
+    queryFn: () => fetchBudget(period),
+    staleTime: 30 * 1000,
   });
 }

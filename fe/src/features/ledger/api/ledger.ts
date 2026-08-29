@@ -157,6 +157,132 @@ export interface TransactionListResponse {
   groups: DateGroup[];
 }
 
+/**
+ * 예정의 네 출처(확정 명세 §8.1). **한 테이블에 있지 않다** — 직접 예약만 실체화돼 있고
+ * 나머지 셋은 규칙·청구서·할부에서 파생된다.
+ *
+ * 종류를 내려주는 이유는 배지 색만이 아니다. **같은 돈이 두 번 세어지지 않았음**을 사람이
+ * 눈으로 확인할 수 있어야 한다.
+ */
+export type UpcomingKind =
+  | "RECURRING"
+  | "ONE_OFF"
+  | "CARD_PAYMENT"
+  | "INSTALLMENT";
+
+export interface UpcomingItem {
+  kind: UpcomingKind;
+  date: string;
+  /** 음수면 이미 지났다는 뜻이고, 그건 미납이다. */
+  dday: number;
+  title: string | null;
+  amount: number;
+  flow: LedgerFlow;
+  /** 소비가 아니다 — 카드 대금·계좌 이체에 배지를 하나 더 단다. */
+  isTransfer: boolean;
+  /** 미납. **확정하거나 건너뛰어야만 사라진다** — 「무시」는 없다. */
+  overdue: boolean;
+  estimated: boolean;
+  categoryId: number | null;
+  assetId: number | null;
+  assetName: string | null;
+  transactionId: number | null;
+  recurringId: number | null;
+  /** 규칙이 계산한 **원래** 예정일. 회차를 조작할 때의 키다. */
+  occurrenceDate: string | null;
+  statementId: number | null;
+  installmentId: number | null;
+}
+
+/**
+ * 잔액이 가장 낮아지는 지점.
+ *
+ * 「월말에 얼마 남나」보다 **「중간에 모자라지 않나」**가 먼저다 — 25일에 청약이 빠지고 나면
+ * 바닥인데 월말 숫자만 보면 괜찮아 보인다.
+ */
+export interface MinBalance {
+  amount: number;
+  date: string;
+  reason: string | null;
+}
+
+export interface UpcomingStats {
+  /** 나갈 돈. **지출과 이체를 함께** 센다. */
+  outflow: number;
+  income: number;
+  currentBalance: number;
+  expectedBalance: number;
+  minBalance: MinBalance;
+  count: number;
+  byKind: Partial<Record<UpcomingKind, number>>;
+}
+
+export interface UpcomingResponse {
+  from: string;
+  to: string;
+  days: number;
+  stats: UpcomingStats;
+  items: UpcomingItem[];
+}
+
+/**
+ * 캘린더 하루(`LDG-021`).
+ *
+ * **과거는 확정, 미래는 예정**을 따로 담는다 — 한 칸에 합치면 화면이 연하게 그릴 수 없고
+ * 「이미 쓴 돈」과 「나갈 예정인 돈」이 같은 굵기로 보인다.
+ */
+export interface CalendarDay {
+  date: string;
+  income: number;
+  expense: number;
+  scheduledIncome: number;
+  scheduledExpense: number;
+  scheduledTransfer: number;
+}
+
+export interface CalendarResponse {
+  month: string;
+  todayLine: string;
+  days: CalendarDay[];
+}
+
+/** 회차 조작. **「무시」에 해당하는 값이 없다** — 의도적으로 넣지 않았다(§6.4). */
+export type OccurrenceAction =
+  | "AMOUNT"
+  | "SKIP"
+  | "MOVE"
+  | "UNPAID"
+  | "REVERTED";
+
+export interface OccurrenceRequest {
+  recurringId: number;
+  /** 규칙이 계산한 **원래** 예정일. 날짜를 옮겨도 이 값이 키다. */
+  occurrenceDate: string;
+  action: OccurrenceAction;
+  amount?: number | null;
+  movedTo?: string | null;
+  note?: string | null;
+}
+
+export interface OccurrenceConfirmRequest {
+  recurringId: number;
+  occurrenceDate: string;
+  /** 실제로 빠진 날. 새 거래를 만들지 않고 그 회차를 되살려 옮긴다. */
+  actualDate: string;
+  amount?: number | null;
+}
+
+export interface OccurrenceView {
+  recurringId: number;
+  name: string;
+  occurrenceDate: string;
+  date: string;
+  amount: number;
+  action: OccurrenceAction;
+  overdue: boolean;
+  transactionId: number | null;
+}
+
 export interface AssetTransactionRow {
   transaction: TransactionView;
   /** 체크카드와 예정 줄은 `null`이다. */
@@ -183,7 +309,11 @@ export interface SettingsView {
   defaultPerspective: "SPEND" | "BILLING";
 }
 
-/** v1.5에서 채워질 값은 `null`이다 — `0`과 「아직 모른다」는 다르다. */
+/**
+ * v1에서는 뒤의 셋이 `null`이었다 — `0`과 「아직 모른다」는 다르다. v1.5에서 카드 청구서와
+ * 정기 항목이 생겨 채워진다. 타입은 `null`을 남긴다: 값이 없는 상태가 다시 생길 수 있고,
+ * 그때 `0`으로 둘러대면 화면이 「없음」을 그린다.
+ */
 export interface LedgerSummary {
   monthEstimate: number;
   monthSpent: number;
@@ -546,15 +676,27 @@ export async function updateSettings(
 }
 
 /**
- * 대시보드. **v1은 세 값뿐이다** — 이미 쓴 돈 · 이번 달 수입 · 정리할 내역.
+ * 대시보드.
  *
- * 2축 요약·미납·다가오는 결제는 **필드 자체가 없다**(D-7). 서버가 안 내리는 것을 화면이
- * 빈 카드로 그리면 고장난 것처럼 보인다.
+ * **`spending`과 `cashflow`를 한 덩어리로 합치지 않는다**(확정 명세 §8.2). 다른 질문에
+ * 답한다 — 앞은 「이번 달 얼마 쓰나」(소비 시점, 카드 대금 제외), 뒤는 「통장에서 얼마
+ * 빠지나」(출금 시점, 이체와 카드 대금 포함)다. 한 숫자로 합치면 카드로 쓴 돈이 두 번 세어진다.
  */
 export interface LedgerDashboard {
-  spending: { spent: number };
+  spending: { spent: number; scheduled: number; estimate: number };
+  cashflow: {
+    /** 지금 쓸 수 있는 돈. **저축은 빠져 있다** — 옮긴 돈은 이번 달 쓸 돈이 아니다. */
+    balance: number;
+    remainingOutflow: number;
+    remainingInflow: number;
+    monthEndBalance: number;
+    minBalance: MinBalance;
+  };
   income: { amount: number };
-  todo: { uncategorized: number };
+  netWorth: { totalAssets: number; liabilities: number; netWorth: number };
+  /** 다가오는 결제 5건. 더 보려면 `/ledger/upcoming`으로 간다. */
+  upcoming: UpcomingItem[];
+  todo: { uncategorized: number; overdue: number };
   period: { start: string; end: string; monthStartDay: number };
 }
 
@@ -619,6 +761,84 @@ export async function reconcileAsset(
 ): Promise<ReconcileResponse> {
   const { data } = await client.post<ApiEnvelope<ReconcileResponse>>(
     `/ledger/assets/${id}/reconcile`,
+    body,
+  );
+  return data.data;
+}
+
+/**
+ * 예산. **게이지는 2단이다** — `spent`가 진한 부분, `scheduled`가 연한 부분(§8.2).
+ *
+ * `period`를 안 세운 달도 응답이 온다(`totalAmount: 0`). 「예산이 없다」가 조회 실패일 이유가 없다.
+ */
+export interface BudgetCategoryProgress {
+  /** `null`이면 미분류. */
+  categoryId: number | null;
+  name: string;
+  amount: number;
+  spent: number;
+  scheduled: number;
+}
+
+export interface BudgetResponse {
+  period: string;
+  periodStart: string;
+  periodEnd: string;
+  totalAmount: number;
+  /** 정기 항목 월 환산 합. 미리 빼 「쓸 수 있는 돈」만 남긴다. */
+  fixedCostTotal: number;
+  spendable: number;
+  spent: number;
+  scheduled: number;
+  remaining: number;
+  daysLeft: number;
+  dailyAllowance: number;
+  categories: BudgetCategoryProgress[];
+}
+
+export async function fetchBudget(period?: string): Promise<BudgetResponse> {
+  const { data } = await client.get<ApiEnvelope<BudgetResponse>>(
+    "/ledger/budget",
+    { params: period ? { period } : undefined },
+  );
+  return data.data;
+}
+
+/** 예정 목록. 기본 30일, 최대 12개월 — 그 너머는 예정이 아니라 추측이다. */
+export async function fetchUpcoming(days = 30): Promise<UpcomingResponse> {
+  const { data } = await client.get<ApiEnvelope<UpcomingResponse>>(
+    "/ledger/upcoming",
+    { params: { days } },
+  );
+  return data.data;
+}
+
+/** `month`는 `YYYY-MM`. 생략하면 이번 달이다. */
+export async function fetchCalendar(month?: string): Promise<CalendarResponse> {
+  const { data } = await client.get<ApiEnvelope<CalendarResponse>>(
+    "/ledger/transactions/calendar",
+    { params: month ? { month } : undefined },
+  );
+  return data.data;
+}
+
+/** 회차 하나를 손댄다 — 금액·건너뛰기·날짜·미납·되돌리기. */
+export async function patchOccurrence(
+  body: OccurrenceRequest,
+): Promise<OccurrenceView> {
+  const { data } = await client.patch<ApiEnvelope<OccurrenceView>>(
+    "/ledger/upcoming/occurrence",
+    body,
+  );
+  return data.data;
+}
+
+/** 미납을 **실제 출금일로** 확정한다. */
+export async function confirmOccurrence(
+  body: OccurrenceConfirmRequest,
+): Promise<OccurrenceView> {
+  const { data } = await client.post<ApiEnvelope<OccurrenceView>>(
+    "/ledger/upcoming/occurrence/confirm",
     body,
   );
   return data.data;

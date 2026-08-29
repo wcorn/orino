@@ -8,6 +8,7 @@ import {
   type AssetUpdateRequest,
   attachReceipt,
   bulkCreateTransactions,
+  confirmOccurrence,
   createAsset,
   createReceiptUploadUrl,
   createTemplate,
@@ -16,6 +17,9 @@ import {
   deleteTransaction,
   detachReceipt,
   duplicateTransaction,
+  type OccurrenceConfirmRequest,
+  type OccurrenceRequest,
+  patchOccurrence,
   reconcileAsset,
   type ReconcileRequest,
   type SettingsUpdateRequest,
@@ -266,6 +270,43 @@ export function useUpdateSettings() {
     mutationFn: (body: SettingsUpdateRequest) => updateSettings(body),
     onSuccess: () => toast("설정을 저장했어요"),
     onError: () => toast("설정을 저장하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+/**
+ * 회차 조작 — 금액 수정·건너뛰기·날짜 변경·미납.
+ *
+ * <p>손댄 회차만 서버에 1행이 남는다. 규칙을 고치는 것과 다른 일이다 — 규칙 수정은 앞으로의
+ * 모든 회차를 바꾸고, 이건 <b>이번 회차만</b> 바꾼다.
+ */
+export function useOccurrenceAction() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: OccurrenceRequest) => patchOccurrence(body),
+    onSuccess: (_, body) => toast(OCCURRENCE_MESSAGES[body.action]),
+    onError: () => toast("회차를 고치지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+const OCCURRENCE_MESSAGES: Record<OccurrenceRequest["action"], string> = {
+  AMOUNT: "이번 회차 금액을 고쳤어요",
+  SKIP: "이번 회차를 건너뛰었어요",
+  MOVE: "날짜를 옮겼어요",
+  UNPAID: "미납으로 표시했어요",
+  REVERTED: "자동 기록을 되돌렸어요",
+};
+
+/** 미납을 실제 출금일로 확정한다. 새 거래를 만들지 않고 그 회차를 되살려 옮긴다. */
+export function useConfirmOccurrence() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: OccurrenceConfirmRequest) => confirmOccurrence(body),
+    onSuccess: () => toast("실제 출금일로 확정했어요"),
+    onError: () => toast("확정하지 못했어요.", "error"),
     onSettled: () => invalidateAll(queryClient),
   });
 }
