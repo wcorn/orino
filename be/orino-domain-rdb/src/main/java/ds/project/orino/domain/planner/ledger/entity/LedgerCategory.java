@@ -54,6 +54,24 @@ public class LedgerCategory {
     @Column(length = 40)
     private String icon;
 
+    /**
+     * 고정비인지 변동비인지. <b>NULL이면 아직 정하지 않았다</b>는 뜻이다(v2).
+     *
+     * <p>기본값을 주지 않는 이유는 「모른다」와 「변동비다」가 다르기 때문이다 — 기본값을
+     * 변동비로 두면 아무도 분류하지 않은 가계부에서 「변동비가 100%」라는 거짓말이 나온다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cost_type", length = 20)
+    private LedgerCostType costType;
+
+    /** 카드 실적에서 뺀다. 세금·보험료처럼 카드사가 실적으로 안 세는 것들(확정 명세 §7.6). */
+    @Column(name = "exclude_from_card_goal", nullable = false)
+    private boolean excludeFromCardGoal;
+
+    /** 연간 결산에서 뺀다. 저축·투자처럼 「쓴 돈」이 아니라 자산 이동인 것들. */
+    @Column(name = "exclude_from_settlement", nullable = false)
+    private boolean excludeFromSettlement;
+
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
 
@@ -135,6 +153,27 @@ public class LedgerCategory {
 
     public String getIcon() {
         return icon;
+    }
+
+    public LedgerCostType getCostType() {
+        return costType;
+    }
+
+    public boolean isExcludeFromCardGoal() {
+        return excludeFromCardGoal;
+    }
+
+    public boolean isExcludeFromSettlement() {
+        return excludeFromSettlement;
+    }
+
+    /** 속성 셋을 함께 바꾼다 — 화면에서도 한 줄로 다루는 값들이다. */
+    public void updateAttributes(LedgerCostType costType,
+                                 boolean excludeFromCardGoal,
+                                 boolean excludeFromSettlement) {
+        this.costType = costType;
+        this.excludeFromCardGoal = excludeFromCardGoal;
+        this.excludeFromSettlement = excludeFromSettlement;
     }
 
     public int getDisplayOrder() {

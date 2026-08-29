@@ -119,6 +119,21 @@ public class LedgerCategoryService {
         if (request.icon() != null) {
             category.updateIcon(request.icon());
         }
+        // 속성 셋은 함께 바꾼다 — 화면에서도 한 줄로 다루는 값들이다(v2).
+        if (request.costType() != null || Boolean.TRUE.equals(request.clearCostType())
+                || request.excludeFromCardGoal() != null
+                || request.excludeFromSettlement() != null) {
+            category.updateAttributes(
+                    Boolean.TRUE.equals(request.clearCostType())
+                            ? null
+                            : (request.costType() == null
+                                    ? category.getCostType() : request.costType()),
+                    request.excludeFromCardGoal() == null
+                            ? category.isExcludeFromCardGoal() : request.excludeFromCardGoal(),
+                    request.excludeFromSettlement() == null
+                            ? category.isExcludeFromSettlement()
+                            : request.excludeFromSettlement());
+        }
         if (request.displayOrder() != null) {
             category.updateDisplayOrder(request.displayOrder());
         }

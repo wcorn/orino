@@ -99,6 +99,68 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
     List<LedgerTransaction> findAllForAssetsOldestFirst(@Param("memberId") Long memberId,
                                                         @Param("assetIds") Collection<Long> assetIds);
 
+    /** 자산별 지출(`LDG-082`). <b>카드는 사용 기준</b>이다 — 대금 납부는 이체라 여기 없다. */
+    @Query("""
+            SELECT t.assetId AS assetId, SUM(t.amount) AS total
+            FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.status = :status
+              AND t.deletedAt IS NULL
+              AND t.type = ds.project.orino.domain.planner.ledger.entity.LedgerFlow.EXPENSE
+              AND t.occurredOn BETWEEN :from AND :to
+            GROUP BY t.assetId
+            """)
+    List<AssetTotal> sumExpenseByAsset(@Param("memberId") Long memberId,
+                                       @Param("status") LedgerTransactionStatus status,
+                                       @Param("from") LocalDate from,
+                                       @Param("to") LocalDate to);
+
+    /** 그 구간의 수입 합계. 저축률이 이 값을 분모로 쓴다 — 환불은 수입이 아니라 지출 감소다. */
+    @Query("""
+            SELECT COALESCE(SUM(t.amount), 0) FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.status = :status
+              AND t.deletedAt IS NULL
+              AND t.type = ds.project.orino.domain.planner.ledger.entity.LedgerFlow.INCOME
+              AND t.source <> ds.project.orino.domain.planner.ledger.entity.LedgerTransactionSource.REFUND
+              AND t.occurredOn BETWEEN :from AND :to
+            """)
+    long sumIncome(@Param("memberId") Long memberId,
+                   @Param("status") LedgerTransactionStatus status,
+                   @Param("from") LocalDate from,
+                   @Param("to") LocalDate to);
+
+    /** 그 구간에 할부가 있었나. 두 관점이 벌어지는 <b>이유</b>를 가르는 값이다. */
+    @Query("""
+            SELECT COUNT(t.id) > 0 FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.deletedAt IS NULL
+              AND t.installmentId IS NOT NULL
+              AND t.occurredOn BETWEEN :from AND :to
+            """)
+    boolean existsInstallmentBetween(@Param("memberId") Long memberId,
+                                     @Param("from") LocalDate from,
+                                     @Param("to") LocalDate to);
+
+    /**
+     * 그 구간에 <b>할부가 아닌</b> 카드 사용이 있었나.
+     *
+     * <p>두 관점이 벌어지는 이유는 할부만이 아니다 — 이번 달에 긁은 카드값은 다음 달에
+     * 청구되므로 <b>사이클 경계</b>만으로도 벌어진다. 원인이 둘일 때 하나만 말하면 나머지
+     * 금액이 설명되지 않은 채 남는다.
+     */
+    @Query("""
+            SELECT COUNT(t.id) > 0 FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.deletedAt IS NULL
+              AND t.statementId IS NOT NULL
+              AND t.installmentId IS NULL
+              AND t.occurredOn BETWEEN :from AND :to
+            """)
+    boolean existsCardUsageBetween(@Param("memberId") Long memberId,
+                                   @Param("from") LocalDate from,
+                                   @Param("to") LocalDate to);
+
     /**
      * 자산별·유형별 확정 합계. 잔액(입출금·저축·현금·간편결제)과 부채(신용카드 미결제)가
      * 모두 이 한 벌에서 파생된다.

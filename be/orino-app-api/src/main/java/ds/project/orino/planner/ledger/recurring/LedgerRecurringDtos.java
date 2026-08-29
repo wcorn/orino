@@ -124,11 +124,21 @@ public final class LedgerRecurringDtos {
                         int subscriptionCount, int activeCount) {
     }
 
-    /** 점검 신호 4종(§6.6). 「이거 아직도 내고 있었나」를 찾아내는 것이 목적이다. */
+    /**
+     * 점검 신호(§6.6). 「이거 아직도 내고 있었나」를 찾아내는 것이 목적이다.
+     *
+     * @param repeatedlyCorrected 연속 정정 감지(`LDG-048`). 두 회차 이상 연달아 되돌리거나
+     *                            건너뛰었다면 규칙 자체가 현실과 안 맞는다는 뜻이다 —
+     *                            매달 손으로 고치는 것은 해결이 아니다
+     */
     public record Signals(List<PriceIncrease> priceIncreased,
                           List<TrialEnding> trialEnding,
                           List<Long> longUnchanged,
-                          List<Long> noEndDate) {
+                          List<Long> noEndDate,
+                          List<RepeatedCorrection> repeatedlyCorrected) {
+    }
+
+    public record RepeatedCorrection(Long recurringId, String name, int consecutive) {
     }
 
     public record PriceIncrease(Long recurringId, String name,

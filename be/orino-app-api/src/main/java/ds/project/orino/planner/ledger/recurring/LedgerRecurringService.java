@@ -56,6 +56,9 @@ public class LedgerRecurringService {
     /** 무료 체험 종료 임박으로 볼 남은 날수. 해지를 결심할 시간이 남아 있어야 신호다. */
     private static final int TRIAL_ENDING_DAYS = 14;
 
+    /** 몇 번 연달아 손대면 신호로 보나. 한 번은 사고일 수 있고, 두 번부터가 패턴이다. */
+    private static final int REPEATED_CORRECTION_THRESHOLD = 2;
+
     private final LedgerRecurringRepository recurringRepository;
     private final LedgerRecurringOverrideRepository overrideRepository;
     private final LedgerRecurringAmountHistoryRepository historyRepository;
@@ -361,7 +364,42 @@ public class LedgerRecurringService {
                 longUnchanged.add(rule.getId());
             }
         }
-        return new LedgerRecurringDtos.Signals(increased, trials, longUnchanged, noEndDate);
+        return new LedgerRecurringDtos.Signals(increased, trials, longUnchanged, noEndDate,
+                repeatedlyCorrected(rules));
+    }
+
+    /**
+     * 연속 정정 감지(`LDG-048`).
+     *
+     * <p>두 회차 이상 <b>연달아</b> 되돌리거나 건너뛰었다면 규칙 자체가 현실과 안 맞는다는
+     * 뜻이다 — 매달 손으로 고치는 것은 해결이 아니라 증상이다.
+     *
+     * <p>「연달아」를 보는 이유는 한 번은 사고일 수 있기 때문이다. 두 번부터가 패턴이다.
+     */
+    private List<LedgerRecurringDtos.RepeatedCorrection> repeatedlyCorrected(
+            List<LedgerRecurring> rules) {
+        List<LedgerRecurringDtos.RepeatedCorrection> corrections = new ArrayList<>();
+        for (LedgerRecurring rule : rules) {
+            if (rule.getStatus() == LedgerRecurringStatus.ENDED) {
+                continue;
+            }
+            int consecutive = 0;
+            // 최근 회차부터 훑는다 — 옛날에 몇 번 되돌린 것은 지금의 신호가 아니다.
+            for (LedgerRecurringOverride override : overrideRepository
+                    .findAllByRecurringIdOrderByOccurrenceDateDesc(rule.getId())) {
+                if (override.getAction() == LedgerOverrideAction.REVERTED
+                        || override.getAction() == LedgerOverrideAction.SKIP) {
+                    consecutive++;
+                } else {
+                    break;
+                }
+            }
+            if (consecutive >= REPEATED_CORRECTION_THRESHOLD) {
+                corrections.add(new LedgerRecurringDtos.RepeatedCorrection(
+                        rule.getId(), rule.getName(), consecutive));
+            }
+        }
+        return corrections;
     }
 
     /** 미납 회차. 확정하거나 건너뛰어야만 사라진다 — 「무시」는 없다(§6.4). */

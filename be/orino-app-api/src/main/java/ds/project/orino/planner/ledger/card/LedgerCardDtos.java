@@ -2,6 +2,7 @@ package ds.project.orino.planner.ledger.card;
 
 import ds.project.orino.domain.planner.ledger.entity.LedgerStatement;
 import ds.project.orino.domain.planner.ledger.entity.LedgerStatementStatus;
+import ds.project.orino.domain.planner.ledger.entity.LedgerUsageGoalBasis;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
@@ -24,6 +25,13 @@ public final class LedgerCardDtos {
     ) {
     }
 
+    /** 실적 조건. 금액과 기준은 함께 있거나 함께 없다 — 하나만 있으면 셀 수가 없다. */
+    public record UsageGoalRequest(
+            Long goalAmount,
+            LedgerUsageGoalBasis basis
+    ) {
+    }
+
     /**
      * 카드 한 장.
      *
@@ -42,7 +50,9 @@ public final class LedgerCardDtos {
             Long creditLimit,
             boolean hasCycle,
             long unpaidAmount,
-            StatementView currentStatement
+            StatementView currentStatement,
+            /** 실적을 안 걸어 둔 카드는 {@code null}이다 — 0%로 그리면 「못 채웠다」로 읽힌다. */
+            UsageGoalView usageGoal
     ) {
     }
 
@@ -75,6 +85,22 @@ public final class LedgerCardDtos {
                     statement.isOverdueOn(today), breakdown,
                     statement.getPaidOn(), statement.getCarriedToStatementId());
         }
+    }
+
+    /**
+     * 카드 실적 진행(§7.6).
+     *
+     * @param basis     <b>카드 속성</b>이지 전역 설정이 아니다. 화면이 「승인 기준」 배지로 적는다
+     * @param remaining 조건까지 남은 금액. 「88,000원 더 쓰면 충족」이 이 값이다
+     */
+    public record UsageGoalView(
+            long goalAmount,
+            LedgerUsageGoalBasis basis,
+            long counted,
+            long remaining,
+            boolean achieved,
+            String month
+    ) {
     }
 
     public record CardListResponse(

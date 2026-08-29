@@ -32,6 +32,10 @@ public interface LedgerStatementRepository extends JpaRepository<LedgerStatement
     Optional<LedgerStatement> findCovering(@Param("cardAssetId") Long cardAssetId,
                                            @Param("date") LocalDate date);
 
+    /** 그 구간에 결제일이 오는 청구서. 청구 기준 통계가 이 목록으로 카드 사용을 옮겨 센다. */
+    List<LedgerStatement> findAllByMemberIdAndPaymentDateBetween(
+            Long memberId, LocalDate from, LocalDate to);
+
     /** 마감일이 지났는데 아직 집계 중인 것들. 스케줄러가 확정으로 넘긴다. */
     List<LedgerStatement> findAllByStatusAndCycleEndBefore(
             LedgerStatementStatus status, LocalDate date);

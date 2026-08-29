@@ -1,6 +1,7 @@
 package ds.project.orino.planner.ledger.category.dto;
 
 import ds.project.orino.domain.planner.ledger.entity.LedgerCategory;
+import ds.project.orino.domain.planner.ledger.entity.LedgerCostType;
 import ds.project.orino.domain.planner.ledger.entity.LedgerFlow;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -34,7 +35,12 @@ public final class CategoryDtos {
             Boolean clearParent,
             @Size(max = 20) String color,
             @Size(max = 40) String icon,
-            Integer displayOrder
+            Integer displayOrder,
+            /** 고정비/변동비. 보내지 않으면 그대로 두고, 비우려면 {@code clearCostType}을 쓴다. */
+            LedgerCostType costType,
+            Boolean clearCostType,
+            Boolean excludeFromCardGoal,
+            Boolean excludeFromSettlement
     ) {
     }
 
@@ -60,13 +66,19 @@ public final class CategoryDtos {
             String icon,
             int displayOrder,
             boolean archived,
+            /** {@code null}이면 아직 정하지 않았다 — 「모른다」와 「변동비다」는 다르다. */
+            LedgerCostType costType,
+            boolean excludeFromCardGoal,
+            boolean excludeFromSettlement,
             List<View> children
     ) {
 
         public static View of(LedgerCategory category, List<View> children) {
             return new View(category.getId(), category.getFlow(), category.getName(),
                     category.getParentId(), category.getColor(), category.getIcon(),
-                    category.getDisplayOrder(), category.isArchived(), children);
+                    category.getDisplayOrder(), category.isArchived(),
+                    category.getCostType(), category.isExcludeFromCardGoal(),
+                    category.isExcludeFromSettlement(), children);
         }
     }
 }

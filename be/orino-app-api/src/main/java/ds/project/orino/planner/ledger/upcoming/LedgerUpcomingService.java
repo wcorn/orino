@@ -136,9 +136,15 @@ public class LedgerUpcomingService {
         return summarize(planned, spendableBalance(assets, balances), from);
     }
 
-    /** 예정 계산 결과. 목록과 통계가 <b>같은 한 번의 계산</b>에서 나온다. */
+    /**
+     * 예정 계산 결과. 목록과 통계가 <b>같은 한 번의 계산</b>에서 나온다.
+     *
+     * @param dailyDeltas 날짜별 현금 증감. 예상 잔액 곡선이 이 값을 누적한다 —
+     *                    곡선이 목록과 다른 계산을 쓰면 두 화면이 다른 말을 하게 된다
+     */
     public record Plan(List<LedgerUpcomingDtos.UpcomingItem> items,
-                       LedgerUpcomingDtos.UpcomingStats stats) {
+                       LedgerUpcomingDtos.UpcomingStats stats,
+                       Map<LocalDate, Long> dailyDeltas) {
     }
 
     private record Planned(LedgerUpcomingDtos.UpcomingItem item, long cashDelta) {
@@ -323,6 +329,34 @@ public class LedgerUpcomingService {
 
     // ── 합계 ───────────────────────────────────────────────────────────────────
 
+    /**
+     * 일자별 예상 잔액 곡선(§8.4).
+     *
+     * <p>아무 일도 없는 날에도 점을 찍는다 — 빼면 화면이 날짜 간격을 스스로 메워야 하고,
+     * 그때 선이 실제와 다르게 휜다.
+     */
+    @Transactional(readOnly = true)
+    public LedgerBalanceCurve balanceCurve(Long memberId, int days) {
+        int window = Math.clamp(days, 1, MAX_DAYS);
+        LocalDate today = clock.today();
+        LocalDate to = today.plusDays(window);
+        Plan plan = plan(memberId, today, to);
+
+        long balance = plan.stats().currentBalance();
+        List<LedgerBalanceCurve.Point> points = new ArrayList<>();
+        LocalDate firstNegative = null;
+        for (LocalDate date = today; !date.isAfter(to); date = date.plusDays(1)) {
+            long delta = plan.dailyDeltas().getOrDefault(date, 0L);
+            balance += delta;
+            points.add(new LedgerBalanceCurve.Point(date, delta, balance));
+            if (balance < 0 && firstNegative == null) {
+                firstNegative = date;
+            }
+        }
+        return new LedgerBalanceCurve(today, to, plan.stats().currentBalance(),
+                points, plan.stats().minBalance(), firstNegative);
+    }
+
     private Plan summarize(List<Planned> planned, long currentBalance, LocalDate from) {
         long outflow = 0;
         long income = 0;
@@ -333,9 +367,11 @@ public class LedgerUpcomingService {
         Map<LedgerUpcomingDtos.Kind, Integer> byKind =
                 new EnumMap<>(LedgerUpcomingDtos.Kind.class);
 
+        Map<LocalDate, Long> dailyDeltas = new HashMap<>();
         List<LedgerUpcomingDtos.UpcomingItem> items = new ArrayList<>();
         for (Planned entry : planned) {
             items.add(entry.item());
+            dailyDeltas.merge(entry.item().date(), entry.cashDelta(), Long::sum);
             byKind.merge(entry.item().kind(), 1, Integer::sum);
             if (entry.cashDelta() < 0) {
                 outflow += -entry.cashDelta();
@@ -352,7 +388,7 @@ public class LedgerUpcomingService {
         return new Plan(items, new LedgerUpcomingDtos.UpcomingStats(
                 outflow, income, currentBalance, running,
                 new LedgerUpcomingDtos.MinBalance(minAmount, minDate, minReason),
-                items.size(), byKind));
+                items.size(), byKind), dailyDeltas);
     }
 
     /**

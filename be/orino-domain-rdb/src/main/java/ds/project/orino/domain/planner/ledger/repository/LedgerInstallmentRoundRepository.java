@@ -16,6 +16,9 @@ public interface LedgerInstallmentRoundRepository
 
     List<LedgerInstallmentRound> findAllByStatementId(Long statementId);
 
+    /** 여러 청구서의 회차를 한 번에. 청구 기준 통계가 구간 안의 청구서를 통째로 훑는다. */
+    List<LedgerInstallmentRound> findAllByStatementIdIn(Collection<Long> statementIds);
+
     /** 아직 청구서에 안 붙은 그 달 회차들. 사이클이 열릴 때 붙인다. */
     @Query("""
             SELECT r FROM LedgerInstallmentRound r

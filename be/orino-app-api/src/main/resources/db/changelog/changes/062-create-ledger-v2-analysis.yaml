@@ -1,0 +1,142 @@
+databaseChangeLog:
+  # 가계부 v2 분석 (#1267, Epic #1257).
+  #
+  # 새 테이블이 없다 — 분석은 이미 있는 원장을 다르게 읽는 일이고, 새로 저장할 것은
+  # 「어떻게 읽어야 하는가」를 말해 주는 속성뿐이다.
+
+  - changeSet:
+      id: 062-alter-ledger-category-attributes
+      author: wcorn
+      comment: 카테고리 속성 — 고정/변동 · 카드 실적 제외 · 결산 제외(LDG-061).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: ledger_category
+                columnName: cost_type
+      changes:
+        - addColumn:
+            tableName: ledger_category
+            columns:
+              # FIXED(고정비) · VARIABLE(변동비). NULL이면 아직 정하지 않았다는 뜻이고,
+              # 「모른다」와 「변동비다」는 다르므로 기본값을 주지 않는다.
+              - column:
+                  name: cost_type
+                  type: VARCHAR(20)
+              # 카드 실적에서 빼는 카테고리. 세금·보험료처럼 카드사가 실적으로 안 세는 것들이다.
+              - column:
+                  name: exclude_from_card_goal
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              # 연간 결산에서 빼는 카테고리. 저축·투자처럼 「쓴 돈」이 아니라 자산 이동인 것들.
+              - column:
+                  name: exclude_from_settlement
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropColumn:
+            tableName: ledger_category
+            columns:
+              - column:
+                  name: cost_type
+              - column:
+                  name: exclude_from_card_goal
+              - column:
+                  name: exclude_from_settlement
+
+  - changeSet:
+      id: 062-alter-ledger-asset-usage-goal
+      author: wcorn
+      comment: 카드 실적 조건. 집계 기준은 카드 속성이지 전역 설정이 아니다(확정 명세 §7.6).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: ledger_asset
+                columnName: usage_goal_amount
+      changes:
+        - addColumn:
+            tableName: ledger_asset
+            columns:
+              - column:
+                  name: usage_goal_amount
+                  type: BIGINT
+              # APPROVAL(승인) · BILLING(청구). 카드사·상품마다 다르므로 카드마다 따로 갖는다 —
+              # 전역 설정으로 두면 카드 두 장을 쓰는 순간 한쪽이 반드시 틀린다.
+              - column:
+                  name: usage_goal_basis
+                  type: VARCHAR(20)
+      rollback:
+        - dropColumn:
+            tableName: ledger_asset
+            columns:
+              - column:
+                  name: usage_goal_amount
+              - column:
+                  name: usage_goal_basis
+
+  - changeSet:
+      id: 062-alter-ledger-recurring-insurance
+      author: wcorn
+      comment: 보험 속성(LDG-04A). v1.5에서 「값이 생기기 전에 세우지 않는다」고 미뤄 둔 것들.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: ledger_recurring
+                columnName: insurer
+      changes:
+        - addColumn:
+            tableName: ledger_recurring
+            columns:
+              - column:
+                  name: insurer
+                  type: VARCHAR(60)
+              - column:
+                  name: product_name
+                  type: VARCHAR(80)
+              - column:
+                  name: policy_no
+                  type: VARCHAR(60)
+              - column:
+                  name: insured_person
+                  type: VARCHAR(40)
+              # 보장 종료와 납입 종료는 다르다 — 납입이 끝나도 보장은 남는 상품이 흔하다.
+              - column:
+                  name: coverage_until
+                  type: DATE
+              # 납입 종료가 예정에 반영된다. 이 날짜 뒤로는 회차가 서지 않는다.
+              - column:
+                  name: payment_until
+                  type: DATE
+              - column:
+                  name: renewal_cycle_months
+                  type: SMALLINT
+              # 실손·종신·정기·자동차·연금·기타
+              - column:
+                  name: insurance_kind
+                  type: VARCHAR(20)
+      rollback:
+        - dropColumn:
+            tableName: ledger_recurring
+            columns:
+              - column:
+                  name: insurer
+              - column:
+                  name: product_name
+              - column:
+                  name: policy_no
+              - column:
+                  name: insured_person
+              - column:
+                  name: coverage_until
+              - column:
+                  name: payment_until
+              - column:
+                  name: renewal_cycle_months
+              - column:
+                  name: insurance_kind

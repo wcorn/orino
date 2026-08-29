@@ -100,6 +100,18 @@ public class LedgerAsset {
     @Column(name = "credit_limit")
     private Long creditLimit;
 
+    /** 월 실적 조건 금액. NULL이면 이 카드에 실적을 걸지 않았다는 뜻이다(v2). */
+    @Column(name = "usage_goal_amount")
+    private Long usageGoalAmount;
+
+    /**
+     * 실적을 <b>무엇으로 세는가</b>. 승인이냐 청구냐는 카드사·상품마다 달라
+     * 카드마다 따로 갖는다 — 전역 설정으로 두면 카드 두 장에서 한쪽이 반드시 틀린다(§7.6).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "usage_goal_basis", length = 20)
+    private LedgerUsageGoalBasis usageGoalBasis;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -253,6 +265,24 @@ public class LedgerAsset {
 
     public Integer getPaymentDay() {
         return paymentDay;
+    }
+
+    /** 실적 조건. 조건 금액과 기준은 함께 있거나 함께 없다 — 하나만 있으면 셀 수가 없다. */
+    public void updateUsageGoal(Long usageGoalAmount, LedgerUsageGoalBasis usageGoalBasis) {
+        this.usageGoalAmount = usageGoalAmount;
+        this.usageGoalBasis = usageGoalBasis;
+    }
+
+    public Long getUsageGoalAmount() {
+        return usageGoalAmount;
+    }
+
+    public LedgerUsageGoalBasis getUsageGoalBasis() {
+        return usageGoalBasis;
+    }
+
+    public boolean hasUsageGoal() {
+        return usageGoalAmount != null && usageGoalAmount > 0 && usageGoalBasis != null;
     }
 
     public Long getCreditLimit() {

@@ -1,8 +1,12 @@
 package ds.project.orino.planner.ledger.stats;
 
+import ds.project.orino.domain.planner.ledger.entity.LedgerAsset;
 import ds.project.orino.domain.planner.ledger.entity.LedgerCategory;
+import ds.project.orino.domain.planner.ledger.entity.LedgerCostType;
+import ds.project.orino.domain.planner.ledger.entity.LedgerPerspective;
 import ds.project.orino.domain.planner.ledger.entity.LedgerSettings;
 import ds.project.orino.domain.planner.ledger.entity.LedgerTransactionStatus;
+import ds.project.orino.domain.planner.ledger.repository.LedgerAssetRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerCategoryRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerTransactionRepository;
 import ds.project.orino.planner.ledger.common.LedgerBootstrap;
@@ -14,87 +18,291 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 카테고리 통계(`LDG-081`).
+ * 통계(`LDG-081`·`LDG-082`·`LDG-086`).
  *
  * <p>비교 대상은 <b>지난 구간</b>과 <b>작년 같은 구간</b>이다. 「이번 달 많이 썼나」는 혼자서는
  * 답할 수 없는 질문이라, 숫자 하나만 주면 화면이 그 판단을 사용자에게 떠넘기게 된다.
+ *
+ * <p>v2에서 셋이 붙었다 — <b>관점 전환</b>(그리고 두 관점이 벌어지는 이유), <b>고정 대 변동</b>,
+ * <b>연간 결산</b>. 셋 다 「절약 여지가 어디에 있나」라는 한 질문의 다른 각도다.
  */
 @Service
 public class LedgerStatsService {
 
+    /** 월별 추이·연간 결산이 훑는 개월 수. 열두 달이면 계절성이 한 바퀴 돈다. */
+    private static final int TREND_MONTHS = 12;
+
     private final LedgerTransactionRepository transactionRepository;
     private final LedgerCategoryRepository categoryRepository;
+    private final LedgerAssetRepository assetRepository;
+    private final LedgerPerspectiveSpending perspectiveSpending;
     private final LedgerBootstrap bootstrap;
     private final LedgerClock clock;
 
     public LedgerStatsService(LedgerTransactionRepository transactionRepository,
                               LedgerCategoryRepository categoryRepository,
+                              LedgerAssetRepository assetRepository,
+                              LedgerPerspectiveSpending perspectiveSpending,
                               LedgerBootstrap bootstrap,
                               LedgerClock clock) {
         this.transactionRepository = transactionRepository;
         this.categoryRepository = categoryRepository;
+        this.assetRepository = assetRepository;
+        this.perspectiveSpending = perspectiveSpending;
         this.bootstrap = bootstrap;
         this.clock = clock;
     }
 
-    /** {@code month}가 없으면 지금 속한 구간이다. */
+    /** {@code month}가 없으면 지금 속한 구간, {@code perspective}가 없으면 설정의 기본값이다. */
     @Transactional
-    public LedgerStatsResponse stats(Long memberId, YearMonth month) {
+    public LedgerStatsResponse stats(Long memberId, YearMonth month,
+                                     LedgerPerspective requested) {
         LedgerSettings settings = bootstrap.ensureSettings(memberId);
         int startDay = settings.getMonthStartDay();
+        LedgerPerspective perspective = requested == null
+                ? settings.getDefaultPerspective() : requested;
 
         LedgerPeriods.Period period = month == null
                 ? LedgerPeriods.containing(clock.today(), startDay)
                 : LedgerPeriods.of(month, startDay);
         YearMonth label = YearMonth.from(period.start());
 
-        List<LedgerCategorySpending.Bucket> buckets = spendingIn(memberId, period);
+        List<LedgerCategory> categories =
+                categoryRepository.findAllByMemberIdOrderByDisplayOrderAscIdAsc(memberId);
+        Map<Long, LedgerCategory> categoryById = new HashMap<>();
+        categories.forEach(category -> categoryById.put(category.getId(), category));
+
+        List<LedgerCategorySpending.Bucket> buckets =
+                perspectiveSpending.byCategory(memberId, period, perspective);
         long total = LedgerCategorySpending.total(buckets);
 
-        Map<Long, String> names = new HashMap<>();
-        for (LedgerCategory category : categoryRepository
-                .findAllByMemberIdOrderByDisplayOrderAscIdAsc(memberId)) {
-            names.put(category.getId(), category.getName());
-        }
+        return new LedgerStatsResponse(
+                new LedgerStatsResponse.Period(period.start(), period.end(), label.toString()),
+                perspective,
+                total,
+                categoryStats(buckets, categoryById, total),
+                assetStats(memberId, period, total),
+                fixedVsVariable(buckets, categoryById),
+                monthly(memberId, label, startDay, categoryById),
+                settlement(memberId, label, startDay, categoryById),
+                new LedgerStatsResponse.Comparison(
+                        bucketFor(memberId, LedgerPeriods.of(label.minusMonths(1), startDay),
+                                perspective, total),
+                        bucketFor(memberId, LedgerPeriods.of(label.minusYears(1), startDay),
+                                perspective, total)),
+                perspectiveDiff(memberId, period, perspective, total));
+    }
 
-        List<LedgerStatsResponse.CategoryStat> byCategory = new ArrayList<>();
+    private List<LedgerStatsResponse.CategoryStat> categoryStats(
+            List<LedgerCategorySpending.Bucket> buckets,
+            Map<Long, LedgerCategory> categoryById,
+            long total) {
+        List<LedgerStatsResponse.CategoryStat> stats = new ArrayList<>();
         for (LedgerCategorySpending.Bucket bucket : buckets) {
-            byCategory.add(new LedgerStatsResponse.CategoryStat(
+            LedgerCategory category = bucket.categoryId() == null
+                    ? null : categoryById.get(bucket.categoryId());
+            stats.add(new LedgerStatsResponse.CategoryStat(
                     bucket.categoryId(),
-                    bucket.categoryId() == null ? null : names.get(bucket.categoryId()),
+                    category == null ? null : category.getName(),
                     bucket.amount(),
                     bucket.count(),
                     // 0으로 나누지 않는다. 아무것도 안 썼으면 비율도 없다.
                     total == 0 ? 0 : (double) bucket.amount() / total));
         }
+        return stats;
+    }
 
-        return new LedgerStatsResponse(
-                new LedgerStatsResponse.Period(period.start(), period.end(), label.toString()),
-                total,
-                byCategory,
-                new LedgerStatsResponse.Comparison(
-                        bucketFor(memberId, LedgerPeriods.of(label.minusMonths(1), startDay), total),
-                        bucketFor(memberId, LedgerPeriods.of(label.minusYears(1), startDay), total)));
+    /** 자산별 지출(`LDG-082`). 카드는 <b>사용</b> 기준이다 — 대금은 이체라 여기 없다. */
+    private List<LedgerStatsResponse.AssetStat> assetStats(Long memberId,
+                                                           LedgerPeriods.Period period,
+                                                           long total) {
+        Map<Long, String> names = new HashMap<>();
+        for (LedgerAsset asset : assetRepository
+                .findAllByMemberIdOrderByDisplayOrderAscIdAsc(memberId)) {
+            names.put(asset.getId(), asset.getName());
+        }
+
+        List<LedgerStatsResponse.AssetStat> stats = new ArrayList<>();
+        for (LedgerTransactionRepository.AssetTotal row : transactionRepository
+                .sumExpenseByAsset(memberId, LedgerTransactionStatus.CONFIRMED,
+                        period.start(), period.end())) {
+            stats.add(new LedgerStatsResponse.AssetStat(
+                    row.getAssetId(), names.get(row.getAssetId()), row.getTotal(),
+                    total == 0 ? 0 : (double) row.getTotal() / total));
+        }
+        stats.sort(Comparator.comparingLong(LedgerStatsResponse.AssetStat::amount).reversed());
+        return stats;
+    }
+
+    /**
+     * 고정 대 변동.
+     *
+     * <p>속성을 안 정한 카테고리는 <b>따로 센다</b> — 변동비에 몰아넣으면 아무도 분류하지 않은
+     * 가계부에서 「변동비가 100%」라는 거짓말이 나온다.
+     */
+    private LedgerStatsResponse.FixedVsVariable fixedVsVariable(
+            List<LedgerCategorySpending.Bucket> buckets,
+            Map<Long, LedgerCategory> categoryById) {
+        long fixed = 0;
+        long variable = 0;
+        long unclassified = 0;
+        for (LedgerCategorySpending.Bucket bucket : buckets) {
+            LedgerCostType type = costTypeOf(bucket.categoryId(), categoryById);
+            if (type == LedgerCostType.FIXED) {
+                fixed += bucket.amount();
+            } else if (type == LedgerCostType.VARIABLE) {
+                variable += bucket.amount();
+            } else {
+                unclassified += bucket.amount();
+            }
+        }
+        return new LedgerStatsResponse.FixedVsVariable(fixed, variable, unclassified);
+    }
+
+    /** 최근 열두 달. 연간 결산 막대와 고정/변동 추이가 이 배열 하나를 함께 읽는다. */
+    private List<LedgerStatsResponse.MonthlyPoint> monthly(Long memberId, YearMonth label,
+                                                           int startDay,
+                                                           Map<Long, LedgerCategory> categoryById) {
+        List<LedgerStatsResponse.MonthlyPoint> points = new ArrayList<>();
+        for (int back = TREND_MONTHS - 1; back >= 0; back--) {
+            YearMonth month = label.minusMonths(back);
+            LedgerPeriods.Period period = LedgerPeriods.of(month, startDay);
+            List<LedgerCategorySpending.Bucket> buckets = LedgerCategorySpending.netExpense(
+                    transactionRepository.sumByCategoryAndFlow(
+                            memberId, LedgerTransactionStatus.CONFIRMED,
+                            period.start(), period.end()));
+            LedgerStatsResponse.FixedVsVariable split = fixedVsVariable(buckets, categoryById);
+            points.add(new LedgerStatsResponse.MonthlyPoint(
+                    month.toString(),
+                    LedgerCategorySpending.total(buckets),
+                    incomeIn(memberId, period),
+                    split.fixed(),
+                    split.variable(),
+                    // 순자산 추이는 v2 다음이다. 자리만 두고 값은 아직 내리지 않는다 —
+                    // 0으로 채우면 「자산이 0원이었다」는 거짓말이 된다.
+                    null));
+        }
+        return points;
+    }
+
+    /**
+     * 연간 결산.
+     *
+     * <p><b>결산 제외 카테고리는 빠진다</b> — 저축·투자는 「쓴 돈」이 아니라 자산 이동이고,
+     * 그걸 지출로 세면 저축을 많이 한 달이 가장 헤픈 달로 보인다.
+     */
+    private LedgerStatsResponse.Settlement settlement(Long memberId, YearMonth label,
+                                                      int startDay,
+                                                      Map<Long, LedgerCategory> categoryById) {
+        int year = label.getYear();
+        long income = 0;
+        long expense = 0;
+        String highest = null;
+        String lowest = null;
+        long highestAmount = Long.MIN_VALUE;
+        long lowestAmount = Long.MAX_VALUE;
+
+        for (int monthValue = 1; monthValue <= 12; monthValue++) {
+            YearMonth month = YearMonth.of(year, monthValue);
+            LedgerPeriods.Period period = LedgerPeriods.of(month, startDay);
+            long monthExpense = 0;
+            for (LedgerCategorySpending.Bucket bucket : LedgerCategorySpending.netExpense(
+                    transactionRepository.sumByCategoryAndFlow(
+                            memberId, LedgerTransactionStatus.CONFIRMED,
+                            period.start(), period.end()))) {
+                LedgerCategory category = bucket.categoryId() == null
+                        ? null : categoryById.get(bucket.categoryId());
+                if (category != null && category.isExcludeFromSettlement()) {
+                    continue;
+                }
+                monthExpense += bucket.amount();
+            }
+            income += incomeIn(memberId, period);
+            expense += monthExpense;
+
+            // 아직 오지 않은 달(전부 0)은 최고·최저 후보가 아니다.
+            if (monthExpense <= 0) {
+                continue;
+            }
+            if (monthExpense > highestAmount) {
+                highestAmount = monthExpense;
+                highest = month.toString();
+            }
+            if (monthExpense < lowestAmount) {
+                lowestAmount = monthExpense;
+                lowest = month.toString();
+            }
+        }
+
+        // 수입이 없으면 저축률은 0이 아니라 「셀 수 없다」다.
+        Double savingRate = income <= 0 ? null : (double) (income - expense) / income;
+        return new LedgerStatsResponse.Settlement(
+                year, income, expense, savingRate, highest, lowest);
+    }
+
+    /**
+     * 다른 관점으로 보면 얼마가 달라지는가.
+     *
+     * <p>이유를 함께 준다 — 벌어지는 원인은 거의 언제나 <b>할부</b>이거나 <b>사이클 경계</b>다.
+     * 이유 없이 숫자만 주면 사람은 둘 중 어느 쪽을 믿을지 정할 수 없다.
+     */
+    private LedgerStatsResponse.PerspectiveDiff perspectiveDiff(Long memberId,
+                                                                LedgerPeriods.Period period,
+                                                                LedgerPerspective perspective,
+                                                                long total) {
+        LedgerPerspective other = perspective == LedgerPerspective.SPEND
+                ? LedgerPerspective.BILLING : LedgerPerspective.SPEND;
+        long otherTotal = LedgerCategorySpending.total(
+                perspectiveSpending.byCategory(memberId, period, other));
+        long diff = otherTotal - total;
+        return new LedgerStatsResponse.PerspectiveDiff(
+                other, otherTotal, diff, diff == 0 ? null : reasonFor(memberId, period));
+    }
+
+    /**
+     * 왜 벌어지나. <b>원인이 둘이면 둘 다 말한다.</b>
+     *
+     * <p>로컬에서 확인하다 드러난 것이다 — 카드 사용 18만과 할부 30만이 함께 있는 달에
+     * 「할부 때문」이라고만 적으니 <b>18만이 설명되지 않은 채 남았다.</b> 차이가 48만인데
+     * 이유가 30만어치뿐이면 사람은 나머지를 자기가 찾아야 한다.
+     */
+    private String reasonFor(Long memberId, LedgerPeriods.Period period) {
+        boolean hasInstallment = transactionRepository
+                .existsInstallmentBetween(memberId, period.start(), period.end());
+        boolean hasCardUsage = transactionRepository
+                .existsCardUsageBetween(memberId, period.start(), period.end());
+        if (hasInstallment && hasCardUsage) {
+            return "할부와 카드 사이클 경계 때문";
+        }
+        return hasInstallment ? "할부 때문" : "카드 사이클 경계 때문";
+    }
+
+    private long incomeIn(Long memberId, LedgerPeriods.Period period) {
+        return transactionRepository.sumIncome(
+                memberId, LedgerTransactionStatus.CONFIRMED, period.start(), period.end());
+    }
+
+    private LedgerCostType costTypeOf(Long categoryId, Map<Long, LedgerCategory> categoryById) {
+        if (categoryId == null) {
+            return null;
+        }
+        LedgerCategory category = categoryById.get(categoryId);
+        return category == null ? null : category.getCostType();
     }
 
     private LedgerStatsResponse.Comparison.Bucket bucketFor(Long memberId,
                                                             LedgerPeriods.Period period,
+                                                            LedgerPerspective perspective,
                                                             long current) {
-        long total = LedgerCategorySpending.total(spendingIn(memberId, period));
+        long total = LedgerCategorySpending.total(
+                perspectiveSpending.byCategory(memberId, period, perspective));
         return new LedgerStatsResponse.Comparison.Bucket(
                 period.start(), period.end(), total, current - total);
-    }
-
-    private List<LedgerCategorySpending.Bucket> spendingIn(Long memberId,
-                                                           LedgerPeriods.Period period) {
-        return LedgerCategorySpending.netExpense(
-                transactionRepository.sumByCategoryAndFlow(
-                        memberId, LedgerTransactionStatus.CONFIRMED,
-                        period.start(), period.end()));
     }
 }

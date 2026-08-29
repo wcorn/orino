@@ -34,6 +34,21 @@ public class LedgerUpcomingController {
         return ApiResponse.success(upcomingService.upcoming(memberId, days));
     }
 
+    /**
+     * 일자별 예상 잔액 곡선(§8.4).
+     *
+     * <p>월말 숫자 하나로는 못 잡는 것을 잡는다 — 25일에 청약이 빠지고 나면 바닥인데
+     * 월말에는 급여가 들어와 괜찮아 보이는 달이 있다.
+     *
+     * <p><b>관점 파라미터를 받지 않는다.</b> 예상 잔액은 언제나 청구 기준이다(§10.1).
+     */
+    @GetMapping("/upcoming/balance-curve")
+    public ApiResponse<LedgerBalanceCurve> balanceCurve(
+            @AuthenticationPrincipal Long memberId,
+            @RequestParam(defaultValue = "30") int days) {
+        return ApiResponse.success(upcomingService.balanceCurve(memberId, days));
+    }
+
     /** 일별 수입·지출. <b>과거는 확정, 미래는 예정</b>을 따로 담아 화면이 연하게 그린다. */
     @GetMapping("/transactions/calendar")
     public ApiResponse<LedgerUpcomingDtos.CalendarResponse> calendar(

@@ -41,17 +41,20 @@ public class LedgerCardController {
 
     private final LedgerStatementService statementService;
     private final LedgerInstallmentService installmentService;
+    private final LedgerUsageGoalService usageGoalService;
     private final LedgerAssetRepository assetRepository;
     private final LedgerTransactionRepository transactionRepository;
     private final LedgerClock clock;
 
     public LedgerCardController(LedgerStatementService statementService,
                                 LedgerInstallmentService installmentService,
+                                LedgerUsageGoalService usageGoalService,
                                 LedgerAssetRepository assetRepository,
                                 LedgerTransactionRepository transactionRepository,
                                 LedgerClock clock) {
         this.statementService = statementService;
         this.installmentService = installmentService;
+        this.usageGoalService = usageGoalService;
         this.assetRepository = assetRepository;
         this.transactionRepository = transactionRepository;
         this.clock = clock;
@@ -81,7 +84,8 @@ public class LedgerCardController {
                     asset.getPaymentAssetId(), nameOf(assets, asset.getPaymentAssetId()),
                     asset.getCreditLimit(), asset.hasBillingCycle(),
                     balances.unpaidOf(asset.getId()) == null ? 0 : balances.unpaidOf(asset.getId()),
-                    currentStatementOf(memberId, asset)));
+                    currentStatementOf(memberId, asset),
+                    usageGoalService.progressOf(asset)));
         }
         return ApiResponse.success(new LedgerCardDtos.CardListResponse(
                 cards, installmentService.outstandingPrincipal(memberId)));
@@ -100,6 +104,26 @@ public class LedgerCardController {
         }
         card.updateBillingCycle(request.cycleStartDay(), request.cycleCloseDay(),
                 request.paymentDay(), request.paymentAssetId(), request.creditLimit());
+        return ApiResponse.success();
+    }
+
+    /**
+     * 실적 조건 등록·해제(§7.6).
+     *
+     * <p>기준을 <b>카드마다</b> 받는다 — 전역 설정으로 두면 카드 두 장에서 한쪽이 반드시 틀린다.
+     */
+    @PatchMapping("/cards/{id}/usage-goal")
+    @Transactional
+    public ApiResponse<Void> updateUsageGoal(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @Valid @RequestBody LedgerCardDtos.UsageGoalRequest request) {
+        LedgerAsset card = assetRepository.findByIdAndMemberId(id, memberId)
+                .orElseThrow(() -> new CustomException(ErrorCode.LEDGER_ASSET_NOT_FOUND));
+        if (card.getType() != LedgerAssetType.CREDIT_CARD) {
+            throw new CustomException(ErrorCode.LEDGER_NOT_A_CREDIT_CARD);
+        }
+        card.updateUsageGoal(request.goalAmount(), request.basis());
         return ApiResponse.success();
     }
 
