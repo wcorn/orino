@@ -5,6 +5,9 @@ on:
     branches: [ main ]
     paths:
       - 'be/**'
+      # 워크플로우 자신이 바뀌어도 돈다. 이게 없으면 CI 정의를 고친 PR에서 그 CI가
+      # 한 번도 돌지 않은 채 머지된다.
+      - '.github/workflows/be-ci.yml'
 
 env:
   REGISTRY: ghcr.io
@@ -19,6 +22,8 @@ concurrency:
 # 한 잡에서 순차로 돌리면 wall-clock = 합(테스트+이미지빌드)이 되므로 별도 잡으로 병렬 실행한다.
 jobs:
   test:
+    # 러너는 x86_64로 둔다. ARM 러너(ubuntu-24.04-arm)가 1분14초 빨랐지만(6m09s vs 7m23s),
+    # 배포 노드가 x86_64라 테스트만 다른 아키텍처에서 도는 셈이 된다. 그만큼은 아니다.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,9 +37,14 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build and Test
+      # `build`가 아니라 `check`다. bootJar는 image-scan 잡이 Dockerfile builder 스테이지에서
+      # 어차피 만들고, 여기서 또 만들 이유가 없다.
+      - name: Test and Checkstyle
         working-directory: be
-        run: ./gradlew build
+        env:
+          # 러너는 잡이 끝나면 통째로 버려진다. 남은 컨테이너를 걷어낼 ryuk를 띄울 이유가 없다.
+          TESTCONTAINERS_RYUK_DISABLED: 'true'
+        run: ./gradlew check
 
   image-scan:
     runs-on: ubuntu-latest
