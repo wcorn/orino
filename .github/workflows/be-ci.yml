@@ -5,6 +5,9 @@ on:
     branches: [ main ]
     paths:
       - 'be/**'
+      # 워크플로우 자신이 바뀌어도 돈다. 이게 없으면 CI 정의를 고친 PR에서 그 CI가
+      # 한 번도 돌지 않은 채 머지된다.
+      - '.github/workflows/be-ci.yml'
 
 env:
   REGISTRY: ghcr.io
