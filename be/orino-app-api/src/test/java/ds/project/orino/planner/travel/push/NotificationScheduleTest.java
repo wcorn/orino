@@ -84,19 +84,10 @@ class NotificationScheduleTest extends ApiTestSupport {
         return ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();
     }
 
-    /**
-     * 이동시간 캐시(Redis)는 테스트 사이에 살아 있다. 좌표가 같으면 앞 테스트가 캐시해 둔
-     * 이동시간이 새어 들어와, 스텁을 비워도 값이 나온다.
-     */
-    private static BigDecimal jitter(BigDecimal base) {
-        int nudge = Math.abs(UUID.randomUUID().hashCode() % 9000) + 1000;
-        return base.add(new BigDecimal("0.0000001").multiply(BigDecimal.valueOf(nudge)));
-    }
-
     private Long placeAt(String name, BigDecimal lat, BigDecimal lng) {
         TravelPlace place = placeRepository.save(
                 TravelPlace.fromGoogle(memberId, "g-" + UUID.randomUUID(), name));
-        place.updateBasics(name, jitter(lat), jitter(lng), null, null);
+        place.updateBasics(name, lat, lng, null, null);
         return placeRepository.saveAndFlush(place).getId();
     }
 

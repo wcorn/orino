@@ -66,17 +66,6 @@ class BoardV21Test extends ApiTestSupport {
     private long nikko;
     private String tokyoLat;
 
-    /**
-     * 날씨 캐시(Redis)는 테스트 사이에 살아 있다. 좌표가 같으면 앞 테스트가 캐시해 둔 예보가
-     * 새어 들어와 <b>호출 횟수 검증이 무너진다</b> — 이 테스트의 절반이 그 숫자다.
-     */
-    private static String jitter(String base) {
-        int nudge = Math.abs(UUID.randomUUID().hashCode() % 9000) + 1000;
-        return new BigDecimal(base)
-                .add(new BigDecimal("0.0000001").multiply(BigDecimal.valueOf(nudge)))
-                .toPlainString();
-    }
-
     @BeforeEach
     void setUp() throws Exception {
         dbCleaner.clean();
@@ -88,9 +77,10 @@ class BoardV21Test extends ApiTestSupport {
         memberRepository.save(MemberFixture.create());
         authHeader = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc);
         // 좌표가 있어야 날씨를 조회한다. 도시마다 다른 좌표를 줘야 캐시가 갈린다.
-        tokyoLat = jitter("35.6812");
+        // 흔들어 놓을 필요는 없다 — dbCleaner가 Redis까지 비운다(#1294).
+        tokyoLat = "35.6812";
         tokyo = city("도쿄", tokyoLat, "139.7671");
-        nikko = city("닛코", jitter("36.7199"), "139.6982");
+        nikko = city("닛코", "36.7199", "139.6982");
     }
 
     @Nested

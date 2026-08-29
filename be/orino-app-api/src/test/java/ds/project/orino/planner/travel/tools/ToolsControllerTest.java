@@ -24,7 +24,6 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
@@ -61,21 +60,11 @@ class ToolsControllerTest extends ApiTestSupport {
         authHeader = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc);
     }
 
-    /**
-     * 좌표를 흔들어 캐시가 테스트 사이에 새지 않게 한다 — Redis 컨테이너는 계속 살아 있고
-     * 캐시 키가 좌표라서다.
-     */
-    private static BigDecimal jitter(String base) {
-        int nudge = Math.abs(UUID.randomUUID().hashCode() % 9000) + 1000;
-        return new BigDecimal(base).add(
-                new BigDecimal("0.0000001").multiply(BigDecimal.valueOf(nudge)));
-    }
-
     private long createTrip(boolean withCoordinates) throws Exception {
         // 날씨 좌표는 여행이 아니라 기준 도시가 갖는다. 좌표가 없는 도시면 날씨도 없다.
         long cityId = withCoordinates
                 ? TravelCityFixture.createCity(mockMvc, authHeader, "도쿄", "Asia/Tokyo", "JPY",
-                        jitter("35.6764").toPlainString(), jitter("139.6500").toPlainString())
+                        "35.6764", "139.6500")
                 : TravelCityFixture.createCity(mockMvc, authHeader, "도쿄", "Asia/Tokyo", "JPY");
         String body = mockMvc.perform(post("/api/travel/trips")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
@@ -93,9 +82,9 @@ class ToolsControllerTest extends ApiTestSupport {
     /** 도쿄 1일 → 닛코 1일. 날짜마다 도시가 다른 가장 작은 여행이다. */
     private long createTwoCityTrip() throws Exception {
         long tokyo = TravelCityFixture.createCity(mockMvc, authHeader, "도쿄", "Asia/Tokyo", "JPY",
-                jitter("35.6764").toPlainString(), jitter("139.6500").toPlainString());
+                "35.6764", "139.6500");
         long nikko = TravelCityFixture.createCity(mockMvc, authHeader, "닛코", "Asia/Tokyo", "JPY",
-                jitter("36.7500").toPlainString(), jitter("139.6000").toPlainString());
+                "36.7500", "139.6000");
         String body = mockMvc.perform(post("/api/travel/trips")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
