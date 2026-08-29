@@ -56,15 +56,19 @@ class LedgerSummaryAndSettingsTest extends ApiTestSupport {
         return LocalDate.ofInstant(clock.instant(), TEST_ZONE);
     }
 
+    /**
+     * v1에서는 이 셋이 {@code null}이었다 — 카드 청구서와 정기 항목이 없으면 셀 수 없었고,
+     * 0으로 채우면 「미납 없음」이라는 거짓말이 됐다. v1.5(#1264)에서 셀 수 있게 됐다.
+     */
     @Test
-    @DisplayName("v1.5에서 채워질 값은 0이 아니라 null이다 — 「없다」와 「모른다」는 다르다")
-    void v15ValuesAreNull() throws Exception {
+    @DisplayName("v1.5에서 월말 예상 잔액 · 남은 출금 · 미납 건수가 채워진다")
+    void v15ValuesAreFilled() throws Exception {
         mockMvc.perform(get("/api/ledger/summary")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.monthEndBalance").doesNotExist())
-                .andExpect(jsonPath("$.data.remainingOutflow").doesNotExist())
-                .andExpect(jsonPath("$.data.overdueCount").doesNotExist());
+                .andExpect(jsonPath("$.data.monthEndBalance").value(0))
+                .andExpect(jsonPath("$.data.remainingOutflow").value(0))
+                .andExpect(jsonPath("$.data.overdueCount").value(0));
     }
 
     @Test

@@ -1,5 +1,6 @@
 package ds.project.orino.domain.planner.ledger.repository;
 
+import ds.project.orino.domain.planner.ledger.entity.LedgerInstallment;
 import ds.project.orino.domain.planner.ledger.entity.LedgerInstallmentRound;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -25,6 +26,24 @@ public interface LedgerInstallmentRoundRepository
     List<LedgerInstallmentRound> findUnattached(
             @Param("installmentIds") Collection<Long> installmentIds,
             @Param("billingMonth") String billingMonth);
+
+    /**
+     * 아직 <b>어느 청구서에도 안 붙은</b> 남은 회차. 예정 목록의 네 번째 출처다.
+     *
+     * <p>붙은 회차를 함께 세면 안 된다 — 그건 이미 그 청구서의 청구액에 들어가 있고,
+     * 카드 결제 예정이 같은 돈을 한 번 더 세게 된다.
+     */
+    @Query("""
+            SELECT r FROM LedgerInstallmentRound r
+            WHERE r.settled = false
+              AND r.statementId IS NULL
+              AND r.installmentId IN (
+                  SELECT i.id FROM LedgerInstallment i
+                  WHERE i.memberId = :memberId AND i.status = :status)
+            ORDER BY r.billingMonth ASC, r.roundNo ASC
+            """)
+    List<LedgerInstallmentRound> findUnbilledByMember(@Param("memberId") Long memberId,
+                                                      @Param("status") LedgerInstallment.Status status);
 
     /**
      * 잔여 원금 — 아직 내지 않은 회차의 합.

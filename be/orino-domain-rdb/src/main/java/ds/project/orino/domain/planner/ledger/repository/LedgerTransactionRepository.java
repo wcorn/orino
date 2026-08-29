@@ -46,6 +46,37 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
     /** 한 번이라도 적혔는가. 무료 체험 종료 임박 신호가 이 사실로 갈린다. */
     boolean existsByRecurringIdAndDeletedAtIsNull(Long recurringId);
 
+    /**
+     * 직접 예약 — 예정의 네 출처 중 <b>유일하게 실체화된</b> 것이다(확정 명세 §8.1).
+     *
+     * <p>재산세·보험 갱신·명절 경조사는 규칙으로 만들 수 없지만 잔액 계획에는 반드시 들어간다.
+     */
+    List<LedgerTransaction> findAllByMemberIdAndStatusAndDeletedAtIsNullAndOccurredOnBetweenOrderByOccurredOnAscIdAsc(
+            Long memberId, LedgerTransactionStatus status, LocalDate from, LocalDate to);
+
+    /** 예정일이 도래한 직접 예약. 배치가 확정으로 승격한다. */
+    List<LedgerTransaction> findAllByStatusAndDeletedAtIsNullAndOccurredOnLessThanEqual(
+            LedgerTransactionStatus status, LocalDate date);
+
+    /**
+     * 날짜별·유형별·상태별 합계. 캘린더가 <b>과거는 확정, 미래는 예정</b>으로 나눠 그린다.
+     *
+     * <p>한 질의로 둘을 함께 가져오는 이유는 경계 때문이다 — 오늘 날짜에는 이미 쓴 것과
+     * 아직 안 나간 것이 함께 있을 수 있고, 그 둘을 다른 질의로 뽑으면 합이 안 맞는 날이 생긴다.
+     */
+    @Query("""
+            SELECT t.occurredOn AS date, t.type AS type, t.status AS status,
+                   SUM(t.amount) AS total
+            FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.deletedAt IS NULL
+              AND t.occurredOn BETWEEN :from AND :to
+            GROUP BY t.occurredOn, t.type, t.status
+            """)
+    List<DailyFlowTotal> sumDailyByTypeAndStatus(@Param("memberId") Long memberId,
+                                                 @Param("from") LocalDate from,
+                                                 @Param("to") LocalDate to);
+
     /** 상쇄 거래들. 원 거래를 지우지 않으므로 「이 거래가 얼마나 환불됐나」는 여기서 나온다. */
     List<LedgerTransaction> findAllByMemberIdAndRefundOfIdAndDeletedAtIsNull(
             Long memberId, Long refundOfId);
@@ -254,6 +285,17 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
         LedgerFlow getType();
 
         LedgerTransactionSource getSource();
+
+        long getTotal();
+    }
+
+    /** 날짜·유형·상태별 합계 한 줄. 캘린더가 읽는다. */
+    interface DailyFlowTotal {
+        LocalDate getDate();
+
+        LedgerFlow getType();
+
+        LedgerTransactionStatus getStatus();
 
         long getTotal();
     }

@@ -65,17 +65,20 @@ class LedgerDashboardAndStatsTest extends ApiTestSupport {
     @DisplayName("대시보드 — v1은 껍데기다")
     class Dashboard {
 
+        /**
+         * v1에서는 이 블록들을 <b>아예 내리지 않았다</b>(D-7) — 예정이 없으면 그릴 수 없어서
+         * 빈 카드를 만드느니 필드를 없앴다. v1.5(#1264)에서 예정이 생겨 자리가 채워졌다.
+         */
         @Test
-        @DisplayName("v1.5 블록은 빈 값이 아니라 아예 내리지 않는다")
-        void omitsV15Blocks() throws Exception {
+        @DisplayName("v1.5에서 2축 요약·다가오는 결제·순자산 자리가 생긴다")
+        void hasV15Blocks() throws Exception {
             mockMvc.perform(get("/api/ledger/dashboard")
                             .header(HttpHeaders.AUTHORIZATION, authHeader))
                     .andExpect(status().isOk())
-                    // 자리를 비워 두면 화면이 빈 카드를 그리고, 0으로 채우면 거짓말이 된다.
-                    .andExpect(jsonPath("$.data.cashflow").doesNotExist())
-                    .andExpect(jsonPath("$.data.upcoming").doesNotExist())
-                    .andExpect(jsonPath("$.data.overdue").doesNotExist())
-                    .andExpect(jsonPath("$.data.netWorth").doesNotExist());
+                    .andExpect(jsonPath("$.data.cashflow").exists())
+                    .andExpect(jsonPath("$.data.upcoming").exists())
+                    .andExpect(jsonPath("$.data.netWorth").exists())
+                    .andExpect(jsonPath("$.data.todo.overdue").value(0));
         }
 
         @Test

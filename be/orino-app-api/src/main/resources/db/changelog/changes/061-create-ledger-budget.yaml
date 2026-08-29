@@ -1,0 +1,129 @@
+databaseChangeLog:
+  # 예산 (#1264, Epic #1257 v1.5).
+  #
+  # 예정(4출처 UNION)은 테이블이 없다 — 규칙·청구서·할부에서 파생 계산하고 직접 예약만
+  # 이미 `ledger_transaction`에 실체화돼 있다(status=SCHEDULED). 그래서 이 파일에는
+  # 예산 두 표만 있다.
+
+  - changeSet:
+      id: 061-create-ledger-budget
+      author: wcorn
+      comment: 월 예산. 기간을 계산하지 않고 저장한다 — 월 시작일을 바꿔도 과거가 안 흔들리게.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_budget
+      changes:
+        - createTable:
+            tableName: ledger_budget
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # `2026-08`. 월 시작일 기준 기간의 이름이고, 언제나 시작한 달이다 —
+              # 25일 시작이면 7/25~8/24가 「8월」이 아니라 「7월」이다.
+              - column:
+                  name: period
+                  type: CHAR(7)
+                  constraints:
+                    nullable: false
+              # 실제 구간을 저장한다. 나중에 month_start_day를 바꾸면 과거 예산의 구간이
+              # 소급해서 달라지고, 그러면 「지난달 같은 시점 대비」가 거짓말이 된다.
+              - column:
+                  name: period_start
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: period_end
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: total_amount
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: ledger_budget
+            columnNames: member_id, period
+            constraintName: uk_ledger_budget_member_period
+      rollback:
+        - dropTable:
+            tableName: ledger_budget
+
+  - changeSet:
+      id: 061-create-ledger-budget-category
+      author: wcorn
+      comment: 카테고리별 한도. 월마다 따로 정한다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_budget_category
+      changes:
+        - createTable:
+            tableName: ledger_budget_category
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: budget_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: category_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: amount
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: ledger_budget_category
+            baseColumnNames: budget_id
+            constraintName: fk_ledger_budget_category_budget
+            referencedTableName: ledger_budget
+            referencedColumnNames: id
+        - addForeignKeyConstraint:
+            baseTableName: ledger_budget_category
+            baseColumnNames: category_id
+            constraintName: fk_ledger_budget_category_category
+            referencedTableName: ledger_category
+            referencedColumnNames: id
+        - addUniqueConstraint:
+            tableName: ledger_budget_category
+            columnNames: budget_id, category_id
+            constraintName: uk_ledger_budget_category
+      # 테이블째 지운다. 자동 롤백은 인덱스를 FK보다 먼저 떼려 해서 MySQL이 거부한다(060과 같다).
+      rollback:
+        - dropTable:
+            tableName: ledger_budget_category

@@ -21,6 +21,7 @@ import ds.project.orino.planner.ledger.transaction.dto.TransactionView;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -43,6 +44,11 @@ public class LedgerStatementService {
 
     private static final List<LedgerStatementStatus> UNSETTLED =
             List.of(LedgerStatementStatus.CONFIRMED, LedgerStatementStatus.PARTIAL);
+
+    /** 아직 돈이 다 안 나간 것 전부 — 집계 중까지 포함한다. 미납 판정과는 다른 목록이다. */
+    private static final List<LedgerStatementStatus> PAYABLE =
+            List.of(LedgerStatementStatus.COLLECTING, LedgerStatementStatus.CONFIRMED,
+                    LedgerStatementStatus.PARTIAL);
 
     /** 프리셋 카테고리 이름. v1에서 이 칸을 미리 만들어 둔 이유가 여기서 쓰인다. */
     private static final String INTEREST_FEE_CATEGORY = "이자/수수료";
@@ -137,6 +143,18 @@ public class LedgerStatementService {
     public List<LedgerStatement> upcoming(Long memberId, int days) {
         return statementRepository.findUpcoming(
                 memberId, UNSETTLED, clock.today(), clock.today().plusDays(days));
+    }
+
+    /**
+     * 그 날짜까지 결제일이 오는, 아직 돈이 다 안 나간 청구서. 예정 목록의 세 번째 출처다(#1264).
+     *
+     * <p><b>집계 중(COLLECTING)도 포함한다.</b> 지금 열려 있는 사이클이야말로 다음 결제일에
+     * 빠질 돈이고, 그게 이 모듈에서 사람을 가장 놀라게 하는 금액이다 — 마감된 것만 세면
+     * 「이번 달 카드값」이 예정 목록에서 통째로 빠진다.
+     */
+    @Transactional(readOnly = true)
+    public List<LedgerStatement> statementsDueUntil(Long memberId, LocalDate to) {
+        return statementRepository.findUpcoming(memberId, PAYABLE, clock.today(), to);
     }
 
     /**

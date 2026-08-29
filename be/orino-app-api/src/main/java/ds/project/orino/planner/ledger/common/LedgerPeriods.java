@@ -4,6 +4,7 @@ import ds.project.orino.domain.planner.ledger.entity.LedgerSettings;
 
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.function.UnaryOperator;
 
 /**
  * 「이번 달」의 경계. <b>월 시작일 설정이 반영된 구간</b>이다.
@@ -14,6 +15,9 @@ import java.time.YearMonth;
  *
  * <p>월 시작일은 <b>예산 기간에만</b> 쓴다(확정 명세 §9). 카드 사이클과 정기 주기는 여기에
  * 영향받지 않는다.
+ *
+ * <p>주말 보정({@code adjust})은 <b>구간의 양끝에 함께</b> 적용된다. 시작만 당기면 앞 구간의
+ * 끝과 겹치거나 하루가 빈다.
  */
 public final class LedgerPeriods {
 
@@ -26,8 +30,16 @@ public final class LedgerPeriods {
 
     /** {@code anchor}가 속한 구간. */
     public static Period containing(LocalDate anchor, int monthStartDay) {
-        LocalDate start = startOnOrBefore(anchor, monthStartDay);
-        return new Period(start, endOf(start, monthStartDay));
+        return containing(anchor, monthStartDay, UnaryOperator.identity());
+    }
+
+    /**
+     * 보정을 입힌 구간. 25일 시작인데 그날이 토요일이면 급여는 24일(금)에 들어온다 —
+     * 보정이 없으면 구간이 이틀 어긋난 채로 예산·요약·통계에 그대로 실린다.
+     */
+    public static Period containing(LocalDate anchor, int monthStartDay,
+                                    UnaryOperator<LocalDate> adjust) {
+        return of(monthOf(anchor, monthStartDay, adjust), monthStartDay, adjust);
     }
 
     /**
@@ -37,21 +49,36 @@ public final class LedgerPeriods {
      * 「8월 급여로 사는 기간」이 사람이 그 구간을 부르는 이름이기 때문이다.
      */
     public static Period of(YearMonth month, int monthStartDay) {
-        LocalDate start = startIn(month, monthStartDay);
-        return new Period(start, endOf(start, monthStartDay));
+        return of(month, monthStartDay, UnaryOperator.identity());
     }
 
-    private static LocalDate startOnOrBefore(LocalDate anchor, int monthStartDay) {
-        LocalDate candidate = startIn(YearMonth.from(anchor), monthStartDay);
-        // 시작일 전이면 아직 지난 구간에 있다.
-        return anchor.isBefore(candidate)
-                ? startIn(YearMonth.from(anchor).minusMonths(1), monthStartDay)
-                : candidate;
+    public static Period of(YearMonth month, int monthStartDay,
+                            UnaryOperator<LocalDate> adjust) {
+        LocalDate start = startOf(month, monthStartDay, adjust);
+        return new Period(start, startOf(month.plusMonths(1), monthStartDay, adjust).minusDays(1));
     }
 
-    private static LocalDate endOf(LocalDate start, int monthStartDay) {
-        LocalDate next = startIn(YearMonth.from(start).plusMonths(1), monthStartDay);
-        return next.minusDays(1);
+    /**
+     * 그 날짜를 품는 구간이 <b>시작한 달</b>.
+     *
+     * <p>보정 때문에 구간이 앞뒤로 끌려갈 수 있어 이웃 달까지 본다 — 시작일이 1일인데 그날이
+     * 일요일이면 그 구간은 <b>지난달 금요일</b>에 시작한다. 후보 중 시작일이 {@code anchor}를
+     * 넘지 않는 가장 늦은 달이 답이다.
+     */
+    private static YearMonth monthOf(LocalDate anchor, int monthStartDay,
+                                     UnaryOperator<LocalDate> adjust) {
+        YearMonth base = YearMonth.from(anchor);
+        for (YearMonth candidate : new YearMonth[]{base.plusMonths(1), base, base.minusMonths(1)}) {
+            if (!anchor.isBefore(startOf(candidate, monthStartDay, adjust))) {
+                return candidate;
+            }
+        }
+        return base.minusMonths(1);
+    }
+
+    private static LocalDate startOf(YearMonth month, int monthStartDay,
+                                     UnaryOperator<LocalDate> adjust) {
+        return adjust.apply(startIn(month, monthStartDay));
     }
 
     /** 그 달에 실제로 존재하는 시작일. 말일(99)과 짧은 달을 함께 처리한다. */

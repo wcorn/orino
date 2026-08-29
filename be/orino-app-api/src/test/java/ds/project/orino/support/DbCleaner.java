@@ -14,6 +14,8 @@ public class DbCleaner {
             "ledger_transaction_template",
             "ledger_transaction_tag",
             "ledger_transaction",
+            "ledger_budget_category",
+            "ledger_budget",
             "ledger_recurring_override",
             "ledger_recurring_amount_history",
             "ledger_recurring",
