@@ -5,13 +5,11 @@ import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -31,7 +29,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 지출 합계에 섞이지 않는 이체, 미래 날짜의 예정 강제, 지우지 않는 상쇄. 넷 중 하나라도
  * 무너지면 「이번 달 얼마 쓰게 되고 월말에 얼마 남나」에 답할 수 없다.
  */
-@Import(StubExternalsConfig.class)
 class LedgerTransactionControllerTest extends ApiTestSupport {
 
     @Autowired

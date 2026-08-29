@@ -10,7 +10,7 @@ import ds.project.orino.domain.planner.travel.repository.TripStayRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
+import ds.project.orino.support.FixedClock;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,7 +18,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -42,7 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>합계와 기간이 어긋나도 저장을 막지 않는 것이 규칙이라, 어긋난 채로 저장한 결과가 무엇인지가
  * 곧 사양이다. 400을 기대하는 테스트가 여기 없는 이유다.
  */
-@Import(FixedClockConfig.class)
+@FixedClock
 class TripLegInputTest extends ApiTestSupport {
 
     @Autowired

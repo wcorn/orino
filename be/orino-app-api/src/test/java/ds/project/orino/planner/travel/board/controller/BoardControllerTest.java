@@ -5,14 +5,13 @@ import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
+import ds.project.orino.support.FixedClock;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -28,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>고정 시각 {@code 2026-01-15T02:00:00Z}. 날짜를 생략했을 때 서버가 무엇을 고르는지가
  * 이 화면의 핵심이라 진행 중/예정 여행을 나눠 본다.
  */
-@Import(FixedClockConfig.class)
+@FixedClock
 class BoardControllerTest extends ApiTestSupport {
 
     @Autowired

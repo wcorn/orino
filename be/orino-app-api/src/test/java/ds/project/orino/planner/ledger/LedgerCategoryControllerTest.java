@@ -6,12 +6,10 @@ import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -31,7 +29,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>통합이 이 클래스에서 가장 중요하다. <b>거래가 하나도 사라지지 않아야</b> 하고,
  * 원본 카테고리도 지워지지 않고 보관돼야 한다 — 지우면 과거 통계에서 그 이름이 사라진다.
  */
-@Import(StubExternalsConfig.class)
 class LedgerCategoryControllerTest extends ApiTestSupport {
 
     @Autowired

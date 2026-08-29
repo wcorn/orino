@@ -4,15 +4,13 @@ import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
+import ds.project.orino.support.FixedClock;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -35,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>시계는 2026-01-15에 고정한다.
  */
-@Import({StubExternalsConfig.class, FixedClockConfig.class})
+@FixedClock
 class LedgerBudgetTest extends ApiTestSupport {
 
     @Autowired

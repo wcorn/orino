@@ -5,13 +5,11 @@ import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -32,7 +30,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <b>원장에서 같은 값이 다시 나오느냐</b>다. 저장된 컬럼이라면 확인할 일도 없었을 것이고,
  * 바로 그 점이 이 설계를 고른 이유다.
  */
-@Import(StubExternalsConfig.class)
 class LedgerAssetControllerTest extends ApiTestSupport {
 
     @Autowired

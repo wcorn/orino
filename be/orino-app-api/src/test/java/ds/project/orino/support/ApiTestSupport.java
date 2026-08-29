@@ -3,6 +3,7 @@ package ds.project.orino.support;
 import ds.project.orino.common.time.StudyDay;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
@@ -26,6 +27,38 @@ public abstract class ApiTestSupport {
 
     @Autowired
     private WebApplicationContext context;
+
+    @Autowired
+    private TestClock testClock;
+
+    /**
+     * {@link FixedClock}이 붙어 있으면 그 시각으로 못박고, 없으면 실시각으로 되돌린다.
+     *
+     * <p>되돌리는 쪽이 중요하다 — 컨텍스트가 한 벌이라 시계도 한 개고, 앞선 클래스가 못박아
+     * 둔 시각이 그대로 남으면 다음 클래스가 엉뚱한 "지금"을 본다.
+     *
+     * <p>{@code @Nested} 안쪽 클래스는 자기 자신에 애너테이션이 없으면 바깥 클래스를 따라
+     * 올라간다. 예전에 {@code @Import}가 중첩 클래스로 상속되던 것과 같은 규칙이다.
+     */
+    @BeforeEach
+    void applyFixedClock() {
+        FixedClock fixedClock = findFixedClock(getClass());
+        if (fixedClock == null) {
+            testClock.release();
+        } else {
+            testClock.fixAt(Instant.parse(fixedClock.value()));
+        }
+    }
+
+    private static FixedClock findFixedClock(Class<?> testClass) {
+        for (Class<?> type = testClass; type != null; type = type.getEnclosingClass()) {
+            FixedClock found = AnnotationUtils.findAnnotation(type, FixedClock.class);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
+    }
 
     @BeforeEach
     void setUpMockMvc() {

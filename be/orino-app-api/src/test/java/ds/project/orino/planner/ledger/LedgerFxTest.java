@@ -8,12 +8,10 @@ import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -37,7 +35,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>고시표 캐시는 통화쌍과 무관한 전역 키라 테스트 사이에 샌다. 매번 지우고 시작한다.
  */
-@Import(StubExternalsConfig.class)
 class LedgerFxTest extends ApiTestSupport {
 
     private static final String FX_CACHE_KEY = "travel:fx:ecb";

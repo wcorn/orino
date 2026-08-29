@@ -13,14 +13,12 @@ import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
 import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -40,7 +38,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 예약 때가 아니라 <b>보내기 직전</b>에 한다 — 나중에 채운 날은 요약이 와야 하고, 다 지운
  * 날엔 "일정 0개"가 가면 안 된다.
  */
-@Import(StubExternalsConfig.class)
 class MorningSummaryTest extends ApiTestSupport {
 
     private static final String ENDPOINT = "https://fcm.googleapis.com/fcm/send/morning-device";

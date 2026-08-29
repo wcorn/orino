@@ -7,7 +7,7 @@ import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
+import ds.project.orino.support.FixedClock;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,7 +15,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -38,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>고정 시각은 {@code 2026-01-15T02:00:00Z}. 상태·D-day는 저장값이 아니라 이 시각과 각 여행의
  * 타임존으로 파생되므로, 날짜를 이 기준 전후로 놓아 세 상태를 모두 만든다.
  */
-@Import(FixedClockConfig.class)
+@FixedClock
 class TripControllerTest extends ApiTestSupport {
 
     @Autowired

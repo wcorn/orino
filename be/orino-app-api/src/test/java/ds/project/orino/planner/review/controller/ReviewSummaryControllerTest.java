@@ -13,13 +13,12 @@ import ds.project.orino.domain.planner.review.repository.ReviewScheduleRepositor
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
+import ds.project.orino.support.FixedClock;
 import ds.project.orino.support.MemberFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 
 import java.math.BigDecimal;
@@ -31,7 +30,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@Import(FixedClockConfig.class)
+@FixedClock
 class ReviewSummaryControllerTest extends ApiTestSupport {
 
     private static final LocalDate TODAY = LocalDate.of(2026, 1, 15);

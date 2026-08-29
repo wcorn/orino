@@ -10,7 +10,7 @@ import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
+import ds.project.orino.support.FixedClock;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,7 +18,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -40,7 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 옛 시각에 남으면 사용자가 알아차릴 방법이 없다. 그래서 알림의 {@code scheduled_at}을
  * 직접 확인한다.
  */
-@Import(FixedClockConfig.class)
+@FixedClock
 class TripDayControllerTest extends ApiTestSupport {
 
     @Autowired

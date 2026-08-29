@@ -10,14 +10,12 @@ import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
 import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -36,7 +34,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 장소 프록시 통합 테스트. 외부 호출만 스텁으로 갈아끼우고 캐시(Redis)·저장(MySQL)은 실물을 쓴다 —
  * 캐시가 정말 호출을 줄이는지는 실제 Redis 없이는 확인되지 않는다.
  */
-@Import(StubExternalsConfig.class)
 class PlaceControllerTest extends ApiTestSupport {
 
     /**
