@@ -9,6 +9,7 @@ import ds.project.orino.domain.planner.ledger.entity.LedgerTransactionStatus;
 import ds.project.orino.domain.planner.ledger.repository.LedgerAssetRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerCategoryRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerTransactionRepository;
+import ds.project.orino.planner.ledger.common.LedgerBalances;
 import ds.project.orino.planner.ledger.common.LedgerBootstrap;
 import ds.project.orino.planner.ledger.common.LedgerCategorySpending;
 import ds.project.orino.planner.ledger.common.LedgerClock;
@@ -16,6 +17,7 @@ import ds.project.orino.planner.ledger.common.LedgerPeriods;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -78,6 +80,8 @@ public class LedgerStatsService {
         Map<Long, LedgerCategory> categoryById = new HashMap<>();
         categories.forEach(category -> categoryById.put(category.getId(), category));
 
+        List<LedgerAsset> assets =
+                assetRepository.findAllByMemberIdOrderByDisplayOrderAscIdAsc(memberId);
         List<LedgerCategorySpending.Bucket> buckets =
                 perspectiveSpending.byCategory(memberId, period, perspective);
         long total = LedgerCategorySpending.total(buckets);
@@ -87,9 +91,9 @@ public class LedgerStatsService {
                 perspective,
                 total,
                 categoryStats(buckets, categoryById, total),
-                assetStats(memberId, period, perspective, total),
+                assetStats(memberId, assets, period, perspective, total),
                 fixedVsVariable(buckets, categoryById),
-                monthly(memberId, label, startDay, categoryById),
+                monthly(memberId, label, startDay, categoryById, assets),
                 settlement(memberId, label, startDay, categoryById),
                 new LedgerStatsResponse.Comparison(
                         bucketFor(memberId, LedgerPeriods.of(label.minusMonths(1), startDay),
@@ -126,12 +130,12 @@ public class LedgerStatsService {
      * 88%를 차지하는 줄이 생기고, 막대는 칸을 넘어간다.
      */
     private List<LedgerStatsResponse.AssetStat> assetStats(Long memberId,
+                                                           List<LedgerAsset> assets,
                                                            LedgerPeriods.Period period,
                                                            LedgerPerspective perspective,
                                                            long total) {
         Map<Long, String> names = new HashMap<>();
-        for (LedgerAsset asset : assetRepository
-                .findAllByMemberIdOrderByDisplayOrderAscIdAsc(memberId)) {
+        for (LedgerAsset asset : assets) {
             names.put(asset.getId(), asset.getName());
         }
 
@@ -174,7 +178,8 @@ public class LedgerStatsService {
     /** 최근 열두 달. 연간 결산 막대와 고정/변동 추이가 이 배열 하나를 함께 읽는다. */
     private List<LedgerStatsResponse.MonthlyPoint> monthly(Long memberId, YearMonth label,
                                                            int startDay,
-                                                           Map<Long, LedgerCategory> categoryById) {
+                                                           Map<Long, LedgerCategory> categoryById,
+                                                           List<LedgerAsset> assets) {
         List<LedgerStatsResponse.MonthlyPoint> points = new ArrayList<>();
         for (int back = TREND_MONTHS - 1; back >= 0; back--) {
             YearMonth month = label.minusMonths(back);
@@ -191,11 +196,32 @@ public class LedgerStatsService {
                     split.fixed(),
                     split.variable(),
                     split.unclassified(),
-                    // 순자산 추이는 v2 다음이다. 자리만 두고 값은 아직 내리지 않는다 —
-                    // 0으로 채우면 「자산이 0원이었다」는 거짓말이 된다.
-                    null));
+                    netWorthAt(memberId, assets, period)));
         }
         return points;
+    }
+
+    /**
+     * 그 달 끝의 순자산.
+     *
+     * <p><b>아직 오지 않은 달은 {@code null}이다</b> — 0으로 채우면 「자산이 0원이었다」는
+     * 거짓말이 되고, 막대 차트에서 바닥까지 떨어진 달로 보인다.
+     *
+     * <p>진행 중인 달은 <b>오늘까지</b> 센다. 월말까지 세면 아직 일어나지 않은 일이 섞이는데,
+     * 예정 거래는 잔액을 바꾸지 않으므로 그건 그냥 오늘 값과 같아지거나 어긋난다.
+     */
+    private Long netWorthAt(Long memberId, List<LedgerAsset> assets,
+                            LedgerPeriods.Period period) {
+        LocalDate today = clock.today();
+        if (period.start().isAfter(today)) {
+            return null;
+        }
+        LocalDate until = period.end().isAfter(today) ? today : period.end();
+        return LedgerBalances.of(assets,
+                transactionRepository.sumConfirmedByAssetAndTypeUpTo(
+                        memberId, LedgerTransactionStatus.CONFIRMED, until),
+                transactionRepository.sumConfirmedByCounterAssetUpTo(
+                        memberId, LedgerTransactionStatus.CONFIRMED, until)).netWorth();
     }
 
     /**

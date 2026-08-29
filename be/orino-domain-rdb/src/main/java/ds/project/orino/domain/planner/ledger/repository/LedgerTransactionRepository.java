@@ -190,6 +190,41 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
                                                 @Param("status") LedgerTransactionStatus status);
 
     /**
+     * 어느 날까지의 자산별·유형별 확정 합계. <b>그 날의 순자산</b>이 여기서 나온다.
+     *
+     * <p>잔액을 저장하지 않으므로(D-8) 「그때 얼마였나」도 원장을 그 시점까지 다시 더해서
+     * 얻는다 — 월말 스냅샷 테이블을 두면 원장과 갈라지는 순간이 생기고, 그때 어느 쪽이
+     * 맞는지 알 방법이 없다.
+     */
+    @Query("""
+            SELECT t.assetId AS assetId, t.type AS type, SUM(t.amount) AS total
+            FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.status = :status
+              AND t.deletedAt IS NULL
+              AND t.occurredOn <= :until
+            GROUP BY t.assetId, t.type
+            """)
+    List<AssetFlowTotal> sumConfirmedByAssetAndTypeUpTo(@Param("memberId") Long memberId,
+                                                        @Param("status") LedgerTransactionStatus status,
+                                                        @Param("until") LocalDate until);
+
+    /** 그 날까지 이체로 <b>들어온</b> 돈. 위 질의는 나간 쪽만 본다. */
+    @Query("""
+            SELECT t.counterAssetId AS assetId, SUM(t.amount) AS total
+            FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.status = :status
+              AND t.deletedAt IS NULL
+              AND t.counterAssetId IS NOT NULL
+              AND t.occurredOn <= :until
+            GROUP BY t.counterAssetId
+            """)
+    List<AssetTotal> sumConfirmedByCounterAssetUpTo(@Param("memberId") Long memberId,
+                                                    @Param("status") LedgerTransactionStatus status,
+                                                    @Param("until") LocalDate until);
+
+    /**
      * 기간 합계 — 유형과 출처를 함께 묶는다.
      *
      * <p>출처가 필요한 이유는 <b>환불</b> 때문이다. 상쇄 거래는 반대 방향으로 적히지만

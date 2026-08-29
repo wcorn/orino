@@ -279,6 +279,79 @@ describe("카테고리 통계", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  /**
+   * 연간 결산 막대(#1267).
+   *
+   * <p>아직 오지 않은 달은 <b>0짜리 막대가 아니다</b> — 그렇게 그리면 「그 달엔 한 푼도
+   * 안 썼다」로 읽힌다.
+   */
+  it("아직 오지 않은 달은 스텁으로 남고 순자산 선에도 안 낀다", async () => {
+    renderAt("/ledger/stats", {
+      stats: {
+        total: 300000,
+        byCategory: [],
+        monthly: [
+          {
+            month: "2026-06",
+            expense: 200000,
+            income: 3000000,
+            fixed: 0,
+            variable: 200000,
+            unclassified: 0,
+            netWorth: 5000000,
+          },
+          {
+            month: "2026-07",
+            expense: 300000,
+            income: 3000000,
+            fixed: 0,
+            variable: 300000,
+            unclassified: 0,
+            netWorth: 5600000,
+          },
+          {
+            month: "2026-08",
+            expense: 0,
+            income: 0,
+            fixed: 0,
+            variable: 0,
+            unclassified: 0,
+            netWorth: null,
+          },
+        ],
+        settlement: { highestMonth: "2026-07", lowestMonth: "2026-06" },
+      },
+    });
+
+    // 값이 둘 이상 있어야 선이 그려진다. 미래 달은 그 둘에 안 낀다.
+    expect(await screen.findByText("순자산 추이")).toBeInTheDocument();
+    expect(screen.getByText("6월 이후 +600,000")).toBeInTheDocument();
+  });
+
+  it("순자산 값이 한 달뿐이면 추이를 그리지 않는다", async () => {
+    renderAt("/ledger/stats", {
+      stats: {
+        total: 300000,
+        byCategory: [],
+        monthly: [
+          {
+            month: "2026-08",
+            expense: 300000,
+            income: 0,
+            fixed: 0,
+            variable: 300000,
+            unclassified: 0,
+            netWorth: 5000000,
+          },
+        ],
+      },
+    });
+
+    await screen.findByText("2026년 결산");
+    // 점 하나는 추이가 아니다.
+    expect(screen.queryByText("순자산 추이")).toBeNull();
+  });
+
   it("분류가 덜 된 지출은 변동비로 세지 않는다", async () => {
     renderAt("/ledger/stats", {
       stats: {

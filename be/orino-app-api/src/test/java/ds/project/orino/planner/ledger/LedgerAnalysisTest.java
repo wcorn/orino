@@ -258,6 +258,56 @@ class LedgerAnalysisTest extends ApiTestSupport {
     }
 
     /**
+     * 순자산 추이.
+     *
+     * <p>잔액을 저장하지 않으므로(D-8) 「그때 얼마였나」도 원장을 그 시점까지 다시 더해서
+     * 얻는다. <b>아직 오지 않은 달은 값이 없다</b> — 0으로 채우면 막대가 바닥까지 떨어진
+     * 달로 보인다.
+     */
+    @Nested
+    @DisplayName("순자산 추이")
+    class NetWorthTrend {
+
+        @Test
+        @DisplayName("지난 달과 이번 달은 값이 있고, 다음 달은 없다")
+        void fillsPastAndCurrentOnly() throws Exception {
+            LedgerFixture.createTransaction(mockMvc, authHeader, """
+                    {"type": "INCOME", "amount": 3000000, "assetId": %d,
+                     "occurredOn": "2025-12-20", "title": "작년 급여"}
+                    """.formatted(checking));
+            expense(checking, 120000, "2026-01-10");
+
+            mockMvc.perform(get("/api/ledger/stats")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .param("period", "2026-01"))
+                    // 12칸의 마지막이 조회한 달(2026-01)이다.
+                    .andExpect(jsonPath("$.data.monthly[11].month").value("2026-01"))
+                    .andExpect(jsonPath("$.data.monthly[11].netWorth").value(2880000))
+                    // 지출 전, 급여만 들어온 달.
+                    .andExpect(jsonPath("$.data.monthly[10].month").value("2025-12"))
+                    .andExpect(jsonPath("$.data.monthly[10].netWorth").value(3000000))
+                    // 그보다 앞은 아무 일도 없었으니 0이다 — 「모른다」가 아니다.
+                    .andExpect(jsonPath("$.data.monthly[9].netWorth").value(0));
+        }
+
+        /** 카드 미결제는 <b>빚</b>이라 순자산을 깎는다 — 자산으로 세면 긁을수록 부자가 된다. */
+        @Test
+        @DisplayName("카드 사용은 순자산을 깎는다")
+        void cardUsageIsDebt() throws Exception {
+            LedgerFixture.createTransaction(mockMvc, authHeader, """
+                    {"type": "INCOME", "amount": 1000000, "assetId": %d,
+                     "occurredOn": "2026-01-05", "title": "급여"}
+                    """.formatted(checking));
+            expense(card, 180000, "2026-01-08");
+
+            mockMvc.perform(get("/api/ledger/stats")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .param("period", "2026-01"))
+                    .andExpect(jsonPath("$.data.monthly[11].netWorth").value(820000));
+        }
+    }
+
+    /**
      * 자산별 지출.
      *
      * <p>로컬에서 드러났다 — 청구 기준으로 보는데 자산 목록만 소비 기준이라, 합계에 없는

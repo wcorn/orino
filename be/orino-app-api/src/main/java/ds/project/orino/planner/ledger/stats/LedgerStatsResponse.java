@@ -80,7 +80,12 @@ public record LedgerStatsResponse(
              * 그래야 「왜 이 달만 막대가 짧지」라는 질문이 안 생긴다.
              */
             long unclassified,
-            /** 그 달 말의 순자산. 아직 오지 않은 달은 {@code null}이다. */
+            /**
+             * 그 달 끝의 순자산. 진행 중인 달은 <b>오늘까지</b>다.
+             *
+             * <p>아직 오지 않은 달은 {@code null}이다 — 0으로 채우면 「자산이 0원이었다」가 되고,
+             * 막대 차트에서 바닥까지 떨어진 달로 보인다.
+             */
             Long netWorth
     ) {
     }

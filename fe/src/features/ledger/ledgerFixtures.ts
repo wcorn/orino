@@ -710,7 +710,17 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
           variable: 0,
           unclassified: total,
         },
-        monthly: options.stats?.monthly ?? [],
+        monthly: options.stats?.monthly ?? [
+          {
+            month: "2026-08",
+            expense: total,
+            income: 0,
+            fixed: 0,
+            variable: 0,
+            unclassified: total,
+            netWorth: null,
+          },
+        ],
         settlement: {
           year: 2026,
           income: 0,

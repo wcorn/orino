@@ -209,7 +209,12 @@ export function LedgerStatsPage() {
           </div>
 
           <MonthlyTrend points={data.monthly} />
-          <SettlementCard settlement={data.settlement} />
+          <NetWorthTrend points={data.monthly} />
+          <SettlementCard
+            settlement={data.settlement}
+            monthly={data.monthly}
+            currentMonth={data.period.label}
+          />
 
           <section className="flex flex-col gap-2">
             <h2 className="text-[13px] font-semibold">견줘 보기</h2>
@@ -415,16 +420,183 @@ function MonthlyTrend({ points }: { points: MonthlyPoint[] }) {
   );
 }
 
+/**
+ * 막대 하나의 색.
+ *
+ * <p>「어느 달이 최고·최저인가」는 <b>서버가 정한다</b>(결산 제외 카테고리를 뺀 기준이라
+ * 화면의 `expense`만 보고 다시 고르면 다른 달이 뽑힌다).
+ */
+function settlementTone(
+  point: MonthlyPoint,
+  settlement: LedgerSettlement,
+  currentMonth: string,
+): string {
+  if (point.netWorth === null) {
+    return "bg-muted";
+  }
+  if (point.month === currentMonth) {
+    return "bg-primary";
+  }
+  if (point.month === settlement.highestMonth) {
+    return "bg-destructive";
+  }
+  if (point.month === settlement.lowestMonth) {
+    return "bg-success";
+  }
+  return "bg-muted-foreground/30";
+}
+
 function share(point: MonthlyPoint): number {
   const total = point.fixed + point.variable;
   return total === 0 ? 0 : point.fixed / total;
 }
 
-/** 연간 결산. 저축률은 수입이 없으면 <b>「−」</b>다 — 0%는 「못 모았다」로 읽힌다. */
-function SettlementCard({ settlement }: { settlement: LedgerSettlement }) {
+/**
+ * 순자산 추이.
+ *
+ * <p><b>값이 있는 달만 그린다.</b> 아직 오지 않은 달을 0으로 이어 붙이면 선이 바닥으로
+ * 곤두박질치고, 그건 「앞으로 빈털터리가 된다」로 읽힌다.
+ *
+ * <p>0선을 그린다 — 순자산은 카드 빚 때문에 마이너스가 될 수 있고, 그 경계가 어디인지
+ * 보이지 않으면 「줄었다」와 「넘어갔다」를 구분할 수 없다.
+ */
+function NetWorthTrend({ points }: { points: MonthlyPoint[] }) {
+  const known = points.filter(
+    (point): point is MonthlyPoint & { netWorth: number } =>
+      point.netWorth !== null,
+  );
+  /*
+    기록이 시작되기 전의 달을 앞에서 잘라 낸다. 그 달들은 순자산이 0이지만 「0원이었다」가
+    아니라 「아직 아무 일도 없었다」다 — 남겨 두면 선이 언제나 바닥에서 출발하고,
+    「N월 이후 +전액」이라는 아무 말도 아닌 문장이 나온다.
+  */
+  const started = known.findIndex(
+    (point) => point.netWorth !== 0 || point.expense > 0 || point.income > 0,
+  );
+  const series = started < 0 ? [] : known.slice(started);
+  // 점 하나로는 추이가 아니다.
+  if (series.length < 2) {
+    return null;
+  }
+
+  const values = series.map((point) => point.netWorth);
+  const max = Math.max(...values, 0);
+  const min = Math.min(...values, 0);
+  const span = max - min || 1;
+  const width = 640;
+  const height = 96;
+
+  const x = (index: number) => (index / (series.length - 1)) * width;
+  const y = (value: number) => height - ((value - min) / span) * height;
+  const line = series
+    .map(
+      (point, index) =>
+        `${index === 0 ? "M" : "L"}${x(index)},${y(point.netWorth)}`,
+    )
+    .join(" ");
+  const last = series[series.length - 1];
+  const first = series[0];
+  const change = last.netWorth - first.netWorth;
+
   return (
-    <section className="bg-card ring-foreground/10 flex flex-col gap-2 rounded-xl p-5 ring-1">
+    <section className="bg-card ring-foreground/10 flex flex-col gap-3 rounded-xl p-5 ring-1">
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold">순자산 추이</h2>
+        <span className="text-muted-foreground text-[13px]">
+          {Number(first.month.slice(5))}월 이후 {change >= 0 ? "+" : MINUS}
+          {formatAmount(change)}
+        </span>
+      </header>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`순자산 추이. 지금 ${formatAmount(last.netWorth)}`}
+        className="h-[96px] w-full"
+        preserveAspectRatio="none"
+      >
+        <line
+          x1="0"
+          y1={y(0)}
+          x2={width}
+          y2={y(0)}
+          stroke="var(--destructive)"
+          strokeWidth="1"
+          strokeDasharray="4 4"
+          vectorEffect="non-scaling-stroke"
+        />
+        <path
+          d={line}
+          fill="none"
+          stroke="var(--primary)"
+          strokeWidth="2"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <p className="text-muted-foreground text-[13px]">
+        카드 미결제는 빚이라 순자산을 깎아요 — 긁을수록 늘지 않습니다.
+      </p>
+    </section>
+  );
+}
+
+/**
+ * 연간 결산 — 월별 막대 열둘.
+ *
+ * <p>색이 곧 문장이다: 가장 많이 쓴 달은 `destructive`, 가장 적게 쓴 달은 `success`,
+ * 지금 보고 있는 달은 `primary`, <b>아직 오지 않은 달은 `muted` 스텁</b>이다. 미래를 0짜리
+ * 실선으로 그리면 「그 달엔 한 푼도 안 썼다」로 읽힌다.
+ *
+ * <p>저축률은 수입이 없으면 <b>「−」</b>다 — 0%는 「못 모았다」로 읽히는데 사실은 「셀 수 없다」다.
+ */
+function SettlementCard({
+  settlement,
+  monthly,
+  currentMonth,
+}: {
+  settlement: LedgerSettlement;
+  monthly: MonthlyPoint[];
+  currentMonth: string;
+}) {
+  const max = Math.max(...monthly.map((point) => point.expense), 1);
+
+  return (
+    <section className="bg-card ring-foreground/10 flex flex-col gap-3 rounded-xl p-5 ring-1">
       <h2 className="text-sm font-semibold">{settlement.year}년 결산</h2>
+
+      {monthly.length > 0 && (
+        <div className="flex items-end gap-1">
+          {monthly.map((point) => (
+            <span
+              key={point.month}
+              className="flex flex-1 flex-col items-center gap-1"
+            >
+              <span
+                className="flex w-full flex-col justify-end"
+                style={{ height: 72 }}
+                title={`${point.month} ${formatAmount(point.expense)}`}
+              >
+                <span
+                  className={cn(
+                    "w-full rounded-t-sm",
+                    settlementTone(point, settlement, currentMonth),
+                  )}
+                  // 미래 달은 값이 없다 — 낮은 스텁으로 자리만 잡아 둔다.
+                  style={{
+                    height:
+                      point.netWorth === null
+                        ? "4px"
+                        : `${Math.max((point.expense / max) * 72, 2)}px`,
+                  }}
+                />
+              </span>
+              <span className="text-caption text-muted-foreground tabular-nums">
+                {Number(point.month.slice(5))}
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
+
       <dl className="flex flex-col gap-1 text-sm">
         <Row label="수입" value={formatAmount(settlement.income)} />
         <Row label="지출" value={formatAmount(settlement.expense)} />
