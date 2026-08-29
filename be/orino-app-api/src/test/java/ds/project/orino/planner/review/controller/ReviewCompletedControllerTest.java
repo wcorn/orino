@@ -14,17 +14,17 @@ import ds.project.orino.domain.planner.review.repository.ReviewScheduleRepositor
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
 import ds.project.orino.support.MemberFixture;
+import ds.project.orino.support.TestClocks;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -33,8 +33,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@Import(FixedClockConfig.class)
 class ReviewCompletedControllerTest extends ApiTestSupport {
+
+    /** 시각을 못박는다. 설정을 나누지 않으므로 컨텍스트가 갈리지 않는다. */
+    @Override
+    protected Instant fixedNow() {
+        return TestClocks.FIXED;
+    }
 
     private static final LocalDate TODAY = LocalDate.of(2026, 1, 15);
     private static final BigDecimal EF = new BigDecimal("2.50");

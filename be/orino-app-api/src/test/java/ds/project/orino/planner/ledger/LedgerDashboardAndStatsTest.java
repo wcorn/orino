@@ -4,19 +4,18 @@ import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
+import ds.project.orino.support.TestClocks;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 
 import static org.hamcrest.Matchers.hasSize;
@@ -31,8 +30,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>기간을 단언하는 테스트라 <b>시계를 못박는다</b>(2026-01-15). 실시각을 쓰면 월말에만 깨지고,
  * 그때 원인을 찾는 데 드는 시간이 이 설정을 두는 값보다 훨씬 비싸다.
  */
-@Import({StubExternalsConfig.class, FixedClockConfig.class})
 class LedgerDashboardAndStatsTest extends ApiTestSupport {
+
+    /** 시각을 못박는다. 설정을 나누지 않으므로 컨텍스트가 갈리지 않는다. */
+    @Override
+    protected Instant fixedNow() {
+        return TestClocks.FIXED;
+    }
 
     @Autowired
     private MemberRepository memberRepository;

@@ -7,13 +7,11 @@ import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
 import ds.project.orino.support.StubS3Client;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -38,7 +36,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>가장 중요한 것: <b>소프트 삭제된 거래의 영수증은 살아남는다.</b> 되돌린 거래에서 영수증만
  * 사라지면 그건 되돌린 게 아니다.
  */
-@Import(StubExternalsConfig.class)
 class LedgerReceiptRetentionTest extends ApiTestSupport {
 
     @Autowired

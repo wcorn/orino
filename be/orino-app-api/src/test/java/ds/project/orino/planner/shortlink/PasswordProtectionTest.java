@@ -4,20 +4,20 @@ import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
 import ds.project.orino.support.MemberFixture;
+import ds.project.orino.support.TestClocks;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.ResultActions;
 
+import java.time.Instant;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,8 +36,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // 시도 제한은 "분"으로 창을 나눈다. 실시각으로 돌리면 10회를 세는 도중 분이 넘어가 카운터가
 // 리셋되고, 느린 CI에서만 가끔 깨진다(실제로 깨졌다). 시계를 고정해 창이 넘어가지 않게 한다 —
 // 이미 여러 테스트가 쓰는 설정이라 컨텍스트도 새로 뜨지 않는다.
-@Import(FixedClockConfig.class)
 class PasswordProtectionTest extends ApiTestSupport {
+
+    /** 시각을 못박는다. 설정을 나누지 않으므로 컨텍스트가 갈리지 않는다. */
+    @Override
+    protected Instant fixedNow() {
+        return TestClocks.FIXED;
+    }
 
     private static final String TARGET = "https://img.orino.dev/note-images/2026/aug.jpg";
     private static final String PASSWORD = "hunter2";

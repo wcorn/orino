@@ -13,16 +13,16 @@ import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.PreRolloverClockConfig;
+import ds.project.orino.support.TestClocks;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,8 +41,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>여기서는 Clock을 KST 01:00으로 못박아 그 창을 <b>매 빌드</b> 지나가게 한다 — 벽시계가
  * 몇 시든 상관없다.
  */
-@Import(PreRolloverClockConfig.class)
 class TodayReviewsRolloverTest extends ApiTestSupport {
+
+    /** 시각을 못박는다. 설정을 나누지 않으므로 컨텍스트가 갈리지 않는다. */
+    @Override
+    protected Instant fixedNow() {
+        return TestClocks.PRE_ROLLOVER;
+    }
 
     @Autowired
     private MemberRepository memberRepository;
@@ -80,9 +85,9 @@ class TodayReviewsRolloverTest extends ApiTestSupport {
     @Test
     @DisplayName("KST 01:00에는 달력 날짜와 학습일이 하루 다르다 — 이 어긋남이 결함의 무대였다")
     void calendarDayAndStudyDayDiffer() {
-        assertThat(testToday(clock)).isEqualTo(LocalDate.parse(PreRolloverClockConfig.STUDY_DAY));
+        assertThat(testToday(clock)).isEqualTo(LocalDate.parse(TestClocks.PRE_ROLLOVER_STUDY_DAY));
         assertThat(clock.instant().atZone(TEST_ZONE).toLocalDate())
-                .isEqualTo(LocalDate.parse(PreRolloverClockConfig.CALENDAR_DAY));
+                .isEqualTo(LocalDate.parse(TestClocks.PRE_ROLLOVER_CALENDAR_DAY));
     }
 
     @Test
@@ -91,13 +96,13 @@ class TodayReviewsRolloverTest extends ApiTestSupport {
         mockMvc.perform(get("/api/planner/reviews/today")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.today").value(PreRolloverClockConfig.STUDY_DAY));
+                .andExpect(jsonPath("$.data.today").value(TestClocks.PRE_ROLLOVER_STUDY_DAY));
     }
 
     @Test
     @DisplayName("새벽 1시에도 그 학습일 복습이 오늘 목록에 있다 — 자정을 넘겼다고 사라지지 않는다")
     void includesReviewOfCurrentStudyDay() throws Exception {
-        scheduleAt(PreRolloverClockConfig.STUDY_DAY);
+        scheduleAt(TestClocks.PRE_ROLLOVER_STUDY_DAY);
 
         mockMvc.perform(get("/api/planner/reviews/today")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
@@ -109,7 +114,7 @@ class TodayReviewsRolloverTest extends ApiTestSupport {
     @Test
     @DisplayName("다음 학습일(04:00 이후) 복습은 아직 오늘이 아니다")
     void excludesNextStudyDay() throws Exception {
-        scheduleAt(PreRolloverClockConfig.CALENDAR_DAY);
+        scheduleAt(TestClocks.PRE_ROLLOVER_CALENDAR_DAY);
 
         mockMvc.perform(get("/api/planner/reviews/today")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))

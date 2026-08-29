@@ -6,18 +6,17 @@ import ds.project.orino.planner.ledger.recurring.RecurringPostingScheduler;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
+import ds.project.orino.support.TestClocks;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -38,8 +37,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>시계를 못박는다(2026-01-15, 목요일). 「밀린 기간 따라잡기」는 <b>다른 날짜로 스케줄러를
  * 부르는 것</b>으로 재현한다 — 실시각에 기대면 달이 바뀔 때마다 다른 결과가 난다.
  */
-@Import({StubExternalsConfig.class, FixedClockConfig.class})
 class LedgerRecurringTest extends ApiTestSupport {
+
+    /** 시각을 못박는다. 설정을 나누지 않으므로 컨텍스트가 갈리지 않는다. */
+    @Override
+    protected Instant fixedNow() {
+        return TestClocks.FIXED;
+    }
 
     /** 고정 시계의 오늘. 목요일이다. */
     private static final LocalDate TODAY = LocalDate.of(2026, 1, 15);

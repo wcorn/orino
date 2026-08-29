@@ -6,19 +6,18 @@ import ds.project.orino.planner.ledger.card.StatementCycleScheduler;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
+import ds.project.orino.support.TestClocks;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 
 import static org.hamcrest.Matchers.hasSize;
@@ -36,8 +35,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>시계를 못박는다(2026-01-15). 사이클 경계를 단언하는 테스트라 실시각으로는 매달 다른 결과가 난다.
  */
-@Import({StubExternalsConfig.class, FixedClockConfig.class})
 class LedgerCardStatementTest extends ApiTestSupport {
+
+    /** 시각을 못박는다. 설정을 나누지 않으므로 컨텍스트가 갈리지 않는다. */
+    @Override
+    protected Instant fixedNow() {
+        return TestClocks.FIXED;
+    }
 
     @Autowired
     private MemberRepository memberRepository;

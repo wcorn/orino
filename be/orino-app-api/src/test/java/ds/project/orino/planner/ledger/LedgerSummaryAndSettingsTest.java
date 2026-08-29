@@ -4,18 +4,17 @@ import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
 import ds.project.orino.support.MemberFixture;
-import ds.project.orino.support.StubExternalsConfig;
+import ds.project.orino.support.TestClocks;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -30,8 +29,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 월말에만 깨진다 — 예정으로 넣은 「오늘+3일」이 다음 달로 넘어가 구간 밖이 되기 때문이다.
  * 실제로 8월 29일에 그렇게 깨졌다. 날짜 경계를 보는 테스트는 날짜를 정해 두고 봐야 한다.
  */
-@Import({StubExternalsConfig.class, FixedClockConfig.class})
 class LedgerSummaryAndSettingsTest extends ApiTestSupport {
+
+    /** 시각을 못박는다. 설정을 나누지 않으므로 컨텍스트가 갈리지 않는다. */
+    @Override
+    protected Instant fixedNow() {
+        return TestClocks.FIXED;
+    }
 
     @Autowired
     private MemberRepository memberRepository;

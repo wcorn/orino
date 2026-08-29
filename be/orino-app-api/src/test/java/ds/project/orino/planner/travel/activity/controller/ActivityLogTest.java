@@ -6,17 +6,18 @@ import ds.project.orino.domain.planner.travel.repository.TripActivityLogReposito
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
-import ds.project.orino.support.FixedClockConfig;
 import ds.project.orino.support.MemberFixture;
+import ds.project.orino.support.TestClocks;
 import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -31,8 +32,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>고정 시각 {@code 2026-01-15T02:00Z}. 여행 두 개를 만든다 — <b>진행 중</b>(1/10~1/20)과
  * <b>예정</b>(10/24~10/27). 기록이 시작일 기준으로 갈리는 기능이라 두 상태가 다 필요하다.
  */
-@Import(FixedClockConfig.class)
 class ActivityLogTest extends ApiTestSupport {
+
+    /** 시각을 못박는다. 설정을 나누지 않으므로 컨텍스트가 갈리지 않는다. */
+    @Override
+    protected Instant fixedNow() {
+        return TestClocks.FIXED;
+    }
 
     @Autowired
     private MemberRepository memberRepository;
