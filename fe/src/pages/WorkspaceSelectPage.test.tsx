@@ -349,7 +349,8 @@ describe("WorkspaceSelectPage", () => {
   });
 
   it("아직 없는 가계부 하위 경로는 가계부 홈으로 보낸다 — 랜딩으로 튕기지 않는다", async () => {
-    renderApp(["/ledger/budget"]);
+    // 가져오기는 v2라 아직 라우트가 없다. 예산·정기 항목은 v1.5에서 생겼다.
+    renderApp(["/ledger/import"]);
 
     await waitFor(() => {
       expect(

@@ -17,9 +17,13 @@ import {
   importIntegrations,
   importLedgerAssetDetail,
   importLedgerAssets,
+  importLedgerBudget,
   importLedgerBulkInput,
+  importLedgerCards,
   importLedgerDashboard,
+  importLedgerRecurring,
   importLedgerSettings,
+  importLedgerStatements,
   importLedgerStats,
   importLedgerTransactions,
   importLedgerUpcoming,
@@ -82,6 +86,10 @@ const LedgerSettingsPage = lazy(importLedgerSettings);
 const LedgerStatsPage = lazy(importLedgerStats);
 const LedgerBulkInputPage = lazy(importLedgerBulkInput);
 const LedgerUpcomingPage = lazy(importLedgerUpcoming);
+const LedgerCardsPage = lazy(importLedgerCards);
+const LedgerStatementsPage = lazy(importLedgerStatements);
+const LedgerRecurringPage = lazy(importLedgerRecurring);
+const LedgerBudgetPage = lazy(importLedgerBudget);
 
 function RouteFallback() {
   return (
@@ -291,6 +299,38 @@ export function AppRouter() {
               element={
                 <Suspense fallback={<RouteFallback />}>
                   <LedgerUpcomingPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/ledger/cards"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <LedgerCardsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/ledger/cards/:cardId/statements"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <LedgerStatementsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/ledger/recurring"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <LedgerRecurringPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/ledger/budget"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <LedgerBudgetPage />
                 </Suspense>
               }
             />

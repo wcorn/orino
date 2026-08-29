@@ -7,10 +7,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingText } from "@/components/ui/loading-text";
-import type { AssetGroupView, AssetView } from "@/features/ledger/api/ledger";
+import type {
+  AssetGroupView,
+  AssetView,
+  CardView,
+} from "@/features/ledger/api/ledger";
 import { useTransactionModal } from "@/features/ledger/components/transactionModalContext";
-import { useLedgerAssets } from "@/features/ledger/hooks/useLedgerQueries";
-import { formatBalance } from "@/features/ledger/lib/money";
+import {
+  useLedgerAssets,
+  useLedgerCards,
+} from "@/features/ledger/hooks/useLedgerQueries";
+import { formatAmount, formatBalance } from "@/features/ledger/lib/money";
 import { cn } from "@/lib/utils";
 
 const GROUP_ICON = {
@@ -31,6 +38,7 @@ const GROUP_ICON = {
  */
 export function LedgerAssetsPage() {
   const { data, isPending, isError } = useLedgerAssets();
+  const { data: cards } = useLedgerCards();
   const { openTransactionModal } = useTransactionModal();
 
   return (
@@ -64,6 +72,20 @@ export function LedgerAssetsPage() {
             />
             <SummaryLine label="순자산" value={data.netWorth} />
           </div>
+
+          {/*
+            부채가 무엇으로 이뤄졌는지 적는다. 「1,700,500」만 있으면 카드값인지 할부인지
+            알 수 없고, 알 수 없으면 줄일 방법도 안 보인다.
+          */}
+          {data.liabilities > 0 && cards && (
+            <p className="text-muted-foreground text-[13px]">
+              카드 미결제 {formatAmount(cardUnpaid(cards.cards))}
+              {cards.installmentOutstanding > 0 &&
+                ` · 할부 잔여 ${formatAmount(cards.installmentOutstanding)}`}
+              을 부채로 반영합니다. 할부는 아직 청구되지 않은 회차도 이미 갚기로
+              한 돈이에요.
+            </p>
+          )}
 
           {data.groups.length === 0 && data.hidden.length === 0 && (
             <EmptyState className="min-h-[30svh]">
@@ -202,4 +224,9 @@ function AssetAmount({ asset }: { asset: AssetView }) {
       {asset.linkedAssetName && ` · ${asset.linkedAssetName}에서 출금`}
     </span>
   );
+}
+
+/** 카드별 미결제의 합. 부채가 무엇으로 이뤄졌는지 한 줄로 적기 위한 값이다. */
+function cardUnpaid(cards: CardView[]): number {
+  return cards.reduce((sum, card) => sum + card.unpaidAmount, 0);
 }

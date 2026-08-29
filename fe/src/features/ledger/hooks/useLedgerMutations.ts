@@ -7,6 +7,7 @@ import {
   type AssetCreateRequest,
   type AssetUpdateRequest,
   attachReceipt,
+  type BudgetPutRequest,
   bulkCreateTransactions,
   confirmOccurrence,
   createAsset,
@@ -17,12 +18,19 @@ import {
   deleteTransaction,
   detachReceipt,
   duplicateTransaction,
+  endRecurring,
   type OccurrenceConfirmRequest,
   type OccurrenceRequest,
   patchOccurrence,
+  pauseRecurring,
+  payStatement,
+  putBudget,
   reconcileAsset,
   type ReconcileRequest,
+  type RecurringEndRequest,
+  resumeRecurring,
   type SettingsUpdateRequest,
+  type StatementPayRequest,
   type TemplateCreateRequest,
   type TransactionCreatedResponse,
   type TransactionCreateRequest,
@@ -307,6 +315,92 @@ export function useConfirmOccurrence() {
     mutationFn: (body: OccurrenceConfirmRequest) => confirmOccurrence(body),
     onSuccess: () => toast("실제 출금일로 확정했어요"),
     onError: () => toast("확정하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+/**
+ * 결제 처리.
+ *
+ * <p><b>자동으로 적지 않는다</b>(§7.2) — 잔고 부족·리볼빙·선결제·연회비 때문에 실제 출금액을
+ * 앱이 알 수 없다. 사람이 누르는 이 경로가 유일하다.
+ */
+export function usePayStatement() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      statementId,
+      body,
+    }: {
+      statementId: number;
+      body: StatementPayRequest;
+    }) => payStatement(statementId, body),
+    onError: () => toast("결제 처리를 하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+export function usePauseRecurring() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      from,
+      to,
+    }: {
+      id: number;
+      from: string;
+      to?: string | null;
+    }) => pauseRecurring(id, { from, to }),
+    onSuccess: () => toast("일시 정지했어요"),
+    onError: () => toast("일시 정지하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+export function useResumeRecurring() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => resumeRecurring(id),
+    onSuccess: () => toast("다시 시작했어요"),
+    onError: () => toast("다시 시작하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+/**
+ * 해지. 항목은 목록에 「종료됨」으로 남는다 — 연간 고정비 회고에 필요하다.
+ *
+ * <p>되돌린 건수를 그대로 알린다. 「2건을 되돌렸다」는 사람이 확인해야 하는 사실이다.
+ */
+export function useEndRecurring() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: RecurringEndRequest }) =>
+      endRecurring(id, body),
+    onSuccess: (result) => toast(result.message),
+    onError: () => toast("해지하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+export function usePutBudget() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      period,
+      body,
+    }: {
+      period: string;
+      body: BudgetPutRequest;
+    }) => putBudget(period, body),
+    onSuccess: () => toast("예산을 저장했어요"),
+    onError: () => toast("예산을 저장하지 못했어요.", "error"),
     onSettled: () => invalidateAll(queryClient),
   });
 }

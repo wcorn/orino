@@ -112,6 +112,22 @@ export const importLedgerTransactions = () =>
   import("../pages/ledger/LedgerTransactionsPage").then((m) => ({
     default: m.LedgerTransactionsPage,
   }));
+export const importLedgerCards = () =>
+  import("../pages/ledger/LedgerCardsPage").then((m) => ({
+    default: m.LedgerCardsPage,
+  }));
+export const importLedgerStatements = () =>
+  import("../pages/ledger/LedgerStatementsPage").then((m) => ({
+    default: m.LedgerStatementsPage,
+  }));
+export const importLedgerRecurring = () =>
+  import("../pages/ledger/LedgerRecurringPage").then((m) => ({
+    default: m.LedgerRecurringPage,
+  }));
+export const importLedgerBudget = () =>
+  import("../pages/ledger/LedgerBudgetPage").then((m) => ({
+    default: m.LedgerBudgetPage,
+  }));
 export const importLedgerUpcoming = () =>
   import("../pages/ledger/LedgerUpcomingPage").then((m) => ({
     default: m.LedgerUpcomingPage,
