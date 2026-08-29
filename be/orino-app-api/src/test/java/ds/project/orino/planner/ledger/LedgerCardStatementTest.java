@@ -318,9 +318,15 @@ class LedgerCardStatementTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.installmentOutstanding").value(100000));
         }
 
+        /**
+         * 원 거래 <b>전액</b>은 사용 합계에서 빠지고, 그 달에 청구되는 것은 <b>1회차뿐</b>이다.
+         *
+         * <p>전액을 사용에 넣으면 회차로 또 청구되어 같은 물건값을 두 번 받고, 1회차를
+         * 빼 버리면 카드사가 실제로 청구하는 금액보다 적게 보인다(#1279).
+         */
         @Test
-        @DisplayName("할부 원 거래는 산 달 청구액에 들어가지 않는다 — 회차로 나뉘어 청구된다")
-        void purchaseIsNotBilledInPurchaseMonth() throws Exception {
+        @DisplayName("원 거래는 사용에서 빠지고 1회차만 그 달에 청구된다")
+        void billsFirstRoundOnly() throws Exception {
             cardExpense(180000, today());
             LedgerFixture.createTransaction(mockMvc, authHeader, """
                     {"type": "EXPENSE", "amount": 100000, "assetId": %d,
@@ -329,10 +335,32 @@ class LedgerCardStatementTest extends ApiTestSupport {
 
             mockMvc.perform(get("/api/ledger/cards/%d/statements".formatted(card))
                             .header(HttpHeaders.AUTHORIZATION, authHeader))
-                    // 사용 합계는 일반 결제 18만뿐이다. 여기에 10만을 더하면 회차로 또 청구되어
-                    // 같은 물건값을 두 번 받게 된다.
                     .andExpect(jsonPath("$.data[0].breakdown.usage").value(180000))
-                    .andExpect(jsonPath("$.data[0].breakdown.billed").value(180000));
+                    // 100,000 ÷ 3 = 33,333 … 나머지 1은 첫 회차로 → 33,334.
+                    .andExpect(jsonPath("$.data[0].breakdown.installment").value(33334))
+                    .andExpect(jsonPath("$.data[0].breakdown.billed").value(213334));
+        }
+
+        /**
+         * 사이클 전환은 <b>다음 사이클을 열 때</b>만 회차를 붙인다. 1회차가 붙어야 할 청구서는
+         * 카드를 긁는 순간 이미 서 있으므로, 전환에 맡기면 영영 안 붙는다.
+         */
+        @Test
+        @DisplayName("사이클이 넘어가도 1회차의 청구서는 바뀌지 않는다")
+        void firstRoundKeepsItsStatement() throws Exception {
+            // 지난달에 샀다 — 그래야 사이클 전환이 실제로 일어난다.
+            LedgerFixture.createTransaction(mockMvc, authHeader, """
+                    {"type": "EXPENSE", "amount": 100000, "assetId": %d,
+                     "occurredOn": "%s", "installment": {"months": 3}}
+                    """.formatted(card, today().minusMonths(1)));
+
+            cycleScheduler.rollCycles();
+
+            // 산 달 청구서는 1회차 그대로, 새로 열린 청구서는 2회차만.
+            mockMvc.perform(get("/api/ledger/cards/%d/statements".formatted(card))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data[1].breakdown.installment").value(33334))
+                    .andExpect(jsonPath("$.data[0].breakdown.installment").value(33333));
         }
 
         @Test
