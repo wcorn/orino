@@ -148,6 +148,40 @@ describe("카드 청구서", () => {
 
     expect(await screen.findByText("사이클 미등록")).toBeInTheDocument();
   });
+  /**
+   * 카드 실적(#1267 · §7.6).
+   *
+   * <p>승인이냐 청구냐는 <b>카드 속성</b>이다. 전역 설정이면 카드 두 장을 쓰는 순간
+   * 한쪽이 반드시 틀리고, 틀린 쪽은 「채웠다고 믿었는데 안 채워진」 형태로 드러난다.
+   */
+  it("실적 진행에 어느 기준인지가 함께 적힌다", async () => {
+    renderAt("/ledger/cards", {
+      cards: [
+        cardView({
+          usageGoal: {
+            goalAmount: 500000,
+            basis: "APPROVAL",
+            counted: 480000,
+            remaining: 20000,
+            achieved: false,
+          },
+        }),
+      ],
+    });
+
+    expect(await screen.findByText("승인 기준")).toBeInTheDocument();
+    expect(screen.getByText("480,000 / 500,000")).toBeInTheDocument();
+    expect(screen.getByText(/20,000원 더 쓰면/)).toBeInTheDocument();
+  });
+
+  it("조건을 안 걸어 둔 카드에는 실적을 그리지 않는다", async () => {
+    renderAt("/ledger/cards", { cards: [cardView({ usageGoal: null })] });
+
+    await screen.findByText("신한 Deep Dream");
+    // 0%로 그리면 「하나도 못 채웠다」로 읽히는데 사실은 「조건이 없다」다.
+    expect(screen.queryByText("실적")).toBeNull();
+    expect(screen.queryByText("승인 기준")).toBeNull();
+  });
 });
 
 describe("정기 항목", () => {

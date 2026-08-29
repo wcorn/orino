@@ -259,4 +259,50 @@ describe("통합 타임라인", () => {
     expect(screen.getByText("−4,500")).toBeInTheDocument();
     expect(screen.getByText("예정 17,000")).toBeInTheDocument();
   });
+
+  /**
+   * 예상 잔액 곡선(#1267 · §8.4).
+   *
+   * <p>월말 숫자 하나로는 「중간에 모자라지 않나」에 답할 수 없다. 25일에 청약이 빠지고
+   * 월말에 급여가 들어오는 달은 <b>월말만 보면 멀쩡해 보인다</b>.
+   */
+  it("잔액이 마이너스가 되는 날을 미리 알린다", async () => {
+    renderAt("/ledger/upcoming", {
+      balanceCurve: {
+        currentBalance: 300000,
+        points: [
+          { date: "2026-08-28", delta: 0, balance: 300000 },
+          { date: "2026-09-06", delta: -520000, balance: -220000 },
+          { date: "2026-09-25", delta: 3850000, balance: 3630000 },
+        ],
+        minBalance: {
+          date: "2026-09-06",
+          amount: -220000,
+          reason: "재산세",
+        },
+        firstNegativeDate: "2026-09-06",
+      },
+    });
+
+    expect(await screen.findByText("예상 잔액 곡선")).toBeInTheDocument();
+    expect(
+      screen.getByText(/잔액이 마이너스가 되는 날.*9월 6일/),
+    ).toBeInTheDocument();
+  });
+
+  it("마이너스가 없으면 경고를 띄우지 않는다", async () => {
+    renderAt("/ledger/upcoming", {
+      balanceCurve: {
+        currentBalance: 3000000,
+        points: [
+          { date: "2026-08-28", delta: 0, balance: 3000000 },
+          { date: "2026-09-14", delta: -280000, balance: 2720000 },
+        ],
+        firstNegativeDate: null,
+      },
+    });
+
+    await screen.findByText("예상 잔액 곡선");
+    expect(screen.queryByText(/마이너스가 됩니다/)).toBeNull();
+  });
 });

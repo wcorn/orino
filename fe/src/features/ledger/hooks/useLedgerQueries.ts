@@ -4,6 +4,7 @@ import {
   fetchAssetDetail,
   fetchAssets,
   fetchAssetTransactions,
+  fetchBalanceCurve,
   fetchBudget,
   fetchCalendar,
   fetchCards,
@@ -23,6 +24,7 @@ import {
   fetchTransactions,
   fetchUpcoming,
   type LedgerFlow,
+  type LedgerPerspective,
   type TrendRange,
 } from "../api/ledger";
 import { ledgerKeys } from "../queryKeys";
@@ -85,10 +87,26 @@ export function useLedgerDashboard() {
   });
 }
 
-export function useLedgerStats(period?: string) {
+export function useLedgerStats(
+  period?: string,
+  perspective?: LedgerPerspective,
+) {
   return useQuery({
-    queryKey: ledgerKeys.stats(period),
-    queryFn: () => fetchStats(period),
+    queryKey: ledgerKeys.stats(period, perspective),
+    queryFn: () => fetchStats(period, perspective),
+    staleTime: 30 * 1000,
+  });
+}
+
+/**
+ * 예상 잔액 곡선(§8.4).
+ *
+ * <p>예정 목록과 <b>같은 계산</b>을 서버에서 쓴다 — 곡선이 따로 세면 두 화면이 다른 말을 한다.
+ */
+export function useBalanceCurve(days = 30) {
+  return useQuery({
+    queryKey: ledgerKeys.balanceCurve(days),
+    queryFn: () => fetchBalanceCurve(days),
     staleTime: 30 * 1000,
   });
 }

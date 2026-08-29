@@ -224,6 +224,124 @@ class LedgerAnalysisTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.fixedVsVariable.fixed").value(120000))
                     .andExpect(jsonPath("$.data.fixedVsVariable.unclassified").value(0));
         }
+
+        /**
+         * 로컬에서 드러났다 — 추이 막대가 그 달 지출보다 짧았다.
+         *
+         * <p>월별 점이 고정·변동만 담고 있어서 속성을 안 정한 지출이 <b>막대에서 통째로
+         * 사라졌다.</b> 셋을 더해야 그 달의 지출이 된다.
+         */
+        @Test
+        @DisplayName("월별 추이도 안 정한 지출을 잃지 않는다")
+        void monthlyKeepsUnclassified() throws Exception {
+            mockMvc.perform(patch("/api/ledger/categories/" + food)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"costType": "FIXED"}
+                                    """))
+                    .andExpect(status().isOk());
+            expense(checking, 120000, "2026-01-10");
+            LedgerFixture.createTransaction(mockMvc, authHeader, """
+                    {"type": "EXPENSE", "amount": 80000, "assetId": %d,
+                     "occurredOn": "2026-01-11", "title": "분류 안 한 지출"}
+                    """.formatted(checking));
+
+            mockMvc.perform(get("/api/ledger/stats")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .param("period", "2026-01"))
+                    .andExpect(jsonPath("$.data.monthly[11].expense").value(200000))
+                    .andExpect(jsonPath("$.data.monthly[11].fixed").value(120000))
+                    .andExpect(jsonPath("$.data.monthly[11].variable").value(0))
+                    .andExpect(jsonPath("$.data.monthly[11].unclassified").value(80000));
+        }
+    }
+
+    /**
+     * 순자산 추이.
+     *
+     * <p>잔액을 저장하지 않으므로(D-8) 「그때 얼마였나」도 원장을 그 시점까지 다시 더해서
+     * 얻는다. <b>아직 오지 않은 달은 값이 없다</b> — 0으로 채우면 막대가 바닥까지 떨어진
+     * 달로 보인다.
+     */
+    @Nested
+    @DisplayName("순자산 추이")
+    class NetWorthTrend {
+
+        @Test
+        @DisplayName("지난 달과 이번 달은 값이 있고, 다음 달은 없다")
+        void fillsPastAndCurrentOnly() throws Exception {
+            LedgerFixture.createTransaction(mockMvc, authHeader, """
+                    {"type": "INCOME", "amount": 3000000, "assetId": %d,
+                     "occurredOn": "2025-12-20", "title": "작년 급여"}
+                    """.formatted(checking));
+            expense(checking, 120000, "2026-01-10");
+
+            mockMvc.perform(get("/api/ledger/stats")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .param("period", "2026-01"))
+                    // 12칸의 마지막이 조회한 달(2026-01)이다.
+                    .andExpect(jsonPath("$.data.monthly[11].month").value("2026-01"))
+                    .andExpect(jsonPath("$.data.monthly[11].netWorth").value(2880000))
+                    // 지출 전, 급여만 들어온 달.
+                    .andExpect(jsonPath("$.data.monthly[10].month").value("2025-12"))
+                    .andExpect(jsonPath("$.data.monthly[10].netWorth").value(3000000))
+                    // 그보다 앞은 아무 일도 없었으니 0이다 — 「모른다」가 아니다.
+                    .andExpect(jsonPath("$.data.monthly[9].netWorth").value(0));
+        }
+
+        /** 카드 미결제는 <b>빚</b>이라 순자산을 깎는다 — 자산으로 세면 긁을수록 부자가 된다. */
+        @Test
+        @DisplayName("카드 사용은 순자산을 깎는다")
+        void cardUsageIsDebt() throws Exception {
+            LedgerFixture.createTransaction(mockMvc, authHeader, """
+                    {"type": "INCOME", "amount": 1000000, "assetId": %d,
+                     "occurredOn": "2026-01-05", "title": "급여"}
+                    """.formatted(checking));
+            expense(card, 180000, "2026-01-08");
+
+            mockMvc.perform(get("/api/ledger/stats")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .param("period", "2026-01"))
+                    .andExpect(jsonPath("$.data.monthly[11].netWorth").value(820000));
+        }
+    }
+
+    /**
+     * 자산별 지출.
+     *
+     * <p>로컬에서 드러났다 — 청구 기준으로 보는데 자산 목록만 소비 기준이라, 합계에 없는
+     * 카드 사용이 <b>88%짜리 줄</b>로 남았다. 비율의 분모가 제 것이 아니면 막대는 칸을 넘고
+     * 줄을 다 더해도 합계가 안 된다.
+     */
+    @Nested
+    @DisplayName("자산별 지출")
+    class ByAsset {
+
+        @Test
+        @DisplayName("관점을 따라간다 — 청구 기준이면 아직 청구 안 된 카드는 자리도 없다")
+        void followsPerspective() throws Exception {
+            expense(checking, 42000, "2026-01-12");
+            expense(card, 180000, "2026-01-08");
+
+            // 소비 기준: 둘 다 있고, 두 줄을 더하면 합계가 된다.
+            mockMvc.perform(get("/api/ledger/stats")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .param("period", "2026-01")
+                            .param("perspective", "SPEND"))
+                    .andExpect(jsonPath("$.data.total").value(222000))
+                    .andExpect(jsonPath("$.data.byAsset.length()").value(2));
+
+            // 청구 기준: 1월에 결제일이 오는 청구서가 없으니 카드는 셀 것이 없다.
+            mockMvc.perform(get("/api/ledger/stats")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .param("period", "2026-01")
+                            .param("perspective", "BILLING"))
+                    .andExpect(jsonPath("$.data.total").value(42000))
+                    .andExpect(jsonPath("$.data.byAsset.length()").value(1))
+                    .andExpect(jsonPath("$.data.byAsset[0].amount").value(42000))
+                    .andExpect(jsonPath("$.data.byAsset[0].share").value(1.0));
+        }
     }
 
     @Nested

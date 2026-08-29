@@ -180,6 +180,9 @@ describe("카테고리 통계", () => {
           },
         ],
         previousTotal: 300000,
+        // 다른 카드가 같은 숫자를 그리지 않도록 성격별로 갈라 둔다.
+        fixedVsVariable: { fixed: 300000, variable: 100000, unclassified: 0 },
+        settlement: { income: 5000000, expense: 4000000, savingRate: 0.2 },
       },
     });
 
@@ -208,7 +211,54 @@ describe("카테고리 통계", () => {
     expect(await screen.findByText("미분류")).toBeInTheDocument();
   });
 
-  it("관점 전환 토글을 그리지 않는다 — v2다", async () => {
+  it("관점을 바꾸면 합계가 바뀐다 — 갈리는 지점은 할부다", async () => {
+    const user = userEvent.setup();
+    renderAt("/ledger/stats", {
+      stats: {
+        total: 522000,
+        byCategory: [
+          {
+            categoryId: 21,
+            categoryName: "식비",
+            amount: 522000,
+            count: 1,
+            share: 1,
+          },
+        ],
+        // 30만 3개월 할부 + 카드 사용 18만. 소비는 산 달에 전액, 청구는 회차만.
+        byPerspective: { SPEND: 522000, BILLING: 42000 },
+      },
+    });
+
+    expect(await screen.findAllByText("522,000")).not.toHaveLength(0);
+
+    await user.click(screen.getByRole("tab", { name: "청구 기준" }));
+
+    // 토글이 URL을 바꾸고 서버에 다시 물어야 한다. 화면이 자기 손으로 다시 세면 안 된다.
+    expect(await screen.findAllByText("42,000")).not.toHaveLength(0);
+    // 반대편이 뒤바뀐다 — 이제 「다른 쪽」이 소비 기준이다.
+    expect(
+      within(await screen.findByRole("alert")).getByText(/소비 기준으로 보면/),
+    ).toBeInTheDocument();
+  });
+
+  it("벌어지는 이유를 서버 말 그대로 적는다", async () => {
+    renderAt("/ledger/stats", {
+      stats: {
+        total: 522000,
+        byCategory: [],
+        byPerspective: { SPEND: 522000, BILLING: 42000 },
+        perspectiveDiff: { reason: "할부와 카드 사이클 경계 때문" },
+      },
+    });
+
+    const banner = await screen.findByRole("alert");
+    expect(
+      within(banner).getByText(/할부와 카드 사이클 경계 때문/),
+    ).toBeInTheDocument();
+  });
+
+  it("두 관점이 같으면 차이 배너를 띄우지 않는다", async () => {
     renderAt("/ledger/stats", {
       stats: {
         total: 100000,
@@ -225,9 +275,94 @@ describe("카테고리 통계", () => {
     });
 
     await screen.findByText("식비");
-    // 할부가 없으면 두 관점이 같은 값이라, 토글이 아무 일도 안 하는 것처럼 보인다.
-    expect(screen.queryByText("소비 기준")).toBeNull();
-    expect(screen.queryByText("청구 기준")).toBeNull();
+    // 할부가 없는 달은 두 관점이 같다. 차이가 0인데 배너가 뜨면 매달 잡음이 된다.
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  /**
+   * 연간 결산 막대(#1267).
+   *
+   * <p>아직 오지 않은 달은 <b>0짜리 막대가 아니다</b> — 그렇게 그리면 「그 달엔 한 푼도
+   * 안 썼다」로 읽힌다.
+   */
+  it("아직 오지 않은 달은 스텁으로 남고 순자산 선에도 안 낀다", async () => {
+    renderAt("/ledger/stats", {
+      stats: {
+        total: 300000,
+        byCategory: [],
+        monthly: [
+          {
+            month: "2026-06",
+            expense: 200000,
+            income: 3000000,
+            fixed: 0,
+            variable: 200000,
+            unclassified: 0,
+            netWorth: 5000000,
+          },
+          {
+            month: "2026-07",
+            expense: 300000,
+            income: 3000000,
+            fixed: 0,
+            variable: 300000,
+            unclassified: 0,
+            netWorth: 5600000,
+          },
+          {
+            month: "2026-08",
+            expense: 0,
+            income: 0,
+            fixed: 0,
+            variable: 0,
+            unclassified: 0,
+            netWorth: null,
+          },
+        ],
+        settlement: { highestMonth: "2026-07", lowestMonth: "2026-06" },
+      },
+    });
+
+    // 값이 둘 이상 있어야 선이 그려진다. 미래 달은 그 둘에 안 낀다.
+    expect(await screen.findByText("순자산 추이")).toBeInTheDocument();
+    expect(screen.getByText("6월 이후 +600,000")).toBeInTheDocument();
+  });
+
+  it("순자산 값이 한 달뿐이면 추이를 그리지 않는다", async () => {
+    renderAt("/ledger/stats", {
+      stats: {
+        total: 300000,
+        byCategory: [],
+        monthly: [
+          {
+            month: "2026-08",
+            expense: 300000,
+            income: 0,
+            fixed: 0,
+            variable: 300000,
+            unclassified: 0,
+            netWorth: 5000000,
+          },
+        ],
+      },
+    });
+
+    await screen.findByText("2026년 결산");
+    // 점 하나는 추이가 아니다.
+    expect(screen.queryByText("순자산 추이")).toBeNull();
+  });
+
+  it("분류가 덜 된 지출은 변동비로 세지 않는다", async () => {
+    renderAt("/ledger/stats", {
+      stats: {
+        total: 300000,
+        byCategory: [],
+        fixedVsVariable: { fixed: 0, variable: 0, unclassified: 300000 },
+      },
+    });
+
+    // 「변동비 100%」라고 그리면 분류를 안 한 것이 아니라 다 변동비인 것처럼 읽힌다.
+    expect(await screen.findByText("아직 안 정함")).toBeInTheDocument();
   });
 
   it("지난 달과 견줘 준다", async () => {

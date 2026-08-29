@@ -12,13 +12,33 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useUpdateSettings } from "@/features/ledger/hooks/useLedgerMutations";
+import type { CategoryView } from "@/features/ledger/api/ledger";
+import {
+  useUpdateCategoryAttributes,
+  useUpdateSettings,
+} from "@/features/ledger/hooks/useLedgerMutations";
 import {
   useLedgerAssets,
   useLedgerCategories,
   useLedgerSettings,
 } from "@/features/ledger/hooks/useLedgerQueries";
 import { LAST_DAY_OF_MONTH } from "@/features/ledger/lib/period";
+
+/**
+ * 통계 기본 관점. 화면을 열 때 어느 쪽으로 그릴지만 정한다 —
+ * 청구서·예정·곡선은 이 값과 무관하게 언제나 청구 기준이다(§10.1).
+ */
+const PERSPECTIVE_OPTIONS = [
+  { value: "SPEND", label: "소비 기준 (쓴 날)" },
+  { value: "BILLING", label: "청구 기준 (빠지는 날)" },
+];
+
+/** 카테고리의 비용 성격. 「안 정함」이 따로 있어야 변동비로 잘못 세지 않는다. */
+const COST_TYPE_OPTIONS = [
+  { value: "", label: "안 정함" },
+  { value: "FIXED", label: "고정비" },
+  { value: "VARIABLE", label: "변동비" },
+];
 
 /** 1~28과 말일. 29~31은 없는 달이 있어 고르게 두지 않는다. */
 const MONTH_START_OPTIONS = [
@@ -41,6 +61,7 @@ export function LedgerSettingsPage() {
   const { data: assetList } = useLedgerAssets();
   const { data: categories } = useLedgerCategories();
   const update = useUpdateSettings();
+  const updateAttributes = useUpdateCategoryAttributes();
 
   const assets = (assetList?.groups ?? [])
     .flatMap((group) => group.assets)
@@ -124,38 +145,56 @@ export function LedgerSettingsPage() {
               입력 모달이 처음 열릴 때 고를 자산이에요. 마지막으로 쓴 자산이
               있으면 그쪽이 먼저입니다.
             </p>
+
+            <FormField
+              label="통계 기본 관점"
+              labelId="ledger-default-perspective"
+            >
+              <Select
+                value={settings.defaultPerspective}
+                onValueChange={(value) =>
+                  update.mutate({
+                    defaultPerspective: value as "SPEND" | "BILLING",
+                  })
+                }
+                ariaLabelledby="ledger-default-perspective"
+                options={PERSPECTIVE_OPTIONS}
+              />
+            </FormField>
+            <p className="text-muted-foreground -mt-2 text-[13px]">
+              통계 화면이 처음 열릴 때의 기준이에요. 청구서·예정·잔액 곡선은 이
+              값과 상관없이 언제나 청구 기준입니다.
+            </p>
           </section>
 
           <section className="flex flex-col gap-2">
             <h2 className="text-[13px] font-semibold">카테고리</h2>
             <p className="text-muted-foreground text-[13px]">
-              지우면 보관 처리되고, 붙어 있던 내역은 그대로 남습니다.
+              지우면 보관 처리되고, 붙어 있던 내역은 그대로 남습니다. 여기서
+              정한 속성이 고정/변동 추이 · 카드 실적 · 연간 결산에 그대로
+              쓰입니다.
             </p>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>대분류</TableHead>
-                  <TableHead>소분류</TableHead>
                   <TableHead>종류</TableHead>
+                  <TableHead>비용 성격</TableHead>
+                  <TableHead>실적 제외</TableHead>
+                  <TableHead>결산 제외</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {(categories ?? [])
                   .filter((category) => !category.archived)
                   .map((category) => (
-                    <TableRow key={category.id}>
-                      <TableCell>{category.name}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {category.children.length === 0
-                          ? "—"
-                          : category.children
-                              .map((child) => child.name)
-                              .join(" · ")}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {FLOW_LABEL[category.flow]}
-                      </TableCell>
-                    </TableRow>
+                    <CategoryRow
+                      key={category.id}
+                      category={category}
+                      onChange={(body) =>
+                        updateAttributes.mutate({ id: category.id, body })
+                      }
+                    />
                   ))}
               </TableBody>
             </Table>
@@ -163,6 +202,85 @@ export function LedgerSettingsPage() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * 카테고리 한 줄. <b>지출이 아닌 카테고리에는 속성 칸을 두지 않는다</b> —
+ * 수입·이체에 「고정비」를 정할 수 있으면 어딘가에서 그 값이 지출로 세어진다.
+ */
+function CategoryRow({
+  category,
+  onChange,
+}: {
+  category: CategoryView;
+  onChange: (body: {
+    costType?: "FIXED" | "VARIABLE" | null;
+    clearCostType?: boolean;
+    excludeFromCardGoal?: boolean;
+    excludeFromSettlement?: boolean;
+  }) => void;
+}) {
+  const expense = category.flow === "EXPENSE";
+
+  return (
+    <TableRow>
+      <TableCell>
+        <span className="flex flex-col">
+          {category.name}
+          {category.children.length > 0 && (
+            <span className="text-muted-foreground text-[13px]">
+              {category.children.map((child) => child.name).join(" · ")}
+            </span>
+          )}
+        </span>
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {FLOW_LABEL[category.flow]}
+      </TableCell>
+      {expense ? (
+        <>
+          <TableCell>
+            <Select
+              value={category.costType ?? ""}
+              onValueChange={(value) =>
+                // 「안 정함」은 값을 비우는 것이지 안 보내는 것이 아니다 —
+                // null만 보내면 서버가 「안 건드림」으로 읽어 되돌릴 수 없다.
+                onChange(
+                  value === ""
+                    ? { clearCostType: true }
+                    : { costType: value as "FIXED" | "VARIABLE" },
+                )
+              }
+              ariaLabel={`${category.name} 비용 성격`}
+              options={COST_TYPE_OPTIONS}
+            />
+          </TableCell>
+          <TableCell>
+            <Switch
+              checked={category.excludeFromCardGoal}
+              onCheckedChange={(checked) =>
+                onChange({ excludeFromCardGoal: checked })
+              }
+              aria-label={`${category.name} 실적 제외`}
+            />
+          </TableCell>
+          <TableCell>
+            <Switch
+              checked={category.excludeFromSettlement}
+              onCheckedChange={(checked) =>
+                onChange({ excludeFromSettlement: checked })
+              }
+              aria-label={`${category.name} 결산 제외`}
+            />
+          </TableCell>
+        </>
+      ) : (
+        <TableCell colSpan={3} className="text-muted-foreground text-[13px]">
+          지출 카테고리만 속성을 갖습니다
+        </TableCell>
+      )}
+    </TableRow>
   );
 }
 

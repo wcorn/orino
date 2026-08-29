@@ -73,7 +73,19 @@ public record LedgerStatsResponse(
             long income,
             long fixed,
             long variable,
-            /** 그 달 말의 순자산. 아직 오지 않은 달은 {@code null}이다. */
+            /**
+             * 속성을 안 정한 카테고리의 지출.
+             *
+             * <p><b>빼면 막대가 지출보다 짧아진다</b> — 셋을 더해야 {@code expense}가 되고,
+             * 그래야 「왜 이 달만 막대가 짧지」라는 질문이 안 생긴다.
+             */
+            long unclassified,
+            /**
+             * 그 달 끝의 순자산. 진행 중인 달은 <b>오늘까지</b>다.
+             *
+             * <p>아직 오지 않은 달은 {@code null}이다 — 0으로 채우면 「자산이 0원이었다」가 되고,
+             * 막대 차트에서 바닥까지 떨어진 달로 보인다.
+             */
             Long netWorth
     ) {
     }

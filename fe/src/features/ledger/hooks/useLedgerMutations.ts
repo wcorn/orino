@@ -9,6 +9,7 @@ import {
   attachReceipt,
   type BudgetPutRequest,
   bulkCreateTransactions,
+  type CategoryAttributesRequest,
   confirmOccurrence,
   createAsset,
   createReceiptUploadUrl,
@@ -36,8 +37,11 @@ import {
   type TransactionCreateRequest,
   type TransactionUpdateRequest,
   updateAsset,
+  updateCategoryAttributes,
   updateSettings,
   updateTransaction,
+  updateUsageGoal,
+  type UsageGoalRequest,
 } from "../api/ledger";
 import { ledgerKeys } from "../queryKeys";
 
@@ -401,6 +405,47 @@ export function usePutBudget() {
     }) => putBudget(period, body),
     onSuccess: () => toast("예산을 저장했어요"),
     onError: () => toast("예산을 저장하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+/**
+ * 카테고리 속성 — 고정/변동 · 실적 제외 · 결산 제외(`LDG-051`).
+ *
+ * <p>세금·보험료를 실적에서 빼는 규칙은 카드사마다 다르고 사람마다 다르다. 코드에 박으면
+ * 누군가는 반드시 틀린 숫자를 본다 — 그래서 <b>카테고리의 속성</b>이다.
+ */
+export function useUpdateCategoryAttributes() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: number;
+      body: CategoryAttributesRequest;
+    }) => updateCategoryAttributes(id, body),
+    onSuccess: () => toast("카테고리 속성을 저장했어요"),
+    onError: () => toast("카테고리 속성을 저장하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+/** 카드 실적 조건. 기준(승인·청구)은 카드마다 다르므로 카드에 붙는다(§7.6). */
+export function useUpdateUsageGoal() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      cardId,
+      body,
+    }: {
+      cardId: number;
+      body: UsageGoalRequest;
+    }) => updateUsageGoal(cardId, body),
+    onSuccess: () => toast("실적 조건을 저장했어요"),
+    onError: () => toast("실적 조건을 저장하지 못했어요.", "error"),
     onSettled: () => invalidateAll(queryClient),
   });
 }
