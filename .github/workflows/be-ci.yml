@@ -19,7 +19,11 @@ concurrency:
 # 한 잡에서 순차로 돌리면 wall-clock = 합(테스트+이미지빌드)이 되므로 별도 잡으로 병렬 실행한다.
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # 개인 계정이라 larger runner를 만들 수 없다(조직·엔터프라이즈 전용). 코어를 못 늘리는
+    # 대신, public 레포에 무료로 열려 있는 ARM 러너를 쓴다 — 같은 4코어지만 더 빠르다.
+    # 이 잡은 테스트만 돌리고 배포 이미지는 image-scan 잡이 x64로 따로 만들므로,
+    # 여기서 아키텍처가 갈려도 배포에는 영향이 없다.
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
 
