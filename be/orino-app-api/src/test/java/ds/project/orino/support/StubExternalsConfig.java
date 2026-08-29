@@ -11,6 +11,7 @@ import ds.project.orino.planner.travel.tools.client.WeatherClient;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import software.amazon.awssdk.services.s3.S3Client;
 
 /**
  * 외부 호출을 전부 스텁으로 갈아끼운 설정.
@@ -46,5 +47,12 @@ public class StubExternalsConfig {
     @Primary
     public EcbRatesClient stubEcbRatesClient() {
         return new StubEcbRatesClient();
+    }
+
+    /** 영수증 보존 배치가 훑는 버킷. 메모리 위에 두고 목록·삭제만 흉내 낸다(#1275). */
+    @Bean
+    @Primary
+    public S3Client stubImageS3Client() {
+        return new StubS3Client();
     }
 }
