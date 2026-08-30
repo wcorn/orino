@@ -144,6 +144,10 @@ export const importLedgerSettings = () =>
   import("../pages/ledger/LedgerSettingsPage").then((m) => ({
     default: m.LedgerSettingsPage,
   }));
+export const importLedgerImport = () =>
+  import("../pages/ledger/LedgerImportPage").then((m) => ({
+    default: m.LedgerImportPage,
+  }));
 /**
  * 로그인 후 idle 시간에 페이지 청크를 미리 받아둔다.
  * lazy로 초기 번들은 가볍게 유지하면서, 실제 진입 시에는 이미 캐시돼 즉시 렌더된다.

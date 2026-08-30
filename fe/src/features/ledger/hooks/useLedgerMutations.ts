@@ -12,14 +12,21 @@ import {
   type CategoryAttributesRequest,
   confirmOccurrence,
   createAsset,
+  createAutoRule,
+  createPoint,
   createReceiptUploadUrl,
   createTemplate,
   createTransaction,
+  deleteAutoRule,
+  deletePoint,
   deleteTemplate,
   deleteTransaction,
   detachReceipt,
   duplicateTransaction,
   endRecurring,
+  executeImport,
+  type ImportMapping,
+  type LedgerMatchType,
   type OccurrenceConfirmRequest,
   type OccurrenceRequest,
   patchOccurrence,
@@ -30,6 +37,7 @@ import {
   type ReconcileRequest,
   type RecurringEndRequest,
   resumeRecurring,
+  revertImportBatch,
   type SettingsUpdateRequest,
   type StatementPayRequest,
   type TemplateCreateRequest,
@@ -37,7 +45,9 @@ import {
   type TransactionCreateRequest,
   type TransactionUpdateRequest,
   updateAsset,
+  updateAutoRule,
   updateCategoryAttributes,
+  updatePoint,
   updateSettings,
   updateTransaction,
   updateUsageGoal,
@@ -446,6 +456,138 @@ export function useUpdateUsageGoal() {
     }) => updateUsageGoal(cardId, body),
     onSuccess: () => toast("실적 조건을 저장했어요"),
     onError: () => toast("실적 조건을 저장하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+/**
+ * 가져오기 실행(`LDG-091`).
+ *
+ * <p>넣을 줄 번호를 그대로 보낸다 — 서버가 중복이라고 다시 거르지 않는다. 미리보기에서 본
+ * 것과 결과가 달라지면 그 순간 미리보기가 거짓말이 된다.
+ */
+export function useExecuteImport() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      file,
+      request,
+    }: {
+      file: File;
+      request: {
+        assetId: number;
+        mapping: ImportMapping;
+        skipRows?: number;
+        dateFormat?: string | null;
+        source: string;
+        rowNumbers: number[];
+      };
+    }) => executeImport(file, request),
+    onSuccess: (result) => toast(`${result.inserted}건을 넣었어요`),
+    onError: () => toast("가져오지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+/** 배치 되돌리기(`LDG-093`). 그 배치로 들어온 행만 사라진다. */
+export function useRevertImportBatch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => revertImportBatch(id),
+    onSuccess: (result) => toast(`${result.reverted}건을 되돌렸어요`),
+    onError: () => toast("되돌리지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+export function useCreateAutoRule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: {
+      keyword: string;
+      matchType: LedgerMatchType;
+      categoryId: number;
+    }) => createAutoRule(body),
+    onSuccess: () => toast("규칙을 추가했어요"),
+    onError: () => toast("규칙을 추가하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+export function useUpdateAutoRule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: number;
+      body: { enabled?: boolean; categoryId?: number; keyword?: string };
+    }) => updateAutoRule(id, body),
+    onError: () => toast("규칙을 고치지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+export function useDeleteAutoRule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => deleteAutoRule(id),
+    onSuccess: () => toast("규칙을 지웠어요"),
+    onError: () => toast("규칙을 지우지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+export function useCreatePoint() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: {
+      name: string;
+      unit: string;
+      balance?: number;
+      expiresOn?: string | null;
+      memo?: string | null;
+    }) => createPoint(body),
+    onSuccess: () => toast("포인트를 추가했어요"),
+    onError: () => toast("포인트를 추가하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+export function useUpdatePoint() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: number;
+      body: {
+        balance?: number;
+        expiresOn?: string | null;
+        clearExpiry?: boolean;
+      };
+    }) => updatePoint(id, body),
+    onError: () => toast("포인트를 고치지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+export function useDeletePoint() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => deletePoint(id),
+    onSuccess: () => toast("포인트를 지웠어요"),
+    onError: () => toast("포인트를 지우지 못했어요.", "error"),
     onSettled: () => invalidateAll(queryClient),
   });
 }

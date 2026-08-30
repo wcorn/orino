@@ -21,6 +21,7 @@ import {
   importLedgerBulkInput,
   importLedgerCards,
   importLedgerDashboard,
+  importLedgerImport,
   importLedgerRecurring,
   importLedgerSettings,
   importLedgerStatements,
@@ -83,6 +84,7 @@ const LedgerAssetsPage = lazy(importLedgerAssets);
 const LedgerAssetDetailPage = lazy(importLedgerAssetDetail);
 const LedgerTransactionsPage = lazy(importLedgerTransactions);
 const LedgerSettingsPage = lazy(importLedgerSettings);
+const LedgerImportPage = lazy(importLedgerImport);
 const LedgerStatsPage = lazy(importLedgerStats);
 const LedgerBulkInputPage = lazy(importLedgerBulkInput);
 const LedgerUpcomingPage = lazy(importLedgerUpcoming);
@@ -347,6 +349,14 @@ export function AppRouter() {
               element={
                 <Suspense fallback={<RouteFallback />}>
                   <LedgerSettingsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/ledger/import"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <LedgerImportPage />
                 </Suspense>
               }
             />
