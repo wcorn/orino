@@ -1332,3 +1332,283 @@ export async function fetchFxRate(
   );
   return data.data;
 }
+
+/* ─── 이관 (#1268 · 확정 명세 §12) ─────────────────────────────────── */
+
+/**
+ * 열 매핑. 값은 **0부터 세는 열 번호**다.
+ *
+ * 이름이 아니라 번호인 이유는 머리글이 없는 파일이 있어서다 — 이름을 키로 삼으면
+ * 그런 파일은 아예 매핑할 수 없다.
+ */
+export interface ImportMapping {
+  date: number | null;
+  amount?: number | null;
+  /** 입금 열. 은행 내역은 입금·출금이 **두 열**로 나뉘어 온다. */
+  inflow?: number | null;
+  outflow?: number | null;
+  title?: number | null;
+  memo?: number | null;
+  type?: number | null;
+  category?: number | null;
+  /** 자산 열. 백업을 되돌릴 때 계좌가 한 덩이로 뭉치지 않게 한다. */
+  asset?: number | null;
+}
+
+export interface ImportPreset {
+  id: number;
+  name: string;
+  mapping: ImportMapping;
+  skipRows: number;
+  dateFormat: string | null;
+  /** 동봉 프리셋. 고칠 수도 지울 수도 없다. */
+  builtIn: boolean;
+}
+
+export interface ImportAnalyzeResponse {
+  headers: string[];
+  sample: string[][];
+  totalRows: number;
+  presets: ImportPreset[];
+}
+
+/**
+ * 미리보기 한 줄.
+ *
+ * `duplicateOf`는 **보여줄 뿐**이다(`LDG-092`) — 자동으로 합치지 않고, 병합 API도 없다.
+ * 사람이 실행 목록에서 그 줄을 빼는 것이 유일한 처리다.
+ */
+export interface ImportPreviewRow {
+  rowNumber: number;
+  occurredOn: string | null;
+  type: LedgerFlow | null;
+  amount: number | null;
+  title: string | null;
+  memo: string | null;
+  categoryId: number | null;
+  categoryName: string | null;
+  /** 형식 오류 사유. 있으면 이 줄은 넣을 수 없다. */
+  error: string | null;
+  duplicateOf: number | null;
+  assetId: number | null;
+  assetName: string | null;
+}
+
+export interface ImportPreviewResponse {
+  rows: ImportPreviewRow[];
+  totalRows: number;
+  /** 서버가 센다. 화면이 다시 세지 않는다. */
+  duplicateCount: number;
+  errorCount: number;
+}
+
+export interface ImportBatch {
+  id: number;
+  source: string;
+  fileName: string | null;
+  rowCount: number;
+  insertedCount: number;
+  createdAt: string;
+  /** 되돌린 시각. 되돌린 배치도 목록에 남는다 — 그것도 이력이다. */
+  revertedAt: string | null;
+}
+
+export async function analyzeImport(
+  file: File,
+): Promise<ImportAnalyzeResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await client.post<ApiEnvelope<ImportAnalyzeResponse>>(
+    "/ledger/import/analyze",
+    form,
+  );
+  return data.data;
+}
+
+/** 요청 본문을 JSON 파트로 붙인다 — 서버가 `@RequestPart`로 받는다. */
+function jsonPart(body: unknown): Blob {
+  return new Blob([JSON.stringify(body)], { type: "application/json" });
+}
+
+export async function previewImport(
+  file: File,
+  request: {
+    assetId: number;
+    mapping: ImportMapping;
+    skipRows?: number;
+    dateFormat?: string | null;
+  },
+): Promise<ImportPreviewResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("request", jsonPart(request));
+  const { data } = await client.post<ApiEnvelope<ImportPreviewResponse>>(
+    "/ledger/import/preview",
+    form,
+  );
+  return data.data;
+}
+
+export async function executeImport(
+  file: File,
+  request: {
+    assetId: number;
+    mapping: ImportMapping;
+    skipRows?: number;
+    dateFormat?: string | null;
+    source: string;
+    /** 넣을 줄 번호. 체크를 해제한 줄은 여기 없다. */
+    rowNumbers: number[];
+  },
+): Promise<{ batchId: number; inserted: number; skipped: number }> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("request", jsonPart(request));
+  const { data } = await client.post<
+    ApiEnvelope<{ batchId: number; inserted: number; skipped: number }>
+  >("/ledger/import/execute", form);
+  return data.data;
+}
+
+export async function fetchImportBatches(): Promise<ImportBatch[]> {
+  const { data } = await client.get<ApiEnvelope<ImportBatch[]>>(
+    "/ledger/import/batches",
+  );
+  return data.data;
+}
+
+export async function revertImportBatch(
+  id: number,
+): Promise<{ batchId: number; reverted: number }> {
+  const { data } = await client.post<
+    ApiEnvelope<{ batchId: number; reverted: number }>
+  >(`/ledger/import/batches/${id}/revert`);
+  return data.data;
+}
+
+/** 내보내기는 파일이라 봉투가 없다 — 브라우저가 저장할 수 있게 그대로 내려온다. */
+export function exportUrl(
+  from: string,
+  to: string,
+  format: "csv" | "xlsx",
+): string {
+  return `/ledger/export?from=${from}&to=${to}&format=${format}`;
+}
+
+export async function downloadExport(
+  from: string,
+  to: string,
+  format: "csv" | "xlsx",
+): Promise<Blob> {
+  const { data } = await client.get<Blob>(exportUrl(from, to, format), {
+    responseType: "blob",
+  });
+  return data;
+}
+
+/* ─── 자동 분류 규칙 (`LDG-062`) ───────────────────────────────────── */
+
+export type LedgerMatchType = "CONTAINS" | "STARTS_WITH" | "EQUALS";
+
+export interface AutoRuleView {
+  id: number;
+  keyword: string;
+  matchType: LedgerMatchType;
+  categoryId: number;
+  categoryName: string | null;
+  priority: number;
+  enabled: boolean;
+}
+
+export async function fetchAutoRules(): Promise<AutoRuleView[]> {
+  const { data } =
+    await client.get<ApiEnvelope<AutoRuleView[]>>("/ledger/auto-rules");
+  return data.data;
+}
+
+export async function createAutoRule(body: {
+  keyword: string;
+  matchType: LedgerMatchType;
+  categoryId: number;
+}): Promise<AutoRuleView> {
+  const { data } = await client.post<ApiEnvelope<AutoRuleView>>(
+    "/ledger/auto-rules",
+    body,
+  );
+  return data.data;
+}
+
+export async function updateAutoRule(
+  id: number,
+  body: { enabled?: boolean; categoryId?: number; keyword?: string },
+): Promise<AutoRuleView> {
+  const { data } = await client.patch<ApiEnvelope<AutoRuleView>>(
+    `/ledger/auto-rules/${id}`,
+    body,
+  );
+  return data.data;
+}
+
+export async function deleteAutoRule(id: number): Promise<void> {
+  await client.delete(`/ledger/auto-rules/${id}`);
+}
+
+/* ─── 포인트·마일리지 (`LDG-006`) ──────────────────────────────────── */
+
+/**
+ * **총자산·순자산 어디에도 들어가지 않는다.** 포인트는 쓸 수 있는 곳이 정해진 외상이지
+ * 돈이 아니고, 섞는 순간 「자산이 얼마인가」가 답할 수 없는 질문이 된다.
+ */
+export interface PointView {
+  id: number;
+  name: string;
+  unit: string;
+  balance: number;
+  expiresOn: string | null;
+  /** 소멸까지 남은 날. 서버가 센다 — 화면이 세면 자정 언저리에 다른 날짜를 말한다. */
+  daysLeft: number | null;
+  expiringSoon: boolean;
+  memo: string | null;
+  displayOrder: number;
+}
+
+export async function fetchPoints(): Promise<PointView[]> {
+  const { data } = await client.get<ApiEnvelope<PointView[]>>("/ledger/points");
+  return data.data;
+}
+
+export async function createPoint(body: {
+  name: string;
+  unit: string;
+  balance?: number;
+  expiresOn?: string | null;
+  memo?: string | null;
+}): Promise<PointView> {
+  const { data } = await client.post<ApiEnvelope<PointView>>(
+    "/ledger/points",
+    body,
+  );
+  return data.data;
+}
+
+export async function updatePoint(
+  id: number,
+  body: {
+    name?: string;
+    unit?: string;
+    balance?: number;
+    expiresOn?: string | null;
+    clearExpiry?: boolean;
+    memo?: string | null;
+  },
+): Promise<PointView> {
+  const { data } = await client.patch<ApiEnvelope<PointView>>(
+    `/ledger/points/${id}`,
+    body,
+  );
+  return data.data;
+}
+
+export async function deletePoint(id: number): Promise<void> {
+  await client.delete(`/ledger/points/${id}`);
+}

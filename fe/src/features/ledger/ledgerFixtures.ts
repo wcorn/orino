@@ -278,6 +278,59 @@ export interface LedgerMockOptions {
       lowestMonth?: string | null;
     };
   };
+  /** 가져오기. `analyze`는 열 맞추기 화면이, `preview`는 확인 화면이 읽는다. */
+  importAnalyze?: {
+    headers?: string[];
+    sample?: string[][];
+    totalRows?: number;
+  };
+  importPreview?: {
+    rows?: {
+      rowNumber: number;
+      occurredOn: string | null;
+      type: string | null;
+      amount: number | null;
+      title: string | null;
+      memo?: string | null;
+      categoryId?: number | null;
+      categoryName?: string | null;
+      error?: string | null;
+      duplicateOf?: number | null;
+      assetId?: number | null;
+      assetName?: string | null;
+    }[];
+  };
+  /** 실행 결과. 요청 본문은 이 환경에서 볼 수 없어 응답만 정한다. */
+  importExecute?: { inserted?: number; skipped?: number };
+  importBatches?: {
+    id: number;
+    source: string;
+    fileName?: string | null;
+    rowCount?: number;
+    insertedCount?: number;
+    createdAt?: string;
+    revertedAt?: string | null;
+  }[];
+  autoRules?: {
+    id: number;
+    keyword: string;
+    matchType?: string;
+    categoryId: number;
+    categoryName?: string | null;
+    priority?: number;
+    enabled?: boolean;
+  }[];
+  points?: {
+    id: number;
+    name: string;
+    unit?: string;
+    balance: number;
+    expiresOn?: string | null;
+    daysLeft?: number | null;
+    expiringSoon?: boolean;
+    memo?: string | null;
+    displayOrder?: number;
+  }[];
   /** 복합 검색 결과. `truncated`를 켜면 「잘렸다」 경고를 확인할 수 있다. */
   search?: {
     items?: ReturnType<typeof transactionView>[];
@@ -334,6 +387,8 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
   const occurrenceActions: Record<string, unknown>[] = [];
   /** 카테고리 속성 PATCH 본문. 화면이 무엇을 보냈는지로만 확인할 수 있다. */
   const categoryAttributes: Record<string, unknown>[] = [];
+  const reverts: number[] = [];
+  const autoRuleWrites: Record<string, unknown>[] = [];
   const payments: Record<string, unknown>[] = [];
   const budgets: Record<string, unknown>[] = [];
   const duplicated: Record<string, unknown>[] = [];
@@ -791,6 +846,145 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
     http.patch(`${API_BASE}/ledger/cards/:id/usage-goal`, () =>
       HttpResponse.json({ code: "OK", data: null }),
     ),
+    http.post(`${API_BASE}/ledger/import/analyze`, () =>
+      ok({
+        headers: options.importAnalyze?.headers ?? ["날짜", "내용", "금액"],
+        sample: options.importAnalyze?.sample ?? [
+          ["2026-08-10", "스타벅스 역삼", "-5500"],
+        ],
+        totalRows: options.importAnalyze?.totalRows ?? 1,
+        presets: [
+          {
+            id: 1,
+            name: "카드사 명세서",
+            mapping: { date: 0, title: 1, amount: 2 },
+            skipRows: 1,
+            dateFormat: null,
+            builtIn: true,
+          },
+        ],
+      }),
+    ),
+    http.post(`${API_BASE}/ledger/import/preview`, () => {
+      const rows = (options.importPreview?.rows ?? []).map((row) => ({
+        memo: null,
+        categoryId: null,
+        categoryName: null,
+        error: null,
+        duplicateOf: null,
+        assetId: 1,
+        assetName: "급여통장",
+        ...row,
+      }));
+      return ok({
+        rows,
+        totalRows: rows.length,
+        // 서버가 센다 — 화면이 다시 세면 어느 쪽이 맞는지 알 수 없다.
+        duplicateCount: rows.filter((row) => row.duplicateOf !== null).length,
+        errorCount: rows.filter((row) => row.error !== null).length,
+      });
+    }),
+    /*
+      실행 결과만 돌려준다. **요청 본문은 확인할 수 없다** — jsdom/undici가 multipart의
+      파트 내용을 비운 채 보내서, 어떤 파서를 써도 빈 값이 나온다.
+      「어느 줄을 보냈는가」는 BE 통합 테스트(LedgerImportTest)와 실제 실행이 지킨다.
+    */
+    http.post(`${API_BASE}/ledger/import/execute`, () =>
+      ok({
+        batchId: 1,
+        inserted: options.importExecute?.inserted ?? 1,
+        skipped: options.importExecute?.skipped ?? 0,
+      }),
+    ),
+    http.get(`${API_BASE}/ledger/import/batches`, () =>
+      ok(
+        (options.importBatches ?? []).map((batch) => ({
+          fileName: "sample.csv",
+          rowCount: 10,
+          insertedCount: 10,
+          createdAt: "2026-08-28T00:00:00Z",
+          revertedAt: null,
+          ...batch,
+        })),
+      ),
+    ),
+    http.post(`${API_BASE}/ledger/import/batches/:id/revert`, ({ params }) => {
+      reverts.push(Number(params.id));
+      return ok({ batchId: Number(params.id), reverted: 3 });
+    }),
+    http.get(`${API_BASE}/ledger/auto-rules`, () =>
+      ok(
+        (options.autoRules ?? []).map((rule) => ({
+          matchType: "CONTAINS",
+          categoryName: "카페/간식",
+          priority: 0,
+          enabled: true,
+          ...rule,
+        })),
+      ),
+    ),
+    http.post(`${API_BASE}/ledger/auto-rules`, async ({ request }) => {
+      const body = (await request.json()) as Record<string, unknown>;
+      autoRuleWrites.push(body);
+      return ok({
+        id: 99,
+        matchType: "CONTAINS",
+        categoryName: "카페/간식",
+        priority: 0,
+        enabled: true,
+        ...body,
+      });
+    }),
+    http.patch(
+      `${API_BASE}/ledger/auto-rules/:id`,
+      async ({ request, params }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        autoRuleWrites.push({ id: Number(params.id), ...body });
+        return ok({
+          id: Number(params.id),
+          keyword: "스타벅스",
+          matchType: "CONTAINS",
+          categoryId: 21,
+          categoryName: "카페/간식",
+          priority: 0,
+          enabled: true,
+          ...body,
+        });
+      },
+    ),
+    http.delete(`${API_BASE}/ledger/auto-rules/:id`, () =>
+      HttpResponse.json({ code: "OK", data: null }),
+    ),
+    http.get(`${API_BASE}/ledger/points`, () =>
+      ok(
+        (options.points ?? []).map((point) => ({
+          unit: "포인트",
+          expiresOn: null,
+          daysLeft: null,
+          expiringSoon: false,
+          memo: null,
+          displayOrder: 0,
+          ...point,
+        })),
+      ),
+    ),
+    http.post(`${API_BASE}/ledger/points`, async ({ request }) => {
+      const body = (await request.json()) as Record<string, unknown>;
+      return ok({
+        id: 99,
+        unit: "포인트",
+        balance: 0,
+        expiresOn: null,
+        daysLeft: null,
+        expiringSoon: false,
+        memo: null,
+        displayOrder: 0,
+        ...body,
+      });
+    }),
+    http.delete(`${API_BASE}/ledger/points/:id`, () =>
+      HttpResponse.json({ code: "OK", data: null }),
+    ),
     http.post(`${API_BASE}/ledger/assets/:id/reconcile`, () =>
       ok({
         adjustmentTransactionId:
@@ -876,6 +1070,8 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
     bulkSent,
     occurrenceActions,
     categoryAttributes,
+    reverts,
+    autoRuleWrites,
     payments,
     budgets,
   });

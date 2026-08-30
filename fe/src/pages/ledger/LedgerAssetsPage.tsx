@@ -1,4 +1,5 @@
 import { Banknote, CreditCard, Landmark, Plus } from "lucide-react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
@@ -6,6 +7,8 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { LoadingText } from "@/components/ui/loading-text";
 import type {
   AssetGroupView,
@@ -14,8 +17,13 @@ import type {
 } from "@/features/ledger/api/ledger";
 import { useTransactionModal } from "@/features/ledger/components/transactionModalContext";
 import {
+  useCreatePoint,
+  useDeletePoint,
+} from "@/features/ledger/hooks/useLedgerMutations";
+import {
   useLedgerAssets,
   useLedgerCards,
+  usePoints,
 } from "@/features/ledger/hooks/useLedgerQueries";
 import { formatAmount, formatBalance } from "@/features/ledger/lib/money";
 import { cn } from "@/lib/utils";
@@ -119,7 +127,130 @@ export function LedgerAssetsPage() {
           )}
         </>
       )}
+
+      {/* 자산 목록 밖이다. 안에 두면 언젠가 합계에 섞인다. */}
+      <PointSection />
     </div>
+  );
+}
+
+/**
+ * 포인트·마일리지(`LDG-006`).
+ *
+ * <p><b>자산 목록에 섞지 않는다.</b> 총자산·순자산·통계 어디에도 들어가지 않는다 — 포인트는
+ * 쓸 수 있는 곳이 정해진 외상이지 돈이 아니고, 섞는 순간 「자산이 얼마인가」가 답할 수 없는
+ * 질문이 된다. 그래서 합계도 내지 않는다: 「포인트」와 「마일」은 서로 더할 수 없다.
+ *
+ * <p>적어 두는 이유의 절반은 <b>소멸일</b>이라 D-day를 배지로 세운다. 날짜 계산은 서버가
+ * 한다 — 화면이 세면 자정 언저리에 서로 다른 날을 말한다.
+ */
+function PointSection() {
+  const { data: points, isPending } = usePoints();
+  const create = useCreatePoint();
+  const remove = useDeletePoint();
+
+  const [name, setName] = useState("");
+  const [balance, setBalance] = useState("");
+  const [expiresOn, setExpiresOn] = useState("");
+
+  const submit = () => {
+    if (name.trim() === "") {
+      return;
+    }
+    create.mutate(
+      {
+        name: name.trim(),
+        unit: "포인트",
+        balance: balance === "" ? 0 : Number(balance),
+        expiresOn: expiresOn === "" ? null : expiresOn,
+      },
+      {
+        onSuccess: () => {
+          setName("");
+          setBalance("");
+          setExpiresOn("");
+        },
+      },
+    );
+  };
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-[13px] font-semibold">포인트·마일리지</h2>
+      <p className="text-muted-foreground text-[13px]">
+        <b>총자산에 포함되지 않아요.</b> 쓸 수 있는 곳이 정해져 있어 돈과 같이
+        셀 수 없습니다 — 소멸일을 놓치지 않으려고 적어 둡니다.
+      </p>
+
+      {isPending && <LoadingText />}
+
+      {points && points.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {points.map((point) => (
+            <li
+              key={point.id}
+              className="border-border flex items-center justify-between gap-3 border-b py-2 text-sm last:border-b-0"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="truncate">{point.name}</span>
+                {point.daysLeft !== null && (
+                  <Badge variant={point.expiringSoon ? "warning" : "outline"}>
+                    {point.daysLeft < 0 ? "소멸됨" : `D-${point.daysLeft}`}
+                  </Badge>
+                )}
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                <span className="tabular-nums">
+                  {formatAmount(point.balance)} {point.unit}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`${point.name} 지우기`}
+                  onClick={() => remove.mutate(point.id)}
+                >
+                  지우기
+                </Button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex min-w-[140px] flex-1 flex-col gap-1.5">
+          <Label htmlFor="point-name">이름</Label>
+          <Input
+            id="point-name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="네이버페이"
+          />
+        </div>
+        <div className="flex w-[120px] flex-col gap-1.5">
+          <Label htmlFor="point-balance">잔액</Label>
+          <Input
+            id="point-balance"
+            inputMode="numeric"
+            value={balance}
+            onChange={(event) => setBalance(event.target.value)}
+          />
+        </div>
+        <div className="flex w-[150px] flex-col gap-1.5">
+          <Label htmlFor="point-expires">소멸일</Label>
+          <Input
+            id="point-expires"
+            type="date"
+            value={expiresOn}
+            onChange={(event) => setExpiresOn(event.target.value)}
+          />
+        </div>
+        <Button type="button" disabled={name.trim() === ""} onClick={submit}>
+          추가
+        </Button>
+      </div>
+    </section>
   );
 }
 

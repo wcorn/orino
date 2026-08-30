@@ -349,8 +349,9 @@ describe("WorkspaceSelectPage", () => {
   });
 
   it("아직 없는 가계부 하위 경로는 가계부 홈으로 보낸다 — 랜딩으로 튕기지 않는다", async () => {
-    // 가져오기는 v2라 아직 라우트가 없다. 예산·정기 항목은 v1.5에서 생겼다.
-    renderApp(["/ledger/import"]);
+    // 가계부의 모든 화면이 라우트를 가진 뒤로는, 없는 경로를 일부러 하나 고른다 —
+    // 리다이렉트가 살아 있는지는 「언젠가 생길 이름」이 아니라 규칙 자체로 확인한다.
+    renderApp(["/ledger/there-is-no-such-page"]);
 
     await waitFor(() => {
       expect(

@@ -98,7 +98,12 @@ class LedgerImportTest extends ApiTestSupport {
             preview(csv)
                     .andExpect(jsonPath("$.data.errorCount").value(1))
                     .andExpect(jsonPath("$.data.rows", hasSize(2)))
-                    .andExpect(jsonPath("$.data.rows[1].error").value("날짜를 읽을 수 없습니다"));
+                    .andExpect(jsonPath("$.data.rows[1].error").value("날짜를 읽을 수 없습니다"))
+                    // 화면에서 드러났다 — 못 읽은 줄이 「제목 없음 · 0원」으로 보였다.
+                    // 파일에 적힌 말이 남아야 그 줄을 파일에서 찾을 수 있고,
+                    // 금액은 0이 아니라 「모른다」다.
+                    .andExpect(jsonPath("$.data.rows[1].title").value("깨진 줄"))
+                    .andExpect(jsonPath("$.data.rows[1].amount").doesNotExist());
         }
 
         /**

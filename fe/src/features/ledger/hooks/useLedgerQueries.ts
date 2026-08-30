@@ -4,6 +4,7 @@ import {
   fetchAssetDetail,
   fetchAssets,
   fetchAssetTransactions,
+  fetchAutoRules,
   fetchBalanceCurve,
   fetchBudget,
   fetchCalendar,
@@ -11,7 +12,9 @@ import {
   fetchCategories,
   fetchDashboard,
   fetchFxRate,
+  fetchImportBatches,
   fetchLedgerSummary,
+  fetchPoints,
   fetchReceipts,
   fetchRecurring,
   fetchRecurringHistory,
@@ -249,6 +252,33 @@ export function useRecurringHistory(id: number | null) {
     queryKey: ledgerKeys.recurringHistory(id ?? 0),
     queryFn: () => fetchRecurringHistory(id as number),
     enabled: id != null,
+    staleTime: 60 * 1000,
+  });
+}
+
+/** 가져오기 이력. 되돌린 배치도 함께 온다 — 무엇을 물렀는지도 이력이다. */
+export function useImportBatches() {
+  return useQuery({
+    queryKey: ledgerKeys.importBatches,
+    queryFn: fetchImportBatches,
+    staleTime: 30 * 1000,
+  });
+}
+
+/** 자동 분류 규칙. 가져오기와 수동 입력이 같은 목록을 쓴다. */
+export function useAutoRules() {
+  return useQuery({
+    queryKey: ledgerKeys.autoRules,
+    queryFn: fetchAutoRules,
+    staleTime: 60 * 1000,
+  });
+}
+
+/** 포인트. 자산 조회와 **따로** 부른다 — 같은 응답에 실으면 언젠가 합계에 섞인다. */
+export function usePoints() {
+  return useQuery({
+    queryKey: ledgerKeys.points,
+    queryFn: fetchPoints,
     staleTime: 60 * 1000,
   });
 }

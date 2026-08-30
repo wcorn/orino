@@ -1,6 +1,11 @@
+import { useState } from "react";
+
 import { PageHeader } from "@/components/PageHeader";
 import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { LoadingText } from "@/components/ui/loading-text";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -14,10 +19,14 @@ import {
 } from "@/components/ui/table";
 import type { CategoryView } from "@/features/ledger/api/ledger";
 import {
+  useCreateAutoRule,
+  useDeleteAutoRule,
+  useUpdateAutoRule,
   useUpdateCategoryAttributes,
   useUpdateSettings,
 } from "@/features/ledger/hooks/useLedgerMutations";
 import {
+  useAutoRules,
   useLedgerAssets,
   useLedgerCategories,
   useLedgerSettings,
@@ -199,9 +208,145 @@ export function LedgerSettingsPage() {
               </TableBody>
             </Table>
           </section>
+
+          <AutoRuleSection />
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * 자동 분류 규칙(`LDG-062`).
+ *
+ * <p><b>가져오기와 수동 입력이 같은 규칙을 쓴다.</b> 그래서 목록이 가져오기 화면이 아니라
+ * 설정에 있다 — 가져오기 안에 두면 「파일로 넣을 때만 걸리는 것」으로 읽힌다.
+ *
+ * <p>끄기와 지우기를 나눠 둔다. 지우면 왜 그런 분류였는지도 사라지지만, 꺼 두면 남는다.
+ */
+function AutoRuleSection() {
+  const { data: rules, isPending } = useAutoRules();
+  const { data: categories } = useLedgerCategories();
+  const create = useCreateAutoRule();
+  const update = useUpdateAutoRule();
+  const remove = useDeleteAutoRule();
+
+  const [keyword, setKeyword] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+
+  const expenseCategories = (categories ?? []).filter(
+    (category) => category.flow === "EXPENSE" && !category.archived,
+  );
+
+  const submit = () => {
+    if (keyword.trim() === "" || categoryId === "") {
+      return;
+    }
+    create.mutate(
+      {
+        keyword: keyword.trim(),
+        matchType: "CONTAINS",
+        categoryId: Number(categoryId),
+      },
+      { onSuccess: () => setKeyword("") },
+    );
+  };
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-[13px] font-semibold">자동 분류</h2>
+      <p className="text-muted-foreground text-[13px]">
+        내용에 이 말이 들어 있으면 그 카테고리로 넣어요.{" "}
+        <b>손으로 적을 때도 똑같이 걸립니다.</b> 이미 카테고리를 고른 거래는
+        건드리지 않아요.
+      </p>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
+          <Label htmlFor="rule-keyword">내용에 이 말이 있으면</Label>
+          <Input
+            id="rule-keyword"
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="스타벅스"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                submit();
+              }
+            }}
+          />
+        </div>
+        <FormField label="이 카테고리로" labelId="rule-category">
+          <Select
+            value={categoryId}
+            onValueChange={setCategoryId}
+            ariaLabelledby="rule-category"
+            options={[
+              { value: "", label: "고르세요" },
+              ...expenseCategories.map((category) => ({
+                value: String(category.id),
+                label: category.name,
+              })),
+            ]}
+          />
+        </FormField>
+        <Button
+          type="button"
+          disabled={keyword.trim() === "" || categoryId === ""}
+          onClick={submit}
+        >
+          추가
+        </Button>
+      </div>
+
+      {isPending && <LoadingText />}
+      {rules && rules.length === 0 && (
+        <p className="text-muted-foreground text-[13px]">아직 규칙이 없어요.</p>
+      )}
+
+      {rules && rules.length > 0 && (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>내용</TableHead>
+              <TableHead>카테고리</TableHead>
+              <TableHead>켜기</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rules.map((rule) => (
+              <TableRow key={rule.id}>
+                <TableCell>{rule.keyword}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {rule.categoryName ?? "—"}
+                </TableCell>
+                <TableCell>
+                  <Switch
+                    checked={rule.enabled}
+                    aria-label={`${rule.keyword} 규칙 켜기`}
+                    onCheckedChange={(checked) =>
+                      update.mutate({ id: rule.id, body: { enabled: checked } })
+                    }
+                  />
+                </TableCell>
+                <TableCell>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`${rule.keyword} 규칙 지우기`}
+                    onClick={() => remove.mutate(rule.id)}
+                  >
+                    지우기
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </section>
   );
 }
 

@@ -41,4 +41,7 @@ export const ledgerKeys = {
     ["ledger", "recurring", id, "history"] as const,
   suggestions: (keyword: string) => ["ledger", "suggest", keyword] as const,
   fxRate: (currency: string) => ["ledger", "fx", currency] as const,
+  importBatches: ["ledger", "import", "batches"] as const,
+  autoRules: ["ledger", "auto-rules"] as const,
+  points: ["ledger", "points"] as const,
 };

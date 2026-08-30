@@ -237,6 +237,12 @@ public class LedgerImportService {
                                Map<String, Long> assetByName) {
         ParsedRow row = new ParsedRow();
         row.rowNumber = rowNumber;
+        /*
+         * 내용을 먼저 채운다. 못 읽은 줄에도 <b>파일에 적힌 말</b>이 보여야 그 줄을 파일에서
+         * 찾을 수 있다 — 「제목 없음」만 남으면 몇 번째 줄인지로만 뒤져야 한다.
+         */
+        row.title = cellAt(cells, mapping.title());
+        row.memo = cellAt(cells, mapping.memo());
 
         row.occurredOn = LedgerDateParser.parse(cellAt(cells, mapping.date()), dateFormat);
         if (row.occurredOn == null) {
@@ -256,9 +262,6 @@ public class LedgerImportService {
         }
         row.amount = money.amount;
         row.type = typeOf(cells, mapping, money);
-
-        row.title = cellAt(cells, mapping.title());
-        row.memo = cellAt(cells, mapping.memo());
 
         // 파일에 카테고리 열이 있으면 그 이름을 먼저 쓰고, 없을 때만 규칙이 채운다 —
         // 파일이 말한 것이 규칙보다 구체적이다.
@@ -446,7 +449,8 @@ public class LedgerImportService {
         private int rowNumber;
         private LocalDate occurredOn;
         private LedgerFlow type;
-        private long amount;
+        /** 못 읽었으면 {@code null}이다 — 0으로 두면 화면이 「0원짜리 줄」이라고 말한다. */
+        private Long amount;
         private String title;
         private String memo;
         private Long categoryId;
