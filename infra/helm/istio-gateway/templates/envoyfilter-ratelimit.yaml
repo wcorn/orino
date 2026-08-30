@@ -1,3 +1,15 @@
+{{- /*
+api.orino.dev의 rate limit. #1248.
+
+vhost 이름은 "<host>:<Gateway 서버 포트>"다. 이 게이트웨이는 443 서버 하나뿐이라
+(#456에서 Cloudflare를 걷어내고 공유기가 443만 포워딩한다) api.orino.dev:443이다.
+
+:80으로 적혀 있던 동안 이 패치는 **붙을 자리를 못 찾았고, Envoy는 경고 없이 넘어갔다.**
+HTTP_FILTER 패치(필터를 체인에 넣는 쪽)는 vhost 이름을 보지 않아 정상 적용됐기 때문에,
+config_dump에 필터는 보이는데 토큰 버킷을 든 per-route 설정만 없는 상태였다 —
+겉보기엔 제한이 걸린 것처럼 보이는 실패였다. 확인은 렌더링이 아니라 적용 결과로 한다:
+vhost의 per_filter에 local_ratelimit이 실제로 들어 있는지 본다.
+*/ -}}
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
@@ -31,7 +43,7 @@ spec:
         context: GATEWAY
         routeConfiguration:
           vhost:
-            name: api.orino.dev:80
+            name: api.orino.dev:443
       patch:
         operation: MERGE
         value:
@@ -41,9 +53,20 @@ spec:
               type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
               value:
                 stat_prefix: http_local_rate_limiter
+                # 실측으로 정한 값(30일, Prometheus). 아래 숫자가 근거다.
+                #
+                #   성공(2xx) 분당 최대   246   ← 사람이 실제로 쓴 양의 꼭대기
+                #   2xx가 100을 넘은 분      2   (43,200분 중)
+                #   2xx가 200을 넘은 분      1
+                #
+                # 100으로 두면 정상 사용에서 429가 났을 값이다. 600은 실측 꼭대기의
+                # 2.4배 — **평소에는 절대 걸리지 않고**, 폭주만 막는 자리다.
+                #
+                # 버킷은 vhost 전체가 나눠 쓰고(IP별이 아니다) 게이트웨이 파드마다 따로다.
+                # 파드가 2개이므로 전체로는 분당 1,200이 상한이다.
                 token_bucket:
-                  max_tokens: 100
-                  tokens_per_fill: 100
+                  max_tokens: 600
+                  tokens_per_fill: 600
                   fill_interval: 60s
                 filter_enabled:
                   runtime_key: local_rate_limit_enabled
@@ -59,4 +82,4 @@ spec:
                   - append_action: OVERWRITE_IF_EXISTS_OR_ADD
                     header:
                       key: X-RateLimit-Limit
-                      value: "100"
+                      value: "600"
