@@ -386,6 +386,34 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
         long getTotal();
     }
 
+    /**
+     * 그 배치로 들어온 살아 있는 행. 되돌리기가 읽는다.
+     *
+     * <p>이미 지워진 행은 빼고 가져온다 — 되돌리기가 「이미 지운 것을 또 지웠다」고
+     * 세면 화면에 뜨는 숫자가 실제로 물린 줄 수와 달라진다.
+     */
+    List<LedgerTransaction> findAllByImportBatchIdAndDeletedAtIsNull(Long importBatchId);
+
+    /**
+     * 중복 후보. <b>날짜 + 금액 + 자산</b>이 같은 살아 있는 행을 구간째 가져온다(`LDG-092`).
+     *
+     * <p>내용 비교는 여기서 하지 않는다 — 소스마다 표기가 달라(「스타벅스코리아」 대
+     * 「STARBUCKS」) SQL로 견주면 놓치고, 놓친 중복은 사람이 볼 기회조차 없다.
+     * 후보를 넉넉히 가져와 <b>애플리케이션에서 견주는 쪽</b>이 판단 근거를 남기기도 좋다.
+     *
+     * <p><b>자동으로 병합하지 않는다.</b> 이 질의의 결과는 「보여줄 목록」이지
+     * 「지울 목록」이 아니다.
+     */
+    @Query("""
+            SELECT t FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.deletedAt IS NULL
+              AND t.occurredOn BETWEEN :from AND :to
+            """)
+    List<LedgerTransaction> findDuplicateCandidates(@Param("memberId") Long memberId,
+                                                    @Param("from") LocalDate from,
+                                                    @Param("to") LocalDate to);
+
     /** 날짜·유형·상태별 합계 한 줄. 캘린더가 읽는다. */
     interface DailyFlowTotal {
         LocalDate getDate();

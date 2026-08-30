@@ -3,6 +3,7 @@ package ds.project.orino.planner.ledger.transaction;
 import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
 import ds.project.orino.domain.planner.ledger.entity.LedgerAsset;
+import ds.project.orino.domain.planner.ledger.entity.LedgerAutoRule;
 import ds.project.orino.domain.planner.ledger.entity.LedgerCategory;
 import ds.project.orino.domain.planner.ledger.entity.LedgerFlow;
 import ds.project.orino.domain.planner.ledger.entity.LedgerTag;
@@ -21,6 +22,7 @@ import ds.project.orino.planner.ledger.common.LedgerBootstrap;
 import ds.project.orino.planner.ledger.common.LedgerClock;
 import ds.project.orino.planner.ledger.common.LedgerNames;
 import ds.project.orino.planner.ledger.fx.LedgerFxService;
+import ds.project.orino.planner.ledger.rule.LedgerAutoRuleService;
 import ds.project.orino.planner.ledger.transaction.dto.BulkCreateResponse;
 import ds.project.orino.planner.ledger.transaction.dto.BulkRequest;
 import ds.project.orino.planner.ledger.transaction.dto.BulkResponse;
@@ -76,6 +78,7 @@ public class LedgerTransactionService {
     private final LedgerBootstrap bootstrap;
     private final LedgerStatementAssigner statementAssigner;
     private final LedgerInstallmentService installmentService;
+    private final LedgerAutoRuleService autoRuleService;
     private final LedgerClock clock;
 
     public LedgerTransactionService(LedgerTransactionRepository transactionRepository,
@@ -87,6 +90,7 @@ public class LedgerTransactionService {
                                     LedgerBootstrap bootstrap,
                                     LedgerStatementAssigner statementAssigner,
                                     LedgerInstallmentService installmentService,
+                                    LedgerAutoRuleService autoRuleService,
                                     LedgerClock clock) {
         this.transactionRepository = transactionRepository;
         this.transactionTagRepository = transactionTagRepository;
@@ -97,6 +101,7 @@ public class LedgerTransactionService {
         this.bootstrap = bootstrap;
         this.statementAssigner = statementAssigner;
         this.installmentService = installmentService;
+        this.autoRuleService = autoRuleService;
         this.clock = clock;
     }
 
@@ -121,8 +126,9 @@ public class LedgerTransactionService {
 
         int scheduled = 0;
         List<TransactionView> created = new ArrayList<>();
+        List<LedgerAutoRule> rules = autoRuleService.rulesOf(memberId);
         for (TransactionCreateRequest request : requests) {
-            TransactionCreatedResponse saved = saveOne(memberId, request);
+            TransactionCreatedResponse saved = saveOne(memberId, request, rules);
             created.add(saved.transaction());
             if (saved.savedAs() == LedgerTransactionStatus.SCHEDULED) {
                 scheduled++;
@@ -165,10 +171,30 @@ public class LedgerTransactionService {
     }
 
     private TransactionCreatedResponse saveOne(Long memberId, TransactionCreateRequest request) {
+        return saveOne(memberId, request, autoRuleService.rulesOf(memberId));
+    }
+
+    /**
+     * @param rules 자동 분류 규칙. 여러 줄을 넣을 때 <b>한 번만 읽어</b> 넘긴다 —
+     *              줄마다 읽으면 질의가 줄 수만큼 늘어난다
+     */
+    private TransactionCreatedResponse saveOne(Long memberId, TransactionCreateRequest request,
+                                               List<LedgerAutoRule> rules) {
         LedgerFlow type = request.type();
         LedgerAsset asset = requireAsset(memberId, request.assetId());
         Long counterAssetId = resolveCounterAsset(memberId, type, asset, request.counterAssetId());
-        validateCategory(memberId, request.categoryId(), type);
+
+        /*
+         * 자동 분류(`LDG-062`)는 지출에만 걸린다. 수입·이체에 지출 카테고리가 붙으면
+         * 통계에서 같은 돈이 두 번 세어진다.
+         *
+         * 사람이 고른 카테고리는 덮지 않는다 — classify가 비어 있을 때만 채운다.
+         * 덮어쓰면 「분명 바꿨는데 되돌아간다」가 되고, 그때 사람은 자동 분류를 꺼 버린다.
+         */
+        Long categoryId = type == LedgerFlow.EXPENSE
+                ? autoRuleService.classify(rules, request.title(), request.categoryId())
+                : request.categoryId();
+        validateCategory(memberId, categoryId, type);
 
         Money money = resolveMoney(request.amount(), request.fx());
 
@@ -184,7 +210,7 @@ public class LedgerTransactionService {
                 memberId, type, status, request.occurredOn(), money.amount(),
                 asset.getId(), source);
         tx.updateCounterAssetId(counterAssetId);
-        tx.updateCategoryId(request.categoryId());
+        tx.updateCategoryId(categoryId);
         tx.updateTitle(request.title());
         tx.updateMemo(request.memo());
         tx.updateOccurredAt(request.occurredAt());
