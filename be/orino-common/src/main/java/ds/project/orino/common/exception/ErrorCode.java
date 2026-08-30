@@ -123,7 +123,26 @@ public enum ErrorCode {
     LEDGER_RECURRING_INVALID_RULE("LDG-ERR-012", "정기 항목 설정이 올바르지 않습니다.", 400),
     // 카드 대금은 자동 기록의 유일한 제외 대상이다(확정 명세 §7.2) — 잔고 부족·리볼빙·
     // 선결제 때문에 실제 출금액을 앱이 알 수 없어서, 정기 항목으로 만드는 길 자체를 막는다.
-    LEDGER_RECURRING_CARD_PAYMENT("LDG-ERR-013", "카드 대금은 정기 항목으로 만들 수 없습니다.", 400);
+    LEDGER_RECURRING_CARD_PAYMENT("LDG-ERR-013", "카드 대금은 정기 항목으로 만들 수 없습니다.", 400),
+
+    // 이관 — 파일이 원장에 닿기 전에 걸러야 한다. 들어간 뒤에 알면 되돌리기밖에 없다.
+    LEDGER_IMPORT_UNSUPPORTED_FILE("LDG-ERR-023", "CSV 또는 .xlsx 파일만 읽을 수 있습니다.", 400),
+    LEDGER_IMPORT_EMPTY_FILE("LDG-ERR-024", "읽을 줄이 없습니다.", 400),
+    LEDGER_IMPORT_TOO_MANY_ROWS("LDG-ERR-025", "한 번에 넣을 수 있는 줄 수를 넘었습니다.", 400),
+    LEDGER_IMPORT_MAPPING_REQUIRED("LDG-ERR-026", "날짜·금액 열은 반드시 지정해야 합니다.", 400),
+    LEDGER_IMPORT_BATCH_NOT_FOUND("LDG-ERR-027", "존재하지 않는 가져오기 이력입니다.", 404),
+    // 되돌리기를 두 번 하면 두 번째는 아무 일도 안 하는데, 화면은 성공으로 읽는다.
+    // 「이미 물렀다」와 「방금 물렀다」는 다른 말이라 구분해서 알린다.
+    LEDGER_IMPORT_ALREADY_REVERTED("LDG-ERR-028", "이미 되돌린 가져오기입니다.", 409),
+    LEDGER_IMPORT_PRESET_NOT_FOUND("LDG-ERR-029", "존재하지 않는 매핑 프리셋입니다.", 404),
+    // 동봉 프리셋은 누구의 것도 아니라 고치거나 지울 수 없다.
+    LEDGER_IMPORT_PRESET_BUILT_IN("LDG-ERR-030", "기본 제공 프리셋은 바꿀 수 없습니다.", 400),
+
+    // 자동 분류 · 포인트
+    LEDGER_AUTO_RULE_NOT_FOUND("LDG-ERR-031", "존재하지 않는 자동 분류 규칙입니다.", 404),
+    // 수입·이체에 규칙을 걸면 이체 한 건이 지출 카테고리를 갖고, 통계에서 두 번 세어진다.
+    LEDGER_AUTO_RULE_CATEGORY_NOT_EXPENSE("LDG-ERR-032", "자동 분류는 지출 카테고리만 지정할 수 있습니다.", 400),
+    LEDGER_POINT_NOT_FOUND("LDG-ERR-033", "존재하지 않는 포인트입니다.", 404);
 
     private final String code;
     private final String message;

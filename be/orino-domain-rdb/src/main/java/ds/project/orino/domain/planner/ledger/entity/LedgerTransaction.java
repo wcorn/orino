@@ -114,6 +114,14 @@ public class LedgerTransaction {
     @Column(name = "installment_id")
     private Long installmentId;
 
+    /**
+     * 어느 가져오기로 들어왔는지(`LDG-093`). <b>손으로 적은 거래에서는 언제나 NULL이다.</b>
+     * 배치 되돌리기는 이 값이 있는 행만 건드린다 — 직접 적은 줄이 함께 지워지면
+     * 그건 복구가 아니라 사고다.
+     */
+    @Column(name = "import_batch_id")
+    private Long importBatchId;
+
     @Column(name = "fx_currency", length = 3)
     private String fxCurrency;
 
@@ -333,6 +341,14 @@ public class LedgerTransaction {
 
     public Long getStatementId() {
         return statementId;
+    }
+
+    public void attachToImportBatch(Long importBatchId) {
+        this.importBatchId = importBatchId;
+    }
+
+    public Long getImportBatchId() {
+        return importBatchId;
     }
 
     public void updateInstallmentId(Long installmentId) {

@@ -1,0 +1,443 @@
+databaseChangeLog:
+  # 가계부 v2 이관 (#1268, Epic #1257).
+  #
+  # 자동 롤백에 맡기지 않고 changeSet마다 dropTable을 적는다. 자동 롤백은 인덱스를 FK보다
+  # 먼저 지우려 들고, MySQL이 그걸 거부해 롤백이 통째로 멈춘다(060에서 겪었다).
+
+  - changeSet:
+      id: 063-create-ledger-import-batch
+      author: wcorn
+      comment: 가져오기 배치 — 통째로 되돌릴 수 있는 단위(LDG-093).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_import_batch
+      changes:
+        - createTable:
+            tableName: ledger_import_batch
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # 어디서 왔는지. 프리셋 이름이 아니라 사람이 고른 소스명이다 —
+              # 프리셋이 지워져도 「무엇을 넣었는지」는 남아야 한다.
+              - column:
+                  name: source
+                  type: VARCHAR(60)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: file_name
+                  type: VARCHAR(255)
+              # 읽은 줄 / 실제로 넣은 줄. 둘이 다른 이유(중복 해제·형식 오류)는
+              # 실행 시점에만 알 수 있으므로 숫자로 남긴다.
+              - column:
+                  name: row_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: inserted_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              # 되돌린 시각. 배치 행은 지우지 않는다 — 「되돌렸다」도 이력이다.
+              - column:
+                  name: reverted_at
+                  type: DATETIME(6)
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            indexName: idx_ledger_import_batch_member
+            tableName: ledger_import_batch
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: created_at
+      rollback:
+        - dropTable:
+            tableName: ledger_import_batch
+
+  - changeSet:
+      id: 063-alter-ledger-transaction-import-batch
+      author: wcorn
+      comment: 원장 행이 어느 배치로 들어왔는지. 되돌리기가 이 열 하나로 끝난다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: ledger_transaction
+                columnName: import_batch_id
+      changes:
+        - addColumn:
+            tableName: ledger_transaction
+            columns:
+              # 수동 입력에서는 언제나 NULL이다. 되돌리기는 이 값이 있는 행만 건드린다 —
+              # 손으로 적은 줄이 배치 되돌리기에 휩쓸리면 그건 복구가 아니라 사고다.
+              - column:
+                  name: import_batch_id
+                  type: BIGINT
+        - createIndex:
+            indexName: idx_ledger_transaction_import_batch
+            tableName: ledger_transaction
+            columns:
+              - column:
+                  name: import_batch_id
+      rollback:
+        - dropIndex:
+            indexName: idx_ledger_transaction_import_batch
+            tableName: ledger_transaction
+        - dropColumn:
+            tableName: ledger_transaction
+            columnName: import_batch_id
+
+  - changeSet:
+      id: 063-create-ledger-import-preset
+      author: wcorn
+      comment: 컬럼 매핑 프리셋 — 같은 카드사 명세서를 매달 다시 매핑하지 않기 위해.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_import_preset
+      changes:
+        - createTable:
+            tableName: ledger_import_preset
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              # 동봉 프리셋은 member_id가 NULL이다 — 누구의 것도 아니고 지울 수도 없다.
+              - column:
+                  name: member_id
+                  type: BIGINT
+              - column:
+                  name: name
+                  type: VARCHAR(60)
+                  constraints:
+                    nullable: false
+              # 컬럼 매핑. 소스마다 열 이름이 제각각이라 스키마로 못 박을 수 없다.
+              - column:
+                  name: mapping_json
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              # 머리글이 몇 줄인가. 카드사 명세서는 위에 안내문이 붙어 오는 일이 흔하다.
+              - column:
+                  name: skip_rows
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_format
+                  type: VARCHAR(40)
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            indexName: idx_ledger_import_preset_member
+            tableName: ledger_import_preset
+            columns:
+              - column:
+                  name: member_id
+      rollback:
+        - dropTable:
+            tableName: ledger_import_preset
+
+  - changeSet:
+      id: 063-create-ledger-auto-rule
+      author: wcorn
+      comment: 자동 분류 규칙(LDG-062). 가져오기와 수동 입력 양쪽이 같은 규칙을 쓴다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_auto_rule
+      changes:
+        - createTable:
+            tableName: ledger_auto_rule
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: keyword
+                  type: VARCHAR(120)
+                  constraints:
+                    nullable: false
+              # CONTAINS · STARTS_WITH · EQUALS. 정규식은 두지 않는다 —
+              # 규칙이 왜 걸렸는지 사람이 읽을 수 없으면 분류를 못 믿는다.
+              - column:
+                  name: match_type
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: category_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # 먼저 맞는 규칙 하나만 적용한다. 순서가 없으면 같은 내용에 두 규칙이
+              # 걸렸을 때 결과가 실행 순서에 달린다.
+              - column:
+                  name: priority
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: enabled
+                  type: BIT(1)
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            indexName: idx_ledger_auto_rule_member
+            tableName: ledger_auto_rule
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: priority
+        - addForeignKeyConstraint:
+            constraintName: fk_ledger_auto_rule_category
+            baseTableName: ledger_auto_rule
+            baseColumnNames: category_id
+            referencedTableName: ledger_category
+            referencedColumnNames: id
+      rollback:
+        - dropTable:
+            tableName: ledger_auto_rule
+
+  - changeSet:
+      id: 063-create-ledger-point
+      author: wcorn
+      comment: 포인트·마일리지(LDG-006). 원장과 조인되지 않는다 — 돈이 아니다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_point
+      changes:
+        - createTable:
+            tableName: ledger_point
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name
+                  type: VARCHAR(60)
+                  constraints:
+                    nullable: false
+              # 단위. 「포인트」와 「마일」은 서로 더할 수 없고, 원화로 환산하지도 않는다 —
+              # 환산하는 순간 총자산에 섞이고 싶어진다.
+              - column:
+                  name: unit
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: balance
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              # 소멸 예정일. 포인트를 적어 두는 이유의 절반이 이것이다.
+              - column:
+                  name: expires_on
+                  type: DATE
+              - column:
+                  name: memo
+                  type: VARCHAR(255)
+              - column:
+                  name: display_order
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            indexName: idx_ledger_point_member
+            tableName: ledger_point
+            columns:
+              - column:
+                  name: member_id
+              - column:
+                  name: display_order
+      rollback:
+        - dropTable:
+            tableName: ledger_point
+
+  - changeSet:
+      id: 063-seed-builtin-import-presets
+      author: wcorn
+      comment: 대표 소스 프리셋 넷. 빈 화면에서 열 번호를 세는 일부터 시작하면 거기서 그만둔다.
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: SELECT COUNT(*) FROM ledger_import_preset WHERE member_id IS NULL
+      changes:
+        - insert:
+            tableName: ledger_import_preset
+            columns:
+              # 이용일 · 가맹점 · 이용금액 순. 카드사 대부분이 이 셋을 앞에 둔다.
+              - column:
+                  name: member_id
+                  valueNumeric: null
+              - column:
+                  name: name
+                  value: "카드사 명세서"
+              - column:
+                  name: mapping_json
+                  value: '{"date":0,"title":1,"amount":2}'
+              - column:
+                  name: skip_rows
+                  valueNumeric: 1
+              - column:
+                  name: created_at
+                  valueComputed: NOW(6)
+              - column:
+                  name: updated_at
+                  valueComputed: NOW(6)
+        - insert:
+            tableName: ledger_import_preset
+            columns:
+              # 입금·출금이 두 열로 나뉜다 — 부호 하나로 오는 카드사와 다르다.
+              - column:
+                  name: member_id
+                  valueNumeric: null
+              - column:
+                  name: name
+                  value: "은행 거래내역"
+              - column:
+                  name: mapping_json
+                  value: '{"date":0,"title":1,"outflow":2,"inflow":3,"memo":4}'
+              - column:
+                  name: skip_rows
+                  valueNumeric: 1
+              - column:
+                  name: created_at
+                  valueComputed: NOW(6)
+              - column:
+                  name: updated_at
+                  valueComputed: NOW(6)
+        - insert:
+            tableName: ledger_import_preset
+            columns:
+              # 분류 열이 있어 자동 분류보다 파일 쪽이 구체적이다.
+              - column:
+                  name: member_id
+                  valueNumeric: null
+              - column:
+                  name: name
+                  value: "뱅크샐러드"
+              - column:
+                  name: mapping_json
+                  value: '{"date":0,"type":2,"category":3,"title":5,"amount":6}'
+              - column:
+                  name: skip_rows
+                  valueNumeric: 1
+              - column:
+                  name: created_at
+                  valueComputed: NOW(6)
+              - column:
+                  name: updated_at
+                  valueComputed: NOW(6)
+        - insert:
+            tableName: ledger_import_preset
+            columns:
+              # 자산 열은 이름으로 찾는다. 못 찾은 줄은 화면에서 고른 기본 자산이 받는다.
+              - column:
+                  name: member_id
+                  valueNumeric: null
+              - column:
+                  name: name
+                  value: "편한가계부"
+              - column:
+                  name: mapping_json
+                  value: '{"date":0,"category":1,"asset":2,"amount":3,"title":4,"memo":5}'
+              - column:
+                  name: skip_rows
+                  valueNumeric: 1
+              - column:
+                  name: created_at
+                  valueComputed: NOW(6)
+              - column:
+                  name: updated_at
+                  valueComputed: NOW(6)
+      rollback:
+        - delete:
+            tableName: ledger_import_preset
+            where: member_id IS NULL
