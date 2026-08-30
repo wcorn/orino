@@ -26,12 +26,18 @@ gateway:
   # **준비된 엔드포인트가 있는 노드에서만** LB IP를 알린다 — 한 노드에 몰리면 그 노드가
   # 곧 단일 장애점이 된다.
   #
-  # ScheduleAnyway다(DoNotSchedule이 아니다). 노드가 둘뿐이라 롤아웃 중 surge 파드가
-  # 세 번째가 되는데, 강제 조건이면 놓을 자리가 없어 롤아웃이 멈춘다.
+  # 처음엔 ScheduleAnyway로 뒀는데 **안 지켜졌다.** 전환 롤아웃에서 새 파드 둘이 모두
+  # note2로 갔다(권고라 스케줄러가 무시할 수 있다). 그래서 DoNotSchedule로 올린다.
+  #
+  # matchLabelKeys가 이걸 가능하게 한다. 노드가 둘뿐이라 그냥 강제하면 롤아웃 중
+  # 세 번째 파드가 놓일 자리가 없어 멈추는데, pod-template-hash로 범위를 나누면
+  # **새 ReplicaSet의 파드끼리만** 견주므로 옛 파드가 자리를 막지 않는다.
   topologySpreadConstraints:
     - maxSkew: 1
       topologyKey: kubernetes.io/hostname
-      whenUnsatisfiable: ScheduleAnyway
+      whenUnsatisfiable: DoNotSchedule
+      matchLabelKeys:
+        - pod-template-hash
       labelSelector:
         matchLabels:
           istio: gateway
