@@ -6,8 +6,45 @@ gateway:
     annotations:
       metallb.universe.tf/loadBalancerIPs: "192.168.0.240"
 
+    # 클라이언트 IP를 게이트웨이까지 보낸다(#1301).
+    #
+    # Cluster였을 때 실측한 것: 노드를 넘어가는 요청은 kube-proxy가 SNAT해서, Envoy가
+    # 보는 "클라이언트"가 **대표 노드의 Calico IPIP 터널 주소 하나**였다
+    # (10.244.139.64 = note2의 IPv4IPIPTunnelAddr). 절반쯤의 트래픽이 그 주소 하나로
+    # 뭉치므로, 이 상태에서 IP별 rate limit(remote_address descriptor)을 붙이면
+    # 나눈 것처럼 보이면서 실제로는 더 거칠어진다.
+    #
+    # Local은 SNAT을 없애 진짜 IP를 남긴다. 대신 트래픽을 다른 노드로 넘겨주지 않으므로
+    # **알리는 노드에 준비된 파드가 있어야 한다** — MetalLB가 그 조건을 보고 알림 노드를
+    # 고르고(L2 모드), 위 topologySpread·strategy가 그 조건을 항상 만족시킨다.
+    externalTrafficPolicy: Local
+
   # 외부 트래픽 진입점이므로 HA 구성 (최소 2 replica)
   replicaCount: 2
+
+  # 파드를 노드에 나눠 둔다(#1301). externalTrafficPolicy: Local에서는 MetalLB가
+  # **준비된 엔드포인트가 있는 노드에서만** LB IP를 알린다 — 한 노드에 몰리면 그 노드가
+  # 곧 단일 장애점이 된다.
+  #
+  # ScheduleAnyway다(DoNotSchedule이 아니다). 노드가 둘뿐이라 롤아웃 중 surge 파드가
+  # 세 번째가 되는데, 강제 조건이면 놓을 자리가 없어 롤아웃이 멈춘다.
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          istio: gateway
+
+  # 새 파드가 준비된 뒤에 옛 파드를 내린다(#1301).
+  #
+  # 기본값(maxUnavailable 25% = 1개)이면 롤아웃 중 파드가 1개로 떨어지는 순간이 있다.
+  # externalTrafficPolicy: Local에서는 그 순간 MetalLB가 알림 노드를 옮겨야 하고,
+  # ARP가 다시 수렴하는 동안 몇 초가 흔들린다. 0으로 두면 그 순간 자체가 없다.
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
 
   autoscaling:
     enabled: true
