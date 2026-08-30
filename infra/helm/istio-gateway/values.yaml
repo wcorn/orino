@@ -52,6 +52,23 @@ gateway:
       maxUnavailable: 0
       maxSurge: 1
 
+  # rate limit이 걸리는지 보이게 한다(#1305).
+  #
+  # Istio는 프록시 통계를 걸러 내보낸다(기본 노출 접두사: cluster · cluster_manager ·
+  # istiocustom · listener_manager · server). 그래서 local_ratelimit이 실제로 429를
+  # 내도 **어느 지표에도 안 남았다** — istio_requests_total은 라우팅 전에 끊긴 로컬
+  # 응답을 아예 보지 못하고, Envoy 자체 카운터는 이 필터에 걸려 빠졌다.
+  #
+  # 접두사는 필터의 stat_prefix다(envoyfilter-ratelimit*.yaml의 http_local_rate_limiter).
+  # 실제 통계 이름은 Envoy 1.37로 확인했다:
+  #   http_local_rate_limiter.http_local_rate_limit.{enabled,enforced,ok,rate_limited}
+  # 추측해서 열면 열어 놓고도 아무것도 안 나오는 상태가 된다 — 이 이슈가 고치려는 것이
+  # 정확히 그런 조용한 실패다.
+  #
+  # 파드당 시계열 4개다. 통계를 함부로 열면 시계열이 폭증하므로(ELOG-008) 이것만 연다.
+  podAnnotations:
+    sidecar.istio.io/statsInclusionPrefixes: "http_local_rate_limiter"
+
   autoscaling:
     enabled: true
     minReplicas: 2
