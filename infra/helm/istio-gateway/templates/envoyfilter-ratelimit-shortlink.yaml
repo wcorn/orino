@@ -33,10 +33,21 @@ spec:
               type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
               value:
                 stat_prefix: http_local_rate_limiter
-                # vhost 전체가 나눠 쓰는 버킷이다(IP별이 아니다). 사람이 링크를 눌러 여는
-                # 속도와는 자릿수가 다르고, 열거에는 한참 모자란다 — 3,355만 개를 분당 300개로
-                # 훑으면 200년이 넘는다. 방어의 본체는 응답이 아무것도 알려주지 않는 것이고
-                # (명세 §7.1) 이건 그 위의 보조다.
+                # 버킷은 **route마다** 따로다(IP별이 아니다). applyTo가 HTTP_ROUTE라
+                # 설정이 vhost가 아니라 그 안의 route 각각에 붙는다 — s.orino.dev는 route가
+                # 넷이라(robots.txt · POST · GET · catch-all) 300짜리 버킷이 넷이고,
+                # 게이트웨이 파드마다 또 따로다.
+                #
+                # 사람이 링크를 눌러 여는 속도와는 자릿수가 다르다. 다만 **열거를 막지는
+                # 못한다** — 슬러그 공간은 32⁵ = 33,554,432인데(SlugPolicy: 알파벳 32자 ·
+                # AUTO_LENGTH 5), 열거에 쓰이는 GET route가 파드당 300을 따로 가지므로
+                # 파드 둘을 함께 쓰면 분당 600이다:
+                #
+                #   33,554,432 ÷ 600/분 = 55,924분 ≈ 39일
+                #
+                # 방어의 본체는 응답이 아무것도 알려주지 않는 것이고(명세 §7.1) 이건 그 위의
+                # 보조다. 더 조이려면 IP별 버킷(remote_address descriptor)이 있어야 한다 —
+                # 지금 구조에서 값만 낮추면 정상 사용자가 먼저 막힌다(#1299).
                 token_bucket:
                   max_tokens: 300
                   tokens_per_fill: 300
