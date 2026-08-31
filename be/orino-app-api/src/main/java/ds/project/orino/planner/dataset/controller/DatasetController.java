@@ -1,5 +1,7 @@
 package ds.project.orino.planner.dataset.controller;
 
+import ds.project.orino.common.exception.CustomException;
+import ds.project.orino.common.exception.ErrorCode;
 import ds.project.orino.common.response.ApiResponse;
 import ds.project.orino.planner.dataset.dto.AddColumnRequest;
 import ds.project.orino.planner.dataset.dto.BulkCellStyleRequest;
@@ -26,8 +28,14 @@ import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowResponse;
 import ds.project.orino.planner.dataset.service.DatasetService;
 import jakarta.validation.Valid;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -331,5 +339,31 @@ public class DatasetController {
             @PathVariable String colKey) {
         return ApiResponse.success(
                 datasetService.unmergeCell(memberId, id, rowIndex, colKey));
+    }
+
+    /**
+     * 표를 .xlsx 한 장으로 내보낸다(#1308).
+     *
+     * <p>파일로 내려보내므로 성공 봉투를 쓰지 않는다 — 봉투에 담으면 브라우저가 파일로
+     * 저장하지 못한다. 원장 내보내기와 같은 형태다.
+     *
+     * <p>{@code format}은 지금 {@code xlsx} 하나뿐이지만 자리를 비워 둔다 — 가져오기와
+     * 짝을 맞출 때 csv가 붙을 자리다.
+     */
+    @GetMapping("/{id}/export")
+    public ResponseEntity<Resource> export(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "xlsx") String format) {
+        if (!"xlsx".equalsIgnoreCase(format)) {
+            throw new CustomException(ErrorCode.INVALID_REQUEST);
+        }
+        DatasetService.XlsxFile file = datasetService.exportXlsx(memberId, id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                        .filename(file.fileName(), StandardCharsets.UTF_8).build().toString())
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(new ByteArrayResource(file.body()));
     }
 }

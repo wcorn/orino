@@ -1,4 +1,5 @@
 import { client } from "@/shared/api";
+import { fileNameFromDisposition } from "@/shared/lib/download";
 
 /** 열 푸터 요약 함수. 서버의 DatasetColumn.ALLOWED_SUMMARY와 같아야 한다. */
 export type SummaryFn = "SUM" | "AVERAGE" | "COUNT" | "MIN" | "MAX";
@@ -476,4 +477,31 @@ export async function deleteDatasetRow(
 /** 데이터셋 삭제(노트에서 datasetTable 블록 제거 시). 행은 서버에서 cascade 삭제. */
 export async function deleteDataset(datasetId: number): Promise<void> {
   await client.delete(`/datasets/${datasetId}`);
+}
+
+/**
+ * 표를 .xlsx로 내려받는다(#1308).
+ *
+ * 파일이라 봉투(`ApiEnvelope`)가 없다 — 바이트가 그대로 온다. 파일 이름은 표 이름에서
+ * 나오므로 서버가 정해 `Content-Disposition`에 실어 보낸다.
+ */
+export async function exportDatasetXlsx(
+  datasetId: number,
+): Promise<{ blob: Blob; fileName: string }> {
+  // 바이트로 받아 Blob은 여기서 만든다. `responseType: "blob"`은 브라우저에선 같지만
+  // 테스트(jsdom + XHR 인터셉터)에서 Node 22의 Blob 구현과 어긋나 터진다 — 타입을 응답에서
+  // 그대로 옮겨 주는 편이 어느 쪽에서도 같은 결과다.
+  const res = await client.get<ArrayBuffer>(`/datasets/${datasetId}/export`, {
+    responseType: "arraybuffer",
+  });
+  const contentType =
+    (res.headers["content-type"] as string | undefined) ??
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  return {
+    blob: new Blob([res.data], { type: contentType }),
+    fileName:
+      fileNameFromDisposition(
+        res.headers["content-disposition"] as string | undefined,
+      ) ?? "dataset.xlsx",
+  };
 }
