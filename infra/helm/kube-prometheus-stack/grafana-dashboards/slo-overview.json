@@ -344,6 +344,74 @@
         "graphMode": "none",
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
       }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "제한된 요청 (rate limit)",
+      "description": "게이트웨이 local_ratelimit이 429로 끊은 요청. istio_requests_total에는 남지 않는다 — 라우팅 전에 로컬 응답으로 끊기기 때문이다(#1305). 버킷이 IP별이라 0이 아니라고 곧 문제인 것은 아니다(스캐너 한 대가 제 몫을 다 쓴 것일 수 있다). 봐야 할 것은 값이 아니라 평소와 달라지는 순간이다.",
+      "gridPos": {"x": 0, "y": 20, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (pod) (rate(envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited[5m])) * 60",
+          "legendFormat": "{{pod}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "custom": {"drawStyle": "line", "lineWidth": 1, "fillOpacity": 10}
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]},
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "24시간 제한 건수",
+      "description": "0이면 아무도 한도를 넘지 않았다는 뜻이다. 제한이 안 걸리고 있다는 뜻이 아니다 — 그건 config_dump로 본다(ELOG-014).",
+      "gridPos": {"x": 12, "y": 20, "w": 6, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(increase(envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited[24h]))",
+          "legendFormat": "제한",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}},
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
+      }
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "24시간 통과 건수",
+      "description": "제한 필터를 지나간 요청. 이 값이 0이면 필터가 트래픽 경로에 없다는 뜻이라, 제한이 걸리는지 이전에 그것부터 봐야 한다.",
+      "gridPos": {"x": 18, "y": 20, "w": 6, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(increase(envoy_http_local_rate_limiter_http_local_rate_limit_ok[24h]))",
+          "legendFormat": "통과",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}},
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
+      }
     }
   ]
 }
