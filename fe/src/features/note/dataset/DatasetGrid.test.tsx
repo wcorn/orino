@@ -3271,9 +3271,12 @@ describe("DatasetGrid - 가로 넘침 시 행 구분선 (#996)", () => {
         await screen.findByRole("menuitem", { name: "엑셀로 내보내기" }),
       );
 
-      await waitFor(() => expect(called).toBe(1));
       // 이름은 표 이름에서 나온다 — 서버가 정한 것을 그대로 쓴다.
-      await waitFor(() => expect(stub.name()).toBe("성적.xlsx"));
+      // 내려받기까지 왕복 한 번이라 기본 1초로는 느린 CI에서 빠듯하다.
+      await waitFor(() => expect(stub.name()).toBe("성적.xlsx"), {
+        timeout: 3000,
+      });
+      expect(called).toBe(1);
       // 붙잡고 있으면 메모리에 남는다.
       expect(stub.revokeObjectURL).toHaveBeenCalled();
       stub.click.mockRestore();
@@ -3296,10 +3299,12 @@ describe("DatasetGrid - 가로 넘침 시 행 구분선 (#996)", () => {
         await screen.findByRole("menuitem", { name: "엑셀로 내보내기" }),
       );
 
-      await waitFor(() =>
-        expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(
-          "엑셀로 내보내지 못했어요. 잠시 후 다시 시도해 주세요.",
-        ),
+      await waitFor(
+        () =>
+          expect(
+            useToastStore.getState().toasts.map((t) => t.message),
+          ).toContain("엑셀로 내보내지 못했어요. 잠시 후 다시 시도해 주세요."),
+        { timeout: 3000 },
       );
       expect(stub.click).not.toHaveBeenCalled();
       expect(screen.getByText("네트워크")).toBeVisible();
