@@ -246,6 +246,33 @@ public class DatasetFormulaService {
     }
 
     /**
+     * 그 행들의 수식을 <b>구문 트리</b>로. xlsx 내보내기가 A1으로 번역하려면 문자열이 아니라
+     * 트리가 필요하다 — 표시형을 다시 파싱하면 열 이름이 바뀐 사이 깨질 수 있고, 무엇보다
+     * 한 번 만든 것을 문자열로 폈다가 도로 접는 낭비다.
+     *
+     * <p>파싱이 안 되는 수식(참조하던 열이 사라진 것)은 <b>담지 않는다</b> — 부르는 쪽이
+     * 그 셀을 값으로 내보내면 되고, 그 값은 이미 {@code cells}에 있다.
+     */
+    Map<Long, Map<String, FormulaNode>> storedNodes(Long datasetId, List<Long> rowIds,
+                                                    List<DatasetColumn> columns) {
+        if (rowIds.isEmpty()) {
+            return Map.of();
+        }
+        FormulaContext ctx = new DbContext(datasetId, columns);
+        Map<Long, Map<String, FormulaNode>> out = new LinkedHashMap<>();
+        for (DatasetFormula f : formulaRepository.findByRowIdIn(rowIds)) {
+            try {
+                out.computeIfAbsent(f.getRowId(), k -> new LinkedHashMap<>())
+                        .put(f.getColKey(), FormulaParser.parseStored(f.getRaw(), ctx));
+            } catch (CustomException e) {
+                // 참조가 끊긴 수식. 값으로 내보내면 된다.
+                continue;
+            }
+        }
+        return out;
+    }
+
+    /**
      * 그 행들의 수식을 <b>표시형</b>(열 이름·행 번호)으로. 수식 없는 셀은 담기지 않는다.
      *
      * <p>표시형은 저장형과 같은 문법이라 클라이언트가 그대로 돌려주면 다시 파싱된다 —

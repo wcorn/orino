@@ -24,6 +24,12 @@ spec:
           - Authorization
           - Content-Type
           - X-Timezone
+        # 파일 내려받기(표 .xlsx · 원장 CSV/xlsx)는 파일 이름을 이 헤더로 받는다.
+        # 브라우저는 CORS 응답에서 안전 목록 밖 헤더를 JS에 숨기므로, 여기서 열어주지 않으면
+        # 화면이 이름을 못 읽어 언제나 기본 이름으로 저장된다 — orino.dev와 api.orino.dev가
+        # 서로 다른 오리진이라 로컬(같은 오리진 프록시)에서는 드러나지 않는다.
+        exposeHeaders:
+          - Content-Disposition
         allowCredentials: true
         maxAge: "86400s"
       timeout: 10s

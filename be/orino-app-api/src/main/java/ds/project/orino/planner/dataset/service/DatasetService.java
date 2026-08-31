@@ -11,6 +11,8 @@ import ds.project.orino.planner.dataset.dto.BulkRowsRequest;
 import ds.project.orino.planner.dataset.dto.CellStyle;
 import ds.project.orino.planner.dataset.dto.CreateDatasetRequest;
 import ds.project.orino.planner.dataset.dto.DatasetColumn;
+import ds.project.orino.planner.dataset.export.DatasetXlsxExporter;
+import ds.project.orino.planner.dataset.formula.FormulaNode;
 import ds.project.orino.planner.dataset.dto.DatasetResponse;
 import ds.project.orino.planner.dataset.dto.FillCellsRequest;
 import ds.project.orino.planner.dataset.dto.InsertRowRequest;
@@ -61,6 +63,9 @@ public class DatasetService {
     private static final TypeReference<Map<String, String>> CELLS_TYPE = new TypeReference<>() {
     };
 
+    private static final java.util.regex.Pattern ILLEGAL_IN_FILE_NAME =
+            java.util.regex.Pattern.compile("[\\\\/:*?\"<>|\\p{Cntrl}]");
+
     static final int DEFAULT_PAGE_SIZE = 100;
     static final int MAX_PAGE_SIZE = 500;
     static final int MAX_BULK_ROWS = 2000;
@@ -79,16 +84,19 @@ public class DatasetService {
     private final DatasetFormulaService formulaService;
     private final DatasetCellStyleService styleService;
     private final DatasetMergeService mergeService;
+    private final DatasetXlsxExporter xlsxExporter;
 
     public DatasetService(DatasetRepository datasetRepository, DatasetRowRepository rowRepository,
                           DatasetFormulaService formulaService,
                           DatasetCellStyleService styleService,
-                          DatasetMergeService mergeService) {
+                          DatasetMergeService mergeService,
+                          DatasetXlsxExporter xlsxExporter) {
         this.datasetRepository = datasetRepository;
         this.rowRepository = rowRepository;
         this.formulaService = formulaService;
         this.styleService = styleService;
         this.mergeService = mergeService;
+        this.xlsxExporter = xlsxExporter;
     }
 
     /**
@@ -816,6 +824,66 @@ public class DatasetService {
     public void delete(Long memberId, Long datasetId) {
         Dataset dataset = getOwned(memberId, datasetId);
         datasetRepository.delete(dataset);
+    }
+
+    /**
+     * 표를 .xlsx 한 장으로(#1308 · Epic #892 c).
+     *
+     * <p><b>페이지가 아니라 표 전체</b>를 읽는다 — 파일로 받는 사람은 「보고 있던 100줄」이
+     * 아니라 표를 원한다. 상한은 {@link #MAX_CELLS}가 이미 정해 둔 것을 따른다.
+     *
+     * <p>수식은 A1으로 번역해 <b>살아 있는 채로</b> 나간다. 번역은 여기가 아니라
+     * {@code export} 패키지에서 한다 — 내부에 A1을 들이지 않는다는 것이 ADR-1이다.
+     */
+    @Transactional(readOnly = true)
+    public XlsxFile exportXlsx(Long memberId, Long datasetId) {
+        Dataset dataset = getOwned(memberId, datasetId);
+        List<DatasetColumn> columns = parseColumns(dataset.getColumns());
+        List<DatasetRow> rows = rowRepository
+                .findByDatasetIdAndRowIndexGreaterThanEqualAndRowIndexLessThanOrderByRowIndexAsc(
+                        datasetId, 0, Integer.MAX_VALUE);
+
+        List<Long> rowIds = rows.stream().map(DatasetRow::getId).toList();
+        Map<Long, Map<String, FormulaNode>> formulas =
+                formulaService.storedNodes(datasetId, rowIds, columns);
+        Map<Long, Map<String, CellStyle>> styles = styleService.stylesByRow(rowIds);
+
+        List<DatasetXlsxExporter.SheetRow> sheetRows = rows.stream()
+                .map(r -> new DatasetXlsxExporter.SheetRow(
+                        r.getId(),
+                        parseCells(r.getCells()),
+                        formulas.getOrDefault(r.getId(), Map.of()),
+                        styles.getOrDefault(r.getId(), Map.of())))
+                .toList();
+
+        List<DatasetXlsxExporter.SheetMerge> merges = mergeService.allMerges(datasetId)
+                .stream()
+                .map(m -> new DatasetXlsxExporter.SheetMerge(
+                        m.rowIndex(), m.colKey(), m.rowSpan(), m.colSpan()))
+                .toList();
+
+        byte[] body = xlsxExporter.export(dataset.getName(), columns, sheetRows, merges);
+        return new XlsxFile(fileName(dataset.getName()), body);
+    }
+
+    /**
+     * 내려받을 파일 이름. 표 이름을 그대로 쓰되 경로·제어문자만 걷어낸다 — 한글은 그대로
+     * 둔다({@code Content-Disposition}이 UTF-8로 실어 보낸다).
+     */
+    private static String fileName(String datasetName) {
+        String base = datasetName == null ? "" : ILLEGAL_IN_FILE_NAME.matcher(datasetName)
+                .replaceAll("").trim();
+        if (base.isEmpty()) {
+            base = "dataset";
+        }
+        if (base.length() > 60) {
+            base = base.substring(0, 60);
+        }
+        return base + ".xlsx";
+    }
+
+    /** 내보낸 파일 한 장. 이름이 표 이름에서 나오므로 바이트와 함께 돌려준다. */
+    public record XlsxFile(String fileName, byte[] body) {
     }
 
     private Dataset getOwned(Long memberId, Long datasetId) {

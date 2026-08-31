@@ -1,4 +1,5 @@
 import { client } from "@/shared/api";
+import { fileNameFromDisposition } from "@/shared/lib/download";
 
 /** 열 푸터 요약 함수. 서버의 DatasetColumn.ALLOWED_SUMMARY와 같아야 한다. */
 export type SummaryFn = "SUM" | "AVERAGE" | "COUNT" | "MIN" | "MAX";
@@ -476,4 +477,25 @@ export async function deleteDatasetRow(
 /** 데이터셋 삭제(노트에서 datasetTable 블록 제거 시). 행은 서버에서 cascade 삭제. */
 export async function deleteDataset(datasetId: number): Promise<void> {
   await client.delete(`/datasets/${datasetId}`);
+}
+
+/**
+ * 표를 .xlsx로 내려받는다(#1308).
+ *
+ * 파일이라 봉투(`ApiEnvelope`)가 없다 — 바이트가 그대로 온다. 파일 이름은 표 이름에서
+ * 나오므로 서버가 정해 `Content-Disposition`에 실어 보낸다.
+ */
+export async function exportDatasetXlsx(
+  datasetId: number,
+): Promise<{ blob: Blob; fileName: string }> {
+  const res = await client.get<Blob>(`/datasets/${datasetId}/export`, {
+    responseType: "blob",
+  });
+  return {
+    blob: res.data,
+    fileName:
+      fileNameFromDisposition(
+        res.headers["content-disposition"] as string | undefined,
+      ) ?? "dataset.xlsx",
+  };
 }

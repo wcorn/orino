@@ -9,6 +9,7 @@ import {
   AlignVerticalJustifyStart,
   ChevronRight,
   Columns3,
+  Download,
   Eraser,
   Paintbrush,
   Plus,
@@ -23,6 +24,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FieldError } from "@/components/ui/field-error";
 import { LoadingText } from "@/components/ui/loading-text";
 import { cn } from "@/lib/utils";
+import { saveBlob } from "@/shared/lib/download";
 import { toast } from "@/shared/lib/toast";
 
 import {
@@ -36,6 +38,7 @@ import {
   deleteCellMerge,
   deleteDatasetColumn,
   deleteDatasetRow,
+  exportDatasetXlsx,
   fillCells,
   insertDatasetRow,
   MAX_COLUMN_WIDTH,
@@ -989,6 +992,20 @@ export function DatasetGrid({
     }
     setOpenSubmenu(null);
     setCtxMenu({ x: event.clientX, y: event.clientY, row, col });
+  };
+
+  /**
+   * 표를 .xlsx로 내려받는다(#1308). 서버가 파일 이름까지 정해 보내므로 여기선 저장만 한다.
+   * 선택 범위와 무관하게 언제나 표 전체다 — 파일로 받는 사람은 보고 있던 몇 줄이 아니라
+   * 표를 원한다.
+   */
+  const exportXlsx = async () => {
+    try {
+      const { blob, fileName } = await exportDatasetXlsx(datasetId);
+      saveBlob(blob, fileName);
+    } catch {
+      toast("엑셀로 내보내지 못했어요. 잠시 후 다시 시도해 주세요.", "error");
+    }
   };
 
   const emptyRow = () => Array.from({ length: colCount }, () => "");
@@ -2576,6 +2593,11 @@ export function DatasetGrid({
                   {/* 내용 지우기(값만) */}
                   {item("내용 지우기", clearSelValues, {
                     icon: <Eraser className="size-3.5" />,
+                  })}
+                  {divider}
+                  {/* 내보내기 — 선택이 아니라 표 전체다. */}
+                  {item("엑셀로 내보내기", () => void exportXlsx(), {
+                    icon: <Download className="size-3.5" />,
                   })}
                   {divider}
                   <SubMenu

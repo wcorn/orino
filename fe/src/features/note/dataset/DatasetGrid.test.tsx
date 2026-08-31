@@ -3227,4 +3227,83 @@ describe("DatasetGrid - 가로 넘침 시 행 구분선 (#996)", () => {
     expect(footer.style.minWidth).toBe("420px");
     expect(gridBody().style.minWidth).toBe("420px");
   });
+
+  describe("엑셀로 내보내기(#1308)", () => {
+    /**
+     * jsdom엔 objectURL도, 파일 저장도 없다. 브라우저가 하는 일(내려받기)은 흉내 낼 수 없으니
+     * 그 직전까지 — 「어느 주소를 부르고, 받은 바이트를 어떤 이름으로 저장시키려 했는가」를 본다.
+     */
+    function stubDownload() {
+      const createObjectURL = vi.fn(() => "blob:orino/1");
+      const revokeObjectURL = vi.fn();
+      Object.assign(URL, { createObjectURL, revokeObjectURL });
+      const click = vi
+        .spyOn(HTMLAnchorElement.prototype, "click")
+        .mockImplementation(function (this: HTMLAnchorElement) {
+          saved = this.download;
+        });
+      let saved: string | null = null;
+      return { click, revokeObjectURL, name: () => saved };
+    }
+
+    it("우클릭 메뉴에서 내보내면 서버가 준 이름으로 파일을 저장시킨다", async () => {
+      mockDataset([["네트워크", "92"]]);
+      const stub = stubDownload();
+      let called = 0;
+      server.use(
+        http.get(`${API_BASE}/datasets/1/export`, () => {
+          called += 1;
+          return new HttpResponse(new Blob(["xlsx-bytes"]), {
+            headers: {
+              "Content-Type":
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              "Content-Disposition":
+                "attachment; filename*=UTF-8''%EC%84%B1%EC%A0%81.xlsx",
+            },
+          });
+        }),
+      );
+      const user = userEvent.setup();
+      renderWithRouter(<DatasetGrid datasetId={1} />);
+
+      fireEvent.contextMenu(await screen.findByText("네트워크"));
+      await user.click(
+        await screen.findByRole("menuitem", { name: "엑셀로 내보내기" }),
+      );
+
+      await waitFor(() => expect(called).toBe(1));
+      // 이름은 표 이름에서 나온다 — 서버가 정한 것을 그대로 쓴다.
+      await waitFor(() => expect(stub.name()).toBe("성적.xlsx"));
+      // 붙잡고 있으면 메모리에 남는다.
+      expect(stub.revokeObjectURL).toHaveBeenCalled();
+      stub.click.mockRestore();
+    });
+
+    it("내보내기가 실패하면 토스트로 알리고 화면은 그대로 둔다", async () => {
+      mockDataset([["네트워크", "92"]]);
+      const stub = stubDownload();
+      server.use(
+        http.get(
+          `${API_BASE}/datasets/1/export`,
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
+      const user = userEvent.setup();
+      renderWithRouter(<DatasetGrid datasetId={1} />);
+
+      fireEvent.contextMenu(await screen.findByText("네트워크"));
+      await user.click(
+        await screen.findByRole("menuitem", { name: "엑셀로 내보내기" }),
+      );
+
+      await waitFor(() =>
+        expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(
+          "엑셀로 내보내지 못했어요. 잠시 후 다시 시도해 주세요.",
+        ),
+      );
+      expect(stub.click).not.toHaveBeenCalled();
+      expect(screen.getByText("네트워크")).toBeVisible();
+      stub.click.mockRestore();
+    });
+  });
 });
