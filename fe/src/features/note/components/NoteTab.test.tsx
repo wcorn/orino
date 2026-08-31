@@ -3,7 +3,6 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
-import * as XLSX from "xlsx";
 
 import { Providers } from "@/app/providers";
 import { useAuthStore } from "@/features/auth/store/authStore";
@@ -74,6 +73,32 @@ function mockDataset(id: number, columns: DatasetColumn[], rows: string[][]) {
   server.use(
     http.post(`${API_BASE}/datasets`, () =>
       HttpResponse.json({ code: "OK", data: { id, columns, rowCount: 0 } }),
+    ),
+    // 파일을 읽는 쪽은 서버다(#1310) — 화면은 시트 요약만 받는다.
+    http.post(`${API_BASE}/datasets/import/analyze`, () =>
+      HttpResponse.json({
+        code: "OK",
+        data: [
+          {
+            name: "Sheet1",
+            rowCount: rows.length + 1,
+            columnCount: columns.length,
+            preview: [columns.map((c) => c.label), ...rows],
+          },
+        ],
+      }),
+    ),
+    http.post(`${API_BASE}/datasets/import`, () =>
+      HttpResponse.json({
+        code: "OK",
+        data: {
+          datasetId: id,
+          rowCount: rows.length,
+          columnCount: columns.length,
+          formulasImported: 0,
+          formulasAsValue: 0,
+        },
+      }),
     ),
     http.post(`${API_BASE}/datasets/${id}/rows/bulk`, async ({ request }) => {
       const body = (await request.json()) as { rows: string[][] };
@@ -451,18 +476,8 @@ describe("NoteTab", () => {
 
     await user.click(screen.getByRole("button", { name: "가져오기" }));
 
-    // 엑셀 생성 후 업로드
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.aoa_to_sheet([
-        ["항목", "값"],
-        ["A", "1"],
-      ]),
-      "Sheet1",
-    );
-    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-    const file = new File([buf], "data.xlsx", {
+    // 파일 내용은 서버가 읽으므로 여기선 자리만 채운다.
+    const file = new File([new Uint8Array([1, 2, 3])], "data.xlsx", {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
     await user.upload(screen.getByLabelText("가져올 파일"), file);

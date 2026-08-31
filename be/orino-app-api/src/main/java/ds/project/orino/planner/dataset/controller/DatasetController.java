@@ -27,6 +27,7 @@ import ds.project.orino.planner.dataset.dto.SetDatasetNameRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowRequest;
 import ds.project.orino.planner.dataset.dto.UpdateRowResponse;
 import ds.project.orino.planner.dataset.service.DatasetService;
+import ds.project.orino.planner.dataset.service.DatasetXlsxImportService;
 import jakarta.validation.Valid;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -47,7 +48,10 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 데이터 그리드 블록의 표 데이터 저장소 API. 노트 content와 분리된 dataset 리소스.
@@ -56,10 +60,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/datasets")
 public class DatasetController {
 
-    private final DatasetService datasetService;
+    /** 화면이 미리보기로 보여주는 줄 수(머리글 후보 한 줄 + 본문 다섯 줄). */
+    private static final int IMPORT_PREVIEW_ROWS = 6;
 
-    public DatasetController(DatasetService datasetService) {
+    private final DatasetService datasetService;
+    private final DatasetXlsxImportService importService;
+
+    public DatasetController(DatasetService datasetService,
+                             DatasetXlsxImportService importService) {
         this.datasetService = datasetService;
+        this.importService = importService;
     }
 
     @PostMapping
@@ -365,5 +375,30 @@ public class DatasetController {
                 .contentType(MediaType.parseMediaType(
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(new ByteArrayResource(file.body()));
+    }
+
+    /**
+     * 파일에 어떤 시트가 들었는지 먼저 본다(#1310).
+     *
+     * <p>원장 이관은 analyze → preview → execute 3단이지만 표는 <b>매핑 단계가 없어</b> 2단이다 —
+     * 목적지 스키마가 없으니 「이 열이 무엇인가」를 물을 일이 없다.
+     */
+    @PostMapping(value = "/import/analyze", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<List<DatasetXlsxImportService.SheetSummary>> analyzeImport(
+            @AuthenticationPrincipal Long memberId,
+            @RequestPart("file") MultipartFile file) {
+        return ApiResponse.success(importService.analyze(file, IMPORT_PREVIEW_ROWS));
+    }
+
+    /** 고른 시트를 표로 들인다. 값·수식·서식·병합·열 너비가 함께 온다. */
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<DatasetXlsxImportService.ImportResult> importSheet(
+            @AuthenticationPrincipal Long memberId,
+            @RequestPart("file") MultipartFile file,
+            @RequestParam(required = false) String sheet,
+            @RequestParam(defaultValue = "true") boolean firstRowAsHeader) {
+        return ApiResponse.success(
+                importService.importSheet(memberId, file, sheet, firstRowAsHeader));
     }
 }

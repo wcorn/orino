@@ -7,11 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import {
+  analyzeImportFile,
+  importSheetAsDataset,
+  type ImportSheetSummary,
+} from "@/features/note/dataset/api/datasets";
 import { cn } from "@/lib/utils";
+import { toast } from "@/shared/lib/toast";
 
-import { createDatasetFromTable } from "./datasetImport";
 import { DEFAULT_IMPORT_SOURCE, IMPORT_SOURCES } from "./importers";
-import type { SheetData } from "./sheetParser";
 import type { NormalizedTable } from "./tableContent";
 
 const PREVIEW_ROWS = 5;
@@ -26,7 +30,8 @@ interface Props {
 export function ImportDialog({ open, onOpenChange, onInsert }: Props) {
   const [source, setSource] = useState(DEFAULT_IMPORT_SOURCE);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [sheets, setSheets] = useState<SheetData[] | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [sheets, setSheets] = useState<ImportSheetSummary[] | null>(null);
   const [selectedSheet, setSelectedSheet] = useState<string>("");
   const [firstRowAsHeader, setFirstRowAsHeader] = useState(true);
   const [parsing, setParsing] = useState(false);
@@ -39,6 +44,7 @@ export function ImportDialog({ open, onOpenChange, onInsert }: Props) {
 
   const reset = () => {
     setFileName(null);
+    setFile(null);
     setSheets(null);
     setSelectedSheet("");
     setFirstRowAsHeader(true);
@@ -58,24 +64,27 @@ export function ImportDialog({ open, onOpenChange, onInsert }: Props) {
   };
 
   const handleFile = async (file: File) => {
-    const accept = activeSource.accept;
+    const accept = activeSource.accept ?? "";
     if (accept && !file.name.toLowerCase().endsWith(accept)) {
       setError(`${accept} 파일만 가져올 수 있어요.`);
       return;
     }
-    if (!activeSource.parse) return;
     setError(null);
     setParsing(true);
     setFileName(file.name);
+    setFile(file);
     try {
-      const parsed = await activeSource.parse(file);
-      const firstWithData = parsed.find((s) => s.rows.length > 0) ?? parsed[0];
+      const parsed = await analyzeImportFile(file);
+      const firstWithData = parsed.find((s) => s.rowCount > 0) ?? parsed[0];
       setSheets(parsed);
       setSelectedSheet(firstWithData?.name ?? "");
     } catch {
-      setError("파일을 읽을 수 없어요. 손상되지 않은 .xlsx인지 확인해 주세요.");
+      setError(
+        `파일을 읽을 수 없어요. 손상되지 않은 ${accept} 파일인지 확인해 주세요.`,
+      );
       setSheets(null);
       setFileName(null);
+      setFile(null);
     } finally {
       setParsing(false);
     }
@@ -83,32 +92,45 @@ export function ImportDialog({ open, onOpenChange, onInsert }: Props) {
 
   const current = sheets?.find((s) => s.name === selectedSheet) ?? null;
 
-  const normalized: NormalizedTable | null = useMemo(() => {
-    if (!current || current.rows.length === 0) return null;
+  // 미리보기는 서버가 준 앞부분 몇 줄이다. 머리글 토글은 그 줄을 어떻게 <b>보여줄지</b>만
+  // 가르고, 실제 해석은 가져올 때 서버가 같은 규칙으로 한다.
+  const preview: NormalizedTable | null = useMemo(() => {
+    if (!current || current.preview.length === 0) return null;
     if (firstRowAsHeader) {
-      return { headers: current.rows[0], rows: current.rows.slice(1) };
+      return { headers: current.preview[0], rows: current.preview.slice(1) };
     }
-    return { headers: null, rows: current.rows };
+    return { headers: null, rows: current.preview };
   }, [current, firstRowAsHeader]);
 
-  const totalRows = normalized?.rows.length ?? 0;
-  const totalCols = normalized
-    ? Math.max(
-        normalized.headers?.length ?? 0,
-        ...normalized.rows.map((r) => r.length),
-        0,
-      )
+  const totalRows = current
+    ? Math.max(current.rowCount - (firstRowAsHeader ? 1 : 0), 0)
     : 0;
+  const totalCols = current?.columnCount ?? 0;
 
-  const isEmptySheet = current !== null && current.rows.length === 0;
-  const canImport = normalized !== null && !submitting;
+  const isEmptySheet = current !== null && current.rowCount === 0;
+  const canImport = preview !== null && !submitting;
 
   const handleImport = async () => {
-    if (!normalized || submitting) return;
+    if (!file || !current || submitting) return;
     setSubmitting(true);
     try {
-      const datasetId = await createDatasetFromTable(normalized);
-      onInsert({ type: "datasetTable", attrs: { datasetId } });
+      const result = await importSheetAsDataset(
+        file,
+        current.name,
+        firstRowAsHeader,
+      );
+      if (result.formulasAsValue > 0) {
+        // 조용히 값으로 바꾸면 사람은 수식이 들어온 줄 안다 — 나중에 숫자가 안 따라
+        // 움직이는 걸 보고서야 알게 된다.
+        toast(
+          `수식 ${result.formulasAsValue}개는 옮길 수 없어 값으로 들어왔어요.`,
+          "info",
+        );
+      }
+      onInsert({
+        type: "datasetTable",
+        attrs: { datasetId: result.datasetId },
+      });
       close();
     } catch {
       setError("표를 저장하지 못했어요. 잠시 후 다시 시도해 주세요.");
@@ -121,7 +143,7 @@ export function ImportDialog({ open, onOpenChange, onInsert }: Props) {
       open={open}
       onOpenChange={(next) => (next ? onOpenChange(true) : close())}
       title="데이터 가져오기"
-      description="엑셀·CSV 파일을 표로 삽입합니다. 값만 가져오고 서식·수식은 무시해요."
+      description="엑셀·CSV 파일을 표로 삽입합니다. 수식·서식·병합도 함께 가져와요."
       size="lg"
     >
       {/* 소스 선택 (v1: Excel만, 나머지 곧) */}
@@ -225,12 +247,9 @@ export function ImportDialog({ open, onOpenChange, onInsert }: Props) {
             </Alert>
           )}
 
-          {normalized && !isEmptySheet && (
+          {preview && !isEmptySheet && (
             <>
-              <TablePreview
-                headers={normalized.headers}
-                rows={normalized.rows}
-              />
+              <TablePreview headers={preview.headers} rows={preview.rows} />
               <p className="text-muted-foreground text-sm">
                 총 {totalRows}행 × {totalCols}열
               </p>

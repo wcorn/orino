@@ -479,6 +479,59 @@ export async function deleteDataset(datasetId: number): Promise<void> {
   await client.delete(`/datasets/${datasetId}`);
 }
 
+/** 가져올 파일에 든 시트 하나. 고르기 전에 보여줄 만큼만 온다. */
+export interface ImportSheetSummary {
+  name: string;
+  rowCount: number;
+  columnCount: number;
+  /** 머리글 후보 한 줄 + 본문 몇 줄. 첫 행 머리글 토글은 이걸로 화면에서 갈린다. */
+  preview: string[][];
+}
+
+/** 가져오기 결과. */
+export interface ImportResult {
+  datasetId: number;
+  rowCount: number;
+  columnCount: number;
+  formulasImported: number;
+  /** 옮기지 못해 값으로 들어간 수식 수. 0이 아니면 화면이 말한다. */
+  formulasAsValue: number;
+}
+
+/**
+ * 파일에 어떤 시트가 들었는지 먼저 본다(#1310).
+ *
+ * 파싱은 서버가 한다 — 서식·수식·병합은 브라우저에서 읽을 수 없고, 읽을 수 있는 라이브러리는
+ * 노트 화면 전체를 무겁게 만든다.
+ */
+export async function analyzeImportFile(
+  file: File,
+): Promise<ImportSheetSummary[]> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await client.post<ApiEnvelope<ImportSheetSummary[]>>(
+    "/datasets/import/analyze",
+    form,
+  );
+  return data.data;
+}
+
+/** 고른 시트를 표로 들인다. 값·수식·서식·병합·열 너비가 함께 온다. */
+export async function importSheetAsDataset(
+  file: File,
+  sheet: string,
+  firstRowAsHeader: boolean,
+): Promise<ImportResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await client.post<ApiEnvelope<ImportResult>>(
+    "/datasets/import",
+    form,
+    { params: { sheet, firstRowAsHeader } },
+  );
+  return data.data;
+}
+
 /**
  * 표를 .xlsx로 내려받는다(#1308).
  *

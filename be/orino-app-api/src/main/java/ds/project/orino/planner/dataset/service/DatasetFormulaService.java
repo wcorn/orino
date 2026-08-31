@@ -102,7 +102,18 @@ public class DatasetFormulaService {
         // 표간 참조 이름 해석·소유권 검증에 tableRefs·memberId가 필요하다(입력 파싱 한정).
         FormulaContext ctx = new DbContext(datasetId, columns, tableRefs, memberId);
         FormulaNode node = FormulaParser.parseInput(input, ctx);
+        return saveNode(datasetId, row, colKey, node, rowCells);
+    }
 
+    /**
+     * 이미 트리로 만들어진 수식을 저장하고 계산한다.
+     *
+     * <p>입력 문자열을 거치지 않는 유일한 길이다 — xlsx 가져오기가 A1을 저장형으로 옮겨
+     * 파싱한 트리를 그대로 들고 온다. 저장·참조 갱신·순환 검사·계산은 입력 경로와 같아야 하므로
+     * 여기 한 곳에 둔다.
+     */
+    String saveNode(Long datasetId, DatasetRow row, String colKey, FormulaNode node,
+                    Map<String, String> rowCells) {
         DatasetFormula formula = formulaRepository.findByRowIdAndColKey(row.getId(), colKey)
                 .orElseGet(() -> formulaRepository.save(
                         new DatasetFormula(datasetId, row.getId(), colKey, FormulaWriter.toStored(node))));
@@ -243,6 +254,22 @@ public class DatasetFormulaService {
             case COLUMN_ALL -> formulaRepository.findByDatasetIdAndColKey(
                     ref.datasetId() == null ? datasetId : ref.datasetId(), ref.colKey());
         };
+    }
+
+    /**
+     * 저장형 문자열을 트리로. xlsx 가져오기가 A1을 저장형으로 옮겨 오면 여기서 받는다.
+     *
+     * <p><b>문법 검사는 여기서 이뤄진다</b> — 가져오기 쪽은 주소만 바꿔 끼우고, 괄호·우선순위·
+     * 인자 개수·허용 함수는 이 파서가 본다. 문법을 두 벌로 두지 않기 위해서다.
+     *
+     * @return 읽을 수 없으면 {@code null}. 부르는 쪽이 그 셀을 값으로 넣는다
+     */
+    FormulaNode parseStoredOrNull(Long datasetId, String stored, List<DatasetColumn> columns) {
+        try {
+            return FormulaParser.parseStored(stored, new DbContext(datasetId, columns));
+        } catch (CustomException e) {
+            return null;
+        }
     }
 
     /**
