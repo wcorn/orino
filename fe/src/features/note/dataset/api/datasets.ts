@@ -488,11 +488,17 @@ export async function deleteDataset(datasetId: number): Promise<void> {
 export async function exportDatasetXlsx(
   datasetId: number,
 ): Promise<{ blob: Blob; fileName: string }> {
-  const res = await client.get<Blob>(`/datasets/${datasetId}/export`, {
-    responseType: "blob",
+  // 바이트로 받아 Blob은 여기서 만든다. `responseType: "blob"`은 브라우저에선 같지만
+  // 테스트(jsdom + XHR 인터셉터)에서 Node 22의 Blob 구현과 어긋나 터진다 — 타입을 응답에서
+  // 그대로 옮겨 주는 편이 어느 쪽에서도 같은 결과다.
+  const res = await client.get<ArrayBuffer>(`/datasets/${datasetId}/export`, {
+    responseType: "arraybuffer",
   });
+  const contentType =
+    (res.headers["content-type"] as string | undefined) ??
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   return {
-    blob: res.data,
+    blob: new Blob([res.data], { type: contentType }),
     fileName:
       fileNameFromDisposition(
         res.headers["content-disposition"] as string | undefined,

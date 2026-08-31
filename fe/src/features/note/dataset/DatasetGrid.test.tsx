@@ -3253,7 +3253,8 @@ describe("DatasetGrid - 가로 넘침 시 행 구분선 (#996)", () => {
       server.use(
         http.get(`${API_BASE}/datasets/1/export`, () => {
           called += 1;
-          return new HttpResponse(new Blob(["xlsx-bytes"]), {
+          // Blob으로 주면 Node 22의 Blob이 인터셉터가 기대하는 stream()을 안 가진다.
+          return HttpResponse.arrayBuffer(new TextEncoder().encode("xlsx"), {
             headers: {
               "Content-Type":
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
