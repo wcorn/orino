@@ -11,7 +11,7 @@ import ds.project.orino.planner.dataset.dto.BulkRowsRequest;
 import ds.project.orino.planner.dataset.dto.CellStyle;
 import ds.project.orino.planner.dataset.dto.CreateDatasetRequest;
 import ds.project.orino.planner.dataset.dto.DatasetColumn;
-import ds.project.orino.planner.dataset.export.DatasetXlsxExporter;
+import ds.project.orino.planner.dataset.xlsx.DatasetXlsxExporter;
 import ds.project.orino.planner.dataset.formula.FormulaNode;
 import ds.project.orino.planner.dataset.dto.DatasetResponse;
 import ds.project.orino.planner.dataset.dto.FillCellsRequest;
