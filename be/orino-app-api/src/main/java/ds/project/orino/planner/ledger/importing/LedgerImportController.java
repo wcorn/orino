@@ -48,11 +48,16 @@ public class LedgerImportController {
         this.exportService = exportService;
     }
 
+    /**
+     * 1단계. {@code password}는 <b>암호가 걸린 xlsx</b>에만 필요하다(#1318) — 은행 거래내역이
+     * 그렇게 내려온다. 서버는 그 요청에서만 쓰고 어디에도 남기지 않는다.
+     */
     @PostMapping(value = "/import/analyze", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<ImportDtos.AnalyzeResponse> analyze(
             @AuthenticationPrincipal Long memberId,
-            @RequestPart("file") MultipartFile file) {
-        return ApiResponse.success(importService.analyze(memberId, file));
+            @RequestPart("file") MultipartFile file,
+            @RequestParam(value = "password", required = false) String password) {
+        return ApiResponse.success(importService.analyze(memberId, file, password));
     }
 
     @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

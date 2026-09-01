@@ -19,13 +19,15 @@ public final class ImportDtos {
      * 1단계 — 파일이 어떻게 생겼는지.
      *
      * @param headers   머리글로 보이는 줄. 매핑 화면이 열 이름을 고르는 데 쓴다
-     * @param sample    앞쪽 몇 줄. <b>사람이 눈으로 확인할 근거</b>다
-     * @param totalRows 머리글을 뺀 줄 수
+     * @param sample    머리글 다음 몇 줄. <b>사람이 눈으로 확인할 근거</b>다
+     * @param totalRows 머리글과 그 앞을 뺀 줄 수
+     * @param headerRow 머리글이 몇 번째 줄이었는지(0부터). 화면의 「건너뛸 줄 수」가 이 값 + 1이다
      */
     public record AnalyzeResponse(
             List<String> headers,
             List<List<String>> sample,
             int totalRows,
+            int headerRow,
             List<PresetView> presets
     ) {
     }
@@ -68,12 +70,15 @@ public final class ImportDtos {
      *                   거래는 자산 없이 존재할 수 없다(§3-1)
      * @param skipRows   머리글 등 건너뛸 줄 수
      * @param dateFormat 비우면 흔한 표기를 차례로 시도한다
+     * @param password   암호가 걸린 xlsx의 비밀번호. <b>저장하지 않는다</b> — 파일을 단계마다
+     *                   다시 올리므로 비밀번호도 그때마다 함께 온다
      */
     public record PreviewRequest(
             @NotNull Long assetId,
             @NotNull Mapping mapping,
             Integer skipRows,
-            String dateFormat
+            String dateFormat,
+            String password
     ) {
     }
 
@@ -124,6 +129,7 @@ public final class ImportDtos {
             @NotNull Mapping mapping,
             Integer skipRows,
             String dateFormat,
+            String password,
             @NotBlank @Size(max = 60) String source,
             @NotNull List<Integer> rowNumbers
     ) {

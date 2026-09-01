@@ -499,6 +499,8 @@ export function useExecuteImport() {
         mapping: ImportMapping;
         skipRows?: number;
         dateFormat?: string | null;
+        /** 암호가 걸린 xlsx의 비밀번호. 저장하지 않고 이 요청에서만 쓴다. */
+        password?: string;
         source: string;
         rowNumbers: number[];
       };

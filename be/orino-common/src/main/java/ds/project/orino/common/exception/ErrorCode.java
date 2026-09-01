@@ -140,6 +140,10 @@ public enum ErrorCode {
     LEDGER_IMPORT_PRESET_NOT_FOUND("LDG-ERR-029", "존재하지 않는 매핑 프리셋입니다.", 404),
     // 동봉 프리셋은 누구의 것도 아니라 고치거나 지울 수 없다.
     LEDGER_IMPORT_PRESET_BUILT_IN("LDG-ERR-030", "기본 제공 프리셋은 바꿀 수 없습니다.", 400),
+    // 「형식이 틀렸다」로 뭉뚱그리면 사람은 .xlsx를 .xlsx로 바꾸려 든다. 은행 파일은
+    // 비밀번호가 걸린 채로 내려오는 것이 기본이라, 이 둘은 제 이름으로 알려야 한다.
+    LEDGER_IMPORT_PASSWORD_REQUIRED("LDG-ERR-035", "암호가 걸린 파일입니다. 비밀번호를 함께 보내 주세요.", 400),
+    LEDGER_IMPORT_PASSWORD_WRONG("LDG-ERR-036", "파일 비밀번호가 맞지 않습니다.", 400),
 
     // 자동 분류 · 포인트
     LEDGER_AUTO_RULE_NOT_FOUND("LDG-ERR-031", "존재하지 않는 자동 분류 규칙입니다.", 404),

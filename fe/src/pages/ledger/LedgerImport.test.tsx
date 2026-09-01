@@ -68,6 +68,66 @@ describe("가져오기", () => {
   });
 
   /**
+   * 은행 파일을 받은 그대로(#1318).
+   *
+   * <p>카카오뱅크 거래내역은 앞 10줄이 안내문이고 11행이 머리글이다. 1행을 머리글로 못 박으면
+   * 열 이름이 전부 「(이름 없음)」이 되어, 사람이 원본을 따로 열어 <b>열 번호를 세어야</b> 한다.
+   */
+  it("안내문이 앞에 붙어 있으면 건너뛸 줄 수를 알아서 채운다", async () => {
+    const user = userEvent.setup();
+    renderAt("/ledger/import", {
+      importAnalyze: {
+        headers: ["거래일시", "구분", "거래금액", "내용"],
+        sample: [["2026.01.10 09:12:00", "출금", "-5,500", "스타벅스 역삼"]],
+        totalRows: 3,
+        headerRow: 6,
+      },
+    });
+
+    const file = new File(
+      ["안내문\n거래일시,구분,거래금액,내용\n"],
+      "거래내역.csv",
+      {
+        type: "text/csv",
+      },
+    );
+    await user.upload(await screen.findByLabelText("가져올 파일"), file);
+
+    await screen.findByRole("combobox", { name: "자산" });
+    // 머리글이 7번째 줄이었으니 그 앞 일곱 줄을 건너뛴다.
+    expect(screen.getByLabelText("건너뛸 머리글 줄 수")).toHaveValue("7");
+    // 열 이름이 제대로 보여야 사람이 고를 수 있다 — 「(이름 없음)」이면 번호를 세야 한다.
+    expect(
+      screen.getByRole("columnheader", { name: "1. 거래일시" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "3. 거래금액" }),
+    ).toBeInTheDocument();
+  });
+
+  it("암호가 걸린 파일은 무엇이 문제인지 말하고, 비밀번호를 받으면 읽는다", async () => {
+    const user = userEvent.setup();
+    renderAt("/ledger/import", { importFirstAnalyzeFails: "LDG-ERR-035" });
+
+    await user.upload(
+      await screen.findByLabelText("가져올 파일"),
+      new File(["암호"], "거래내역.csv", { type: "text/csv" }),
+    );
+
+    // 「.xlsx만 됩니다」라고 답하면 .xlsx를 든 사람은 고칠 것을 찾지 못한다.
+    expect(
+      await screen.findByText(/암호가 걸린 파일이에요/),
+    ).toBeInTheDocument();
+
+    // 같은 파일을 다시 고르는 것으로는 브라우저가 아무 일도 하지 않는다 —
+    // 그래서 고른 파일을 들고 있다가 「다시 읽기」로 연다.
+    await user.type(screen.getByLabelText("파일 비밀번호"), "990820");
+    await user.click(screen.getByRole("button", { name: "이 파일 다시 읽기" }));
+
+    expect(await screen.findByRole("combobox", { name: "자산" })).toBeVisible();
+  });
+
+  /**
    * <b>자동 병합 금지</b>(`LDG-092`). 후보를 보여주고 체크를 꺼 둘 뿐이다 —
    * 합치는 버튼이 있으면 그 순간 사람은 무엇이 합쳐졌는지 모르게 된다.
    */

@@ -13,9 +13,18 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.apache.poi.poifs.crypt.EncryptionInfo;
+import org.apache.poi.poifs.crypt.EncryptionMode;
+import org.apache.poi.poifs.crypt.Encryptor;
+import org.apache.poi.poifs.filesystem.POIFSFileSystem;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.ResultActions;
 
+import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
 import static org.hamcrest.Matchers.hasSize;
@@ -186,6 +195,140 @@ class LedgerImportTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.rows[0].amount").value(120000))
                     .andExpect(jsonPath("$.data.rows[1].type").value("INCOME"))
                     .andExpect(jsonPath("$.data.rows[1].amount").value(3000000));
+        }
+    }
+
+    /**
+     * 은행 파일을 받은 그대로(#1318).
+     *
+     * <p>확인하는 것은 두 가지다 — <b>암호를 풀어 읽는가</b>, 그리고 <b>머리글이 1행이
+     * 아니어도 찾는가</b>. 은행 거래내역은 비밀번호가 걸린 채로, 앞에 안내문을 달고 온다.
+     */
+    @Nested
+    @DisplayName("은행 파일")
+    class BankFiles {
+
+        @Test
+        @DisplayName("비밀번호를 함께 주면 암호 걸린 xlsx를 읽는다")
+        void readsEncryptedWorkbook() throws Exception {
+            byte[] encrypted = encryptedWorkbook("990820");
+
+            mockMvc.perform(multipart("/api/ledger/import/analyze")
+                            .file(xlsxPart(encrypted))
+                            .param("password", "990820")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.headers[1]").value("거래일시"))
+                    .andExpect(jsonPath("$.data.totalRows").value(2));
+        }
+
+        @Test
+        @DisplayName("비밀번호가 없으면 「형식이 틀렸다」가 아니라 「암호가 걸렸다」고 답한다")
+        void namesTheMissingPassword() throws Exception {
+            mockMvc.perform(multipart("/api/ledger/import/analyze")
+                            .file(xlsxPart(encryptedWorkbook("990820")))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("LDG-ERR-035"));
+        }
+
+        @Test
+        @DisplayName("비밀번호가 틀리면 틀렸다고 답한다")
+        void namesTheWrongPassword() throws Exception {
+            mockMvc.perform(multipart("/api/ledger/import/analyze")
+                            .file(xlsxPart(encryptedWorkbook("990820")))
+                            .param("password", "000000")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("LDG-ERR-036"));
+        }
+
+        /**
+         * 카카오뱅크는 앞 10줄이 제목·성명·계좌번호·주의사항이고 11행이 머리글이다.
+         * 1행을 머리글로 못 박으면 화면의 열 이름이 전부 「(이름 없음)」이 된다.
+         */
+        @Test
+        @DisplayName("안내문이 앞에 붙어 있어도 머리글 줄을 찾아낸다")
+        void findsHeaderBelowPreamble() throws Exception {
+            String csv = """
+                    카카오뱅크 거래내역,,,
+                    ,,,
+                    성명,강동석,조회기간,2025.09.01 - 2026.09.01
+                    계좌번호,****-**-***9981,요청일시,2026.09.01 16:12:21
+                    ,,,
+                    ※ 금액앞에 '-' 표시는 출금 금액입니다.,,,
+                    거래일시,구분,거래금액,내용
+                    2026.01.10 09:12:00,출금,"-5,500",스타벅스 역삼
+                    2026.01.11 10:00:00,입금,"30,000",박순요
+                    2026.01.12 11:00:00,출금,"-3,200",편의점
+                    """;
+
+            mockMvc.perform(multipart("/api/ledger/import/analyze")
+                            .file(csvPart(csv))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    // 0부터 센다 — 화면의 「건너뛸 머리글 줄 수」는 이 값 + 1이다.
+                    .andExpect(jsonPath("$.data.headerRow").value(6))
+                    .andExpect(jsonPath("$.data.headers[0]").value("거래일시"))
+                    .andExpect(jsonPath("$.data.headers[2]").value("거래금액"))
+                    .andExpect(jsonPath("$.data.totalRows").value(3))
+                    // 표본도 머리글 다음부터다. 안내문을 보여 주면 확인할 근거가 못 된다.
+                    .andExpect(jsonPath("$.data.sample[0][3]").value("스타벅스 역삼"));
+        }
+
+        @Test
+        @DisplayName("머리글이 1행인 파일은 그대로 1행이다 — 새 규칙이 옛 파일을 깨지 않는다")
+        void keepsFirstRowWhenItIsTheHeader() throws Exception {
+            String csv = """
+                    날짜,내용,금액
+                    2026-01-10,스타벅스 역삼,-5500
+                    2026-01-11,편의점,-3200
+                    """;
+
+            mockMvc.perform(multipart("/api/ledger/import/analyze")
+                            .file(csvPart(csv))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.headerRow").value(0))
+                    .andExpect(jsonPath("$.data.totalRows").value(2));
+        }
+
+        /** 카카오뱅크 파일과 같은 모양 — 안내문 6줄 + 머리글 + 「-1,234」 꼴의 금액. */
+        private byte[] encryptedWorkbook(String password) throws Exception {
+            byte[] plain;
+            try (XSSFWorkbook workbook = new XSSFWorkbook();
+                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                Sheet sheet = workbook.createSheet("카카오뱅크 거래내역");
+                sheet.createRow(0).createCell(1).setCellValue("카카오뱅크 거래내역");
+                Row header = sheet.createRow(1);
+                header.createCell(1).setCellValue("거래일시");
+                header.createCell(2).setCellValue("구분");
+                header.createCell(3).setCellValue("거래금액");
+                for (int i = 0; i < 2; i++) {
+                    Row row = sheet.createRow(2 + i);
+                    row.createCell(1).setCellValue("2026.01.1" + i + " 09:12:00");
+                    row.createCell(2).setCellValue("출금");
+                    row.createCell(3).setCellValue("-5,50" + i);
+                }
+                workbook.write(out);
+                plain = out.toByteArray();
+            }
+
+            try (POIFSFileSystem fs = new POIFSFileSystem();
+                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                EncryptionInfo info = new EncryptionInfo(EncryptionMode.agile);
+                Encryptor encryptor = info.getEncryptor();
+                encryptor.confirmPassword(password);
+                try (OutputStream encrypted = encryptor.getDataStream(fs)) {
+                    encrypted.write(plain);
+                }
+                fs.writeFilesystem(out);
+                return out.toByteArray();
+            }
+        }
+
+        private MockMultipartFile xlsxPart(byte[] bytes) {
+            return new MockMultipartFile("file", "거래내역.xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
         }
     }
 

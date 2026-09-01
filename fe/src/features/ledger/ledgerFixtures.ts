@@ -283,7 +283,11 @@ export interface LedgerMockOptions {
     headers?: string[];
     sample?: string[][];
     totalRows?: number;
+    /** 머리글이 몇 번째 줄이었는지(0부터). 화면의 「건너뛸 줄 수」가 이 값 + 1로 채워진다. */
+    headerRow?: number;
   };
+  /** 첫 `analyze`만 이 코드로 거절한다(`LDG-ERR-035` 등). 두 번째부터는 정상으로 연다. */
+  importFirstAnalyzeFails?: string;
   importPreview?: {
     rows?: {
       rowNumber: number;
@@ -401,6 +405,8 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
   const bulkSent: Record<string, unknown>[][] = [];
   /** 자산 생성 본문. 「무엇을 보냈는가」로만 체크카드 연결 규칙을 확인할 수 있다. */
   const assetsCreated: Record<string, unknown>[] = [];
+  /** `analyze`를 몇 번 불렀는지. 첫 시도만 거절하는 흐름을 만드는 데 쓴다. */
+  let analyzeCalls = 0;
   /** 자산 수정 본문(해지·되살리기 포함). */
   const assetPatches: Record<string, unknown>[] = [];
   /** 삭제된 자산 id. */
@@ -896,13 +902,30 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
     http.patch(`${API_BASE}/ledger/cards/:id/usage-goal`, () =>
       HttpResponse.json({ code: "OK", data: null }),
     ),
-    http.post(`${API_BASE}/ledger/import/analyze`, () =>
-      ok({
+    http.post(`${API_BASE}/ledger/import/analyze`, () => {
+      analyzeCalls++;
+      /*
+       * 암호 걸린 파일. <b>보낸 비밀번호로는 판정할 수 없다</b> — jsdom이 multipart 본문을
+       * 넘겨주지 않아 목이 그걸 읽지 못한다(이 파일의 다른 목들과 같은 한계이고, 실제로
+       * 비밀번호가 서버에 닿는지는 BE 통합 테스트와 로컬 확인이 지킨다).
+       * 그래서 화면이 책임지는 것만 흉내 낸다: 첫 시도는 거절당하고, 다시 고르면 열린다.
+       */
+      if (options.importFirstAnalyzeFails && analyzeCalls === 1) {
+        return HttpResponse.json(
+          {
+            code: options.importFirstAnalyzeFails,
+            message: "암호가 걸린 파일입니다.",
+          },
+          { status: 400 },
+        );
+      }
+      return ok({
         headers: options.importAnalyze?.headers ?? ["날짜", "내용", "금액"],
         sample: options.importAnalyze?.sample ?? [
           ["2026-08-10", "스타벅스 역삼", "-5500"],
         ],
         totalRows: options.importAnalyze?.totalRows ?? 1,
+        headerRow: options.importAnalyze?.headerRow ?? 0,
         presets: [
           {
             id: 1,
@@ -913,8 +936,8 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
             builtIn: true,
           },
         ],
-      }),
-    ),
+      });
+    }),
     http.post(`${API_BASE}/ledger/import/preview`, () => {
       const rows = (options.importPreview?.rows ?? []).map((row) => ({
         memo: null,
