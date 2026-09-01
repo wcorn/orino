@@ -393,6 +393,8 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
   const budgets: Record<string, unknown>[] = [];
   const duplicated: Record<string, unknown>[] = [];
   const bulkSent: Record<string, unknown>[][] = [];
+  /** 자산 생성 본문. 「무엇을 보냈는가」로만 체크카드 연결 규칙을 확인할 수 있다. */
+  const assetsCreated: Record<string, unknown>[] = [];
   const assets = options.assets ?? [assetView()];
   const transactions = options.transactions ?? [];
 
@@ -426,6 +428,11 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
         netWorth: assets.reduce((sum, asset) => sum + (asset.balance ?? 0), 0),
       }),
     ),
+    http.post(`${API_BASE}/ledger/assets`, async ({ request }) => {
+      const body = (await request.json()) as Record<string, unknown>;
+      assetsCreated.push(body);
+      return ok(assetView({ id: 900, ...body }));
+    }),
     // 자산 상세. 목록과 같은 자산을 쓰되 추이·분포는 이 테스트들의 관심사가 아니라 비워 둔다.
     http.get(`${API_BASE}/ledger/assets/:id`, ({ params }) => {
       const asset =
@@ -1066,6 +1073,7 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
   );
 
   return Object.assign(created, {
+    assetsCreated,
     duplicated,
     bulkSent,
     occurrenceActions,
