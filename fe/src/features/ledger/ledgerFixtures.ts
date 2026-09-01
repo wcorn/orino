@@ -393,6 +393,8 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
   const budgets: Record<string, unknown>[] = [];
   const duplicated: Record<string, unknown>[] = [];
   const bulkSent: Record<string, unknown>[][] = [];
+  /** 자산 생성 본문. 「무엇을 보냈는가」로만 체크카드 연결 규칙을 확인할 수 있다. */
+  const assetsCreated: Record<string, unknown>[] = [];
   const assets = options.assets ?? [assetView()];
   const transactions = options.transactions ?? [];
 
@@ -426,6 +428,11 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
         netWorth: assets.reduce((sum, asset) => sum + (asset.balance ?? 0), 0),
       }),
     ),
+    http.post(`${API_BASE}/ledger/assets`, async ({ request }) => {
+      const body = (await request.json()) as Record<string, unknown>;
+      assetsCreated.push(body);
+      return ok(assetView({ id: 900, ...body }));
+    }),
     // 자산 상세. 목록과 같은 자산을 쓰되 추이·분포는 이 테스트들의 관심사가 아니라 비워 둔다.
     http.get(`${API_BASE}/ledger/assets/:id`, ({ params }) => {
       const asset =
@@ -587,8 +594,9 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
     }),
     http.get(`${API_BASE}/ledger/transactions/calendar`, () =>
       ok({
-        month: "2026-08",
-        todayLine: "2026-08-28",
+        // 달·오늘을 박아 두면 다음 달로 넘어가는 날 화면의 「이번 달」과 어긋난다.
+        month: todayIso().slice(0, 7),
+        todayLine: todayIso(),
         days: (options.calendarDays ?? []).map((day) => ({
           income: 0,
           expense: 0,
@@ -1066,6 +1074,7 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
   );
 
   return Object.assign(created, {
+    assetsCreated,
     duplicated,
     bulkSent,
     occurrenceActions,

@@ -11,6 +11,7 @@ import {
   transactionView,
   upcomingItem,
 } from "@/features/ledger/ledgerFixtures";
+import { todayIso } from "@/features/ledger/lib/period";
 import { renderWithRouter } from "@/test/render";
 
 function renderAt(path: string, options: LedgerMockOptions = {}) {
@@ -245,11 +246,14 @@ describe("통합 타임라인", () => {
 
   it("캘린더는 과거 확정과 미래 예정을 나눠 그린다", async () => {
     const user = userEvent.setup();
+    // 캘린더는 「이번 달」의 칸만 그린다. 날짜를 박아 두면 그 달이 지나는 순간
+    // 어느 칸에도 붙지 못해 깨진다 — 실제로 그렇게 깨졌다.
+    const month = todayIso().slice(0, 7);
     renderAt("/ledger/transactions", {
       calendarDays: [
-        { date: "2026-08-25", income: 3850000 },
-        { date: "2026-08-28", expense: 4500 },
-        { date: "2026-08-31", scheduledExpense: 17000 },
+        { date: `${month}-05`, income: 3850000 },
+        { date: `${month}-06`, expense: 4500 },
+        { date: `${month}-07`, scheduledExpense: 17000 },
       ],
     });
 

@@ -15,7 +15,7 @@ import type {
   AssetView,
   CardView,
 } from "@/features/ledger/api/ledger";
-import { useTransactionModal } from "@/features/ledger/components/transactionModalContext";
+import { AssetCreateModal } from "@/features/ledger/components/AssetCreateModal";
 import {
   useCreatePoint,
   useDeletePoint,
@@ -47,17 +47,18 @@ const GROUP_ICON = {
 export function LedgerAssetsPage() {
   const { data, isPending, isError } = useLedgerAssets();
   const { data: cards } = useLedgerCards();
-  const { openTransactionModal } = useTransactionModal();
+  const [createOpen, setCreateOpen] = useState(false);
 
   return (
     <div className="mx-auto flex max-w-[880px] flex-col gap-5">
+      {/* 거래 입력은 `N`이 어디서든 연다. 이 화면의 버튼은 여기서만 할 수 있는 일을 맡는다. */}
       <PageHeader
         title="자산"
         description="잔액은 저장된 값이 아니라 내역에서 계산한 값이에요"
         actions={
-          <Button type="button" onClick={openTransactionModal}>
+          <Button type="button" onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />
-            입력 <kbd className="ml-1 text-[11px] opacity-70">N</kbd>
+            자산 추가
           </Button>
         }
       />
@@ -130,6 +131,8 @@ export function LedgerAssetsPage() {
 
       {/* 자산 목록 밖이다. 안에 두면 언젠가 합계에 섞인다. */}
       <PointSection />
+
+      <AssetCreateModal open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   );
 }

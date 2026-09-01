@@ -26,6 +26,19 @@ function renderAt(path: string, options: LedgerMockOptions = {}) {
   );
 }
 
+/**
+ * 셀렉트 고르기. 네이티브 `<select>`가 아니라 리스트박스라 `selectOptions`가 통하지 않는다 —
+ * 사람이 하는 대로 열고 고른다.
+ */
+async function choose(
+  user: ReturnType<typeof userEvent.setup>,
+  field: string,
+  option: string,
+) {
+  await user.click(screen.getByRole("combobox", { name: field }));
+  await user.click(await screen.findByRole("option", { name: option }));
+}
+
 describe("자산 화면", () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: "valid-token" });
@@ -74,6 +87,50 @@ describe("자산 화면", () => {
     });
 
     expect(await screen.findByText("−180,000")).toBeInTheDocument();
+  });
+
+  // 헤더 버튼이 거래 입력을 열던 자리다(#1312). 거래는 `N`이 어디서든 열고,
+  // 이 화면에서만 할 수 있는 일은 자산을 만드는 것이다.
+  it("헤더 버튼으로 자산을 만든다", async () => {
+    const user = userEvent.setup();
+    const { sent } = renderAt("/ledger/assets");
+
+    await user.click(await screen.findByRole("button", { name: "자산 추가" }));
+    // 화면 아래 포인트 칸에도 「이름」이 있다 — 모달 안으로 좁혀 고른다.
+    const modal = within(await screen.findByRole("dialog"));
+    await user.type(modal.getByLabelText("이름"), "카카오뱅크 세이프박스");
+    await user.click(modal.getByRole("button", { name: "만들기" }));
+
+    await waitFor(() => expect(sent.assetsCreated).toHaveLength(1));
+    expect(sent.assetsCreated[0]).toEqual({
+      name: "카카오뱅크 세이프박스",
+      type: "CHECKING",
+      groupId: null,
+      accountLast4: null,
+      linkedAssetId: null,
+    });
+  });
+
+  it("체크카드는 연결 계좌를 고르기 전에는 만들 수 없다", async () => {
+    const user = userEvent.setup();
+    const { sent } = renderAt("/ledger/assets");
+
+    await user.click(await screen.findByRole("button", { name: "자산 추가" }));
+    const modal = within(await screen.findByRole("dialog"));
+    await user.type(modal.getByLabelText("이름"), "체크카드");
+    await choose(user, "유형", "체크카드");
+
+    // 서버도 LDG-ERR-019로 거부하지만, 저장을 누른 뒤에 듣는 것과 고르는 동안 아는 것은 다르다.
+    expect(modal.getByRole("button", { name: "만들기" })).toBeDisabled();
+
+    await choose(user, "연결 계좌", "급여통장");
+    await user.click(modal.getByRole("button", { name: "만들기" }));
+
+    await waitFor(() => expect(sent.assetsCreated).toHaveLength(1));
+    expect(sent.assetsCreated[0]).toMatchObject({
+      type: "DEBIT_CARD",
+      linkedAssetId: 1,
+    });
   });
 });
 
