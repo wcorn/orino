@@ -15,6 +15,9 @@ public interface LedgerStatementRepository extends JpaRepository<LedgerStatement
 
     Optional<LedgerStatement> findByIdAndMemberId(Long id, Long memberId);
 
+    /** 자산 삭제 전 확인용 — 청구서가 한 장이라도 있으면 카드를 지울 수 없다. */
+    boolean existsByMemberIdAndCardAssetId(Long memberId, Long cardAssetId);
+
     /** 그 카드의 청구서를 최근 사이클부터. */
     List<LedgerStatement> findAllByMemberIdAndCardAssetIdOrderByCycleStartDesc(
             Long memberId, Long cardAssetId);

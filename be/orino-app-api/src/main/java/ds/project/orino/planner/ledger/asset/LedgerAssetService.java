@@ -13,7 +13,11 @@ import ds.project.orino.domain.planner.ledger.entity.LedgerTransactionStatus;
 import ds.project.orino.domain.planner.ledger.repository.LedgerAssetGroupRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerAssetRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerCategoryRepository;
+import ds.project.orino.domain.planner.ledger.repository.LedgerRecurringRepository;
+import ds.project.orino.domain.planner.ledger.repository.LedgerSettingsRepository;
+import ds.project.orino.domain.planner.ledger.repository.LedgerStatementRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerTransactionRepository;
+import ds.project.orino.domain.planner.ledger.repository.LedgerTransactionTemplateRepository;
 import ds.project.orino.planner.ledger.asset.dto.AssetDetailResponse;
 import ds.project.orino.planner.ledger.asset.dto.AssetListResponse;
 import ds.project.orino.planner.ledger.asset.dto.AssetRequests;
@@ -41,8 +45,9 @@ import java.util.Set;
 /**
  * 자산 읽기·쓰기. <b>잔액은 여기서 계산되지 저장되지 않는다</b>(D-8).
  *
- * <p>자산은 지우지 않는다. 숨길 뿐이다 — 해지한 카드의 지난 내역이 갈 곳을 잃으면
- * 그것도 원장이 틀어지는 길이다.
+ * <p>쓰인 자산은 지우지 않는다. 숨길 뿐이다 — 해지한 카드의 지난 내역이 갈 곳을 잃으면
+ * 그것도 원장이 틀어지는 길이다. <b>아직 아무것도 붙지 않은 자산에만</b> 삭제가 열려 있다:
+ * 잘못 만든 줄 하나를 되돌릴 길이 없으면 사람은 「숨긴 자산」 목록에 쓰레기를 쌓는다.
  */
 @Service
 public class LedgerAssetService {
@@ -58,6 +63,10 @@ public class LedgerAssetService {
     private final LedgerAssetGroupRepository groupRepository;
     private final LedgerCategoryRepository categoryRepository;
     private final LedgerTransactionRepository transactionRepository;
+    private final LedgerTransactionTemplateRepository templateRepository;
+    private final LedgerRecurringRepository recurringRepository;
+    private final LedgerStatementRepository statementRepository;
+    private final LedgerSettingsRepository settingsRepository;
     private final LedgerBootstrap bootstrap;
     private final LedgerClock clock;
 
@@ -65,12 +74,20 @@ public class LedgerAssetService {
                               LedgerAssetGroupRepository groupRepository,
                               LedgerCategoryRepository categoryRepository,
                               LedgerTransactionRepository transactionRepository,
+                              LedgerTransactionTemplateRepository templateRepository,
+                              LedgerRecurringRepository recurringRepository,
+                              LedgerStatementRepository statementRepository,
+                              LedgerSettingsRepository settingsRepository,
                               LedgerBootstrap bootstrap,
                               LedgerClock clock) {
         this.assetRepository = assetRepository;
         this.groupRepository = groupRepository;
         this.categoryRepository = categoryRepository;
         this.transactionRepository = transactionRepository;
+        this.templateRepository = templateRepository;
+        this.recurringRepository = recurringRepository;
+        this.statementRepository = statementRepository;
+        this.settingsRepository = settingsRepository;
         this.bootstrap = bootstrap;
         this.clock = clock;
     }
@@ -177,6 +194,42 @@ public class LedgerAssetService {
         LedgerBalances balances = balances(memberId, assets);
         return AssetView.of(asset, linkedName(memberId, asset),
                 balances.balanceOf(asset.getId()), balances.unpaidOf(asset.getId()));
+    }
+
+    /**
+     * 자산 삭제. <b>아직 아무것도 붙지 않은 자산에만</b> 열린다.
+     *
+     * <p>거래 한 줄이라도 이 자산을 가리키면 거부한다(`LDG-ERR-034`). 지운 거래도 센다 —
+     * 소프트 삭제라 행은 남아 있고, 남은 행이 가리키는 자산을 지우면 그 행은 어느 자산의
+     * 것인지 말할 수 없게 된다. 그럴 때 사람이 원하는 것은 삭제가 아니라 <b>해지</b>다.
+     *
+     * <p>기본 자산으로 걸려 있으면 그것만 풀고 지운다. 없는 자산을 가리키는 설정을 남기면
+     * 입력 모달이 열릴 때마다 빈 자리를 고르게 된다.
+     */
+    @Transactional
+    public void delete(Long memberId, Long id) {
+        LedgerAsset asset = requireAsset(memberId, id);
+        if (inUse(memberId, id)) {
+            throw new CustomException(ErrorCode.LEDGER_ASSET_IN_USE);
+        }
+
+        settingsRepository.findById(memberId)
+                .filter(settings -> id.equals(settings.getDefaultAssetId()))
+                .ifPresent(settings -> settings.updateDefaultAssetId(null));
+
+        assetRepository.delete(asset);
+    }
+
+    /** 이 자산을 가리키는 것이 하나라도 있는가. 하나라도 있으면 삭제가 아니라 해지다. */
+    private boolean inUse(Long memberId, Long id) {
+        return transactionRepository.existsByMemberIdAndAssetId(memberId, id)
+                || transactionRepository.existsByMemberIdAndCounterAssetId(memberId, id)
+                || recurringRepository.existsByMemberIdAndAssetId(memberId, id)
+                || recurringRepository.existsByMemberIdAndCounterAssetId(memberId, id)
+                || templateRepository.existsByMemberIdAndAssetId(memberId, id)
+                || statementRepository.existsByMemberIdAndCardAssetId(memberId, id)
+                || assetRepository.existsByMemberIdAndLinkedAssetId(memberId, id)
+                || assetRepository.existsByMemberIdAndPaymentAssetId(memberId, id);
     }
 
     @Transactional

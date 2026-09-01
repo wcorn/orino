@@ -368,6 +368,8 @@ export interface LedgerMockOptions {
   /** 다건 입력에서 서버가 거부하는 상황. 전부-아니면-전무를 확인할 때 쓴다. */
   bulkFails?: boolean;
   assets?: ReturnType<typeof assetView>[];
+  /** 삭제를 서버가 막는 상황(`LDG-ERR-034`). 거래가 붙은 자산이 이 길로 온다. */
+  assetDeleteFails?: boolean;
   groups?: unknown[];
   transactions?: ReturnType<typeof transactionView>[];
   monthStartDay?: number;
@@ -395,6 +397,10 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
   const bulkSent: Record<string, unknown>[][] = [];
   /** 자산 생성 본문. 「무엇을 보냈는가」로만 체크카드 연결 규칙을 확인할 수 있다. */
   const assetsCreated: Record<string, unknown>[] = [];
+  /** 자산 수정 본문(해지·되살리기 포함). */
+  const assetPatches: Record<string, unknown>[] = [];
+  /** 삭제된 자산 id. */
+  const assetsDeleted: number[] = [];
   const assets = options.assets ?? [assetView()];
   const transactions = options.transactions ?? [];
 
@@ -432,6 +438,28 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
       const body = (await request.json()) as Record<string, unknown>;
       assetsCreated.push(body);
       return ok(assetView({ id: 900, ...body }));
+    }),
+    http.patch(`${API_BASE}/ledger/assets/:id`, async ({ params, request }) => {
+      const body = (await request.json()) as Record<string, unknown>;
+      assetPatches.push(body);
+      const asset =
+        assets.find((item) => String(item.id) === String(params.id)) ??
+        assets[0];
+      return ok({ ...asset, ...body });
+    }),
+    http.delete(`${API_BASE}/ledger/assets/:id`, ({ params }) => {
+      if (options.assetDeleteFails) {
+        // 거래가 한 줄이라도 붙으면 서버가 막는다. 화면은 해지를 안내해야 한다.
+        return HttpResponse.json(
+          {
+            code: "LDG-ERR-034",
+            message: "이미 쓰인 자산은 삭제할 수 없습니다.",
+          },
+          { status: 409 },
+        );
+      }
+      assetsDeleted.push(Number(params.id));
+      return HttpResponse.json({ code: "OK", data: null });
     }),
     // 자산 상세. 목록과 같은 자산을 쓰되 추이·분포는 이 테스트들의 관심사가 아니라 비워 둔다.
     http.get(`${API_BASE}/ledger/assets/:id`, ({ params }) => {
@@ -1075,6 +1103,8 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
 
   return Object.assign(created, {
     assetsCreated,
+    assetPatches,
+    assetsDeleted,
     duplicated,
     bulkSent,
     occurrenceActions,

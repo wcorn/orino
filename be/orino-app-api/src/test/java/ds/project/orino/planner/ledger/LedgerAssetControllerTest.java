@@ -18,7 +18,9 @@ import java.time.LocalDate;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -331,6 +333,105 @@ class LedgerAssetControllerTest extends ApiTestSupport {
                             .header(HttpHeaders.AUTHORIZATION, authHeader))
                     .andExpect(jsonPath("$.data.groups[0].name").value("국민은행"))
                     .andExpect(jsonPath("$.data.groups[0].assets", hasSize(1)));
+        }
+    }
+
+    /**
+     * 삭제(#1312).
+     *
+     * <p>확인하는 것은 「지워지느냐」가 아니라 <b>지워지면 안 되는 것이 남느냐</b>다.
+     * 거래 한 줄이 이 자산을 가리키는 순간 삭제는 해지로 바뀌어야 한다.
+     */
+    @Nested
+    @DisplayName("삭제")
+    class Delete {
+
+        @Test
+        @DisplayName("아무것도 붙지 않은 자산은 지워진다 — 잘못 만든 줄을 되돌릴 길이 있어야 한다")
+        void deletesUntouchedAsset() throws Exception {
+            long id = asset("잘못 만든 통장", "CHECKING");
+
+            mockMvc.perform(delete("/api/ledger/assets/" + id)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
+
+            mockMvc.perform(get("/api/ledger/assets")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.groups").isEmpty())
+                    .andExpect(jsonPath("$.data.hidden").isEmpty());
+        }
+
+        @Test
+        @DisplayName("거래가 붙은 자산은 거부한다 — 그 내역이 갈 곳을 잃는다")
+        void rejectsAssetWithTransaction() throws Exception {
+            long id = asset("급여통장", "CHECKING");
+            income(id, 1000000);
+
+            mockMvc.perform(delete("/api/ledger/assets/" + id)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("LDG-ERR-034"));
+        }
+
+        @Test
+        @DisplayName("지운 거래도 센다 — 소프트 삭제라 그 행은 아직 이 자산을 가리킨다")
+        void countsSoftDeletedTransaction() throws Exception {
+            long id = asset("급여통장", "CHECKING");
+            long transactionId = LedgerFixture.transactionId(
+                    LedgerFixture.createTransaction(mockMvc, authHeader, """
+                            {"type": "INCOME", "amount": 1000, "assetId": %d, "occurredOn": "%s"}
+                            """.formatted(id, LocalDate.now(TEST_ZONE))));
+            mockMvc.perform(delete("/api/ledger/transactions/" + transactionId)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
+
+            mockMvc.perform(delete("/api/ledger/assets/" + id)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("LDG-ERR-034"));
+        }
+
+        @Test
+        @DisplayName("체크카드가 물고 있는 계좌는 거부한다")
+        void rejectsLinkedAccount() throws Exception {
+            long checking = asset("급여통장", "CHECKING");
+            LedgerFixture.createAsset(mockMvc, authHeader, "체크카드", "DEBIT_CARD", checking);
+
+            mockMvc.perform(delete("/api/ledger/assets/" + checking)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("LDG-ERR-034"));
+        }
+
+        @Test
+        @DisplayName("기본 자산으로 걸려 있어도 지워지고, 설정만 풀린다")
+        void clearsDefaultAssetSetting() throws Exception {
+            long id = asset("잘못 만든 통장", "CHECKING");
+            mockMvc.perform(patch("/api/ledger/settings")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"defaultAssetId": %d}
+                                    """.formatted(id)))
+                    .andExpect(status().isOk());
+
+            mockMvc.perform(delete("/api/ledger/assets/" + id)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
+
+            // 없는 자산을 가리키는 설정이 남으면 입력 모달이 빈 자리를 고른다.
+            mockMvc.perform(get("/api/ledger/settings")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.defaultAssetId").value(nullValue()));
+        }
+
+        @Test
+        @DisplayName("남의 자산은 없는 것으로 본다")
+        void rejectsOthersAsset() throws Exception {
+            mockMvc.perform(delete("/api/ledger/assets/999999")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("LDG-ERR-001"));
         }
     }
 

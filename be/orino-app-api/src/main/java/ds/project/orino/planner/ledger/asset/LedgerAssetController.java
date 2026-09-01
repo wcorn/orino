@@ -9,6 +9,7 @@ import ds.project.orino.planner.ledger.asset.dto.AssetView;
 import ds.project.orino.planner.ledger.asset.dto.ReconcileDtos;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -52,6 +53,17 @@ public class LedgerAssetController {
                                          @PathVariable Long id,
                                          @Valid @RequestBody AssetRequests.Update request) {
         return ApiResponse.success(assetService.update(memberId, id, request));
+    }
+
+    /**
+     * 자산 삭제. 거래·정기 항목·청구서가 하나라도 붙었으면 `LDG-ERR-034`로 거부하고
+     * 해지를 안내한다 — 지우면 그것들이 갈 곳을 잃는다.
+     */
+    @DeleteMapping("/assets/{id}")
+    public ApiResponse<Void> delete(@AuthenticationPrincipal Long memberId,
+                                    @PathVariable Long id) {
+        assetService.delete(memberId, id);
+        return ApiResponse.success();
     }
 
     /** 잔액 · 추이 · 카테고리 분포. 잔액은 원장에서 파생한 값이지 저장된 값이 아니다. */
