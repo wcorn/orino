@@ -92,7 +92,22 @@ export interface CategoryShare {
   count: number;
 }
 
+/** 삭제를 막는 것. 화면은 이 이름으로 「무엇을 치워야 하는지」를 적는다. */
+export type DeleteBlocker =
+  | "TRANSACTION"
+  | "DELETED_TRANSACTION"
+  | "RECURRING"
+  | "TEMPLATE"
+  | "LINKED_ASSET";
+
 export interface AssetDetailResponse {
+  /**
+   * 지울 수 있는가. 눌러 보고 알게 하지 않으려고 서버가 미리 판정해 준다 —
+   * 청구서는 세지 않는다(사이클 자리표라 자산과 함께 지워진다).
+   */
+  deletable: boolean;
+  /** 지울 수 없다면 무엇 때문인지. 「안 됩니다」만으로는 무엇을 치울지 알 수 없다. */
+  deleteBlockers: DeleteBlocker[];
   asset: AssetView;
   range: TrendRange;
   trend: TrendPoint[];

@@ -197,11 +197,16 @@ public class LedgerAssetService {
     }
 
     /**
-     * 자산 삭제. <b>아직 아무것도 붙지 않은 자산에만</b> 열린다.
+     * 자산 삭제. <b>아직 아무것도 적지 않은 자산에만</b> 열린다.
      *
      * <p>거래 한 줄이라도 이 자산을 가리키면 거부한다(`LDG-ERR-034`). 지운 거래도 센다 —
      * 소프트 삭제라 행은 남아 있고, 남은 행이 가리키는 자산을 지우면 그 행은 어느 자산의
      * 것인지 말할 수 없게 된다. 그럴 때 사람이 원하는 것은 삭제가 아니라 <b>해지</b>다.
+     *
+     * <p><b>청구서는 막는 근거가 아니다</b>. 사이클을 등록한 카드는 거래가 하나도 없어도
+     * 스케줄러가 다음 사이클의 청구서를 미리 만들어 둔다 — 그걸 「이미 쓰였다」로 세면
+     * 아무것도 적지 않은 카드가 영영 지워지지 않는다(#1316). 청구서는 사이클 자리표라
+     * 카드와 함께 지운다. 납부·할부는 결국 거래로 남으므로 위의 거래 검사에서 걸린다.
      *
      * <p>기본 자산으로 걸려 있으면 그것만 풀고 지운다. 없는 자산을 가리키는 설정을 남기면
      * 입력 모달이 열릴 때마다 빈 자리를 고르게 된다.
@@ -209,7 +214,7 @@ public class LedgerAssetService {
     @Transactional
     public void delete(Long memberId, Long id) {
         LedgerAsset asset = requireAsset(memberId, id);
-        if (inUse(memberId, id)) {
+        if (!blockers(memberId, id).isEmpty()) {
             throw new CustomException(ErrorCode.LEDGER_ASSET_IN_USE);
         }
 
@@ -217,19 +222,43 @@ public class LedgerAssetService {
                 .filter(settings -> id.equals(settings.getDefaultAssetId()))
                 .ifPresent(settings -> settings.updateDefaultAssetId(null));
 
+        statementRepository.deleteAllByMemberIdAndCardAssetId(memberId, id);
         assetRepository.delete(asset);
     }
 
-    /** 이 자산을 가리키는 것이 하나라도 있는가. 하나라도 있으면 삭제가 아니라 해지다. */
-    private boolean inUse(Long memberId, Long id) {
-        return transactionRepository.existsByMemberIdAndAssetId(memberId, id)
-                || transactionRepository.existsByMemberIdAndCounterAssetId(memberId, id)
-                || recurringRepository.existsByMemberIdAndAssetId(memberId, id)
-                || recurringRepository.existsByMemberIdAndCounterAssetId(memberId, id)
-                || templateRepository.existsByMemberIdAndAssetId(memberId, id)
-                || statementRepository.existsByMemberIdAndCardAssetId(memberId, id)
-                || assetRepository.existsByMemberIdAndLinkedAssetId(memberId, id)
-                || assetRepository.existsByMemberIdAndPaymentAssetId(memberId, id);
+    /**
+     * 삭제를 막는 것들. <b>비어 있으면 지울 수 있다.</b>
+     *
+     * <p>이유를 이름으로 돌려주는 것이 요점이다(#1316). 「안 됩니다」만 들으면 사람은 무엇을
+     * 치워야 하는지 모르고, 이미 해지한 자산에게 해지를 권하는 문구가 나온다.
+     *
+     * <p>청구서는 여기 없다 — 사람이 적은 것이 아니라 사이클에서 파생된 자리표이고,
+     * 자산과 함께 지운다. 반대로 <b>지운 거래는 센다</b>: 소프트 삭제라 행이 남아 있어
+     * 자산을 지우면 그 행이 어느 자산의 것인지 말할 수 없게 된다.
+     */
+    private List<AssetDetailResponse.DeleteBlocker> blockers(Long memberId, Long id) {
+        List<AssetDetailResponse.DeleteBlocker> blockers = new ArrayList<>();
+        boolean live = transactionRepository.existsByMemberIdAndAssetIdAndDeletedAtIsNull(memberId, id)
+                || transactionRepository.existsByMemberIdAndCounterAssetIdAndDeletedAtIsNull(memberId, id);
+        boolean any = transactionRepository.existsByMemberIdAndAssetId(memberId, id)
+                || transactionRepository.existsByMemberIdAndCounterAssetId(memberId, id);
+        if (live) {
+            blockers.add(AssetDetailResponse.DeleteBlocker.TRANSACTION);
+        } else if (any) {
+            blockers.add(AssetDetailResponse.DeleteBlocker.DELETED_TRANSACTION);
+        }
+        if (recurringRepository.existsByMemberIdAndAssetId(memberId, id)
+                || recurringRepository.existsByMemberIdAndCounterAssetId(memberId, id)) {
+            blockers.add(AssetDetailResponse.DeleteBlocker.RECURRING);
+        }
+        if (templateRepository.existsByMemberIdAndAssetId(memberId, id)) {
+            blockers.add(AssetDetailResponse.DeleteBlocker.TEMPLATE);
+        }
+        if (assetRepository.existsByMemberIdAndLinkedAssetId(memberId, id)
+                || assetRepository.existsByMemberIdAndPaymentAssetId(memberId, id)) {
+            blockers.add(AssetDetailResponse.DeleteBlocker.LINKED_ASSET);
+        }
+        return blockers;
     }
 
     @Transactional
@@ -246,7 +275,12 @@ public class LedgerAssetService {
             case YEAR -> today.minusYears(TREND_YEARS - 1L).withDayOfYear(1);
         };
 
+        // 화면이 삭제 버튼을 열기 전에 알아야 하는 값이다 — 눌러 보고 알게 하지 않는다.
+        List<AssetDetailResponse.DeleteBlocker> blockers = blockers(memberId, id);
+
         return new AssetDetailResponse(
+                blockers.isEmpty(),
+                blockers,
                 AssetView.of(asset, linkedName(memberId, asset),
                         balances.balanceOf(asset.getId()), balances.unpaidOf(asset.getId())),
                 effective,

@@ -235,6 +235,8 @@ export function LedgerAssetDetailPage() {
           open={editOpen}
           onOpenChange={setEditOpen}
           asset={asset}
+          deletable={detail.data?.deletable ?? false}
+          deleteBlockers={detail.data?.deleteBlockers ?? []}
         />
       )}
     </div>
