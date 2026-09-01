@@ -1418,16 +1418,65 @@ export interface ImportPreviewRow {
   /** 형식 오류 사유. 있으면 이 줄은 넣을 수 없다. */
   error: string | null;
   duplicateOf: number | null;
+  /**
+   * 같아 보이는 **앞 파일의 줄**. 기간이 겹치게 내려받은 파일을 함께 올렸을 때 걸린다 —
+   * 아직 원장에 없어서 id가 없으므로 자리로 가리킨다. `duplicateOf`가 있으면 비어 있다.
+   */
+  duplicateOfRow: ImportRowRef | null;
   assetId: number | null;
   assetName: string | null;
 }
 
-export interface ImportPreviewResponse {
+export interface ImportRowRef {
+  fileIndex: number;
+  rowNumber: number;
+}
+
+/**
+ * 파일 한 장의 미리보기.
+ *
+ * 줄 번호는 **파일 안에서** 세므로 합쳐 놓으면 3번 줄이 여러 개가 된다 — 그래서 파일
+ * 경계를 살려 받는다.
+ */
+export interface ImportFilePreview {
+  fileIndex: number;
+  fileName: string | null;
   rows: ImportPreviewRow[];
   totalRows: number;
-  /** 서버가 센다. 화면이 다시 세지 않는다. */
   duplicateCount: number;
   errorCount: number;
+}
+
+export interface ImportPreviewResponse {
+  files: ImportFilePreview[];
+  totalRows: number;
+  /** 합계. 서버가 센다 — 화면이 다시 세지 않는다. */
+  duplicateCount: number;
+  errorCount: number;
+}
+
+/** 파일 한 장을 어떻게 읽을지. 파일마다 따로 온다 — 은행 파일과 카드 명세서는 열이 다르다. */
+export interface ImportFileMapping {
+  assetId: number;
+  mapping: ImportMapping;
+  skipRows?: number;
+  dateFormat?: string | null;
+  password?: string;
+}
+
+/** 파일 한 장이 만든 배치. 되돌리기가 **파일 단위**로 남는다. */
+export interface ImportBatchResult {
+  batchId: number;
+  fileName: string | null;
+  inserted: number;
+  skipped: number;
+}
+
+export interface ImportExecuteResponse {
+  batches: ImportBatchResult[];
+  /** 전체 합계. 파일별 내역은 `batches`에 있다. */
+  inserted: number;
+  skipped: number;
 }
 
 export interface ImportBatch {
@@ -1466,19 +1515,19 @@ function jsonPart(body: unknown): Blob {
   return new Blob([JSON.stringify(body)], { type: "application/json" });
 }
 
+/**
+ * 파일과 설정을 **순서로 짝지어** 보낸다.
+ *
+ * 한 요청에 다 보내는 것이 파일끼리 겹치는 줄을 보기 위한 조건이다 — 파일마다 따로
+ * 물으면 두 번째 파일을 볼 때 첫 파일은 아직 원장에도 없어서 중복으로 걸리지 않는다.
+ */
 export async function previewImport(
-  file: File,
-  request: {
-    assetId: number;
-    mapping: ImportMapping;
-    skipRows?: number;
-    dateFormat?: string | null;
-    password?: string;
-  },
+  files: File[],
+  fileRequests: ImportFileMapping[],
 ): Promise<ImportPreviewResponse> {
   const form = new FormData();
-  form.append("file", file);
-  form.append("request", jsonPart(request));
+  files.forEach((file) => form.append("files", file));
+  form.append("request", jsonPart({ files: fileRequests }));
   const { data } = await client.post<ApiEnvelope<ImportPreviewResponse>>(
     "/ledger/import/preview",
     form,
@@ -1487,24 +1536,20 @@ export async function previewImport(
 }
 
 export async function executeImport(
-  file: File,
-  request: {
-    assetId: number;
-    mapping: ImportMapping;
-    skipRows?: number;
-    dateFormat?: string | null;
-    password?: string;
+  files: File[],
+  fileRequests: (ImportFileMapping & {
     source: string;
     /** 넣을 줄 번호. 체크를 해제한 줄은 여기 없다. */
     rowNumbers: number[];
-  },
-): Promise<{ batchId: number; inserted: number; skipped: number }> {
+  })[],
+): Promise<ImportExecuteResponse> {
   const form = new FormData();
-  form.append("file", file);
-  form.append("request", jsonPart(request));
-  const { data } = await client.post<
-    ApiEnvelope<{ batchId: number; inserted: number; skipped: number }>
-  >("/ledger/import/execute", form);
+  files.forEach((file) => form.append("files", file));
+  form.append("request", jsonPart({ files: fileRequests }));
+  const { data } = await client.post<ApiEnvelope<ImportExecuteResponse>>(
+    "/ledger/import/execute",
+    form,
+  );
   return data.data;
 }
 

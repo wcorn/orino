@@ -1,17 +1,12 @@
-import { Check, RotateCcw, Upload } from "lucide-react";
+import { Check, RotateCcw } from "lucide-react";
 import { useState } from "react";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/empty-state";
-import { FormField } from "@/components/ui/form-field";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { LoadingText } from "@/components/ui/loading-text";
-import { Select } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -21,11 +16,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type {
-  ImportAnalyzeResponse,
-  ImportMapping,
+  ImportBatchResult,
   ImportPreviewResponse,
 } from "@/features/ledger/api/ledger";
 import { analyzeImport, previewImport } from "@/features/ledger/api/ledger";
+import { ImportFilePicker } from "@/features/ledger/components/ImportFilePicker";
+import { ImportMappingStep } from "@/features/ledger/components/ImportMappingStep";
+import { ImportPreviewStep } from "@/features/ledger/components/ImportPreviewStep";
 import {
   useExecuteImport,
   useRevertImportBatch,
@@ -34,48 +31,18 @@ import {
   useImportBatches,
   useLedgerAssets,
 } from "@/features/ledger/hooks/useLedgerQueries";
-import { formatAmount } from "@/features/ledger/lib/money";
+import type { ImportFileState } from "@/features/ledger/lib/importSession";
+import {
+  newFileState,
+  readFailure,
+  rowKey,
+  sameHeaders,
+  sendFailure,
+  toFileMapping,
+} from "@/features/ledger/lib/importSession";
 import { cn } from "@/lib/utils";
 
-/** 매핑할 수 있는 자리. 날짜와 금액만 필수고 나머지는 비워 둘 수 있다. */
-const FIELDS = [
-  { key: "date", label: "날짜", required: true },
-  { key: "amount", label: "금액", required: false },
-  { key: "inflow", label: "입금", required: false },
-  { key: "outflow", label: "출금", required: false },
-  { key: "title", label: "내용", required: false },
-  { key: "memo", label: "메모", required: false },
-  { key: "type", label: "유형", required: false },
-  { key: "category", label: "카테고리", required: false },
-  { key: "asset", label: "자산", required: false },
-] as const;
-
-type FieldKey = (typeof FIELDS)[number]["key"];
-
 const STEPS = ["파일", "열 맞추기", "확인", "완료"] as const;
-
-/**
- * 실패를 사람 말로.
- *
- * <p>「읽을 수 없어요, CSV 또는 .xlsx만 됩니다」로 뭉뚱그리면 <b>.xlsx를 들고 있는 사람</b>은
- * 무엇을 고쳐야 할지 모른다 — 은행 파일은 암호가 걸린 채로 내려오고, 그게 이 화면에서
- * 가장 흔한 실패다(#1318).
- */
-function readFailure(error: unknown): string {
-  const code = (
-    error as { response?: { data?: { code?: string } } } | undefined
-  )?.response?.data?.code;
-  if (code === "LDG-ERR-035") {
-    return "암호가 걸린 파일이에요. 비밀번호를 적고 파일을 다시 골라 주세요.";
-  }
-  if (code === "LDG-ERR-036") {
-    return "비밀번호가 맞지 않아요. 다시 확인해 주세요.";
-  }
-  if (code === "LDG-ERR-025") {
-    return "한 번에 넣을 수 있는 줄 수를 넘었어요. 기간을 나눠 내려받아 주세요.";
-  }
-  return "이 파일은 읽을 수 없어요. CSV 또는 .xlsx만 됩니다.";
-}
 
 /**
  * 가져오기 `/ledger/import`(확정 명세 §12).
@@ -83,32 +50,22 @@ function readFailure(error: unknown): string {
  * <p><b>수동 입력을 대체하지 않는다.</b> 초기 이관과 월말 대사를 위한 도구다. 네 단계가
  * 각각 사람에게 무언가를 <b>보여준 뒤</b> 다음으로 넘어간다 — 파일 → 열 맞추기 → 확인 → 완료.
  *
+ * <p><b>파일을 여러 장 받는다</b>(#1320). 은행이 내려주는 거래내역은 한 장이 아니다. 파일마다
+ * 열을 따로 맞추고, 배치도 파일마다 하나씩 생긴다 — 아홉 장 중 한 장만 물릴 수 있어야 한다.
+ *
  * <p><b>자동으로 병합하지 않는다</b>(`LDG-092`). 중복 후보는 경고로 알리고 체크를 꺼 둘 뿐,
  * 합치는 버튼이 없다 — 병합의 불투명함이 원장 신뢰를 깨뜨린다.
  */
 export function LedgerImportPage() {
-  const [file, setFile] = useState<File | null>(null);
-  // 파일을 단계마다 다시 올리므로 비밀번호도 그동안 들고 있는다. 저장하지는 않는다 —
-  // 화면을 벗어나면 사라지고, 서버도 그 요청에서만 쓴다.
+  const [files, setFiles] = useState<ImportFileState[]>([]);
+  // 새로 고르는 파일에 함께 붙일 비밀번호. 저장하지는 않는다 — 화면을 벗어나면 사라지고,
+  // 서버도 그 요청에서만 쓴다.
   const [password, setPassword] = useState("");
-  const [analysis, setAnalysis] = useState<ImportAnalyzeResponse | null>(null);
-  const [assetId, setAssetId] = useState<number | null>(null);
-  const [source, setSource] = useState("");
-  const [skipRows, setSkipRows] = useState(1);
-  const [mapping, setMapping] = useState<Record<FieldKey, number | null>>({
-    date: null,
-    amount: null,
-    inflow: null,
-    outflow: null,
-    title: null,
-    memo: null,
-    type: null,
-    category: null,
-    asset: null,
-  });
+  const [stage, setStage] = useState<"pick" | "map" | "confirm">("pick");
+  const [activeIndex, setActiveIndex] = useState(0);
   const [preview, setPreview] = useState<ImportPreviewResponse | null>(null);
   // 넣을 줄. 중복 후보는 처음부터 꺼져 있고, 켜는 것은 사람이 정한다.
-  const [chosen, setChosen] = useState<Set<number>>(new Set());
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -119,66 +76,121 @@ export function LedgerImportPage() {
     .flatMap((group) => group.assets)
     .filter((asset) => !asset.hidden);
 
-  const step = !analysis ? 0 : !preview ? 1 : execute.isSuccess ? 3 : 2;
+  const step = execute.isSuccess
+    ? 3
+    : stage === "pick"
+      ? 0
+      : stage === "map"
+        ? 1
+        : 2;
+
+  const patch = (key: string, next: Partial<ImportFileState>) =>
+    setFiles((prev) =>
+      prev.map((file) => (file.key === key ? { ...file, ...next } : file)),
+    );
 
   /**
-   * 파일을 읽어 본다.
+   * 파일 한 장을 읽어 본다.
    *
-   * <p>실패해도 <b>고른 파일을 놓지 않는다</b>. 암호가 걸린 파일이면 비밀번호를 적고 다시
-   * 읽어야 하는데, 같은 파일을 다시 고르는 것으로는 브라우저가 아무 일도 하지 않는다
-   * (값이 그대로라 `change`가 뜨지 않는다) — 그래서 「다시 읽기」가 필요하다.
+   * <p>실패해도 <b>그 파일을 목록에서 빼지 않는다</b>. 암호가 걸린 파일이면 비밀번호를 적고
+   * 다시 읽어야 하는데, 조용히 사라지면 무엇이 빠졌는지 알 수 없다.
    */
-  const analyze = async (picked: File, withPassword: string) => {
-    setBusy(true);
-    setFailure(null);
-    setFile(picked);
+  const analyze = async (state: ImportFileState) => {
     try {
-      const result = await analyzeImport(picked, withPassword || undefined);
-      setAnalysis(result);
-      setSource(picked.name.replace(/\.[^.]+$/, ""));
-      // 머리글이 몇 번째 줄인지는 서버가 찾아 준다. 은행 파일은 앞에 안내문이 붙어 와서
-      // 1이 아니고, 그걸 사람이 세게 하면 한 칸씩 밀린 매핑이 나온다.
-      setSkipRows(result.headerRow + 1);
-      setPreview(null);
+      const result = await analyzeImport(
+        state.file,
+        state.password || undefined,
+      );
+      patch(state.key, {
+        analysis: result,
+        failure: null,
+        busy: false,
+        // 머리글이 몇 번째 줄인지는 서버가 찾아 준다. 은행 파일은 앞에 안내문이 붙어 와서
+        // 1이 아니고, 그걸 사람이 세게 하면 한 칸씩 밀린 매핑이 나온다.
+        skipRows: result.headerRow + 1,
+      });
     } catch (error) {
-      setFailure(readFailure(error));
-    } finally {
-      setBusy(false);
+      patch(state.key, {
+        analysis: null,
+        failure: readFailure(error),
+        busy: false,
+      });
     }
   };
 
-  const onPickFile = (picked: File) => void analyze(picked, password);
+  const onPick = (picked: File[]) => {
+    const added = picked.map((file) => ({ ...newFileState(file), password }));
+    setFiles((prev) => [...prev, ...added]);
+    added.forEach((state) => void analyze(state));
+  };
 
-  const onPreview = async () => {
-    if (!file || assetId === null) {
+  const onRetry = (key: string) => {
+    const state = files.find((file) => file.key === key);
+    if (!state) {
       return;
     }
+    patch(key, { busy: true, failure: null });
+    void analyze(state);
+  };
+
+  /**
+   * 설정을 <b>열 구성이 같은</b> 파일에만 퍼뜨린다.
+   *
+   * <p>열이 다른 파일에 씌우면 한 칸씩 밀린 줄이 「오류」가 아니라 그럴듯하게 틀린 줄로
+   * 들어간다. 몇 장에 닿았는지 돌려주어 화면이 사람에게 알린다.
+   */
+  const copyToOthers = (key: string) => {
+    const source = files.find((file) => file.key === key);
+    if (!source) {
+      return 0;
+    }
+    const targets = files.filter(
+      (file) => file.key !== key && sameHeaders(file, source),
+    );
+    const keys = new Set(targets.map((file) => file.key));
+    setFiles((prev) =>
+      prev.map((file) =>
+        keys.has(file.key)
+          ? {
+              ...file,
+              assetId: source.assetId,
+              skipRows: source.skipRows,
+              mapping: { ...source.mapping },
+            }
+          : file,
+      ),
+    );
+    return targets.length;
+  };
+
+  const onPreview = async () => {
     setBusy(true);
     setFailure(null);
     try {
-      const result = await previewImport(file, {
-        assetId,
-        skipRows,
-        mapping: mapping as ImportMapping,
-        password: password || undefined,
-      });
+      const result = await previewImport(
+        files.map((file) => file.file),
+        files.map(toFileMapping),
+      );
       setPreview(result);
       // 중복 후보와 형식 오류를 빼고 켠다 — 사람이 다시 켜는 것은 언제나 할 수 있다.
       setChosen(
         new Set(
-          result.rows
-            .filter((row) => row.error === null && row.duplicateOf === null)
-            .map((row) => row.rowNumber),
+          result.files.flatMap((file) =>
+            file.rows
+              .filter(
+                (row) =>
+                  row.error === null &&
+                  row.duplicateOf === null &&
+                  row.duplicateOfRow === null,
+              )
+              .map((row) => rowKey(file.fileIndex, row.rowNumber)),
+          ),
         ),
       );
+      setStage("confirm");
     } catch (error) {
-      const code = (
-        error as { response?: { data?: { code?: string } } } | undefined
-      )?.response?.data?.code;
       setFailure(
-        code === "LDG-ERR-035" || code === "LDG-ERR-036"
-          ? readFailure(error)
-          : "미리 볼 수 없어요. 열 맞추기를 확인해 주세요.",
+        sendFailure(error, "미리 볼 수 없어요. 열 맞추기를 확인해 주세요."),
       );
     } finally {
       setBusy(false);
@@ -186,28 +198,29 @@ export function LedgerImportPage() {
   };
 
   const onExecute = () => {
-    if (!file || assetId === null) {
+    if (!preview) {
       return;
     }
     execute.mutate({
-      file,
-      request: {
-        assetId,
-        skipRows,
-        mapping: mapping as ImportMapping,
-        password: password || undefined,
-        source: source.trim() === "" ? "가져오기" : source.trim(),
-        rowNumbers: [...chosen],
-      },
+      files: files.map((file) => file.file),
+      requests: files.map((file, index) => ({
+        ...toFileMapping(file),
+        source: file.source.trim() === "" ? "가져오기" : file.source.trim(),
+        rowNumbers: (preview.files[index]?.rows ?? [])
+          .filter((row) => chosen.has(rowKey(index, row.rowNumber)))
+          .map((row) => row.rowNumber),
+      })),
     });
   };
 
   const restart = () => {
-    setFile(null);
+    setFiles([]);
     setPassword("");
-    setAnalysis(null);
     setPreview(null);
     setChosen(new Set());
+    setActiveIndex(0);
+    setStage("pick");
+    setFailure(null);
     execute.reset();
   };
 
@@ -230,57 +243,67 @@ export function LedgerImportPage() {
       {failure && <Alert variant="destructive">{failure}</Alert>}
 
       {step === 0 && (
-        <FilePicker
-          busy={busy}
+        <ImportFilePicker
+          files={files}
           password={password}
           onPasswordChange={setPassword}
-          onPick={onPickFile}
-          picked={file}
-          onRetry={() => file && void analyze(file, password)}
+          onPick={onPick}
+          onFilePasswordChange={(key, value) => patch(key, { password: value })}
+          onRetry={onRetry}
+          onRemove={(key) =>
+            setFiles((prev) => prev.filter((file) => file.key !== key))
+          }
+          onNext={() => {
+            setActiveIndex(0);
+            setStage("map");
+          }}
         />
       )}
 
-      {step === 1 && analysis && (
-        <MappingStep
-          analysis={analysis}
+      {step === 1 && (
+        <ImportMappingStep
+          files={files}
+          activeIndex={Math.min(activeIndex, Math.max(files.length - 1, 0))}
+          onSelect={setActiveIndex}
           assets={assets.map((asset) => ({ id: asset.id, name: asset.name }))}
-          assetId={assetId}
-          onAssetChange={setAssetId}
-          skipRows={skipRows}
-          onSkipRowsChange={setSkipRows}
-          mapping={mapping}
-          onMappingChange={setMapping}
+          onChange={patch}
+          onCopyToOthers={copyToOthers}
           busy={busy}
           onNext={() => void onPreview()}
-          onBack={restart}
+          onBack={() => setStage("pick")}
         />
       )}
 
       {step === 2 && preview && (
-        <PreviewStep
+        <ImportPreviewStep
           preview={preview}
+          files={files}
           chosen={chosen}
-          onToggle={(rowNumber) =>
+          onToggle={(fileIndex, rowNumber) =>
             setChosen((prev) => {
               const next = new Set(prev);
-              if (next.has(rowNumber)) {
-                next.delete(rowNumber);
+              const key = rowKey(fileIndex, rowNumber);
+              if (next.has(key)) {
+                next.delete(key);
               } else {
-                next.add(rowNumber);
+                next.add(key);
               }
               return next;
             })
           }
-          source={source}
-          onSourceChange={setSource}
+          onSourceChange={(key, source) => patch(key, { source })}
           busy={execute.isPending}
           onExecute={onExecute}
-          onBack={() => setPreview(null)}
+          onBack={() => {
+            setPreview(null);
+            setStage("map");
+          }}
         />
       )}
 
       {step === 3 && execute.data && (
         <DoneStep
+          batches={execute.data.batches}
           inserted={execute.data.inserted}
           skipped={execute.data.skipped}
           onRestart={restart}
@@ -326,391 +349,14 @@ function Stepper({ current }: { current: number }) {
   );
 }
 
-/**
- * 1단계 — 파일 고르기.
- *
- * <p>비밀번호 칸이 <b>파일 칸보다 위에</b> 있다. 은행 거래내역은 암호가 걸린 채로 내려오고,
- * 파일을 고르는 순간 분석이 시작되기 때문에 그 전에 적을 수 있어야 한다.
- */
-function FilePicker({
-  busy,
-  password,
-  onPasswordChange,
-  onPick,
-  picked,
-  onRetry,
-}: {
-  busy: boolean;
-  password: string;
-  onPasswordChange: (value: string) => void;
-  onPick: (file: File) => void;
-  /** 읽지 못한 채 들고 있는 파일. 비밀번호를 적고 다시 읽을 대상이다. */
-  picked: File | null;
-  onRetry: () => void;
-}) {
-  return (
-    <section className="bg-card ring-foreground/10 flex flex-col items-center gap-3 rounded-xl p-8 ring-1">
-      <Upload className="text-muted-foreground size-8" />
-      <p className="text-sm font-medium">CSV 또는 .xlsx 파일을 고르세요</p>
-      <p className="text-muted-foreground text-[13px]">
-        카드사 명세서 · 은행 거래내역 · 다른 가계부 앱의 내보내기 파일
-      </p>
-
-      <div className="flex w-full max-w-[320px] flex-col gap-1.5">
-        <Label htmlFor="import-password">파일 비밀번호</Label>
-        <Input
-          id="import-password"
-          type="password"
-          autoComplete="off"
-          value={password}
-          disabled={busy}
-          onChange={(event) => onPasswordChange(event.target.value)}
-          placeholder="암호가 걸린 파일만"
-        />
-        <p className="text-muted-foreground text-[13px]">
-          은행 거래내역은 보통 암호가 걸려 있어요. 저장하지 않고 이 파일을 읽는
-          데만 씁니다.
-        </p>
-      </div>
-
-      <Label htmlFor="import-file" className="sr-only">
-        가져올 파일
-      </Label>
-      <Input
-        id="import-file"
-        type="file"
-        accept=".csv,.xlsx,.txt"
-        disabled={busy}
-        className="max-w-[320px]"
-        onChange={(event) => {
-          const chosen = event.target.files?.[0];
-          if (chosen) {
-            onPick(chosen);
-          }
-          // 값을 비워 둔다 — 같은 파일을 다시 고르는 것도 「고른 것」이어야 한다.
-          event.target.value = "";
-        }}
-      />
-
-      {picked && !busy && (
-        <div className="flex flex-col items-center gap-2">
-          <p className="text-muted-foreground text-[13px]">
-            고른 파일: <span className="font-medium">{picked.name}</span>
-          </p>
-          <Button type="button" variant="outline" onClick={onRetry}>
-            이 파일 다시 읽기
-          </Button>
-        </div>
-      )}
-
-      {busy && <LoadingText />}
-    </section>
-  );
-}
-
-/**
- * 2단계 — 열 맞추기.
- *
- * <p>표본을 <b>옆에 두고</b> 고른다. 열 번호만 보고 맞추라고 하면 사람이 파일을 따로 열어
- * 세어야 하고, 그러다 한 칸씩 밀린다.
- */
-function MappingStep({
-  analysis,
-  assets,
-  assetId,
-  onAssetChange,
-  skipRows,
-  onSkipRowsChange,
-  mapping,
-  onMappingChange,
-  busy,
-  onNext,
-  onBack,
-}: {
-  analysis: ImportAnalyzeResponse;
-  assets: { id: number; name: string }[];
-  assetId: number | null;
-  onAssetChange: (id: number) => void;
-  skipRows: number;
-  onSkipRowsChange: (rows: number) => void;
-  mapping: Record<FieldKey, number | null>;
-  onMappingChange: (mapping: Record<FieldKey, number | null>) => void;
-  busy: boolean;
-  onNext: () => void;
-  onBack: () => void;
-}) {
-  const columnOptions = [
-    { value: "", label: "없음" },
-    ...analysis.headers.map((header, index) => ({
-      value: String(index),
-      label: `${index + 1}. ${header || "(이름 없음)"}`,
-    })),
-  ];
-  const hasAmount =
-    mapping.amount !== null ||
-    mapping.inflow !== null ||
-    mapping.outflow !== null;
-  const ready = mapping.date !== null && hasAmount && assetId !== null;
-
-  return (
-    <>
-      <section className="flex flex-col gap-3">
-        <h2 className="text-[13px] font-semibold">
-          파일 미리보기 — {analysis.totalRows}줄
-        </h2>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {analysis.headers.map((header, index) => (
-                  <TableHead key={index}>
-                    {index + 1}. {header || "(이름 없음)"}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {analysis.sample.map((row, rowIndex) => (
-                <TableRow key={rowIndex}>
-                  {analysis.headers.map((_, index) => (
-                    <TableCell key={index} className="text-muted-foreground">
-                      {row[index] ?? ""}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </section>
-
-      <section className="grid items-start gap-4 md:grid-cols-2">
-        <div className="flex flex-col gap-3">
-          <h2 className="text-[13px] font-semibold">어느 자산에 넣나요</h2>
-          <FormField label="자산" labelId="import-asset">
-            <Select
-              value={assetId === null ? "" : String(assetId)}
-              onValueChange={(value) => onAssetChange(Number(value))}
-              ariaLabelledby="import-asset"
-              options={[
-                { value: "", label: "고르세요" },
-                ...assets.map((asset) => ({
-                  value: String(asset.id),
-                  label: asset.name,
-                })),
-              ]}
-            />
-          </FormField>
-          <p className="text-muted-foreground -mt-1 text-[13px]">
-            자산 열을 맞추면 줄마다 그 이름으로 찾아가고, 못 찾은 줄만 여기로
-            와요.
-          </p>
-          {/* labelId만 주면 label이 입력과 이어지지 않는다 — 읽어 주는 이름이 없어진다. */}
-          <FormField label="건너뛸 머리글 줄 수" htmlFor="import-skip">
-            <Input
-              id="import-skip"
-              inputMode="numeric"
-              value={String(skipRows)}
-              onChange={(event) =>
-                onSkipRowsChange(Math.max(Number(event.target.value) || 0, 0))
-              }
-            />
-          </FormField>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <h2 className="text-[13px] font-semibold">열 맞추기</h2>
-          {FIELDS.map((field) => (
-            <div
-              key={field.key}
-              className="flex items-center justify-between gap-3"
-            >
-              <span className="text-sm">
-                {field.label}
-                {field.required && (
-                  <span className="text-destructive ml-1">*</span>
-                )}
-              </span>
-              <Select
-                value={
-                  mapping[field.key] === null ? "" : String(mapping[field.key])
-                }
-                onValueChange={(value) =>
-                  onMappingChange({
-                    ...mapping,
-                    [field.key]: value === "" ? null : Number(value),
-                  })
-                }
-                ariaLabel={`${field.label} 열`}
-                options={columnOptions}
-              />
-            </div>
-          ))}
-          {!hasAmount && (
-            <p className="text-muted-foreground text-[13px]">
-              금액, 또는 입금·출금 중 하나는 맞춰야 해요.
-            </p>
-          )}
-        </div>
-      </section>
-
-      <div className="flex justify-between gap-2">
-        <Button type="button" variant="ghost" onClick={onBack}>
-          다른 파일 고르기
-        </Button>
-        <Button type="button" disabled={!ready || busy} onClick={onNext}>
-          미리 보기
-        </Button>
-      </div>
-    </>
-  );
-}
-
-/**
- * 3단계 — 확인.
- *
- * <p><b>중복 후보는 꺼진 채로 온다</b>(`LDG-092`). 합치는 버튼은 없다 — 켜고 끄는 것이
- * 유일한 처리이고, 그 판단은 사람이 한다.
- */
-function PreviewStep({
-  preview,
-  chosen,
-  onToggle,
-  source,
-  onSourceChange,
-  busy,
-  onExecute,
-  onBack,
-}: {
-  preview: ImportPreviewResponse;
-  chosen: Set<number>;
-  onToggle: (rowNumber: number) => void;
-  source: string;
-  onSourceChange: (source: string) => void;
-  busy: boolean;
-  onExecute: () => void;
-  onBack: () => void;
-}) {
-  return (
-    <>
-      {preview.duplicateCount > 0 && (
-        <Alert variant="warning">
-          <AlertTitle>
-            중복 후보 {preview.duplicateCount}건 — 자동으로 병합하지 않습니다
-          </AlertTitle>
-          <AlertDescription>
-            <p>
-              날짜·금액·내용·자산이 같은 건을 찾아 <b>보여 드릴 뿐</b>이에요.
-              체크를 꺼 두었으니, 넣어야 하는 줄은 직접 켜 주세요.
-            </p>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {preview.errorCount > 0 && (
-        <Alert variant="destructive">
-          <AlertTitle>읽지 못한 줄 {preview.errorCount}건</AlertTitle>
-          <AlertDescription>
-            <p>
-              이 줄들은 넣을 수 없어요. 사유를 보고 파일을 고치거나 열 맞추기를
-              다시 확인해 주세요.
-            </p>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>넣기</TableHead>
-              <TableHead>줄</TableHead>
-              <TableHead>날짜</TableHead>
-              <TableHead>내용</TableHead>
-              <TableHead>자산</TableHead>
-              <TableHead>카테고리</TableHead>
-              <TableHead>금액</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {preview.rows.map((row) => (
-              <TableRow key={row.rowNumber}>
-                <TableCell>
-                  <Checkbox
-                    checked={chosen.has(row.rowNumber)}
-                    disabled={row.error !== null}
-                    aria-label={`${row.rowNumber}번째 줄 넣기`}
-                    onChange={() => onToggle(row.rowNumber)}
-                  />
-                </TableCell>
-                <TableCell className="text-muted-foreground tabular-nums">
-                  {row.rowNumber}
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {row.occurredOn ?? "—"}
-                </TableCell>
-                <TableCell>
-                  <span className="flex flex-col">
-                    {row.title ?? "제목 없음"}
-                    {row.error && (
-                      <span className="text-destructive text-[13px]">
-                        {row.error}
-                      </span>
-                    )}
-                    {row.duplicateOf !== null && (
-                      <span className="text-muted-foreground text-[13px]">
-                        이미 있는 거래와 같아 보여요
-                      </span>
-                    )}
-                  </span>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {row.assetName ?? "—"}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {row.categoryName ?? "미분류"}
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {row.amount === null ? "—" : formatAmount(row.amount)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex w-[220px] flex-col gap-1.5">
-          <Label htmlFor="import-source">이 가져오기의 이름</Label>
-          <Input
-            id="import-source"
-            value={source}
-            onChange={(event) => onSourceChange(event.target.value)}
-            placeholder="신한카드 8월"
-          />
-        </div>
-        <div className="flex gap-2">
-          <Button type="button" variant="ghost" onClick={onBack}>
-            열 다시 맞추기
-          </Button>
-          <Button
-            type="button"
-            disabled={chosen.size === 0 || busy}
-            onClick={onExecute}
-          >
-            {chosen.size}건 넣기
-          </Button>
-        </div>
-      </div>
-    </>
-  );
-}
-
+/** 4단계 — 완료. 파일마다 배치가 하나씩 생겼으므로 파일마다 한 줄로 알린다. */
 function DoneStep({
+  batches,
   inserted,
   skipped,
   onRestart,
 }: {
+  batches: ImportBatchResult[];
   inserted: number;
   skipped: number;
   onRestart: () => void;
@@ -718,10 +364,24 @@ function DoneStep({
   return (
     <section className="bg-card ring-foreground/10 flex flex-col items-center gap-3 rounded-xl p-8 ring-1">
       <Check className="text-success size-8" />
-      <p className="text-heading font-semibold">{inserted}건을 넣었어요</p>
-      <p className="text-muted-foreground text-[13px]">
-        {skipped}건은 넣지 않았어요. 아래 이력에서 통째로 되돌릴 수 있습니다.
+      <p className="text-heading font-semibold">
+        {batches.length > 1
+          ? `파일 ${batches.length}장에서 ${inserted}건을 넣었어요`
+          : `${inserted}건을 넣었어요`}
       </p>
+      <p className="text-muted-foreground text-[13px]">
+        {skipped}건은 넣지 않았어요. 아래 이력에서 파일마다 따로 되돌릴 수
+        있습니다.
+      </p>
+      {batches.length > 1 && (
+        <ul className="text-muted-foreground flex flex-col gap-1 text-[13px]">
+          {batches.map((batch) => (
+            <li key={batch.batchId}>
+              {batch.fileName ?? "이름 없는 파일"} — {batch.inserted}건
+            </li>
+          ))}
+        </ul>
+      )}
       <Button type="button" variant="outline" onClick={onRestart}>
         다른 파일 가져오기
       </Button>

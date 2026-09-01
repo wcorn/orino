@@ -160,6 +160,23 @@ export function recurringView(overrides: Record<string, unknown> = {}) {
   };
 }
 
+type ImportPreviewRowFixture = {
+  rowNumber: number;
+  occurredOn: string | null;
+  type: string | null;
+  amount: number | null;
+  title: string | null;
+  memo?: string | null;
+  categoryId?: number | null;
+  categoryName?: string | null;
+  error?: string | null;
+  duplicateOf?: number | null;
+  /** 같아 보이는 앞 파일의 줄. 기간이 겹치게 내려받은 파일을 함께 올렸을 때 걸린다. */
+  duplicateOfRow?: { fileIndex: number; rowNumber: number } | null;
+  assetId?: number | null;
+  assetName?: string | null;
+};
+
 export interface LedgerMockOptions {
   dashboard?: {
     spent?: number;
@@ -289,23 +306,22 @@ export interface LedgerMockOptions {
   /** 첫 `analyze`만 이 코드로 거절한다(`LDG-ERR-035` 등). 두 번째부터는 정상으로 연다. */
   importFirstAnalyzeFails?: string;
   importPreview?: {
-    rows?: {
-      rowNumber: number;
-      occurredOn: string | null;
-      type: string | null;
-      amount: number | null;
-      title: string | null;
-      memo?: string | null;
-      categoryId?: number | null;
-      categoryName?: string | null;
-      error?: string | null;
-      duplicateOf?: number | null;
-      assetId?: number | null;
-      assetName?: string | null;
-    }[];
+    rows?: ImportPreviewRowFixture[];
+    /** 파일 여러 장. 주면 `rows`보다 우선한다 — 파일 경계가 화면에 드러나야 한다. */
+    files?: { fileName?: string; rows: ImportPreviewRowFixture[] }[];
   };
   /** 실행 결과. 요청 본문은 이 환경에서 볼 수 없어 응답만 정한다. */
-  importExecute?: { inserted?: number; skipped?: number };
+  importExecute?: {
+    inserted?: number;
+    skipped?: number;
+    /** 파일마다 하나씩 생기는 배치. 비우면 한 장짜리로 답한다. */
+    batches?: {
+      batchId: number;
+      fileName: string;
+      inserted: number;
+      skipped: number;
+    }[];
+  };
   importBatches?: {
     id: number;
     source: string;
@@ -939,22 +955,40 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
       });
     }),
     http.post(`${API_BASE}/ledger/import/preview`, () => {
-      const rows = (options.importPreview?.rows ?? []).map((row) => ({
-        memo: null,
-        categoryId: null,
-        categoryName: null,
-        error: null,
-        duplicateOf: null,
-        assetId: 1,
-        assetName: "급여통장",
-        ...row,
-      }));
+      const source = options.importPreview?.files ?? [
+        { fileName: "card.csv", rows: options.importPreview?.rows ?? [] },
+      ];
+      const files = source.map((file, fileIndex) => {
+        const rows = file.rows.map((row) => ({
+          memo: null,
+          categoryId: null,
+          categoryName: null,
+          error: null,
+          duplicateOf: null,
+          duplicateOfRow: null,
+          assetId: 1,
+          assetName: "급여통장",
+          ...row,
+        }));
+        return {
+          fileIndex,
+          fileName: file.fileName ?? `${fileIndex + 1}.csv`,
+          rows,
+          totalRows: rows.length,
+          duplicateCount: rows.filter(
+            (row) => row.duplicateOf !== null || row.duplicateOfRow !== null,
+          ).length,
+          errorCount: rows.filter((row) => row.error !== null).length,
+        };
+      });
+      const sum = (pick: (file: (typeof files)[number]) => number) =>
+        files.reduce((total, file) => total + pick(file), 0);
       return ok({
-        rows,
-        totalRows: rows.length,
-        // 서버가 센다 — 화면이 다시 세면 어느 쪽이 맞는지 알 수 없다.
-        duplicateCount: rows.filter((row) => row.duplicateOf !== null).length,
-        errorCount: rows.filter((row) => row.error !== null).length,
+        files,
+        // 합계는 서버가 센다 — 화면이 다시 세면 어느 쪽이 맞는지 알 수 없다.
+        totalRows: sum((file) => file.totalRows),
+        duplicateCount: sum((file) => file.duplicateCount),
+        errorCount: sum((file) => file.errorCount),
       });
     }),
     /*
@@ -962,13 +996,18 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
       파트 내용을 비운 채 보내서, 어떤 파서를 써도 빈 값이 나온다.
       「어느 줄을 보냈는가」는 BE 통합 테스트(LedgerImportTest)와 실제 실행이 지킨다.
     */
-    http.post(`${API_BASE}/ledger/import/execute`, () =>
-      ok({
-        batchId: 1,
-        inserted: options.importExecute?.inserted ?? 1,
-        skipped: options.importExecute?.skipped ?? 0,
-      }),
-    ),
+    http.post(`${API_BASE}/ledger/import/execute`, () => {
+      const inserted = options.importExecute?.inserted ?? 1;
+      const skipped = options.importExecute?.skipped ?? 0;
+      return ok({
+        // 배치는 파일마다 하나다 — 되돌리기가 파일 단위로 남는다.
+        batches: options.importExecute?.batches ?? [
+          { batchId: 1, fileName: "card.csv", inserted, skipped },
+        ],
+        inserted,
+        skipped,
+      });
+    }),
     http.get(`${API_BASE}/ledger/import/batches`, () =>
       ok(
         (options.importBatches ?? []).map((batch) => ({
