@@ -16,4 +16,7 @@ public interface LedgerTransactionTemplateRepository
     List<LedgerTransactionTemplate> findAllByMemberIdOrderByUseCountDescIdDesc(Long memberId);
 
     Optional<LedgerTransactionTemplate> findByIdAndMemberId(Long id, Long memberId);
+
+    /** 삭제 전 확인용 — 이 자산을 쓰는 템플릿이 있으면 자산을 지울 수 없다. */
+    boolean existsByMemberIdAndAssetId(Long memberId, Long assetId);
 }

@@ -1,4 +1,4 @@
-import { ArrowLeft, Scale } from "lucide-react";
+import { ArrowLeft, Pencil, Scale } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { TrendPoint, TrendRange } from "@/features/ledger/api/ledger";
+import { AssetEditModal } from "@/features/ledger/components/AssetEditModal";
 import { ReconcileModal } from "@/features/ledger/components/ReconcileModal";
 import {
   useLedgerAssetDetail,
@@ -50,6 +51,7 @@ export function LedgerAssetDetailPage() {
   const id = Number(assetId);
   const [range, setRange] = useState<TrendRange>("MONTH");
   const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const detail = useLedgerAssetDetail(id, range);
   const rows = useLedgerAssetTransactions(id);
@@ -78,6 +80,17 @@ export function LedgerAssetDetailPage() {
               >
                 <Scale className="size-4" />
                 잔액 맞추기
+              </Button>
+            )}
+            {/* 이름·그룹·연결 계좌를 고치고, 해지·삭제도 여기서 한다. */}
+            {asset && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditOpen(true)}
+              >
+                <Pencil className="size-4" />
+                수정
               </Button>
             )}
             <Button
@@ -212,6 +225,16 @@ export function LedgerAssetDetailPage() {
           assetId={asset.id}
           assetName={asset.name}
           derivedBalance={asset.balance}
+        />
+      )}
+
+      {asset && (
+        // key로 다시 만든다 — 저장 뒤 새 값이 폼의 초기값이 되어야 한다.
+        <AssetEditModal
+          key={`${asset.id}:${asset.name}:${asset.hidden}`}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          asset={asset}
         />
       )}
     </div>

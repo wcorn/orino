@@ -23,4 +23,10 @@ public interface LedgerRecurringRepository extends JpaRepository<LedgerRecurring
      * {@code isActiveOn}이 날짜별로 판정한다.
      */
     List<LedgerRecurring> findAllByStatusIn(Collection<LedgerRecurringStatus> statuses);
+
+    /** 자산 삭제 전 확인용 — 해지된 항목도 남아 있어 함께 센다. */
+    boolean existsByMemberIdAndAssetId(Long memberId, Long assetId);
+
+    /** 이체 정기 항목의 상대 자산. */
+    boolean existsByMemberIdAndCounterAssetId(Long memberId, Long counterAssetId);
 }

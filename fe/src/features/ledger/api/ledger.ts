@@ -483,6 +483,14 @@ export async function updateAsset(
   return data.data;
 }
 
+/**
+ * 자산 삭제. <b>아직 아무것도 붙지 않은 자산에만</b> 열린다 — 거래·정기 항목·청구서가
+ * 하나라도 붙었으면 서버가 `LDG-ERR-034`로 거부한다. 그때 사람이 원하는 것은 해지다.
+ */
+export async function deleteAsset(id: number): Promise<void> {
+  await client.delete(`/ledger/assets/${id}`);
+}
+
 export async function fetchCategories(
   flow?: LedgerFlow,
 ): Promise<CategoryView[]> {

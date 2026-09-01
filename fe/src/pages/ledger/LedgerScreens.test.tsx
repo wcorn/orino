@@ -134,6 +134,79 @@ describe("자산 화면", () => {
   });
 });
 
+/**
+ * 자산 상세의 수정 · 해지 · 삭제(#1312).
+ *
+ * <p>확인하는 것은 세 길이 <b>서로 다른 것을 보내는가</b>다. 해지는 목록에서만 내리고,
+ * 삭제는 행을 없앤다 — 같은 버튼처럼 보이면 사람은 되돌릴 수 없는 쪽을 누른다.
+ */
+describe("자산 수정", () => {
+  beforeEach(() => {
+    useAuthStore.setState({ accessToken: "valid-token" });
+  });
+
+  it("이름을 고쳐 저장하면 그 값만 간다", async () => {
+    const user = userEvent.setup();
+    const { sent } = renderAt("/ledger/assets/1");
+
+    await user.click(await screen.findByRole("button", { name: "수정" }));
+    const modal = within(await screen.findByRole("dialog"));
+    await user.clear(modal.getByLabelText("이름"));
+    await user.type(modal.getByLabelText("이름"), "주거래통장");
+    await user.click(modal.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => expect(sent.assetPatches).toHaveLength(1));
+    expect(sent.assetPatches[0]).toMatchObject({ name: "주거래통장" });
+  });
+
+  it("해지는 지우지 않는다 — hidden과 사유만 보낸다", async () => {
+    const user = userEvent.setup();
+    const { sent } = renderAt("/ledger/assets/1");
+
+    await user.click(await screen.findByRole("button", { name: "수정" }));
+    const modal = within(await screen.findByRole("dialog"));
+    await user.type(modal.getByLabelText("해지 사유"), "계좌 해지");
+    await user.click(modal.getByRole("button", { name: "해지하기" }));
+
+    await waitFor(() => expect(sent.assetPatches).toHaveLength(1));
+    expect(sent.assetPatches[0]).toEqual({
+      hidden: true,
+      closedReason: "계좌 해지",
+    });
+    expect(sent.assetsDeleted).toHaveLength(0);
+  });
+
+  it("삭제는 한 번 더 묻고 나서야 지운다", async () => {
+    const user = userEvent.setup();
+    const { sent } = renderAt("/ledger/assets/1");
+
+    await user.click(await screen.findByRole("button", { name: "수정" }));
+    const modal = within(await screen.findByRole("dialog"));
+    await user.click(modal.getByRole("button", { name: "삭제" }));
+
+    // 「삭제」는 확인을 여는 버튼이지 지우는 버튼이 아니다.
+    expect(sent.assetsDeleted).toHaveLength(0);
+
+    await user.click(modal.getByRole("button", { name: "지웁니다" }));
+
+    await waitFor(() => expect(sent.assetsDeleted).toEqual([1]));
+    // 방금 지운 자산의 상세에 남아 있으면 다음 화면은 404다.
+    expect(await screen.findByText("총자산")).toBeInTheDocument();
+  });
+
+  it("거래가 붙은 자산은 서버가 막고, 화면은 해지를 알려 준다", async () => {
+    const user = userEvent.setup();
+    renderAt("/ledger/assets/1", { assetDeleteFails: true });
+
+    await user.click(await screen.findByRole("button", { name: "수정" }));
+    const modal = within(await screen.findByRole("dialog"));
+    await user.click(modal.getByRole("button", { name: "삭제" }));
+    await user.click(modal.getByRole("button", { name: "지웁니다" }));
+
+    expect(await screen.findByText(/해지해 주세요/)).toBeInTheDocument();
+  });
+});
+
 describe("내역 화면", () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: "valid-token" });

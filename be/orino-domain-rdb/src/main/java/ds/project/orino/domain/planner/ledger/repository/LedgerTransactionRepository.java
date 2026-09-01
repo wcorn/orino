@@ -47,6 +47,15 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
     boolean existsByRecurringIdAndDeletedAtIsNull(Long recurringId);
 
     /**
+     * 자산 삭제 전 확인용. <b>지운 거래도 센다</b> — 소프트 삭제라 행은 남아 있고,
+     * 그 행이 이 자산을 가리키는 한 자산을 지울 수 없다.
+     */
+    boolean existsByMemberIdAndAssetId(Long memberId, Long assetId);
+
+    /** 같은 이유로 이체의 상대 자산도 본다. */
+    boolean existsByMemberIdAndCounterAssetId(Long memberId, Long counterAssetId);
+
+    /**
      * 직접 예약 — 예정의 네 출처 중 <b>유일하게 실체화된</b> 것이다(확정 명세 §8.1).
      *
      * <p>재산세·보험 갱신·명절 경조사는 규칙으로 만들 수 없지만 잔액 계획에는 반드시 들어간다.

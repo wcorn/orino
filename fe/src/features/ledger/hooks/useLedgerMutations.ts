@@ -17,6 +17,7 @@ import {
   createReceiptUploadUrl,
   createTemplate,
   createTransaction,
+  deleteAsset,
   deleteAutoRule,
   deletePoint,
   deleteTemplate,
@@ -134,6 +135,22 @@ export function useUpdateAsset() {
     mutationFn: ({ id, body }: { id: number; body: AssetUpdateRequest }) =>
       updateAsset(id, body),
     onError: () => toast("자산을 수정하지 못했어요.", "error"),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+/**
+ * 자산 삭제. 서버가 거절하는 쪽이 정상 경로에 가깝다 — 한 번이라도 쓴 자산은 지울 수 없고,
+ * 그때 사람이 해야 할 일은 <b>해지</b>다. 그래서 실패 문구가 다음 행동을 말한다.
+ */
+export function useDeleteAsset() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => deleteAsset(id),
+    onSuccess: () => toast("자산을 삭제했어요"),
+    onError: () =>
+      toast("이미 쓰인 자산은 삭제할 수 없어요 — 해지해 주세요.", "error"),
     onSettled: () => invalidateAll(queryClient),
   });
 }

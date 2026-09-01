@@ -17,4 +17,10 @@ public interface LedgerAssetRepository extends JpaRepository<LedgerAsset, Long> 
 
     /** 이 계좌를 연결 계좌로 삼은 체크카드들. 계좌를 숨길 때 함께 알려 준다. */
     List<LedgerAsset> findAllByMemberIdAndLinkedAssetId(Long memberId, Long linkedAssetId);
+
+    /** 삭제 전 확인용 — 이 자산을 물고 있는 체크카드가 있으면 지울 수 없다. */
+    boolean existsByMemberIdAndLinkedAssetId(Long memberId, Long linkedAssetId);
+
+    /** 삭제 전 확인용 — 이 계좌를 결제 계좌로 삼은 신용카드가 있으면 지울 수 없다. */
+    boolean existsByMemberIdAndPaymentAssetId(Long memberId, Long paymentAssetId);
 }
