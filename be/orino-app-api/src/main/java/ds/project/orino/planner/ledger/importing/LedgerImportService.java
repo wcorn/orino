@@ -83,15 +83,24 @@ public class LedgerImportService {
         this.clock = clock;
     }
 
-    /** 1단계 — 파일의 생김새와 쓸 수 있는 프리셋. 아직 아무것도 해석하지 않는다. */
+    /**
+     * 1단계 — 파일의 생김새와 쓸 수 있는 프리셋. 아직 아무것도 해석하지 않는다.
+     *
+     * <p><b>머리글이 1행이라고 못 박지 않는다</b>(#1318). 은행 파일은 앞에 제목·계좌번호·
+     * 주의사항이 붙어 오고, 그걸 머리글로 읽으면 화면의 열 이름이 전부 「(이름 없음)」이 된다.
+     * 찾은 줄 번호를 함께 돌려주어 <b>「건너뛸 머리글 줄 수」가 저절로 채워지게</b> 한다.
+     */
     @Transactional(readOnly = true)
-    public ImportDtos.AnalyzeResponse analyze(Long memberId, MultipartFile file) {
-        List<List<String>> rows = reader.read(file);
-        List<String> headers = rows.get(0);
+    public ImportDtos.AnalyzeResponse analyze(Long memberId, MultipartFile file, String password) {
+        List<List<String>> rows = reader.read(file, password);
+        int headerRow = LedgerHeaderFinder.find(rows);
+        List<String> headers = rows.get(headerRow);
         // 머리글 다음 다섯 줄. 더 보여줘도 사람이 읽지 않고, 적으면 확인이 안 된다.
-        List<List<String>> sample = rows.subList(1, Math.min(rows.size(), 6));
+        List<List<String>> sample =
+                rows.subList(headerRow + 1, Math.min(rows.size(), headerRow + 6));
         return new ImportDtos.AnalyzeResponse(
-                headers, List.copyOf(sample), rows.size() - 1, presetService.list(memberId));
+                headers, List.copyOf(sample), rows.size() - headerRow - 1, headerRow,
+                presetService.list(memberId));
     }
 
     /**
@@ -105,7 +114,7 @@ public class LedgerImportService {
     public ImportDtos.PreviewResponse preview(Long memberId, MultipartFile file,
                                               ImportDtos.PreviewRequest request) {
         List<ParsedRow> parsed = parse(memberId, file, request.mapping(),
-                request.skipRows(), request.dateFormat());
+                request.skipRows(), request.dateFormat(), request.password());
 
         Map<Long, String> categoryNames = categoryNames(memberId);
         Map<Long, String> assetNames = assetNames(memberId);
@@ -145,7 +154,7 @@ public class LedgerImportService {
                                               ImportDtos.ExecuteRequest request) {
         bootstrap.ensureSeeded(memberId);
         List<ParsedRow> parsed = parse(memberId, file, request.mapping(),
-                request.skipRows(), request.dateFormat());
+                request.skipRows(), request.dateFormat(), request.password());
         Set<Integer> wanted = new HashSet<>(request.rowNumbers());
 
         List<TransactionCreateRequest> requests = new ArrayList<>();
@@ -213,11 +222,11 @@ public class LedgerImportService {
      * 들어갔다고 믿고, 빠진 줄은 몇 달 뒤 잔액이 안 맞을 때에야 드러난다.
      */
     private List<ParsedRow> parse(Long memberId, MultipartFile file, ImportDtos.Mapping mapping,
-                                  Integer skipRows, String dateFormat) {
+                                  Integer skipRows, String dateFormat, String password) {
         if (mapping.date() == null || !mapping.hasAmountSource()) {
             throw new CustomException(ErrorCode.LEDGER_IMPORT_MAPPING_REQUIRED);
         }
-        List<List<String>> rows = reader.read(file);
+        List<List<String>> rows = reader.read(file, password);
         int skip = skipRows == null ? 1 : Math.max(skipRows, 0);
         List<LedgerAutoRule> rules = autoRuleService.rulesOf(memberId);
         Map<String, Long> categoryByName = categoryIdsByName(memberId);

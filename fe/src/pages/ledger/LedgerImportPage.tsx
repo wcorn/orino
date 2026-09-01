@@ -55,6 +55,29 @@ type FieldKey = (typeof FIELDS)[number]["key"];
 const STEPS = ["파일", "열 맞추기", "확인", "완료"] as const;
 
 /**
+ * 실패를 사람 말로.
+ *
+ * <p>「읽을 수 없어요, CSV 또는 .xlsx만 됩니다」로 뭉뚱그리면 <b>.xlsx를 들고 있는 사람</b>은
+ * 무엇을 고쳐야 할지 모른다 — 은행 파일은 암호가 걸린 채로 내려오고, 그게 이 화면에서
+ * 가장 흔한 실패다(#1318).
+ */
+function readFailure(error: unknown): string {
+  const code = (
+    error as { response?: { data?: { code?: string } } } | undefined
+  )?.response?.data?.code;
+  if (code === "LDG-ERR-035") {
+    return "암호가 걸린 파일이에요. 비밀번호를 적고 파일을 다시 골라 주세요.";
+  }
+  if (code === "LDG-ERR-036") {
+    return "비밀번호가 맞지 않아요. 다시 확인해 주세요.";
+  }
+  if (code === "LDG-ERR-025") {
+    return "한 번에 넣을 수 있는 줄 수를 넘었어요. 기간을 나눠 내려받아 주세요.";
+  }
+  return "이 파일은 읽을 수 없어요. CSV 또는 .xlsx만 됩니다.";
+}
+
+/**
  * 가져오기 `/ledger/import`(확정 명세 §12).
  *
  * <p><b>수동 입력을 대체하지 않는다.</b> 초기 이관과 월말 대사를 위한 도구다. 네 단계가
@@ -65,6 +88,9 @@ const STEPS = ["파일", "열 맞추기", "확인", "완료"] as const;
  */
 export function LedgerImportPage() {
   const [file, setFile] = useState<File | null>(null);
+  // 파일을 단계마다 다시 올리므로 비밀번호도 그동안 들고 있는다. 저장하지는 않는다 —
+  // 화면을 벗어나면 사라지고, 서버도 그 요청에서만 쓴다.
+  const [password, setPassword] = useState("");
   const [analysis, setAnalysis] = useState<ImportAnalyzeResponse | null>(null);
   const [assetId, setAssetId] = useState<number | null>(null);
   const [source, setSource] = useState("");
@@ -95,21 +121,33 @@ export function LedgerImportPage() {
 
   const step = !analysis ? 0 : !preview ? 1 : execute.isSuccess ? 3 : 2;
 
-  const onPickFile = async (picked: File) => {
+  /**
+   * 파일을 읽어 본다.
+   *
+   * <p>실패해도 <b>고른 파일을 놓지 않는다</b>. 암호가 걸린 파일이면 비밀번호를 적고 다시
+   * 읽어야 하는데, 같은 파일을 다시 고르는 것으로는 브라우저가 아무 일도 하지 않는다
+   * (값이 그대로라 `change`가 뜨지 않는다) — 그래서 「다시 읽기」가 필요하다.
+   */
+  const analyze = async (picked: File, withPassword: string) => {
     setBusy(true);
     setFailure(null);
+    setFile(picked);
     try {
-      const result = await analyzeImport(picked);
-      setFile(picked);
+      const result = await analyzeImport(picked, withPassword || undefined);
       setAnalysis(result);
       setSource(picked.name.replace(/\.[^.]+$/, ""));
+      // 머리글이 몇 번째 줄인지는 서버가 찾아 준다. 은행 파일은 앞에 안내문이 붙어 와서
+      // 1이 아니고, 그걸 사람이 세게 하면 한 칸씩 밀린 매핑이 나온다.
+      setSkipRows(result.headerRow + 1);
       setPreview(null);
-    } catch {
-      setFailure("이 파일은 읽을 수 없어요. CSV 또는 .xlsx만 됩니다.");
+    } catch (error) {
+      setFailure(readFailure(error));
     } finally {
       setBusy(false);
     }
   };
+
+  const onPickFile = (picked: File) => void analyze(picked, password);
 
   const onPreview = async () => {
     if (!file || assetId === null) {
@@ -122,6 +160,7 @@ export function LedgerImportPage() {
         assetId,
         skipRows,
         mapping: mapping as ImportMapping,
+        password: password || undefined,
       });
       setPreview(result);
       // 중복 후보와 형식 오류를 빼고 켠다 — 사람이 다시 켜는 것은 언제나 할 수 있다.
@@ -132,8 +171,15 @@ export function LedgerImportPage() {
             .map((row) => row.rowNumber),
         ),
       );
-    } catch {
-      setFailure("미리 볼 수 없어요. 열 맞추기를 확인해 주세요.");
+    } catch (error) {
+      const code = (
+        error as { response?: { data?: { code?: string } } } | undefined
+      )?.response?.data?.code;
+      setFailure(
+        code === "LDG-ERR-035" || code === "LDG-ERR-036"
+          ? readFailure(error)
+          : "미리 볼 수 없어요. 열 맞추기를 확인해 주세요.",
+      );
     } finally {
       setBusy(false);
     }
@@ -149,6 +195,7 @@ export function LedgerImportPage() {
         assetId,
         skipRows,
         mapping: mapping as ImportMapping,
+        password: password || undefined,
         source: source.trim() === "" ? "가져오기" : source.trim(),
         rowNumbers: [...chosen],
       },
@@ -157,6 +204,7 @@ export function LedgerImportPage() {
 
   const restart = () => {
     setFile(null);
+    setPassword("");
     setAnalysis(null);
     setPreview(null);
     setChosen(new Set());
@@ -181,7 +229,16 @@ export function LedgerImportPage() {
 
       {failure && <Alert variant="destructive">{failure}</Alert>}
 
-      {step === 0 && <FilePicker busy={busy} onPick={onPickFile} />}
+      {step === 0 && (
+        <FilePicker
+          busy={busy}
+          password={password}
+          onPasswordChange={setPassword}
+          onPick={onPickFile}
+          picked={file}
+          onRetry={() => file && void analyze(file, password)}
+        />
+      )}
 
       {step === 1 && analysis && (
         <MappingStep
@@ -269,12 +326,27 @@ function Stepper({ current }: { current: number }) {
   );
 }
 
+/**
+ * 1단계 — 파일 고르기.
+ *
+ * <p>비밀번호 칸이 <b>파일 칸보다 위에</b> 있다. 은행 거래내역은 암호가 걸린 채로 내려오고,
+ * 파일을 고르는 순간 분석이 시작되기 때문에 그 전에 적을 수 있어야 한다.
+ */
 function FilePicker({
   busy,
+  password,
+  onPasswordChange,
   onPick,
+  picked,
+  onRetry,
 }: {
   busy: boolean;
+  password: string;
+  onPasswordChange: (value: string) => void;
   onPick: (file: File) => void;
+  /** 읽지 못한 채 들고 있는 파일. 비밀번호를 적고 다시 읽을 대상이다. */
+  picked: File | null;
+  onRetry: () => void;
 }) {
   return (
     <section className="bg-card ring-foreground/10 flex flex-col items-center gap-3 rounded-xl p-8 ring-1">
@@ -283,6 +355,24 @@ function FilePicker({
       <p className="text-muted-foreground text-[13px]">
         카드사 명세서 · 은행 거래내역 · 다른 가계부 앱의 내보내기 파일
       </p>
+
+      <div className="flex w-full max-w-[320px] flex-col gap-1.5">
+        <Label htmlFor="import-password">파일 비밀번호</Label>
+        <Input
+          id="import-password"
+          type="password"
+          autoComplete="off"
+          value={password}
+          disabled={busy}
+          onChange={(event) => onPasswordChange(event.target.value)}
+          placeholder="암호가 걸린 파일만"
+        />
+        <p className="text-muted-foreground text-[13px]">
+          은행 거래내역은 보통 암호가 걸려 있어요. 저장하지 않고 이 파일을 읽는
+          데만 씁니다.
+        </p>
+      </div>
+
       <Label htmlFor="import-file" className="sr-only">
         가져올 파일
       </Label>
@@ -293,12 +383,26 @@ function FilePicker({
         disabled={busy}
         className="max-w-[320px]"
         onChange={(event) => {
-          const picked = event.target.files?.[0];
-          if (picked) {
-            onPick(picked);
+          const chosen = event.target.files?.[0];
+          if (chosen) {
+            onPick(chosen);
           }
+          // 값을 비워 둔다 — 같은 파일을 다시 고르는 것도 「고른 것」이어야 한다.
+          event.target.value = "";
         }}
       />
+
+      {picked && !busy && (
+        <div className="flex flex-col items-center gap-2">
+          <p className="text-muted-foreground text-[13px]">
+            고른 파일: <span className="font-medium">{picked.name}</span>
+          </p>
+          <Button type="button" variant="outline" onClick={onRetry}>
+            이 파일 다시 읽기
+          </Button>
+        </div>
+      )}
+
       {busy && <LoadingText />}
     </section>
   );
@@ -401,7 +505,8 @@ function MappingStep({
             자산 열을 맞추면 줄마다 그 이름으로 찾아가고, 못 찾은 줄만 여기로
             와요.
           </p>
-          <FormField label="건너뛸 머리글 줄 수" labelId="import-skip">
+          {/* labelId만 주면 label이 입력과 이어지지 않는다 — 읽어 주는 이름이 없어진다. */}
+          <FormField label="건너뛸 머리글 줄 수" htmlFor="import-skip">
             <Input
               id="import-skip"
               inputMode="numeric"

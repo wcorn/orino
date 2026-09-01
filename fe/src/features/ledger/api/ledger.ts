@@ -1392,6 +1392,11 @@ export interface ImportAnalyzeResponse {
   headers: string[];
   sample: string[][];
   totalRows: number;
+  /**
+   * 머리글이 몇 번째 줄이었는지(0부터). 은행 파일은 앞에 안내문이 붙어 와서 1행이 아니다 —
+   * 화면의 「건너뛸 머리글 줄 수」는 이 값 + 1로 채운다.
+   */
+  headerRow: number;
   presets: ImportPreset[];
 }
 
@@ -1436,11 +1441,19 @@ export interface ImportBatch {
   revertedAt: string | null;
 }
 
+/**
+ * @param password 암호가 걸린 xlsx의 비밀번호. 은행 거래내역이 그렇게 내려온다 —
+ *                 서버는 그 요청에서만 쓰고 저장하지 않는다
+ */
 export async function analyzeImport(
   file: File,
+  password?: string,
 ): Promise<ImportAnalyzeResponse> {
   const form = new FormData();
   form.append("file", file);
+  if (password) {
+    form.append("password", password);
+  }
   const { data } = await client.post<ApiEnvelope<ImportAnalyzeResponse>>(
     "/ledger/import/analyze",
     form,
@@ -1460,6 +1473,7 @@ export async function previewImport(
     mapping: ImportMapping;
     skipRows?: number;
     dateFormat?: string | null;
+    password?: string;
   },
 ): Promise<ImportPreviewResponse> {
   const form = new FormData();
@@ -1479,6 +1493,7 @@ export async function executeImport(
     mapping: ImportMapping;
     skipRows?: number;
     dateFormat?: string | null;
+    password?: string;
     source: string;
     /** 넣을 줄 번호. 체크를 해제한 줄은 여기 없다. */
     rowNumbers: number[];

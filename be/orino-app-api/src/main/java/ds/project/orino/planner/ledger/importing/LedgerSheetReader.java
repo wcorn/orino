@@ -2,6 +2,10 @@ package ds.project.orino.planner.ledger.importing;
 
 import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
+import org.apache.poi.poifs.crypt.Decryptor;
+import org.apache.poi.poifs.crypt.EncryptionInfo;
+import org.apache.poi.poifs.filesystem.FileMagic;
+import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -17,6 +21,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -31,6 +36,10 @@ import java.util.List;
  *
  * <p>엑셀은 <b>.xlsx만</b> 받는다(D-6에서 BE POI로 정했다). 구형 .xls를 받으려면 HSSF가
  * 따라 들어오는데, 쓰는 사람이 없는 형식을 위해 스캔 대상을 넓히지 않는다.
+ *
+ * <p><b>암호가 걸린 xlsx는 비밀번호를 받아 푼다</b>(#1318). 은행 거래내역은 비밀번호를 걸어
+ * 내려주는 것이 기본이라, 받지 않으면 사람이 엑셀로 열어 다시 저장하는 단계를 매번 거쳐야 한다.
+ * 비밀번호는 <b>그 요청에서만 쓰고 어디에도 남기지 않는다</b> — 저장하면 지킬 것이 하나 는다.
  */
 @Component
 public class LedgerSheetReader {
@@ -48,11 +57,16 @@ public class LedgerSheetReader {
     private final DataFormatter formatter = new DataFormatter();
 
     public List<List<String>> read(MultipartFile file) {
+        return read(file, null);
+    }
+
+    /** @param password 암호가 걸린 xlsx의 비밀번호. 없으면 {@code null} */
+    public List<List<String>> read(MultipartFile file, String password) {
         String name = file.getOriginalFilename() == null
                 ? "" : file.getOriginalFilename().toLowerCase();
         List<List<String>> rows;
         if (name.endsWith(".xlsx")) {
-            rows = readXlsx(file);
+            rows = readXlsx(file, password);
         } else if (name.endsWith(".csv") || name.endsWith(".txt")) {
             rows = readCsv(file);
         } else {
@@ -72,9 +86,14 @@ public class LedgerSheetReader {
         return rows;
     }
 
-    private List<List<String>> readXlsx(MultipartFile file) {
-        try (InputStream in = file.getInputStream();
-             Workbook workbook = new XSSFWorkbook(in)) {
+    private List<List<String>> readXlsx(MultipartFile file, String password) {
+        try (InputStream raw = file.getInputStream();
+             // 매직 넘버를 보려면 되감을 수 있어야 한다. 확장자는 .xlsx인데 알맹이가
+             // 암호화 컨테이너(OLE2)인 것이 은행 파일의 기본 모습이다.
+             InputStream in = FileMagic.prepareToCheckMagic(raw);
+             Workbook workbook = FileMagic.valueOf(in) == FileMagic.OLE2
+                     ? decrypt(in, password)
+                     : new XSSFWorkbook(in)) {
             // 첫 시트만 읽는다. 여러 시트를 합치면 어느 시트에서 온 줄인지 알 수 없다.
             Sheet sheet = workbook.getSheetAt(0);
             List<List<String>> rows = new ArrayList<>();
@@ -90,6 +109,28 @@ public class LedgerSheetReader {
                 throw custom;
             }
             throw new CustomException(ErrorCode.LEDGER_IMPORT_UNSUPPORTED_FILE);
+        }
+    }
+
+    /**
+     * 암호를 풀어 연다.
+     *
+     * <p>비밀번호가 없으면 <b>없다고 말한다</b>. 「형식이 틀렸다」로 답하면 사람은 .xlsx를
+     * .xlsx로 바꾸려 들고, 무엇이 잘못됐는지 끝내 알지 못한다.
+     */
+    private Workbook decrypt(InputStream in, String password) throws IOException {
+        if (password == null || password.isBlank()) {
+            throw new CustomException(ErrorCode.LEDGER_IMPORT_PASSWORD_REQUIRED);
+        }
+        POIFSFileSystem fs = new POIFSFileSystem(in);
+        try {
+            Decryptor decryptor = Decryptor.getInstance(new EncryptionInfo(fs));
+            if (!decryptor.verifyPassword(password)) {
+                throw new CustomException(ErrorCode.LEDGER_IMPORT_PASSWORD_WRONG);
+            }
+            return new XSSFWorkbook(decryptor.getDataStream(fs));
+        } catch (GeneralSecurityException e) {
+            throw new CustomException(ErrorCode.LEDGER_IMPORT_PASSWORD_WRONG);
         }
     }
 
