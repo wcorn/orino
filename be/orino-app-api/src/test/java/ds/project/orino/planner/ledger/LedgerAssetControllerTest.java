@@ -1,6 +1,8 @@
 package ds.project.orino.planner.ledger;
 
 import ds.project.orino.domain.member.repository.MemberRepository;
+import ds.project.orino.domain.planner.ledger.entity.LedgerStatement;
+import ds.project.orino.domain.planner.ledger.repository.LedgerStatementRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
@@ -15,6 +17,7 @@ import org.springframework.http.MediaType;
 
 import java.time.LocalDate;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
@@ -38,6 +41,8 @@ class LedgerAssetControllerTest extends ApiTestSupport {
     private MemberRepository memberRepository;
     @Autowired
     private DbCleaner dbCleaner;
+    @Autowired
+    private LedgerStatementRepository statementRepository;
 
     private String authHeader;
 
@@ -426,6 +431,62 @@ class LedgerAssetControllerTest extends ApiTestSupport {
         }
 
         @Test
+        @DisplayName("빈 청구서는 삭제를 막지 않는다 — 사이클에서 파생된 자리표다")
+        void deletesCardWithOnlyEmptyStatements() throws Exception {
+            long card = asset("KB국민 트래블러스", "CREDIT_CARD");
+            LocalDate today = LocalDate.now(TEST_ZONE);
+            // 사람이 적은 것이 아니라 사이클이 만든 행이다(#1316).
+            statementRepository.save(new LedgerStatement(memberId(), card,
+                    today.withDayOfMonth(1), today.withDayOfMonth(28),
+                    today.withDayOfMonth(14)));
+
+            mockMvc.perform(delete("/api/ledger/assets/" + card)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
+
+            // 청구서도 함께 사라진다 — 카드 없는 청구서는 아무 말도 아니다.
+            assertThat(statementRepository.findAllByMemberIdAndCardAssetIdOrderByCycleStartDesc(
+                    memberId(), card)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("상세가 삭제 가능 여부와 막은 이유를 미리 알려 준다")
+        void tellsDeletableUpFront() throws Exception {
+            long empty = asset("잘못 만든 통장", "CHECKING");
+            long used = asset("급여통장", "CHECKING");
+            income(used, 1000000);
+
+            mockMvc.perform(get("/api/ledger/assets/" + empty)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.deletable").value(true))
+                    .andExpect(jsonPath("$.data.deleteBlockers").isEmpty());
+            mockMvc.perform(get("/api/ledger/assets/" + used)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.deletable").value(false))
+                    .andExpect(jsonPath("$.data.deleteBlockers", contains("TRANSACTION")));
+        }
+
+        @Test
+        @DisplayName("지운 거래만 남았으면 그 사실을 이름으로 알려 준다")
+        void namesDeletedTransactionAsBlocker() throws Exception {
+            long id = asset("급여통장", "CHECKING");
+            long transactionId = LedgerFixture.transactionId(
+                    LedgerFixture.createTransaction(mockMvc, authHeader, """
+                            {"type": "INCOME", "amount": 1000, "assetId": %d, "occurredOn": "%s"}
+                            """.formatted(id, LocalDate.now(TEST_ZONE))));
+            mockMvc.perform(delete("/api/ledger/transactions/" + transactionId)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
+
+            // 사용자 눈에는 없는 거래다. 이유를 말해 주지 않으면 「아무것도 안 적었는데 왜」가 된다.
+            mockMvc.perform(get("/api/ledger/assets/" + id)
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.deletable").value(false))
+                    .andExpect(jsonPath("$.data.deleteBlockers",
+                            contains("DELETED_TRANSACTION")));
+        }
+
+        @Test
         @DisplayName("남의 자산은 없는 것으로 본다")
         void rejectsOthersAsset() throws Exception {
             mockMvc.perform(delete("/api/ledger/assets/999999")
@@ -436,6 +497,11 @@ class LedgerAssetControllerTest extends ApiTestSupport {
     }
 
     // --- 준비 ---
+
+    /** 시드 회원은 하나뿐이라 첫 행이 곧 이 테스트의 주인이다. */
+    private Long memberId() {
+        return memberRepository.findAll().getFirst().getId();
+    }
 
     private long asset(String name, String type) throws Exception {
         return LedgerFixture.createAsset(mockMvc, authHeader, name, type);

@@ -7,9 +7,18 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/select";
 
-import type { AssetType, AssetView } from "../api/ledger";
+import type { AssetType, AssetView, DeleteBlocker } from "../api/ledger";
 import { useDeleteAsset, useUpdateAsset } from "../hooks/useLedgerMutations";
 import { useLedgerAssets } from "../hooks/useLedgerQueries";
+
+/** 막은 이유를 한 문장으로. 서버가 이름을 주지 않는 옛 응답도 말이 되게 둔다. */
+function blockerText(blockers: DeleteBlocker[]): string {
+  const known = blockers.filter((blocker) => blocker in BLOCKER_TEXT);
+  if (known.length === 0) {
+    return "이 자산에 적힌 것이 있어요.";
+  }
+  return `${known.map((blocker) => BLOCKER_TEXT[blocker]).join(" · ")}.`;
+}
 
 /** 잔액을 자기 이름으로 갖는 유형(BE `LedgerAssetType.holdsBalance`). 체크카드의 연결 후보다. */
 const BALANCE_TYPES: AssetType[] = ["CASH", "CHECKING", "SAVINGS", "PREPAID"];
@@ -20,7 +29,26 @@ interface AssetEditModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   asset: AssetView;
+  /** 서버가 미리 판정한 값. 지울 수 없는 자산이면 버튼을 열지 않는다(#1316). */
+  deletable: boolean;
+  /** 지울 수 없다면 무엇 때문인지. 이유를 알아야 치울 수 있다. */
+  deleteBlockers: DeleteBlocker[];
 }
+
+/**
+ * 막은 이유를 사람 말로.
+ *
+ * <p>「이미 쓰인 자산입니다」로 뭉뚱그리면 무엇을 치워야 할지 알 수 없다. 특히 <b>지운 거래</b>는
+ * 사용자 눈에 없는 것이라, 그 사실을 말해 주지 않으면 「아무것도 안 적었는데 왜」가 된다.
+ */
+const BLOCKER_TEXT: Record<DeleteBlocker, string> = {
+  TRANSACTION: "적힌 거래가 있어요",
+  DELETED_TRANSACTION:
+    "삭제한 거래가 남아 있어요 — 되돌릴 수 있게 기록을 지우지 않기 때문이에요",
+  RECURRING: "이 자산을 쓰는 정기 항목이 있어요",
+  TEMPLATE: "이 자산을 쓰는 템플릿이 있어요",
+  LINKED_ASSET: "이 자산을 연결 계좌·결제 계좌로 쓰는 카드가 있어요",
+};
 
 /**
  * 자산 고치기 · 해지 · 삭제(`LDG-002`).
@@ -37,6 +65,8 @@ export function AssetEditModal({
   open,
   onOpenChange,
   asset,
+  deletable,
+  deleteBlockers,
 }: AssetEditModalProps) {
   const { data } = useLedgerAssets();
   const update = useUpdateAsset();
@@ -232,11 +262,26 @@ export function AssetEditModal({
           </>
         )}
 
+        {/*
+          지울 수 없는 이유를 누르기 전에 적는다. 눌러 본 뒤에 듣는 「안 됩니다」는
+          다음 행동을 주지 못하고, 이미 해지한 자산에게 해지를 권하는 말이 되기도 한다.
+        */}
         <p className="text-muted-foreground text-[13px]">
-          <b>삭제</b>는 아직 아무것도 적지 않은 자산에만 됩니다. 거래가 한
-          줄이라도 있으면 서버가 막아요 — 그 내역이 갈 곳을 잃기 때문입니다.
+          {deletable ? (
+            <>
+              <b>삭제</b>는 아직 아무것도 적지 않은 자산에만 됩니다. 이 자산에는
+              적힌 내역이 없어 지울 수 있어요.
+            </>
+          ) : (
+            <>
+              {blockerText(deleteBlockers)} <b>그래서 지울 수 없어요.</b>{" "}
+              {asset.hidden
+                ? "해지한 채로 두면 과거 내역은 그대로 보존됩니다."
+                : "쓰지 않는 자산이면 위에서 해지하세요 — 과거 내역은 그대로 남습니다."}
+            </>
+          )}
         </p>
-        {confirmingDelete ? (
+        {!deletable ? null : confirmingDelete ? (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[13px]">지우면 되돌릴 수 없어요.</span>
             <Button

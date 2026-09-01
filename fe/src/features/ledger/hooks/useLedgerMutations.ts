@@ -140,8 +140,11 @@ export function useUpdateAsset() {
 }
 
 /**
- * 자산 삭제. 서버가 거절하는 쪽이 정상 경로에 가깝다 — 한 번이라도 쓴 자산은 지울 수 없고,
- * 그때 사람이 해야 할 일은 <b>해지</b>다. 그래서 실패 문구가 다음 행동을 말한다.
+ * 자산 삭제.
+ *
+ * <p>실패 문구는 <b>사실만</b> 말한다. 「해지해 주세요」를 붙이면 이미 해지한 자산에게
+ * 방금 한 일을 다시 하라는 말이 된다(#1316) — 다음 행동 안내는 상황을 아는 화면이 한다.
+ * 애초에 지울 수 없는 자산은 버튼이 비활성이라, 이 길로 오는 것은 드문 경우다.
  */
 export function useDeleteAsset() {
   const queryClient = useQueryClient();
@@ -149,8 +152,7 @@ export function useDeleteAsset() {
   return useMutation({
     mutationFn: (id: number) => deleteAsset(id),
     onSuccess: () => toast("자산을 삭제했어요"),
-    onError: () =>
-      toast("이미 쓰인 자산은 삭제할 수 없어요 — 해지해 주세요.", "error"),
+    onError: () => toast("거래가 있는 자산이라 삭제할 수 없어요.", "error"),
     onSettled: () => invalidateAll(queryClient),
   });
 }

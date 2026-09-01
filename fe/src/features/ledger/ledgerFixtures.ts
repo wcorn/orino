@@ -370,6 +370,10 @@ export interface LedgerMockOptions {
   assets?: ReturnType<typeof assetView>[];
   /** 삭제를 서버가 막는 상황(`LDG-ERR-034`). 거래가 붙은 자산이 이 길로 온다. */
   assetDeleteFails?: boolean;
+  /** 상세가 알려 주는 삭제 가능 여부. 화면은 이 값으로 버튼을 연다(기본 `true`). */
+  assetDeletable?: boolean;
+  /** 막은 이유. `assetDeletable: false`일 때만 의미가 있다(기본 `["TRANSACTION"]`). */
+  assetDeleteBlockers?: string[];
   groups?: unknown[];
   transactions?: ReturnType<typeof transactionView>[];
   monthStartDay?: number;
@@ -466,7 +470,17 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
       const asset =
         assets.find((item) => String(item.id) === String(params.id)) ??
         assets[0];
-      return ok({ asset, range: "MONTH", trend: [], categoryShare: [] });
+      return ok({
+        deletable: options.assetDeletable ?? true,
+        deleteBlockers:
+          options.assetDeletable === false
+            ? (options.assetDeleteBlockers ?? ["TRANSACTION"])
+            : [],
+        asset,
+        range: "MONTH",
+        trend: [],
+        categoryShare: [],
+      });
     }),
     http.get(`${API_BASE}/ledger/assets/:id/transactions`, () =>
       ok({

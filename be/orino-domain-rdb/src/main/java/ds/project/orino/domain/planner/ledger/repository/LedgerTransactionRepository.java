@@ -56,6 +56,15 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
     boolean existsByMemberIdAndCounterAssetId(Long memberId, Long counterAssetId);
 
     /**
+     * 살아 있는 거래만. 「지운 거래가 남아서」와 「지금 쓰고 있어서」는 사람에게 다른 말이라,
+     * 삭제를 막을 때 어느 쪽인지 구분해 알려 준다(#1316).
+     */
+    boolean existsByMemberIdAndAssetIdAndDeletedAtIsNull(Long memberId, Long assetId);
+
+    boolean existsByMemberIdAndCounterAssetIdAndDeletedAtIsNull(
+            Long memberId, Long counterAssetId);
+
+    /**
      * 직접 예약 — 예정의 네 출처 중 <b>유일하게 실체화된</b> 것이다(확정 명세 §8.1).
      *
      * <p>재산세·보험 갱신·명절 경조사는 규칙으로 만들 수 없지만 잔액 계획에는 반드시 들어간다.

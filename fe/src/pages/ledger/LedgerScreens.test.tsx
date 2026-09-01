@@ -194,16 +194,50 @@ describe("자산 수정", () => {
     expect(await screen.findByText("총자산")).toBeInTheDocument();
   });
 
-  it("거래가 붙은 자산은 서버가 막고, 화면은 해지를 알려 준다", async () => {
+  /**
+   * 지울 수 없는 자산에 버튼을 열어 두면, 2단 확인까지 통과한 뒤에야 「안 됩니다」를 듣는다.
+   * 게다가 이미 해지한 자산에게 「해지해 주세요」라고 말하게 된다(#1316).
+   */
+  it("적힌 내역이 있으면 삭제 버튼을 아예 열지 않고, 이유를 적는다", async () => {
     const user = userEvent.setup();
-    renderAt("/ledger/assets/1", { assetDeleteFails: true });
+    renderAt("/ledger/assets/1", { assetDeletable: false });
 
     await user.click(await screen.findByRole("button", { name: "수정" }));
     const modal = within(await screen.findByRole("dialog"));
-    await user.click(modal.getByRole("button", { name: "삭제" }));
-    await user.click(modal.getByRole("button", { name: "지웁니다" }));
 
-    expect(await screen.findByText(/해지해 주세요/)).toBeInTheDocument();
+    expect(modal.queryByRole("button", { name: "삭제" })).toBeNull();
+    expect(modal.getByText(/적힌 거래가 있어요/)).toBeInTheDocument();
+  });
+
+  /**
+   * 「아무것도 안 적었는데 왜 안 지워지지」의 답이 여기 있다 — 지운 거래는 사용자 눈에
+   * 없지만 되돌릴 수 있게 행이 남아 있고, 그 사실을 말해 주지 않으면 알 길이 없다.
+   */
+  it("삭제한 거래 때문에 막혔으면 그렇게 말한다", async () => {
+    const user = userEvent.setup();
+    renderAt("/ledger/assets/1", {
+      assetDeletable: false,
+      assetDeleteBlockers: ["DELETED_TRANSACTION"],
+    });
+
+    await user.click(await screen.findByRole("button", { name: "수정" }));
+    const modal = within(await screen.findByRole("dialog"));
+
+    expect(modal.getByText(/삭제한 거래가 남아 있어요/)).toBeInTheDocument();
+  });
+
+  it("해지한 자산에게 「해지하세요」라고 하지 않는다", async () => {
+    const user = userEvent.setup();
+    renderAt("/ledger/assets/1", {
+      assetDeletable: false,
+      assets: [assetView({ hidden: true, closedReason: "해지" })],
+    });
+
+    await user.click(await screen.findByRole("button", { name: "수정" }));
+    const modal = within(await screen.findByRole("dialog"));
+
+    expect(modal.getByText(/해지한 채로 두면/)).toBeInTheDocument();
+    expect(modal.queryByText(/해지하세요/)).toBeNull();
   });
 });
 
