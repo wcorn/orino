@@ -106,13 +106,13 @@ class LedgerImportTest extends ApiTestSupport {
 
             preview(csv)
                     .andExpect(jsonPath("$.data.errorCount").value(1))
-                    .andExpect(jsonPath("$.data.rows", hasSize(2)))
-                    .andExpect(jsonPath("$.data.rows[1].error").value("날짜를 읽을 수 없습니다"))
+                    .andExpect(jsonPath("$.data.files[0].rows", hasSize(2)))
+                    .andExpect(jsonPath("$.data.files[0].rows[1].error").value("날짜를 읽을 수 없습니다"))
                     // 화면에서 드러났다 — 못 읽은 줄이 「제목 없음 · 0원」으로 보였다.
                     // 파일에 적힌 말이 남아야 그 줄을 파일에서 찾을 수 있고,
                     // 금액은 0이 아니라 「모른다」다.
-                    .andExpect(jsonPath("$.data.rows[1].title").value("깨진 줄"))
-                    .andExpect(jsonPath("$.data.rows[1].amount").doesNotExist());
+                    .andExpect(jsonPath("$.data.files[0].rows[1].title").value("깨진 줄"))
+                    .andExpect(jsonPath("$.data.files[0].rows[1].amount").doesNotExist());
         }
 
         /**
@@ -137,7 +137,7 @@ class LedgerImportTest extends ApiTestSupport {
             preview(csv)
                     .andExpect(jsonPath("$.data.duplicateCount").value(1))
                     // 어느 거래와 같아 보이는지까지 알려야 사람이 판단할 수 있다.
-                    .andExpect(jsonPath("$.data.rows[0].duplicateOf").isNumber());
+                    .andExpect(jsonPath("$.data.files[0].rows[0].duplicateOf").isNumber());
 
         }
 
@@ -191,10 +191,272 @@ class LedgerImportTest extends ApiTestSupport {
                     """.formatted(checking);
 
             multipartPreview(csv, request)
-                    .andExpect(jsonPath("$.data.rows[0].type").value("EXPENSE"))
-                    .andExpect(jsonPath("$.data.rows[0].amount").value(120000))
-                    .andExpect(jsonPath("$.data.rows[1].type").value("INCOME"))
-                    .andExpect(jsonPath("$.data.rows[1].amount").value(3000000));
+                    .andExpect(jsonPath("$.data.files[0].rows[0].type").value("EXPENSE"))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].amount").value(120000))
+                    .andExpect(jsonPath("$.data.files[0].rows[1].type").value("INCOME"))
+                    .andExpect(jsonPath("$.data.files[0].rows[1].amount").value(3000000));
+        }
+    }
+
+    /**
+     * 파일을 여러 장(#1320).
+     *
+     * <p>은행이 내려주는 거래내역은 한 장이 아니다 — 기간을 나눠 받아야 하고, 그렇게 받으면
+     * <b>구간이 겹친다.</b> 여기서 지키는 것은 셋이다: 파일마다 <b>제 설정</b>으로 읽히는가,
+     * 파일끼리 겹치는 줄이 <b>미리보기에서</b> 드러나는가, 그리고 되돌리기가 <b>파일 단위</b>로
+     * 남는가.
+     */
+    @Nested
+    @DisplayName("여러 파일")
+    class MultipleFiles {
+
+        /** 아홉 장 중 한 장만 잘못 넣었을 때 나머지 여덟 장이 살아야 한다. */
+        @Test
+        @DisplayName("파일마다 배치를 하나씩 만든다 — 되돌리기가 파일 단위로 남는다")
+        void makesOneBatchPerFile() throws Exception {
+            String january = """
+                    날짜,내용,금액
+                    2026-01-10,스타벅스,-5500
+                    """;
+            String february = """
+                    날짜,내용,금액
+                    2026-02-10,편의점,-3200
+                    2026-02-11,지하철,-1400
+                    """;
+
+            multiExecute("""
+                    {"files": [%s, %s]}
+                    """.formatted(executeSpec("1월", "[2]"), executeSpec("2월", "[2,3]")),
+                    csvFile("2026-01.csv", january), csvFile("2026-02.csv", february))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.inserted").value(3))
+                    .andExpect(jsonPath("$.data.batches", hasSize(2)))
+                    .andExpect(jsonPath("$.data.batches[0].fileName").value("2026-01.csv"))
+                    .andExpect(jsonPath("$.data.batches[0].inserted").value(1))
+                    .andExpect(jsonPath("$.data.batches[1].fileName").value("2026-02.csv"))
+                    .andExpect(jsonPath("$.data.batches[1].inserted").value(2));
+
+            // 이력도 파일마다 한 줄이다 — 한 줄로 뭉치면 한 장만 물릴 수 없다.
+            mockMvc.perform(get("/api/ledger/import/batches")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data", hasSize(2)));
+        }
+
+        /** 은행 내역과 카드 명세서를 함께 올릴 수 있어야 한다 — 열도 자산도 다르다. */
+        @Test
+        @DisplayName("파일마다 다른 매핑·다른 자산으로 읽는다")
+        void readsEachFileWithItsOwnMapping() throws Exception {
+            long card = LedgerFixture.createAsset(mockMvc, authHeader, "신한카드", "CREDIT_CARD");
+
+            String bank = """
+                    날짜,적요,출금,입금
+                    2026-01-10,관리비,120000,
+                    """;
+            String statement = """
+                    날짜,내용,금액
+                    2026-01-11,스타벅스,-5500
+                    """;
+
+            multiPreview("""
+                    {"files": [
+                      {"assetId": %d, "skipRows": 1,
+                       "mapping": {"date": 0, "title": 1, "outflow": 2, "inflow": 3}},
+                      {"assetId": %d, "skipRows": 1,
+                       "mapping": {"date": 0, "title": 1, "amount": 2}}
+                    ]}
+                    """.formatted(checking, card),
+                    csvFile("은행.csv", bank), csvFile("카드.csv", statement))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.totalRows").value(2))
+                    .andExpect(jsonPath("$.data.files[0].fileName").value("은행.csv"))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].amount").value(120000))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].assetName").value("급여통장"))
+                    .andExpect(jsonPath("$.data.files[1].fileName").value("카드.csv"))
+                    .andExpect(jsonPath("$.data.files[1].rows[0].amount").value(5500))
+                    .andExpect(jsonPath("$.data.files[1].rows[0].assetName").value("신한카드"));
+        }
+
+        /**
+         * 이 테스트가 이 기능의 이유다.
+         *
+         * <p>기간이 겹치게 내려받은 파일 두 장을 함께 올리면 겹치는 줄이 두 번 들어간다.
+         * 파일마다 따로 미리 보면 <b>둘째 파일을 볼 때 첫 파일은 아직 원장에 없어서</b>
+         * 「중복 없음」으로 지나가고, 그 뒤에 조용히 두 벌이 쌓인다.
+         */
+        @Test
+        @DisplayName("앞 파일과 겹치는 줄을 중복 후보로 알린다 — 어느 파일 몇 번째 줄인지까지")
+        void findsDuplicatesAcrossFiles() throws Exception {
+            String quarter = """
+                    날짜,내용,금액
+                    2026-01-10,스타벅스 역삼,-5500
+                    2026-01-11,편의점,-3200
+                    """;
+            // 같은 기간을 한 번 더 받은 파일. 첫 줄이 위 파일의 셋째 줄과 같은 거래다.
+            String january = """
+                    날짜,내용,금액
+                    2026-01-11,편의점,-3200
+                    2026-01-20,지하철,-1400
+                    """;
+
+            multiPreview("""
+                    {"files": [%s, %s]}
+                    """.formatted(previewSpec(checking), previewSpec(checking)),
+                    csvFile("3분기.csv", quarter), csvFile("1월.csv", january))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.duplicateCount").value(1))
+                    // 첫 파일은 견줄 앞 파일이 없다.
+                    .andExpect(jsonPath("$.data.files[0].duplicateCount").value(0))
+                    .andExpect(jsonPath("$.data.files[1].duplicateCount").value(1))
+                    // 자리로 가리킨다 — 아직 원장에 없어서 id가 없다.
+                    .andExpect(jsonPath("$.data.files[1].rows[0].duplicateOfRow.fileIndex")
+                            .value(0))
+                    .andExpect(jsonPath("$.data.files[1].rows[0].duplicateOfRow.rowNumber")
+                            .value(3))
+                    .andExpect(jsonPath("$.data.files[1].rows[1].duplicateOfRow").doesNotExist());
+        }
+
+        /**
+         * 같은 파일 <b>안</b>의 줄끼리는 견주지 않는다.
+         *
+         * <p>한 파일은 은행이 준 그대로다. 그 안에 같은 줄이 두 번 있으면 실제로 두 번 일어난
+         * 거래이고, 그걸 중복이라 부르면 커피 두 잔이 한 잔으로 줄어든다.
+         */
+        @Test
+        @DisplayName("같은 파일 안에서 같은 줄이 두 번 나와도 중복이 아니다")
+        void doesNotCompareRowsWithinTheSameFile() throws Exception {
+            preview("""
+                    날짜,내용,금액
+                    2026-01-10,스타벅스,-5500
+                    2026-01-10,스타벅스,-5500
+                    """)
+                    .andExpect(jsonPath("$.data.duplicateCount").value(0));
+        }
+
+        /** 원장에 있는 거래를 가리키는 편이 구체적이다 — 사람이 열어 확인할 수 있다. */
+        @Test
+        @DisplayName("원장에도 앞 파일에도 있으면 원장 쪽을 가리킨다")
+        void prefersTheExistingTransaction() throws Exception {
+            LedgerFixture.createTransaction(mockMvc, authHeader, """
+                    {"type": "EXPENSE", "amount": 5500, "assetId": %d,
+                     "occurredOn": "2026-01-10", "title": "스타벅스"}
+                    """.formatted(checking));
+
+            String csv = """
+                    날짜,내용,금액
+                    2026-01-10,스타벅스,-5500
+                    """;
+
+            multiPreview("""
+                    {"files": [%s, %s]}
+                    """.formatted(previewSpec(checking), previewSpec(checking)),
+                    csvFile("a.csv", csv), csvFile("b.csv", csv))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.duplicateCount").value(2))
+                    .andExpect(jsonPath("$.data.files[1].rows[0].duplicateOf").isNumber())
+                    .andExpect(jsonPath("$.data.files[1].rows[0].duplicateOfRow").doesNotExist());
+        }
+
+        /**
+         * 짝이 밀린 채로 읽으면 은행 파일이 카드 매핑으로 해석된다. 그 결과는 「오류」가 아니라
+         * <b>그럴듯하게 틀린 줄</b>이라 사람이 찾지 못한다.
+         */
+        @Test
+        @DisplayName("파일 수와 설정 수가 다르면 짐작하지 않고 거부한다")
+        void rejectsMismatchedCounts() throws Exception {
+            String csv = """
+                    날짜,내용,금액
+                    2026-01-10,스타벅스,-5500
+                    """;
+
+            multiPreview("""
+                    {"files": [%s]}
+                    """.formatted(previewSpec(checking)),
+                    csvFile("a.csv", csv), csvFile("b.csv", csv))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("LDG-ERR-038"));
+        }
+
+        /** 줄 수 상한만으로는 못 막는다 — 스무 줄짜리 파일 천 장도 같은 곳에 닿는다. */
+        @Test
+        @DisplayName("파일이 스무 장을 넘으면 거부한다")
+        void rejectsTooManyFiles() throws Exception {
+            String csv = """
+                    날짜,내용,금액
+                    2026-01-10,스타벅스,-5500
+                    """;
+            MockMultipartFile[] files = new MockMultipartFile[21];
+            StringBuilder specs = new StringBuilder();
+            for (int i = 0; i < files.length; i++) {
+                files[i] = csvFile(i + ".csv", csv);
+                specs.append(i == 0 ? "" : ", ").append(previewSpec(checking));
+            }
+
+            multiPreview("{\"files\": [%s]}".formatted(specs), files)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("LDG-ERR-037"));
+        }
+
+        /** 파일마다 따로 세면 스무 장으로 상한의 스무 배가 들어온다. */
+        @Test
+        @DisplayName("줄 수 상한은 파일별이 아니라 합계로 센다")
+        void countsRowLimitAcrossFiles() throws Exception {
+            String half = manyRows(10_001);
+
+            multiPreview("""
+                    {"files": [%s, %s]}
+                    """.formatted(previewSpec(checking), previewSpec(checking)),
+                    csvFile("a.csv", half), csvFile("b.csv", half))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("LDG-ERR-025"));
+        }
+
+        /**
+         * 절반만 들어간 상태로 끝나면 무엇을 다시 올려야 하는지 알 수 없다. 넣기 전에 전부
+         * 읽어 두는 것이 이 보장의 실체다.
+         */
+        @Test
+        @DisplayName("한 장이라도 읽히지 않으면 앞 파일의 배치도 남지 않는다")
+        void rollsBackEveryBatchWhenOneFileFails() throws Exception {
+            String good = """
+                    날짜,내용,금액
+                    2026-01-10,스타벅스,-5500
+                    """;
+            MockMultipartFile broken = new MockMultipartFile("files", "사진.png",
+                    "image/png", new byte[] {1, 2, 3});
+
+            multiExecute("""
+                    {"files": [%s, %s]}
+                    """.formatted(executeSpec("좋은 파일", "[2]"), executeSpec("깨진 파일", "[2]")),
+                    csvFile("좋은.csv", good), broken)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("LDG-ERR-023"));
+
+            mockMvc.perform(get("/api/ledger/import/batches")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data", hasSize(0)));
+        }
+
+        private String previewSpec(long assetId) {
+            return """
+                    {"assetId": %d, "skipRows": 1,
+                     "mapping": {"date": 0, "title": 1, "amount": 2}}
+                    """.formatted(assetId);
+        }
+
+        private String executeSpec(String source, String rowNumbers) {
+            return """
+                    {"assetId": %d, "skipRows": 1, "source": "%s",
+                     "mapping": {"date": 0, "title": 1, "amount": 2},
+                     "rowNumbers": %s}
+                    """.formatted(checking, source, rowNumbers);
+        }
+
+        private String manyRows(int count) {
+            StringBuilder csv = new StringBuilder("날짜,내용,금액\n");
+            for (int i = 0; i < count; i++) {
+                csv.append("2026-01-10,줄 ").append(i).append(",-1000\n");
+            }
+            return csv.toString();
         }
     }
 
@@ -419,8 +681,8 @@ class LedgerImportTest extends ApiTestSupport {
                     날짜,내용,금액
                     2026-01-10,스타벅스 역삼,-5500
                     """)
-                    .andExpect(jsonPath("$.data.rows[0].categoryId").value((int) cafe))
-                    .andExpect(jsonPath("$.data.rows[0].categoryName").value("카페/간식"));
+                    .andExpect(jsonPath("$.data.files[0].rows[0].categoryId").value((int) cafe))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].categoryName").value("카페/간식"));
         }
 
         /**
@@ -544,13 +806,14 @@ class LedgerImportTest extends ApiTestSupport {
                      "mapping": {"date": 0, "type": 1, "amount": 2, "title": 5, "memo": 6}}
                     """.formatted(checking);
             mockMvc.perform(multipart("/api/ledger/import/preview")
-                            .file(new MockMultipartFile("file", "export.csv", "text/csv", exported))
-                            .file(jsonPart(request))
+                            .file(new MockMultipartFile("files", "export.csv", "text/csv",
+                                    exported))
+                            .file(filesPart(request))
                             .header(HttpHeaders.AUTHORIZATION, authHeader))
                     .andExpect(jsonPath("$.data.errorCount").value(0))
-                    .andExpect(jsonPath("$.data.rows[0].amount").value(5500))
-                    .andExpect(jsonPath("$.data.rows[0].type").value("EXPENSE"))
-                    .andExpect(jsonPath("$.data.rows[0].title").value("스타벅스 역삼"))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].amount").value(5500))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].type").value("EXPENSE"))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].title").value("스타벅스 역삼"))
                     // 같은 거래가 이미 원장에 있으니 중복 후보로 잡혀야 한다.
                     .andExpect(jsonPath("$.data.duplicateCount").value(1));
         }
@@ -586,11 +849,12 @@ class LedgerImportTest extends ApiTestSupport {
                                  "title": 5, "memo": 6}}
                     """.formatted(checking);
             mockMvc.perform(multipart("/api/ledger/import/preview")
-                            .file(new MockMultipartFile("file", "export.csv", "text/csv", exported))
-                            .file(jsonPart(request))
+                            .file(new MockMultipartFile("files", "export.csv", "text/csv",
+                                    exported))
+                            .file(filesPart(request))
                             .header(HttpHeaders.AUTHORIZATION, authHeader))
-                    .andExpect(jsonPath("$.data.rows[0].assetName").value("신한카드"))
-                    .andExpect(jsonPath("$.data.rows[1].assetName").value("급여통장"))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].assetName").value("신한카드"))
+                    .andExpect(jsonPath("$.data.files[0].rows[1].assetName").value("급여통장"))
                     // 제 자산으로 견줘야 둘 다 중복으로 잡힌다.
                     .andExpect(jsonPath("$.data.duplicateCount").value(2));
         }
@@ -611,7 +875,7 @@ class LedgerImportTest extends ApiTestSupport {
 
             multipartPreview(csv, request)
                     .andExpect(jsonPath("$.data.errorCount").value(0))
-                    .andExpect(jsonPath("$.data.rows[0].assetName").value("급여통장"));
+                    .andExpect(jsonPath("$.data.files[0].rows[0].assetName").value("급여통장"));
         }
     }
 
@@ -644,8 +908,8 @@ class LedgerImportTest extends ApiTestSupport {
 
     private ResultActions multipartPreview(String csv, String request) throws Exception {
         return mockMvc.perform(multipart("/api/ledger/import/preview")
-                        .file(csvPart(csv))
-                        .file(jsonPart(request))
+                        .file(csvFile("sample.csv", csv))
+                        .file(filesPart(request))
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk());
     }
@@ -657,14 +921,46 @@ class LedgerImportTest extends ApiTestSupport {
                  "rowNumbers": %s}
                 """.formatted(checking, rowNumbers);
         return mockMvc.perform(multipart("/api/ledger/import/execute")
-                .file(csvPart(csv))
-                .file(jsonPart(request))
+                .file(csvFile("sample.csv", csv))
+                .file(filesPart(request))
                 .header(HttpHeaders.AUTHORIZATION, authHeader));
     }
 
+    /** 분석은 파일 한 장씩 묻는다 — 파트 이름이 미리보기·실행과 다르다. */
     private MockMultipartFile csvPart(String csv) {
         return new MockMultipartFile("file", "sample.csv", "text/csv",
                 csv.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** 미리보기·실행이 받는 파일 파트. 여러 장이면 이 파트를 여러 번 붙인다. */
+    private MockMultipartFile csvFile(String name, String csv) {
+        return new MockMultipartFile("files", name, "text/csv",
+                csv.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private ResultActions multiPreview(String request, MockMultipartFile... files)
+            throws Exception {
+        return performMulti("/api/ledger/import/preview", request, files);
+    }
+
+    private ResultActions multiExecute(String request, MockMultipartFile... files)
+            throws Exception {
+        return performMulti("/api/ledger/import/execute", request, files);
+    }
+
+    private ResultActions performMulti(String path, String request, MockMultipartFile... files)
+            throws Exception {
+        var builder = multipart(path);
+        for (MockMultipartFile file : files) {
+            builder = builder.file(file);
+        }
+        return mockMvc.perform(builder.file(jsonPart(request))
+                .header(HttpHeaders.AUTHORIZATION, authHeader));
+    }
+
+    /** 파일 한 장짜리 요청. 설정은 파일마다 오므로 목록으로 감싼다. */
+    private MockMultipartFile filesPart(String fileRequest) {
+        return jsonPart("{\"files\": [%s]}".formatted(fileRequest));
     }
 
     private MockMultipartFile jsonPart(String json) {

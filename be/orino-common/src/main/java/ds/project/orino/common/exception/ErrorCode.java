@@ -144,6 +144,12 @@ public enum ErrorCode {
     // 비밀번호가 걸린 채로 내려오는 것이 기본이라, 이 둘은 제 이름으로 알려야 한다.
     LEDGER_IMPORT_PASSWORD_REQUIRED("LDG-ERR-035", "암호가 걸린 파일입니다. 비밀번호를 함께 보내 주세요.", 400),
     LEDGER_IMPORT_PASSWORD_WRONG("LDG-ERR-036", "파일 비밀번호가 맞지 않습니다.", 400),
+    // 여러 장을 한 번에 받는다. 파일마다 온 파일을 다 들고 파싱하므로 개수와 합계 줄 수
+    // 둘 다 막아야 한다 — 한쪽만 막으면 20줄짜리 파일 천 장으로 같은 곳에 닿는다.
+    LEDGER_IMPORT_TOO_MANY_FILES("LDG-ERR-037", "한 번에 올릴 수 있는 파일 수를 넘었습니다.", 400),
+    // 파일 목록과 설정 목록의 순서가 곧 짝이다. 수가 어긋나면 엉뚱한 설정으로 읽히므로
+    // 짐작하지 않고 거부한다.
+    LEDGER_IMPORT_FILE_COUNT_MISMATCH("LDG-ERR-038", "파일 수와 설정 수가 맞지 않습니다.", 400),
 
     // 자동 분류 · 포인트
     LEDGER_AUTO_RULE_NOT_FOUND("LDG-ERR-031", "존재하지 않는 자동 분류 규칙입니다.", 404),

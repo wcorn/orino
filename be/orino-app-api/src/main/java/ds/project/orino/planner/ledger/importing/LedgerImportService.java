@@ -43,12 +43,30 @@ import java.util.Set;
  * <p><b>자동으로 병합하지 않는다</b>(`LDG-092`). 중복 후보는 <b>보여줄 뿐</b>이고,
  * 병합 API는 만들지 않았다 — 사람이 실행 목록에서 그 줄을 빼는 것이 유일한 처리다.
  * 자동 병합의 불투명함이 원장 신뢰를 깨뜨린다.
+ *
+ * <p><b>파일을 여러 장 받는다</b>(#1320). 은행이 내려주는 거래내역은 한 장이 아니다 — 기간을
+ * 나눠 받아야 하고, 그렇게 받으면 <b>구간이 겹친다.</b> 그래서 중복 후보를 원장뿐 아니라
+ * <b>앞 파일의 줄</b>과도 견준다. 견주지 않으면 겹치는 구간이 조용히 두 번 들어가는데,
+ * 미리보기는 그 직전에 「중복 없음」이라고 말한 뒤다 — `LDG-092`가 막으려던 바로 그 일이다.
+ *
+ * <p>다만 <b>같은 파일 안</b>의 줄끼리는 견주지 않는다. 한 파일은 은행이 준 그대로이고, 그
+ * 안에 같은 줄이 두 번 있으면 실제로 두 번 일어난 거래다. 겹침은 「같은 기간을 두 번
+ * 내려받았을 때」 생기고, 그것은 파일 경계에서 생긴다.
  */
 @Service
 public class LedgerImportService {
 
     /** 중복을 견줄 때 앞뒤로 볼 날. 같은 거래가 하루 어긋나 적히는 소스가 있다. */
     private static final int DUPLICATE_WINDOW_DAYS = 1;
+
+    /**
+     * 한 번에 받을 파일 수.
+     *
+     * <p>줄 수 상한({@link LedgerSheetReader#MAX_ROWS})만으로는 부족하다 — 파일을 전부 메모리에
+     * 들고 파싱하므로, 20줄짜리 파일 천 장도 같은 곳에 닿는다. 아홉 해치를 아홉 장으로 받는
+     * 것이 실제 쓰임이라 스무 장이면 넉넉하다.
+     */
+    private static final int MAX_FILES = 20;
 
     private final LedgerSheetReader reader;
     private final LedgerTransactionService transactionService;
@@ -111,32 +129,65 @@ public class LedgerImportService {
      * 알면 배치를 통째로 되돌리는 수밖에 없다.
      */
     @Transactional(readOnly = true)
-    public ImportDtos.PreviewResponse preview(Long memberId, MultipartFile file,
+    public ImportDtos.PreviewResponse preview(Long memberId, List<MultipartFile> files,
                                               ImportDtos.PreviewRequest request) {
-        List<ParsedRow> parsed = parse(memberId, file, request.mapping(),
-                request.skipRows(), request.dateFormat(), request.password());
+        List<List<ParsedRow>> byFile = parseAll(memberId, files, request.files());
 
         Map<Long, String> categoryNames = categoryNames(memberId);
         Map<Long, String> assetNames = assetNames(memberId);
-        List<LedgerTransaction> existing = candidatesFor(memberId, parsed);
+        List<LedgerTransaction> existing = candidatesFor(memberId,
+                byFile.stream().flatMap(List::stream).toList());
 
-        List<ImportDtos.PreviewRow> rows = new ArrayList<>();
-        int duplicates = 0;
-        int errors = 0;
-        for (ParsedRow row : parsed) {
-            Long assetId = row.assetId == null ? request.assetId() : row.assetId;
-            Long duplicateOf = row.error != null ? null : duplicateOf(row, existing, assetId);
-            if (row.error != null) {
-                errors++;
-            } else if (duplicateOf != null) {
-                duplicates++;
+        // 앞 파일들이 넣으려는 줄. 파일 하나를 다 훑은 뒤에 넣는다 — 같은 파일 안끼리는
+        // 견주지 않기 때문이다.
+        List<PriorRow> prior = new ArrayList<>();
+        List<ImportDtos.FilePreview> previews = new ArrayList<>();
+        int totalRows = 0;
+        int totalDuplicates = 0;
+        int totalErrors = 0;
+
+        for (int fileIndex = 0; fileIndex < byFile.size(); fileIndex++) {
+            Long defaultAssetId = request.files().get(fileIndex).assetId();
+            List<ParsedRow> parsed = byFile.get(fileIndex);
+            List<ImportDtos.PreviewRow> rows = new ArrayList<>();
+            List<PriorRow> fromThisFile = new ArrayList<>();
+            int duplicates = 0;
+            int errors = 0;
+
+            for (ParsedRow row : parsed) {
+                Long assetId = row.assetId == null ? defaultAssetId : row.assetId;
+                Long duplicateOf = null;
+                ImportDtos.RowRef duplicateOfRow = null;
+                if (row.error != null) {
+                    errors++;
+                } else {
+                    duplicateOf = duplicateOf(row, existing, assetId);
+                    // 원장에 이미 있는 거래가 먼저다 — 그쪽이 더 구체적이고, 사람이 열어
+                    // 확인할 수 있다. 앞 파일의 줄은 아직 아무 데도 없다.
+                    if (duplicateOf == null) {
+                        duplicateOfRow = duplicateInPriorFiles(row, prior, assetId);
+                    }
+                    if (duplicateOf != null || duplicateOfRow != null) {
+                        duplicates++;
+                    }
+                    fromThisFile.add(new PriorRow(fileIndex, row.rowNumber, row.occurredOn,
+                            row.amount, assetId, normalize(row.title)));
+                }
+                rows.add(new ImportDtos.PreviewRow(
+                        row.rowNumber, row.occurredOn, row.type, row.amount, row.title, row.memo,
+                        row.categoryId, categoryNames.get(row.categoryId), row.error, duplicateOf,
+                        duplicateOfRow, assetId, assetNames.get(assetId)));
             }
-            rows.add(new ImportDtos.PreviewRow(
-                    row.rowNumber, row.occurredOn, row.type, row.amount, row.title, row.memo,
-                    row.categoryId, categoryNames.get(row.categoryId), row.error, duplicateOf,
-                    assetId, assetNames.get(assetId)));
+
+            prior.addAll(fromThisFile);
+            previews.add(new ImportDtos.FilePreview(fileIndex,
+                    files.get(fileIndex).getOriginalFilename(), rows, rows.size(),
+                    duplicates, errors));
+            totalRows += rows.size();
+            totalDuplicates += duplicates;
+            totalErrors += errors;
         }
-        return new ImportDtos.PreviewResponse(rows, rows.size(), duplicates, errors);
+        return new ImportDtos.PreviewResponse(previews, totalRows, totalDuplicates, totalErrors);
     }
 
     /**
@@ -148,37 +199,56 @@ public class LedgerImportService {
      * <p>거래 생성은 {@link LedgerTransactionService}를 그대로 지나간다. 카드 사이클 편입·
      * 예정 판정·검증이 <b>손으로 적을 때와 같아야</b> 하기 때문이다 — 여기서 따로 만들면
      * 가져온 거래만 청구서에 안 잡히는 날이 온다.
+     *
+     * <p><b>배치는 파일마다 하나</b>다(#1320). 되돌리기가 파일 단위로 남아야 아홉 장 중 한 장만
+     * 물릴 수 있다. 그러면서도 <b>한 트랜잭션</b>이라, 도중에 실패하면 그때까지 만든 배치까지
+     * 전부 사라진다 — 절반만 들어간 상태로 끝나면 무엇을 다시 올려야 하는지 알 수 없다.
      */
     @Transactional
-    public ImportDtos.ExecuteResponse execute(Long memberId, MultipartFile file,
+    public ImportDtos.ExecuteResponse execute(Long memberId, List<MultipartFile> files,
                                               ImportDtos.ExecuteRequest request) {
         bootstrap.ensureSeeded(memberId);
-        List<ParsedRow> parsed = parse(memberId, file, request.mapping(),
-                request.skipRows(), request.dateFormat(), request.password());
-        Set<Integer> wanted = new HashSet<>(request.rowNumbers());
+        // 넣기 전에 전부 읽는다 — 다섯 장째가 안 읽히는 것을 넉 장을 넣은 뒤에 알면,
+        // 되돌릴 배치가 이미 넷이다.
+        List<List<ParsedRow>> byFile = parseAll(memberId, files, request.files());
 
-        List<TransactionCreateRequest> requests = new ArrayList<>();
-        for (ParsedRow row : parsed) {
-            if (row.error != null || !wanted.contains(row.rowNumber)) {
-                continue;
+        List<ImportDtos.BatchResult> batches = new ArrayList<>();
+        int totalInserted = 0;
+        int totalSkipped = 0;
+
+        for (int fileIndex = 0; fileIndex < byFile.size(); fileIndex++) {
+            ImportDtos.FileExecute spec = request.files().get(fileIndex);
+            List<ParsedRow> parsed = byFile.get(fileIndex);
+            Set<Integer> wanted = new HashSet<>(spec.rowNumbers());
+
+            List<TransactionCreateRequest> requests = new ArrayList<>();
+            for (ParsedRow row : parsed) {
+                if (row.error != null || !wanted.contains(row.rowNumber)) {
+                    continue;
+                }
+                requests.add(new TransactionCreateRequest(
+                        row.type, row.amount, row.occurredOn, null,
+                        row.assetId == null ? spec.assetId() : row.assetId, null,
+                        row.categoryId, row.title, row.memo, List.of(), false, null, null));
             }
-            requests.add(new TransactionCreateRequest(
-                    row.type, row.amount, row.occurredOn, null,
-                    row.assetId == null ? request.assetId() : row.assetId, null,
-                    row.categoryId, row.title, row.memo, List.of(), false, null, null));
+
+            String fileName = files.get(fileIndex).getOriginalFilename();
+            LedgerImportBatch batch = batchRepository.save(new LedgerImportBatch(
+                    memberId, spec.source(), fileName, parsed.size()));
+
+            List<TransactionView> created = requests.isEmpty()
+                    ? List.of()
+                    : transactionService.createAll(memberId, requests).created();
+            stampBatch(created, batch.getId());
+            batch.markInserted(created.size());
+
+            int skipped = parsed.size() - created.size();
+            batches.add(new ImportDtos.BatchResult(
+                    batch.getId(), fileName, created.size(), skipped));
+            totalInserted += created.size();
+            totalSkipped += skipped;
         }
-
-        LedgerImportBatch batch = batchRepository.save(new LedgerImportBatch(
-                memberId, request.source(), file.getOriginalFilename(), parsed.size()));
-
-        List<TransactionView> created = requests.isEmpty()
-                ? List.of()
-                : transactionService.createAll(memberId, requests).created();
-        stampBatch(created, batch.getId());
-        batch.markInserted(created.size());
-
-        return new ImportDtos.ExecuteResponse(
-                batch.getId(), created.size(), parsed.size() - created.size());
+        return new ImportDtos.ExecuteResponse(batches, totalInserted, totalSkipped);
     }
 
     @Transactional(readOnly = true)
@@ -216,28 +286,61 @@ public class LedgerImportService {
     }
 
     /**
-     * 파일 한 장을 줄 목록으로.
+     * 파일 전부를 줄 목록으로. <b>파일마다 제 설정으로</b> 읽는다.
      *
      * <p>못 읽은 줄도 <b>버리지 않고</b> 사유를 달아 남긴다 — 조용히 빠지면 사람은 전부
      * 들어갔다고 믿고, 빠진 줄은 몇 달 뒤 잔액이 안 맞을 때에야 드러난다.
+     *
+     * <p>규칙·카테고리·자산 이름은 <b>한 번만</b> 읽는다. 파일마다 다시 읽으면 아홉 장짜리
+     * 이관이 같은 조회를 스물일곱 번 한다.
+     *
+     * <p>줄 수 상한은 <b>합계</b>로 센다. 파일마다 따로 세면 스무 장으로 상한의 스무 배가
+     * 들어온다.
      */
-    private List<ParsedRow> parse(Long memberId, MultipartFile file, ImportDtos.Mapping mapping,
-                                  Integer skipRows, String dateFormat, String password) {
-        if (mapping.date() == null || !mapping.hasAmountSource()) {
-            throw new CustomException(ErrorCode.LEDGER_IMPORT_MAPPING_REQUIRED);
-        }
-        List<List<String>> rows = reader.read(file, password);
-        int skip = skipRows == null ? 1 : Math.max(skipRows, 0);
+    private List<List<ParsedRow>> parseAll(Long memberId, List<MultipartFile> files,
+                                           List<? extends ImportDtos.FileRead> specs) {
+        requirePaired(files, specs.size());
         List<LedgerAutoRule> rules = autoRuleService.rulesOf(memberId);
         Map<String, Long> categoryByName = categoryIdsByName(memberId);
         Map<String, Long> assetByName = assetIdsByName(memberId);
 
-        List<ParsedRow> parsed = new ArrayList<>();
-        for (int i = skip; i < rows.size(); i++) {
-            parsed.add(parseRow(rows.get(i), i + 1, mapping, dateFormat, rules,
-                    categoryByName, assetByName));
+        List<List<ParsedRow>> byFile = new ArrayList<>();
+        int total = 0;
+        for (int i = 0; i < files.size(); i++) {
+            ImportDtos.FileRead spec = specs.get(i);
+            if (spec.mapping().date() == null || !spec.mapping().hasAmountSource()) {
+                throw new CustomException(ErrorCode.LEDGER_IMPORT_MAPPING_REQUIRED);
+            }
+            List<List<String>> rows = reader.read(files.get(i), spec.password());
+            int skip = spec.skipRows() == null ? 1 : Math.max(spec.skipRows(), 0);
+
+            List<ParsedRow> parsed = new ArrayList<>();
+            for (int line = skip; line < rows.size(); line++) {
+                parsed.add(parseRow(rows.get(line), line + 1, spec.mapping(), spec.dateFormat(),
+                        rules, categoryByName, assetByName));
+            }
+            total += parsed.size();
+            if (total > LedgerSheetReader.MAX_ROWS) {
+                throw new CustomException(ErrorCode.LEDGER_IMPORT_TOO_MANY_ROWS);
+            }
+            byFile.add(parsed);
         }
-        return parsed;
+        return byFile;
+    }
+
+    /**
+     * 파일과 설정은 <b>순서로 짝</b>이다.
+     *
+     * <p>수가 어긋나면 짐작하지 않고 거부한다 — 짝이 밀린 채로 읽으면 은행 파일이 카드
+     * 매핑으로 해석되고, 그 결과는 「오류」가 아니라 <b>그럴듯하게 틀린 줄</b>이다.
+     */
+    private void requirePaired(List<MultipartFile> files, int specCount) {
+        if (files.size() > MAX_FILES) {
+            throw new CustomException(ErrorCode.LEDGER_IMPORT_TOO_MANY_FILES);
+        }
+        if (files.size() != specCount) {
+            throw new CustomException(ErrorCode.LEDGER_IMPORT_FILE_COUNT_MISMATCH);
+        }
     }
 
     private ParsedRow parseRow(List<String> cells, int rowNumber, ImportDtos.Mapping mapping,
@@ -364,6 +467,34 @@ public class LedgerImportService {
         return null;
     }
 
+    /**
+     * 앞 파일과 겹치는 줄 찾기(#1320).
+     *
+     * <p>견주는 규칙은 원장과 견줄 때와 <b>같다</b>(날짜 ±1일 · 금액 · 자산 · 내용). 다르면
+     * 「원장에 있으면 걸리는데 앞 파일에 있으면 안 걸린다」는 설명할 수 없는 차이가 생긴다.
+     *
+     * <p>{@code prior}에는 <b>앞 파일의 줄만</b> 들어 있다 — 같은 파일 안의 줄끼리는 견주지
+     * 않는다. 은행이 같은 날 같은 금액을 두 줄로 준 것은 실제로 두 번 일어난 일이다.
+     */
+    private ImportDtos.RowRef duplicateInPriorFiles(ParsedRow row, List<PriorRow> prior,
+                                                    Long assetId) {
+        String title = normalize(row.title);
+        for (PriorRow other : prior) {
+            if (!assetId.equals(other.assetId) || other.amount != row.amount) {
+                continue;
+            }
+            long gap = Math.abs(other.occurredOn.toEpochDay() - row.occurredOn.toEpochDay());
+            if (gap > DUPLICATE_WINDOW_DAYS) {
+                continue;
+            }
+            if (title.isEmpty() || other.title.isEmpty() || title.equals(other.title)
+                    || title.contains(other.title) || other.title.contains(title)) {
+                return new ImportDtos.RowRef(other.fileIndex, other.rowNumber);
+            }
+        }
+        return null;
+    }
+
     /** 견줄 구간을 파일이 정한다 — 원장 전체를 읽으면 몇 년치 이관에서 메모리가 터진다. */
     private List<LedgerTransaction> candidatesFor(Long memberId, List<ParsedRow> parsed) {
         LocalDate from = null;
@@ -469,5 +600,14 @@ public class LedgerImportService {
     }
 
     private record Signed(long amount, LedgerFlow type) {
+    }
+
+    /**
+     * 앞 파일이 넣으려는 줄. 아직 원장에 없어서 id가 없으므로 <b>자리</b>로 가리킨다.
+     *
+     * @param title 이미 {@code normalize}를 지난 값. 줄마다 다시 다듬으면 파일 수의 제곱만큼 돈다
+     */
+    private record PriorRow(int fileIndex, int rowNumber, LocalDate occurredOn, long amount,
+                            Long assetId, String title) {
     }
 }
