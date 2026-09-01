@@ -60,20 +60,28 @@ public class LedgerImportController {
         return ApiResponse.success(importService.analyze(memberId, file, password));
     }
 
+    /**
+     * 2단계. <b>파일을 여러 장 받는다</b>(#1320) — {@code files} 파트의 순서가 요청의
+     * {@code request.files()} 순서와 짝이다.
+     *
+     * <p>한 요청에 다 오는 것이 <b>파일끼리 겹치는 줄을 보기 위한 조건</b>이다. 파일마다 따로
+     * 물으면 두 번째 파일을 볼 때 첫 파일은 아직 원장에도 없어서 중복으로 걸리지 않는다.
+     */
     @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<ImportDtos.PreviewResponse> preview(
             @AuthenticationPrincipal Long memberId,
-            @RequestPart("file") MultipartFile file,
+            @RequestPart("files") List<MultipartFile> files,
             @Valid @RequestPart("request") ImportDtos.PreviewRequest request) {
-        return ApiResponse.success(importService.preview(memberId, file, request));
+        return ApiResponse.success(importService.preview(memberId, files, request));
     }
 
+    /** 3단계. 파일마다 배치를 하나씩 만든다 — 한 트랜잭션이라 한 장이 실패하면 전부 물린다. */
     @PostMapping(value = "/import/execute", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<ImportDtos.ExecuteResponse> execute(
             @AuthenticationPrincipal Long memberId,
-            @RequestPart("file") MultipartFile file,
+            @RequestPart("files") List<MultipartFile> files,
             @Valid @RequestPart("request") ImportDtos.ExecuteRequest request) {
-        return ApiResponse.success(importService.execute(memberId, file, request));
+        return ApiResponse.success(importService.execute(memberId, files, request));
     }
 
     @GetMapping("/import/batches")

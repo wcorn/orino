@@ -37,22 +37,41 @@ async function choose(
   await user.click(await screen.findByRole("option", { name: option }));
 }
 
-/** 파일을 고른 뒤 열 맞추기까지 가는 공통 동선. */
-async function pickFileAndMap(user: ReturnType<typeof userEvent.setup>) {
-  const file = new File(
-    ["날짜,내용,금액\n2026-08-10,스타벅스,-5500\n"],
-    "card.csv",
-    {
-      type: "text/csv",
-    },
-  );
-  await user.upload(await screen.findByLabelText("가져올 파일"), file);
+function csvFile(name: string) {
+  return new File(["날짜,내용,금액\n2026-08-10,스타벅스,-5500\n"], name, {
+    type: "text/csv",
+  });
+}
 
+/**
+ * 파일을 고르고 열 맞추기 단계까지 간다.
+ *
+ * <p>파일을 고르는 것만으로 넘어가지 않는다 — 여러 장을 고르는 중일 수 있어서, 다 골랐다는
+ * 것은 사람이 말한다.
+ */
+async function pickFiles(
+  user: ReturnType<typeof userEvent.setup>,
+  files: File[],
+) {
+  await user.upload(await screen.findByLabelText("가져올 파일"), files);
+  const next = await screen.findByRole("button", { name: "열 맞추기" });
+  await waitFor(() => expect(next).toBeEnabled());
+  await user.click(next);
   // 스테퍼와 매핑 제목에 같은 말이 있다 — 폼이 떴는지는 자산 셀렉트로 본다.
   await screen.findByRole("combobox", { name: "자산" });
+}
+
+/** 지금 보고 있는 파일의 열을 맞춘다. */
+async function mapActiveFile(user: ReturnType<typeof userEvent.setup>) {
   await choose(user, "자산", "급여통장");
   await choose(user, "날짜 열", "1. 날짜");
   await choose(user, "금액 열", "3. 금액");
+}
+
+/** 파일 한 장을 골라 열을 맞추고 미리보기까지 가는 공통 동선. */
+async function pickFileAndMap(user: ReturnType<typeof userEvent.setup>) {
+  await pickFiles(user, [csvFile("card.csv")]);
+  await mapActiveFile(user);
   await user.click(screen.getByRole("button", { name: "미리 보기" }));
 }
 
@@ -84,16 +103,12 @@ describe("가져오기", () => {
       },
     });
 
-    const file = new File(
-      ["안내문\n거래일시,구분,거래금액,내용\n"],
-      "거래내역.csv",
-      {
+    await pickFiles(user, [
+      new File(["안내문\n거래일시,구분,거래금액,내용\n"], "거래내역.csv", {
         type: "text/csv",
-      },
-    );
-    await user.upload(await screen.findByLabelText("가져올 파일"), file);
+      }),
+    ]);
 
-    await screen.findByRole("combobox", { name: "자산" });
     // 머리글이 7번째 줄이었으니 그 앞 일곱 줄을 건너뛴다.
     expect(screen.getByLabelText("건너뛸 머리글 줄 수")).toHaveValue("7");
     // 열 이름이 제대로 보여야 사람이 고를 수 있다 — 「(이름 없음)」이면 번호를 세야 한다.
@@ -105,6 +120,10 @@ describe("가져오기", () => {
     ).toBeInTheDocument();
   });
 
+  /**
+   * 못 읽은 파일을 그냥 지나치면 사람은 전부 들어갔다고 믿는다 — 그래서 목록에 남기고,
+   * 다음으로 넘어가는 문을 잠근다.
+   */
   it("암호가 걸린 파일은 무엇이 문제인지 말하고, 비밀번호를 받으면 읽는다", async () => {
     const user = userEvent.setup();
     renderAt("/ledger/import", { importFirstAnalyzeFails: "LDG-ERR-035" });
@@ -118,12 +137,17 @@ describe("가져오기", () => {
     expect(
       await screen.findByText(/암호가 걸린 파일이에요/),
     ).toBeInTheDocument();
+    expect(screen.getByText(/읽지 못한 파일이 1장 있어요/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "열 맞추기" })).toBeDisabled();
 
     // 같은 파일을 다시 고르는 것으로는 브라우저가 아무 일도 하지 않는다 —
     // 그래서 고른 파일을 들고 있다가 「다시 읽기」로 연다.
-    await user.type(screen.getByLabelText("파일 비밀번호"), "990820");
-    await user.click(screen.getByRole("button", { name: "이 파일 다시 읽기" }));
+    await user.type(screen.getByLabelText("이 파일의 비밀번호"), "990820");
+    await user.click(screen.getByRole("button", { name: "다시 읽기" }));
 
+    const next = await screen.findByRole("button", { name: "열 맞추기" });
+    await waitFor(() => expect(next).toBeEnabled());
+    await user.click(next);
     expect(await screen.findByRole("combobox", { name: "자산" })).toBeVisible();
   });
 
@@ -157,13 +181,14 @@ describe("가져오기", () => {
 
     await pickFileAndMap(user);
 
-    const alert = await screen.findByText(/중복 후보 1건/);
-    expect(alert).toBeInTheDocument();
-    expect(screen.getByText(/자동으로 병합하지 않습니다/)).toBeInTheDocument();
+    // 파일별 구획도 제 몫을 세므로, 합계를 말하는 것은 제목 전체로 가린다.
+    expect(
+      await screen.findByText(/중복 후보 1건 — 자동으로 병합하지 않습니다/),
+    ).toBeInTheDocument();
 
     // 중복 줄은 꺼져 있고, 나머지는 켜져 있다.
-    expect(screen.getByLabelText("2번째 줄 넣기")).not.toBeChecked();
-    expect(screen.getByLabelText("3번째 줄 넣기")).toBeChecked();
+    expect(screen.getByLabelText(/2번째 줄 넣기/)).not.toBeChecked();
+    expect(screen.getByLabelText(/3번째 줄 넣기/)).toBeChecked();
     // 합치는 문이 화면에도 없다.
     expect(screen.queryByRole("button", { name: /병합/ })).toBeNull();
     expect(
@@ -202,7 +227,7 @@ describe("가져오기", () => {
     const submit = await screen.findByRole("button", { name: "0건 넣기" });
     expect(submit).toBeDisabled();
 
-    await user.click(screen.getByLabelText("2번째 줄 넣기"));
+    await user.click(screen.getByLabelText(/2번째 줄 넣기/));
     await user.click(await screen.findByRole("button", { name: "1건 넣기" }));
 
     // 완료 화면과 토스트가 같은 말을 한다 — 둘 다 세고 넘어간다.
@@ -234,7 +259,7 @@ describe("가져오기", () => {
 
     expect(await screen.findByText(/읽지 못한 줄 1건/)).toBeInTheDocument();
     expect(screen.getByText("날짜를 읽을 수 없습니다")).toBeInTheDocument();
-    expect(screen.getByLabelText("2번째 줄 넣기")).toBeDisabled();
+    expect(screen.getByLabelText(/2번째 줄 넣기/)).toBeDisabled();
   });
 
   it("자동 분류 결과를 미리 보여준다", async () => {
@@ -258,6 +283,163 @@ describe("가져오기", () => {
     await pickFileAndMap(user);
 
     expect(await screen.findByText("카페/간식")).toBeInTheDocument();
+  });
+
+  /**
+   * 파일 여러 장(#1320).
+   *
+   * <p>은행이 내려주는 거래내역은 한 장이 아니다. 여기서 확인하는 것은 <b>아홉 번 반복하지
+   * 않아도 되는가</b>와, 파일끼리 겹치는 줄이 <b>넣기 전에</b> 드러나는가다.
+   */
+  describe("파일 여러 장", () => {
+    it("두 장을 한 번에 골라, 설정을 퍼뜨려 한 번에 넣는다", async () => {
+      const user = userEvent.setup();
+      renderAt("/ledger/import", {
+        importPreview: {
+          files: [
+            {
+              fileName: "2026-01.csv",
+              rows: [
+                {
+                  rowNumber: 2,
+                  occurredOn: "2026-01-10",
+                  type: "EXPENSE",
+                  amount: 5500,
+                  title: "스타벅스",
+                },
+              ],
+            },
+            {
+              fileName: "2026-02.csv",
+              rows: [
+                {
+                  rowNumber: 2,
+                  occurredOn: "2026-02-10",
+                  type: "EXPENSE",
+                  amount: 3200,
+                  title: "편의점",
+                },
+              ],
+            },
+          ],
+        },
+        importExecute: {
+          inserted: 2,
+          batches: [
+            {
+              batchId: 1,
+              fileName: "2026-01.csv",
+              inserted: 1,
+              skipped: 0,
+            },
+            {
+              batchId: 2,
+              fileName: "2026-02.csv",
+              inserted: 1,
+              skipped: 0,
+            },
+          ],
+        },
+      });
+
+      await user.upload(await screen.findByLabelText("가져올 파일"), [
+        csvFile("2026-01.csv"),
+        csvFile("2026-02.csv"),
+      ]);
+      expect(await screen.findByText("고른 파일 2장")).toBeInTheDocument();
+
+      const next = screen.getByRole("button", { name: "열 맞추기" });
+      await waitFor(() => expect(next).toBeEnabled());
+      await user.click(next);
+
+      // 같은 곳에서 받은 아홉 장에 같은 매핑을 아홉 번 적는 것은 고문이다.
+      await mapActiveFile(user);
+      await user.click(
+        screen.getByRole("button", { name: /이 설정을 나머지 1장에도/ }),
+      );
+      expect(await screen.findByText("1장에 적용했어요")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "미리 보기" }));
+
+      // 파일 경계가 확인 화면에 남는다 — 줄 번호는 파일 안에서 세기 때문이다.
+      expect(
+        await screen.findByRole("heading", { name: "2026-01.csv" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "2026-02.csv" }),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "2건 넣기" }));
+
+      // 배치는 파일마다 하나다 — 완료 화면도 파일마다 한 줄로 알린다.
+      expect(
+        await screen.findByText(
+          /파일 2장에서 2건을 넣었어요/,
+          {},
+          { timeout: 3000 },
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/2026-01.csv — 1건/)).toBeInTheDocument();
+    });
+
+    /**
+     * 기간이 겹치게 내려받은 파일을 함께 올리면 겹치는 구간이 두 번 들어간다. 파일마다 따로
+     * 미리 보면 <b>둘째 파일을 볼 때 첫 파일은 아직 원장에 없어서</b> 「중복 없음」으로
+     * 지나간다 — 그래서 한 번에 보고, 어느 파일 몇 번째 줄인지까지 말한다.
+     */
+    it("앞 파일과 겹치는 줄을 어느 파일 몇 번째 줄인지까지 알리고 꺼 둔다", async () => {
+      const user = userEvent.setup();
+      renderAt("/ledger/import", {
+        importPreview: {
+          files: [
+            {
+              fileName: "3분기.csv",
+              rows: [
+                {
+                  rowNumber: 3,
+                  occurredOn: "2026-01-11",
+                  type: "EXPENSE",
+                  amount: 3200,
+                  title: "편의점",
+                },
+              ],
+            },
+            {
+              fileName: "1월.csv",
+              rows: [
+                {
+                  rowNumber: 2,
+                  occurredOn: "2026-01-11",
+                  type: "EXPENSE",
+                  amount: 3200,
+                  title: "편의점",
+                  duplicateOfRow: { fileIndex: 0, rowNumber: 3 },
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      await pickFiles(user, [csvFile("3분기.csv"), csvFile("1월.csv")]);
+      await mapActiveFile(user);
+      await user.click(
+        screen.getByRole("button", { name: /이 설정을 나머지 1장에도/ }),
+      );
+      await user.click(screen.getByRole("button", { name: "미리 보기" }));
+
+      expect(
+        await screen.findByText(/중복 후보 1건 — 자동으로 병합하지 않습니다/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/「3분기.csv」의 3번째 줄과 같아 보여요/),
+      ).toBeInTheDocument();
+      // 앞 파일의 줄도 기존 거래와 똑같이 꺼진 채로 온다.
+      expect(screen.getByLabelText(/1월.csv 2번째 줄 넣기/)).not.toBeChecked();
+      expect(
+        screen.getByRole("button", { name: "1건 넣기" }),
+      ).toBeInTheDocument();
+    });
   });
 
   describe("이력", () => {

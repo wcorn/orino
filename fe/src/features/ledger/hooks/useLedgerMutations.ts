@@ -484,17 +484,20 @@ export function useUpdateUsageGoal() {
  *
  * <p>넣을 줄 번호를 그대로 보낸다 — 서버가 중복이라고 다시 거르지 않는다. 미리보기에서 본
  * 것과 결과가 달라지면 그 순간 미리보기가 거짓말이 된다.
+ *
+ * <p>파일 여러 장을 <b>한 요청으로</b> 보낸다. 파일마다 배치가 하나씩 생기고, 도중에
+ * 실패하면 전부 물린다 — 절반만 들어간 상태로 끝나면 무엇을 다시 올려야 하는지 모른다.
  */
 export function useExecuteImport() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: ({
-      file,
-      request,
+      files,
+      requests,
     }: {
-      file: File;
-      request: {
+      files: File[];
+      requests: {
         assetId: number;
         mapping: ImportMapping;
         skipRows?: number;
@@ -503,8 +506,8 @@ export function useExecuteImport() {
         password?: string;
         source: string;
         rowNumbers: number[];
-      };
-    }) => executeImport(file, request),
+      }[];
+    }) => executeImport(files, requests),
     onSuccess: (result) => toast(`${result.inserted}건을 넣었어요`),
     onError: () => toast("가져오지 못했어요.", "error"),
     onSettled: () => invalidateAll(queryClient),
