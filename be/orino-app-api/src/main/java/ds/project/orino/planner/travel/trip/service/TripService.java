@@ -12,6 +12,8 @@ import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.day.service.BaseCityResolver;
 import ds.project.orino.planner.travel.day.service.LegExpander;
 import ds.project.orino.planner.travel.day.service.TripClock;
+import ds.project.orino.planner.travel.expense.dto.ExpenseSummary;
+import ds.project.orino.planner.travel.expense.service.TripExpenseQueryService;
 import ds.project.orino.planner.travel.prep.dto.PrepSummary;
 import ds.project.orino.planner.travel.prep.service.PrepService;
 import ds.project.orino.planner.travel.day.service.TripDayService;
@@ -29,7 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -57,6 +61,7 @@ public class TripService {
     private final BaseCityResolver baseCityResolver;
     private final TripStayShrinkService stayShrinkService;
     private final PrepService prepService;
+    private final TripExpenseQueryService expenseQueryService;
     private final Clock clock;
 
     public TripService(TripRepository tripRepository,
@@ -66,6 +71,7 @@ public class TripService {
                        BaseCityResolver baseCityResolver,
                        TripStayShrinkService stayShrinkService,
                        PrepService prepService,
+                       TripExpenseQueryService expenseQueryService,
                        Clock clock) {
         this.tripRepository = tripRepository;
         this.activityRepository = activityRepository;
@@ -74,6 +80,7 @@ public class TripService {
         this.baseCityResolver = baseCityResolver;
         this.stayShrinkService = stayShrinkService;
         this.prepService = prepService;
+        this.expenseQueryService = expenseQueryService;
         this.clock = clock;
     }
 
@@ -177,7 +184,13 @@ public class TripService {
         tripRepository.delete(getOwned(memberId, tripId));
     }
 
-    /** `/select` 카드와 여행 홈(S-01)이 함께 쓰는 요약. 셋 다 없으면 전부 null이다. */
+    /**
+     * `/select` 카드와 여행 홈(S-01)이 함께 쓰는 요약. 앞의 세 자리는 셋 다 없으면 전부 null이다.
+     *
+     * <p>(v2.2) 사이드바 여행 트리·폴백 화면이 읽는 {@code trips[]}가 여기서 함께 나온다 —
+     * <b>같은 배열을 두 화면이 읽는다</b>. 따로 만들면 사이드바에는 있는데 폴백에는 없는
+     * 여행이 생기고, 그 여행은 고를 수 없는 채로 사이드바에 남는다.
+     */
     public TravelSummaryResponse summary(Long memberId) {
         List<Trip> all = tripRepository.findAllByMemberIdOrderByStartDateDescIdDesc(memberId);
         TripCities cities = citiesOf(all);
@@ -215,10 +228,67 @@ public class TripService {
                         prepSummaryOf(next, cities)),
                 completed == null ? null : new TravelSummaryResponse.CompletedTrip(
                         completed.getId(), completed.getTitle(), completed.getEndDate(),
-                        counts.getOrDefault(completed.getId(), 0L)));
+                        counts.getOrDefault(completed.getId(), 0L)),
+                sidebarTripsOf(all, cities),
+                (int) all.stream()
+                        .filter(trip -> statusOf(trip, cities) == TripStatus.COMPLETED)
+                        .count());
     }
 
     // ---------------- helpers ----------------
+
+    /**
+     * 사이드바가 펼치는 여행 — <b>진행 중 → 예정</b>, 각각 시작일 오름차순. 다녀온 여행은
+     * 들어가지 않는다(D-39).
+     *
+     * <p>진행 중을 앞에 두는 이유는 사이드바가 <b>지금 어디에 있나</b>부터 답하는 자리이기
+     * 때문이다. 시작일만으로 한 줄로 세우면 어제 시작한 여행이 다음 주 여행 뒤로 갈 수 있다.
+     *
+     * <p>준비·경비는 <b>여행 수에 비례하는 유일한 집계</b>다. 여행마다 부르지 않고 두 번의
+     * 일괄 조회로 끝낸다 — 진행 중·예정은 보통 두어 건이지만, N+1이면 그때부터 는다.
+     */
+    private List<TravelSummaryResponse.SidebarTrip> sidebarTripsOf(List<Trip> all,
+                                                                  TripCities cities) {
+        List<Trip> ongoing = sortedByStart(all, cities, TripStatus.ONGOING);
+        List<Trip> upcoming = sortedByStart(all, cities, TripStatus.UPCOMING);
+        List<Trip> trips = new ArrayList<>(ongoing);
+        trips.addAll(upcoming);
+        if (trips.isEmpty()) {
+            return List.of();
+        }
+
+        // 준비의 기준 "오늘"은 D-day와 같은 시계다 — 여기서 한 번 내고 준비 집계에 넘긴다.
+        Map<Long, LocalDate> todayByTrip = new LinkedHashMap<>();
+        trips.forEach(trip -> todayByTrip.put(trip.getId(),
+                trip.getStartDate().minusDays(daysUntilStart(trip, cities))));
+
+        Map<Long, PrepSummary> preps = prepService.summariesOf(trips, todayByTrip);
+        Map<Long, ExpenseSummary> expenses = expenseQueryService.summariesOf(trips);
+
+        return trips.stream()
+                .map(trip -> sidebarTripOf(trip, cities, preps, expenses))
+                .toList();
+    }
+
+    private TravelSummaryResponse.SidebarTrip sidebarTripOf(
+            Trip trip, TripCities cities,
+            Map<Long, PrepSummary> preps, Map<Long, ExpenseSummary> expenses) {
+        boolean ongoing = statusOf(trip, cities) == TripStatus.ONGOING;
+        return new TravelSummaryResponse.SidebarTrip(
+                trip.getId(), trip.getTitle(), statusOf(trip, cities),
+                trip.getStartDate(), trip.getEndDate(),
+                // 「4일차」와 「D-49」는 같은 자리를 나눠 쓴다 — 한쪽만 찬다.
+                ongoing ? null : daysUntilStart(trip, cities),
+                ongoing ? trip.dayNumberOf(TripClock.today(trip, cities.of(trip), clock)) : null,
+                preps.get(trip.getId()), expenses.get(trip.getId()));
+    }
+
+    private List<Trip> sortedByStart(List<Trip> trips, TripCities cities, TripStatus status) {
+        return trips.stream()
+                .filter(trip -> statusOf(trip, cities) == status)
+                .sorted(Comparator.comparing(Trip::getStartDate).thenComparing(Trip::getId))
+                .toList();
+    }
 
     private Trip getOwned(Long memberId, Long tripId) {
         // 소유권 실패도 404 — 403이면 "그 id의 여행은 존재한다"가 새어나간다.

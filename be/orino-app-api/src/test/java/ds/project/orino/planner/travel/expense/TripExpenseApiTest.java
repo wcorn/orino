@@ -266,6 +266,66 @@ class TripExpenseApiTest extends ApiTestSupport {
         }
     }
 
+    /**
+     * 사이드바 여행 트리의 경비 한 줄(#1345 · API §2.1). 여기서 지키는 것은 <b>화면과 같은
+     * 값인가</b> 하나다 — 사이드바를 보고 들어간 사람이 경비 화면에서 다른 숫자를 보면,
+     * 어느 쪽이 맞는지 알 방법이 없다.
+     */
+    @Nested
+    @DisplayName("사이드바 요약 — trips[].expense")
+    class SidebarExpense {
+
+        @Test
+        @DisplayName("사이드바의 spent가 경비 화면의 「썼다」와 같은 값이다")
+        void spentMatchesExpenseScreen() throws Exception {
+            long tripId = ongoingTrip();
+            expense(tripId, 32000, "이자카야", "2026-01-15");
+            expense(tripId, 11300, "점심 라멘", "2026-01-15");
+            // 아직 안 나간 돈은 「썼다」가 아니다 — 화면도 여기도 예정은 빼고 센다.
+            expense(tripId, 80000, "숙소 잔금", "2026-01-17");
+            // 카드 대금 납부는 이체라 애초에 여행 경비가 아니다(§4.2).
+            long savings = LedgerFixture.createAsset(mockMvc, authHeader, "비상금", "SAVINGS");
+            LedgerFixture.createTransaction(mockMvc, authHeader, """
+                    {"type": "TRANSFER", "amount": 500000, "occurredOn": "2026-01-15",
+                     "assetId": %d, "counterAssetId": %d, "tripId": %d}
+                    """.formatted(checking, savings, tripId));
+
+            expenses(tripId).andExpect(jsonPath("$.data.totals.spent").value(43300));
+
+            summary()
+                    .andExpect(jsonPath("$.data.trips[0].expense.spent").value(43300));
+        }
+
+        @Test
+        @DisplayName("예산을 정했으면 그대로, 안 정했으면 null이다 — 0을 내리지 않는다")
+        void budgetIsNullWhenUnset() throws Exception {
+            long tripId = ongoingTrip();
+
+            summary().andExpect(jsonPath("$.data.trips[0].expense.budget").value(nullValue()));
+
+            putBudget(tripId, "800000");
+
+            summary().andExpect(jsonPath("$.data.trips[0].expense.budget").value(800000));
+        }
+
+        @Test
+        @DisplayName("한 푼도 안 쓴 여행도 expense가 온다 — spent가 0이지 null이 아니다")
+        void spentIsZeroNotNull() throws Exception {
+            ongoingTrip();
+
+            summary()
+                    .andExpect(jsonPath("$.data.trips[0].expense").exists())
+                    .andExpect(jsonPath("$.data.trips[0].expense.spent").value(0))
+                    .andExpect(jsonPath("$.data.trips[0].expense.budget").value(nullValue()));
+        }
+
+        private ResultActions summary() throws Exception {
+            return mockMvc.perform(get("/api/travel/summary")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
+        }
+    }
+
     @Test
     @DisplayName("남의 여행은 404 — 조회도 예산도")
     void hidesOthersTrip() throws Exception {

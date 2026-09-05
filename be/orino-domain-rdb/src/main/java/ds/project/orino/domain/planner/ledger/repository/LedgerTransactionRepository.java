@@ -147,6 +147,27 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
     List<LedgerTransaction> findTripExpenses(@Param("tripId") Long tripId);
 
     /**
+     * 여행별 <b>확정</b> 지출 합계. 조건은 위 {@link #findTripExpenses}와 같고, 거기에
+     * 확정만 남기는 것 하나가 더 붙는다 — 경비 화면의 「썼다」가 확정만 세기 때문이다.
+     *
+     * <p><b>두 질의는 같이 고친다.</b> 사이드바가 「경비 41.2만」을 쓰고 경비 화면이 같은
+     * 자리에 다른 값을 쓰면, 사용자에게는 어느 쪽이 맞는지 알 방법이 없다.
+     *
+     * <p>목록을 읽어 더하지 않는 이유는 <b>여행 수에 비례</b>하기 때문이다. 요약은 화면을
+     * 옮길 때마다 부르는 자리라, 숫자 하나를 얻자고 그 여행 지출 전부를 끌어오지 않는다.
+     */
+    @Query("""
+            SELECT t.tripId AS tripId, SUM(t.amount) AS total
+            FROM LedgerTransaction t
+            WHERE t.tripId IN :tripIds
+              AND t.deletedAt IS NULL
+              AND t.status = ds.project.orino.domain.planner.ledger.entity.LedgerTransactionStatus.CONFIRMED
+              AND t.type = ds.project.orino.domain.planner.ledger.entity.LedgerFlow.EXPENSE
+            GROUP BY t.tripId
+            """)
+    List<TripTotal> sumConfirmedExpenseByTrip(@Param("tripIds") Collection<Long> tripIds);
+
+    /**
      * 그 자산의 내역. <b>이체받는 쪽도 포함한다</b> — 「이 통장에 무슨 일이 있었나」에는
      * 나간 돈과 들어온 돈이 함께 답해야 한다.
      */
@@ -513,6 +534,13 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
     /** 자산별 합계 한 줄. */
     interface AssetTotal {
         Long getAssetId();
+
+        long getTotal();
+    }
+
+    /** 여행별 합계 한 줄. */
+    interface TripTotal {
+        Long getTripId();
 
         long getTotal();
     }
