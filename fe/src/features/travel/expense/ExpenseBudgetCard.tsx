@@ -1,9 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { gaugeWidths } from "@/features/ledger/lib/balance";
-import { formatAmount } from "@/features/ledger/lib/money";
+import { formatAmount, formatCompactAmount } from "@/features/ledger/lib/money";
 
 import type { TripExpenses } from "../api/expenses";
-import { formatCompactAmount } from "./compactAmount";
 
 interface ExpenseBudgetCardProps {
   data: TripExpenses;

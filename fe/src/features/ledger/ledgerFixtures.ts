@@ -73,6 +73,7 @@ export function upcomingItem(overrides: Record<string, unknown> = {}) {
     occurrenceDate: "2026-08-31",
     statementId: null,
     installmentId: null,
+    tripId: null,
     ...overrides,
   };
 }
@@ -193,8 +194,17 @@ export interface LedgerMockOptions {
   };
   /** 예정 4출처. 대시보드·내역 타임라인·예정 화면·캘린더가 모두 이 목록을 읽는다. */
   upcoming?: ReturnType<typeof upcomingItem>[];
-  /** 예산. 대시보드의 2단 게이지가 `totalAmount`를 쓴다. */
-  budget?: { totalAmount?: number; spent?: number; scheduled?: number };
+  /**
+   * 예산. 대시보드의 2단 게이지가 `totalAmount`를 쓴다.
+   *
+   * `tripExpense`는 **게이지 밖**이다 — 여행 지출은 세지 않고 한 줄로만 말한다(§9).
+   */
+  budget?: {
+    totalAmount?: number;
+    spent?: number;
+    scheduled?: number;
+    tripExpense?: number;
+  };
   calendarDays?: {
     date: string;
     income?: number;
@@ -256,6 +266,16 @@ export interface LedgerMockOptions {
       share: number;
     }[];
     previousTotal?: number;
+    /** 「여행 제외」를 켰을 때의 합계. 안 넘기면 켜도 값이 그대로다. */
+    withoutTrip?: number;
+    /** 그때의 카테고리 목록. 합계만 갈리고 목록이 그대로면 둘이 다른 이야기를 한다. */
+    byCategoryWithoutTrip?: {
+      categoryId: number | null;
+      categoryName: string | null;
+      amount: number;
+      count: number;
+      share: number;
+    }[];
     /**
      * 관점별 합계. 넘기면 `?perspective=`가 이 표를 탄다 —
      * <b>토글이 정말 다른 숫자를 부르는지</b>는 이렇게만 확인할 수 있다.
@@ -772,6 +792,7 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
         remaining: (body.totalAmount as number) - (options.budget?.spent ?? 0),
         daysLeft: 4,
         dailyAllowance: 0,
+        tripExpense: options.budget?.tripExpense ?? 0,
         categories: options.budgetCategories ?? [],
       });
     }),
@@ -789,6 +810,7 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
           (options.budget?.totalAmount ?? 0) - (options.budget?.spent ?? 0),
         daysLeft: 4,
         dailyAllowance: 0,
+        tripExpense: options.budget?.tripExpense ?? 0,
         categories: options.budgetCategories ?? [],
       }),
     ),
@@ -845,17 +867,27 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
           | "SPEND"
           | "BILLING"
           | null) ?? "SPEND";
+      const excludeTrip =
+        new URL(request.url).searchParams.get("excludeTrip") === "true";
       const base = options.stats?.total ?? 0;
       // 관점별 합계를 안 넘겼으면 둘이 같다 — 할부가 없는 달이 그렇다.
-      const total = options.stats?.byPerspective?.[asked] ?? base;
+      const asis = options.stats?.byPerspective?.[asked] ?? base;
+      // 「여행 제외」를 안 넘겼으면 여행 지출이 없는 달과 같다 — 값이 그대로다.
+      const total = excludeTrip ? (options.stats?.withoutTrip ?? asis) : asis;
       const other = asked === "SPEND" ? "BILLING" : "SPEND";
       const otherTotal = options.stats?.byPerspective?.[other] ?? base;
 
       return ok({
         period: { start: "2026-08-01", end: "2026-08-31", label: "2026-08" },
         perspective: asked,
+        excludeTrip,
         total,
-        byCategory: options.stats?.byCategory ?? [],
+        byCategory:
+          (excludeTrip
+            ? options.stats?.byCategoryWithoutTrip
+            : options.stats?.byCategory) ??
+          options.stats?.byCategory ??
+          [],
         byAsset: options.stats?.byAsset ?? [],
         fixedVsVariable: options.stats?.fixedVsVariable ?? {
           fixed: 0,

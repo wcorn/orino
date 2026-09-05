@@ -98,10 +98,11 @@ export function useLedgerDashboard() {
 export function useLedgerStats(
   period?: string,
   perspective?: LedgerPerspective,
+  excludeTrip?: boolean,
 ) {
   return useQuery({
-    queryKey: ledgerKeys.stats(period, perspective),
-    queryFn: () => fetchStats(period, perspective),
+    queryKey: ledgerKeys.stats(period, perspective, excludeTrip),
+    queryFn: () => fetchStats(period, perspective, excludeTrip),
     staleTime: 30 * 1000,
   });
 }

@@ -68,18 +68,27 @@ public class LedgerPerspectiveSpending {
         this.roundRepository = roundRepository;
     }
 
-    /** 그 구간에 「쓴 돈」을 관점에 맞춰 카테고리별로 센다. */
+    /**
+     * 그 구간에 「쓴 돈」을 관점에 맞춰 카테고리별로 센다.
+     *
+     * @param excludeTrip 참이면 <b>여행에 붙은 지출을 뺀다</b>(가계부 §11.2). 평상시 씀씀이만
+     *                    보고 싶을 때가 있다 — 여행 간 달은 그것 하나가 모든 칸을 덮는다
+     */
     public List<LedgerCategorySpending.Bucket> byCategory(Long memberId,
                                                           LedgerPeriods.Period period,
-                                                          LedgerPerspective perspective) {
+                                                          LedgerPerspective perspective,
+                                                          boolean excludeTrip) {
         if (perspective == LedgerPerspective.SPEND) {
             // 소비 기준은 곧 「적힌 날」이라 질의 하나로 끝난다.
-            return LedgerCategorySpending.netExpense(
-                    transactionRepository.sumByCategoryAndFlow(
+            return LedgerCategorySpending.netExpense(excludeTrip
+                    ? transactionRepository.sumByCategoryAndFlowExcludingTrip(
+                            memberId, LedgerTransactionStatus.CONFIRMED,
+                            period.start(), period.end())
+                    : transactionRepository.sumByCategoryAndFlow(
                             memberId, LedgerTransactionStatus.CONFIRMED,
                             period.start(), period.end()));
         }
-        return billingBuckets(memberId, period, Grouping.CATEGORY);
+        return billingBuckets(memberId, period, Grouping.CATEGORY, excludeTrip);
     }
 
     /**
@@ -92,18 +101,23 @@ public class LedgerPerspectiveSpending {
      */
     public List<LedgerCategorySpending.Bucket> byAsset(Long memberId,
                                                        LedgerPeriods.Period period,
-                                                       LedgerPerspective perspective) {
+                                                       LedgerPerspective perspective,
+                                                       boolean excludeTrip) {
         if (perspective == LedgerPerspective.SPEND) {
             List<LedgerCategorySpending.Bucket> buckets = new ArrayList<>();
-            for (LedgerTransactionRepository.AssetTotal row : transactionRepository
-                    .sumExpenseByAsset(memberId, LedgerTransactionStatus.CONFIRMED,
+            for (LedgerTransactionRepository.AssetTotal row : excludeTrip
+                    ? transactionRepository.sumExpenseByAssetExcludingTrip(
+                            memberId, LedgerTransactionStatus.CONFIRMED,
+                            period.start(), period.end())
+                    : transactionRepository.sumExpenseByAsset(
+                            memberId, LedgerTransactionStatus.CONFIRMED,
                             period.start(), period.end())) {
                 buckets.add(new LedgerCategorySpending.Bucket(
                         row.getAssetId(), row.getTotal(), 0));
             }
             return buckets;
         }
-        return billingBuckets(memberId, period, Grouping.ASSET);
+        return billingBuckets(memberId, period, Grouping.ASSET, excludeTrip);
     }
 
     /** 무엇으로 묶는가. 청구 기준 집계는 묶는 열만 다르고 나머지 규칙은 똑같다. */
@@ -125,7 +139,8 @@ public class LedgerPerspectiveSpending {
      */
     private List<LedgerCategorySpending.Bucket> billingBuckets(Long memberId,
                                                                 LedgerPeriods.Period period,
-                                                                Grouping grouping) {
+                                                                Grouping grouping,
+                                                                boolean excludeTrip) {
         LocalDate from = period.start().minusMonths(BILLING_LOOKBACK_MONTHS);
         List<LedgerTransaction> rows = transactionRepository
                 .findAllByMemberIdAndDeletedAtIsNullAndOccurredOnBetweenOrderByOccurredOnDescIdDesc(
@@ -142,6 +157,9 @@ public class LedgerPerspectiveSpending {
             if (row.getInstallmentId() != null) {
                 continue;
             }
+            if (excludeTrip && row.getTripId() != null) {
+                continue;
+            }
             LocalDate billedOn = row.getStatementId() == null
                     ? row.getOccurredOn()
                     : paymentDates.get(row.getStatementId());
@@ -152,7 +170,7 @@ public class LedgerPerspectiveSpending {
             add(byCategory, keyOf(row, grouping), signedAmount(row));
         }
 
-        addInstallmentRounds(memberId, period, byCategory, grouping);
+        addInstallmentRounds(memberId, period, byCategory, grouping, excludeTrip);
         return toBuckets(byCategory);
     }
 
@@ -161,7 +179,8 @@ public class LedgerPerspectiveSpending {
      * 청구되지 않은 돈이라 청구 기준에 들어갈 자리가 없다.
      */
     private void addInstallmentRounds(Long memberId, LedgerPeriods.Period period,
-                                      Map<Long, long[]> byCategory, Grouping grouping) {
+                                      Map<Long, long[]> byCategory, Grouping grouping,
+                                      boolean excludeTrip) {
         List<LedgerInstallment> installments = installmentRepository
                 .findAllByMemberIdAndStatus(memberId, LedgerInstallment.Status.ACTIVE);
         if (installments.isEmpty()) {
@@ -170,8 +189,14 @@ public class LedgerPerspectiveSpending {
         Map<Long, Long> categoryByInstallment = new HashMap<>();
         for (LedgerInstallment installment : installments) {
             transactionRepository.findById(installment.getTransactionId())
-                    .ifPresent(tx -> categoryByInstallment.put(
-                            installment.getId(), keyOf(tx, grouping)));
+                    .ifPresent(tx -> {
+                        // 여행에서 할부로 산 것도 여행 지출이다. 원 거래를 뺐는데 회차가
+                        // 남으면 「여행 제외」가 여행을 반만 뺀다.
+                        if (excludeTrip && tx.getTripId() != null) {
+                            return;
+                        }
+                        categoryByInstallment.put(installment.getId(), keyOf(tx, grouping));
+                    });
         }
 
         List<LedgerStatement> statements = statementRepository.findAllByMemberIdAndPaymentDateBetween(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCompactAmount } from "./compactAmount";
+import { formatCompactAmount } from "./money";
 
 /**
  * 예산 카드는 비율을 눈으로 잡는 자리다. 「800,000 중 412,000」처럼 자릿수를 세게 만들면

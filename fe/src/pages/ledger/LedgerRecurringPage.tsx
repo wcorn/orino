@@ -421,6 +421,7 @@ function toOverdueItems(data: RecurringListResponse) {
     recurringId: row.recurringId,
     occurrenceDate: row.occurrenceDate,
     statementId: null,
+    tripId: null,
     installmentId: null,
   }));
 }

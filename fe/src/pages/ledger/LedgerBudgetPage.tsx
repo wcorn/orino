@@ -18,6 +18,7 @@ import { gaugeWidths } from "@/features/ledger/lib/balance";
 import {
   formatAmount,
   formatBalance,
+  formatCompactAmount,
   MINUS,
 } from "@/features/ledger/lib/money";
 import { budgetTone } from "@/features/ledger/lib/recurrence";
@@ -147,7 +148,34 @@ function ProgressCard({ budget }: { budget: BudgetResponse }) {
           </p>
         </>
       )}
+
+      <TripExpenseLine amount={budget.tripExpense} />
     </section>
+  );
+}
+
+/**
+ * 여행 지출은 게이지에 <b>안 세고, 말은 한다</b>(여행 v2.2 §5.2 · 가계부 §11.2).
+ *
+ * 넣으면 여행 간 달은 항상 예산 초과가 되고 그러면 게이지가 아무것도 알려주지 않는다.
+ * 그렇다고 빼기만 하면 이번엔 합계가 안 맞는 것으로 보인다 — 그래서 한 줄을 남긴다.
+ *
+ * **0이면 그리지 않는다.** 여행을 안 간 달에 「이 달 여행으로 0원」은 아무 말도 아니다.
+ */
+function TripExpenseLine({ amount }: { amount: number }) {
+  if (amount <= 0) {
+    return null;
+  }
+  return (
+    <div className="border-border flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t pt-2.5">
+      <span className="flex items-center gap-1.5 text-[13px]">
+        <Plane className="text-muted-foreground size-3.5 shrink-0" />이 달
+        여행으로 {formatCompactAmount(amount)}
+      </span>
+      <span className="text-muted-foreground text-[13px]">
+        월 예산에는 세지 않음
+      </span>
+    </div>
   );
 }
 

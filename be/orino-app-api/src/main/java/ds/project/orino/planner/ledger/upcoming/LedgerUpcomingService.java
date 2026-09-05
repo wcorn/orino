@@ -220,7 +220,7 @@ public class LedgerUpcomingService {
                 rule.getTxType(), rule.getTxType() == LedgerFlow.TRANSFER, overdue,
                 rule.getAmountType() == LedgerAmountType.VARIABLE, rule.getCategoryId(),
                 rule.getAssetId(), asset == null ? null : asset.getName(),
-                null, rule.getId(), occurrenceDate, null, null);
+                null, rule.getId(), occurrenceDate, null, null, null);
         return new Planned(item, cashDelta(rule.getTxType(), amount, asset,
                 assets.get(rule.getCounterAssetId()), assets));
     }
@@ -239,7 +239,7 @@ public class LedgerUpcomingService {
                     tx.getTitle(), tx.getAmount(), tx.getType(),
                     tx.getType() == LedgerFlow.TRANSFER, false, tx.isEstimated(),
                     tx.getCategoryId(), tx.getAssetId(), asset == null ? null : asset.getName(),
-                    tx.getId(), null, null, null, null);
+                    tx.getId(), null, null, null, null, tx.getTripId());
             result.add(new Planned(item, cashDelta(tx.getType(), tx.getAmount(), asset,
                     assets.get(tx.getCounterAssetId()), assets)));
         }
@@ -273,7 +273,7 @@ public class LedgerUpcomingService {
                     statement.getPaymentDate().isBefore(clock.today()), false, null,
                     payFrom == null ? null : payFrom.getId(),
                     payFrom == null ? null : payFrom.getName(),
-                    null, null, null, statement.getId(), null);
+                    null, null, null, statement.getId(), null, null);
             result.add(new Planned(item, isSpendable(payFrom) || payFrom == null
                     ? -remaining : 0));
         }
@@ -309,7 +309,7 @@ public class LedgerUpcomingService {
                     round.getAmount(), LedgerFlow.TRANSFER, true, false, false, null,
                     payFrom == null ? null : payFrom.getId(),
                     payFrom == null ? null : payFrom.getName(),
-                    null, null, null, null, round.getInstallmentId());
+                    null, null, null, null, round.getInstallmentId(), null);
             result.add(new Planned(item, -round.getAmount()));
         }
         return result;

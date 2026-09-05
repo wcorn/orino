@@ -650,6 +650,7 @@ function fromTransaction(transaction: TransactionView): UpcomingItem {
     occurrenceDate: null,
     statementId: null,
     installmentId: null,
+    tripId: transaction.tripId,
   };
 }
 

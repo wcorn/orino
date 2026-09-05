@@ -28,6 +28,10 @@ public final class LedgerBudgetDtos {
      * @param spent          이미 쓴 돈. 게이지의 <b>진한</b> 부분
      * @param scheduled      아직 안 썼지만 나갈 게 확정된 돈. 게이지의 <b>연한</b> 부분(§8.2)
      * @param dailyAllowance 남은 일수로 나눈 하루 사용 가능액
+     * @param tripExpense    이 구간에 <b>여행으로</b> 쓴 돈. {@code spent}에도 게이지에도
+     *                       들어가지 않는다 — 넣으면 여행 간 달은 항상 예산 초과가 되고,
+     *                       그러면 그 게이지는 아무것도 알려주지 않는다(§9 · 여행 v2.2 §5.2).
+     *                       <b>그래도 내려준다</b>: 빼놓고 말하지 않으면 합계가 안 맞는 것으로 보인다
      */
     public record BudgetResponse(
             String period,
@@ -41,6 +45,7 @@ public final class LedgerBudgetDtos {
             long remaining,
             int daysLeft,
             long dailyAllowance,
+            long tripExpense,
             List<CategoryProgress> categories) {
     }
 
