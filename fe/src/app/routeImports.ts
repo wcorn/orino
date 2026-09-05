@@ -68,6 +68,10 @@ export const importTripBoard = () =>
   import("../pages/travel/TripBoardPage").then((m) => ({
     default: m.TripBoardPage,
   }));
+export const importTripPrep = () =>
+  import("../pages/travel/TripPrepPage").then((m) => ({
+    default: m.TripPrepPage,
+  }));
 export const importTravelTools = () =>
   import("../pages/travel/TravelToolsPage").then((m) => ({
     default: m.TravelToolsPage,

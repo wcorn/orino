@@ -183,6 +183,28 @@ export const handlers = [
     return HttpResponse.json({ code: "OK", data: [] });
   }),
 
+  // 기본값: 빈 준비 목록. 분류 넷은 항목이 없어도 전부 내려간다 — 화면이 분류 목록을
+  // 따로 들고 있지 않으므로, 여기서 빠뜨리면 카드가 하나도 안 그려진다.
+  http.get(`${API_BASE}/travel/trips/:tripId/prep`, ({ params }) => {
+    return HttpResponse.json({
+      code: "OK",
+      data: {
+        tripId: Number(params.tripId),
+        startDate: "2026-10-24",
+        dday: 49,
+        total: 0,
+        done: 0,
+        overdueCount: 0,
+        groups: ["DOCUMENT", "BOOKING", "BAG", "TODO"].map((category) => ({
+          category,
+          total: 0,
+          done: 0,
+          items: [],
+        })),
+      },
+    });
+  }),
+
   // 기본값: 빈 캘린더 피드. `/select`의 "오늘 루틴" 메타가 항상 해소되도록.
   http.get(`${API_BASE}/planner/calendar`, () => {
     return HttpResponse.json({

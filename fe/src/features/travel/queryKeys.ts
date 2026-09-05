@@ -12,6 +12,11 @@ export const travelKeys = {
   activity: (activityId: number) => ["travel", "activity", activityId] as const,
   /** 여행의 숙소 전체. 날짜별로 나누지 않는다 — 어느 날짜에 붙는지는 기간에서 파생한다. */
   stays: (tripId: number) => ["travel", "stays", tripId] as const,
+  /**
+   * 준비 목록 전체. 분류별로 나누지 않는다 — 진행률과 기한 지남 개수는 전체를 봐야 나오고,
+   * 분류를 따로 부르면 목록과 진행률이 서로 다른 순간의 값을 보게 된다.
+   */
+  prep: (tripId: number) => ["travel", "prep", tripId] as const,
   /** 파생 구간. 저장값이 아니라 날짜에서 매번 계산되므로 날짜를 바꾸면 함께 무효화한다. */
   cityLegs: (tripId: number) => ["travel", "cityLegs", tripId] as const,
   /**
