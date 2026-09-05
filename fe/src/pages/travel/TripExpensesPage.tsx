@@ -1,4 +1,4 @@
-import { ReceiptText } from "lucide-react";
+import { Plus, ReceiptText } from "lucide-react";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -6,14 +6,18 @@ import { PageHeader } from "@/components/PageHeader";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { LoadingText } from "@/components/ui/loading-text";
+import { todayIso } from "@/features/ledger/lib/period";
 import { OfflineBanner } from "@/features/travel/board/OfflineBanner";
 import { BudgetModal } from "@/features/travel/expense/BudgetModal";
 import { ExpenseBudgetCard } from "@/features/travel/expense/ExpenseBudgetCard";
 import { ExpenseDayCard } from "@/features/travel/expense/ExpenseDayCard";
+import { ExpenseQuickSheet } from "@/features/travel/expense/ExpenseQuickSheet";
+import { useBoard } from "@/features/travel/hooks/useBoard";
 import {
   usePutTripBudget,
   useTripExpenses,
 } from "@/features/travel/hooks/useTripExpensesQuery";
+import { cityOn } from "@/features/travel/lib/baseCity";
 import { useOnline } from "@/shared/lib/useOnline";
 
 /**
@@ -30,6 +34,7 @@ export function TripExpensesPage() {
   const tripId = Number(tripIdParam);
 
   const [budgetOpen, setBudgetOpen] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
   /** 펼쳐 둔 묶음. 기본은 오늘 하나뿐이다 — 서른 개를 다 펼치면 아무것도 안 보인다. */
   const [opened, setOpened] = useState<string[] | null>(null);
 
@@ -38,6 +43,12 @@ export function TripExpensesPage() {
 
   const { data, isPending, isError } = useTripExpenses(tripId);
   const putBudget = usePutTripBudget(tripId);
+  /**
+   * 통화 기본값을 정하려면 <b>오늘 있는 도시</b>가 필요한데, 경비 응답에는 도시 이름만 있고
+   * 통화가 없다. 보드가 그 값을 이미 들고 있으므로 <b>시트를 열 때만</b> 부른다 —
+   * 경비 화면을 열 때마다 보드까지 부르면 그건 이 화면의 비용이 아니다.
+   */
+  const { data: board } = useBoard(tripId, {}, { enabled: quickOpen });
 
   if (isError) {
     return (
@@ -60,6 +71,16 @@ export function TripExpensesPage() {
   // 첫 렌더에서는 오늘만 펼친다. 사용자가 한 번이라도 접거나 펼치면 그 선택을 따른다.
   const openKeys = opened ?? (todayKey === null ? [] : [todayKey]);
 
+  /** 오늘 있는 도시. 보드를 아직 안 받았으면 없다 — 시트가 원화로 시작한다. */
+  const todayCity =
+    board && board.selectedDate ? cityOn(board.days, board.selectedDate) : null;
+  /**
+   * 적히는 날짜. 여행 중이면 <b>그 날짜의 도시 시계로 판정한 오늘</b>이고(서버가 준 값),
+   * 아니면 기기의 오늘이다 — 다녀온 뒤에 산 것은 「다녀온 뒤」로 묶여야 한다.
+   */
+  const occurredOn =
+    data.groups.find((group) => group.key === todayKey)?.date ?? todayIso();
+
   const toggle = (key: string) =>
     setOpened(
       openKeys.includes(key)
@@ -73,20 +94,36 @@ export function TripExpensesPage() {
         title="경비"
         description={describe(data)}
         actions={
-          <Button
-            type="button"
-            variant="outline"
-            disabled={!online}
-            onClick={() => setBudgetOpen(true)}
-          >
-            예산 정하기
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!online}
+              onClick={() => setBudgetOpen(true)}
+            >
+              예산 정하기
+            </Button>
+            {/* 오프라인이면 진입 자체를 막는다 — 큐에 쌓아 나중에 보내지 않는다(D-33). */}
+            <Button
+              type="button"
+              className="hidden sm:inline-flex"
+              disabled={!online}
+              onClick={() => setQuickOpen(true)}
+            >
+              <Plus className="size-4" />
+              지출 적기
+            </Button>
+          </div>
         }
       />
 
       {!online && <OfflineBanner what="경비" />}
 
-      <ExpenseBudgetCard data={data} onEditBudget={() => setBudgetOpen(true)} />
+      <ExpenseBudgetCard
+        data={data}
+        offline={!online}
+        onEditBudget={() => setBudgetOpen(true)}
+      />
 
       {/*
         미분류는 경고가 아니라 <b>할 일</b>이다. 「카테고리만 채우면 끝나요」가 붙는 이유 —
@@ -124,6 +161,36 @@ export function TripExpensesPage() {
         모든 지출은 가계부 원장에 쌓입니다. 이 화면은 그 위의 읽기 뷰예요 — 줄을
         누르면 가계부의 지출 상세가 열립니다.
       </p>
+
+      {/*
+        모바일 FAB. 데스크톱은 헤더의 「지출 적기」가 같은 역할을 하므로 좁은 화면에만 둔다 —
+        현지에서 한 손으로 두드리는 화면이라 엄지가 닿는 곳에 있어야 한다.
+      */}
+      {online && (
+        <button
+          type="button"
+          aria-label="지출 적기"
+          onClick={() => setQuickOpen(true)}
+          className="bg-primary text-primary-foreground fixed right-5 bottom-5 grid size-14 place-items-center rounded-full sm:hidden"
+          style={{
+            boxShadow:
+              "0 6px 18px color-mix(in oklab, var(--primary) 40%, transparent)",
+          }}
+        >
+          <Plus className="size-6" />
+        </button>
+      )}
+
+      <ExpenseQuickSheet
+        open={quickOpen}
+        onOpenChange={setQuickOpen}
+        tripId={tripId}
+        cityName={todayCity?.name ?? null}
+        cityCurrency={todayCity?.currency ?? null}
+        dayNumber={data.todayDayNumber}
+        occurredOn={occurredOn}
+        onSaved={() => setQuickOpen(false)}
+      />
 
       <BudgetModal
         open={budgetOpen}

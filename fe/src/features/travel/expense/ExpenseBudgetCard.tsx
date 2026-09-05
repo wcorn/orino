@@ -8,6 +8,8 @@ import { formatCompactAmount } from "./compactAmount";
 interface ExpenseBudgetCardProps {
   data: TripExpenses;
   onEditBudget: () => void;
+  /** 오프라인이면 쓰기 입구를 전부 잠근다 — 헤더뿐 아니라 여기도(§6.2). */
+  offline: boolean;
 }
 
 /**
@@ -24,6 +26,7 @@ interface ExpenseBudgetCardProps {
 export function ExpenseBudgetCard({
   data,
   onEditBudget,
+  offline,
 }: ExpenseBudgetCardProps) {
   const { budget, totals } = data;
   const completed = data.status === "COMPLETED";
@@ -43,6 +46,7 @@ export function ExpenseBudgetCard({
           variant="outline"
           size="sm"
           className="ml-auto"
+          disabled={offline}
           onClick={onEditBudget}
         >
           예산 정하기

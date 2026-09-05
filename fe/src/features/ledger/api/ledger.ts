@@ -408,6 +408,11 @@ export interface TransactionCreateRequest {
   memo?: string | null;
   tags?: string[];
   fx?: FxInput | null;
+  /**
+   * 어느 여행의 지출인지(여행 v2.2). 빠른 입력 시트가 적으면서 붙이는 경로다 —
+   * 여행 전용 지출 엔드포인트는 없다(§10.3).
+   */
+  tripId?: number | null;
 }
 
 export interface TransactionUpdateRequest {
