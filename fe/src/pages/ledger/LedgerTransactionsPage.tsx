@@ -7,6 +7,7 @@ import {
   Ellipsis,
   List,
   Paperclip,
+  Plane,
   Plus,
   Search,
 } from "lucide-react";
@@ -17,6 +18,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { LoadingText } from "@/components/ui/loading-text";
@@ -32,6 +34,7 @@ import { LedgerCalendar } from "@/features/ledger/components/LedgerCalendar";
 import { ReceiptsModal } from "@/features/ledger/components/ReceiptsModal";
 import { ScheduledRowActions } from "@/features/ledger/components/ScheduledRowActions";
 import { useTransactionModal } from "@/features/ledger/components/transactionModalContext";
+import { TripAttachBar } from "@/features/ledger/components/TripAttachBar";
 import { useDuplicateTransaction } from "@/features/ledger/hooks/useLedgerMutations";
 import {
   useLedgerSettings,
@@ -50,6 +53,7 @@ import {
   formatSigned,
 } from "@/features/ledger/lib/money";
 import { periodLabel, periodOf } from "@/features/ledger/lib/period";
+import { useAttachExpensesToTrip } from "@/features/travel/hooks/useTripExpenses";
 import { cn } from "@/lib/utils";
 
 type StatusFilter = "ALL" | "CONFIRMED" | "SCHEDULED";
@@ -105,7 +109,12 @@ export function LedgerTransactionsPage() {
   // 대시보드의 「정리하기」가 넘겨주는 필터. 별도 상태가 아니라 쿼리라서,
   // 정리하다 새로고침해도 같은 목록으로 돌아온다.
   const uncategorizedOnly = searchParams.get("uncategorized") === "1";
+  // 여행 필터도 쿼리다. 서버가 목록과 상단 합계에 같은 필터를 걸어 준다(여행 v2.2 §18).
+  const tripId = Number(searchParams.get("tripId") ?? "") || undefined;
   const [query, setQuery] = useState("");
+  /** 「여행에 붙이기」 선택 모드. 켜져 있는 동안만 줄마다 체크박스가 붙는다. */
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<number[]>([]);
 
   const period = useMemo(
     () => periodOf(new Date(), settings?.monthStartDay ?? 1, offset),
@@ -114,9 +123,23 @@ export function LedgerTransactionsPage() {
 
   // 이번 구간이면 앞으로 30일치 예정까지 함께 본다 — 예정이 안 보이면 이 화면의 절반이 없다.
   const to = offset === 0 ? undefined : period.end;
-  const { data, isPending, isError } = useLedgerTransactions(period.start, to);
+  const { data, isPending, isError } = useLedgerTransactions(period.start, to, {
+    tripId,
+  });
+  const attachTrip = useAttachExpensesToTrip();
   // 지난 달을 보는 중에는 파생 예정이 없다 — 파생 회차는 언제나 오늘 이후다.
   const { data: upcoming } = useLedgerUpcoming(upcomingDays);
+
+  /**
+   * 줄 하나를 고르거나 뺀다.
+   *
+   * <p><b>이체는 여기서 손으로만 들어온다.</b> 「전체 선택」이 카드 대금 납부를 함께 담으면
+   * 여행 경비가 두 번 세어진다 — §3-2가 막으려던 구멍이 그대로 되살아난다(R-15).
+   */
+  const toggleSelect = (id: number) =>
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id],
+    );
 
   const setParam = (key: string, value: string | null) => {
     if (value === null) {
@@ -143,10 +166,27 @@ export function LedgerTransactionsPage() {
       <PageHeader
         title="내역"
         actions={
-          <Button type="button" onClick={openTransactionModal}>
-            <Plus className="size-4" />
-            입력 <kbd className="ml-1 text-[11px] opacity-70">N</kbd>
-          </Button>
+          <div className="flex items-center gap-2">
+            {/*
+              여행에 붙이기(§18). 여행 중엔 그냥 적고 돌아와 기간으로 걸러 한 번 붙인다 —
+              그래서 이 버튼은 「기간을 고른 뒤」 누르는 자리에 있다.
+            */}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setSelecting((on) => !on);
+                setSelected([]);
+              }}
+            >
+              <Plane className="size-4" />
+              {selecting ? "선택 그만두기" : "여행에 붙이기"}
+            </Button>
+            <Button type="button" onClick={openTransactionModal}>
+              <Plus className="size-4" />
+              입력 <kbd className="ml-1 text-[11px] opacity-70">N</kbd>
+            </Button>
+          </div>
         }
       />
 
@@ -238,6 +278,20 @@ export function LedgerTransactionsPage() {
         </div>
       )}
 
+      {tripId !== undefined && (
+        <div className="text-muted-foreground flex items-center gap-2 text-[13px]">
+          여행에 붙인 건만 보는 중 — 위 합계도 이 여행 기준이에요
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={() => setParam("tripId", null)}
+          >
+            해제
+          </Button>
+        </div>
+      )}
+
       {data && <TotalsBar totals={data.monthTotals} />}
 
       {isPending && <LoadingText />}
@@ -272,6 +326,9 @@ export function LedgerTransactionsPage() {
                   duplicate.mutate({ id, useToday })
                 }
                 onOpenReceipts={setReceiptTarget}
+                selecting={selecting}
+                selected={selected}
+                onToggleSelect={toggleSelect}
               />
             ))}
 
@@ -295,6 +352,28 @@ export function LedgerTransactionsPage() {
               )}
           </>
         )
+      )}
+
+      {selecting && (
+        <TripAttachBar
+          selectedCount={selected.length}
+          pending={attachTrip.isPending}
+          onCancel={() => {
+            setSelecting(false);
+            setSelected([]);
+          }}
+          onApply={(trip) =>
+            attachTrip.mutate(
+              { tripId: trip, transactionIds: selected },
+              {
+                onSuccess: () => {
+                  setSelecting(false);
+                  setSelected([]);
+                },
+              },
+            )
+          }
+        />
       )}
 
       <ReceiptsModal
@@ -331,12 +410,18 @@ function TimelineSection({
   showTodayLine,
   onDuplicate,
   onOpenReceipts,
+  selecting,
+  selected,
+  onToggleSelect,
 }: {
   group: TimelineGroup;
   todayLine: string;
   showTodayLine: boolean;
   onDuplicate: (id: number, useToday: boolean) => void;
   onOpenReceipts: (transaction: TransactionView) => void;
+  selecting: boolean;
+  selected: number[];
+  onToggleSelect: (id: number) => void;
 }) {
   return (
     <section className="flex flex-col">
@@ -368,6 +453,9 @@ function TimelineSection({
                 todayLine={todayLine}
                 onDuplicate={onDuplicate}
                 onOpenReceipts={onOpenReceipts}
+                selecting={selecting}
+                checked={selected.includes(row.transaction.id)}
+                onToggleSelect={onToggleSelect}
               />
             ) : (
               <DerivedRow item={row.item} />
@@ -384,11 +472,17 @@ function TransactionRow({
   todayLine,
   onDuplicate,
   onOpenReceipts,
+  selecting,
+  checked,
+  onToggleSelect,
 }: {
   transaction: TransactionView;
   todayLine: string;
   onDuplicate: (id: number, useToday: boolean) => void;
   onOpenReceipts: (transaction: TransactionView) => void;
+  selecting: boolean;
+  checked: boolean;
+  onToggleSelect: (id: number) => void;
 }) {
   // 부호는 그 줄에서 실제로 일어난 일이다. 환불이면 돈이 돌아왔으므로 `+`다 —
   // 「지출이 줄었다」는 합계의 이야기이고, 그건 서버가 계산해 헤더에 담아 준다.
@@ -404,6 +498,13 @@ function TransactionRow({
       )}
     >
       <span className="flex min-w-0 items-center gap-2">
+        {selecting && (
+          <Checkbox
+            checked={checked}
+            aria-label={`${transaction.title ?? "거래"} 선택`}
+            onChange={() => onToggleSelect(transaction.id)}
+          />
+        )}
         <span
           className={cn(
             "truncate text-sm",
@@ -425,6 +526,17 @@ function TransactionRow({
         {transaction.type === "TRANSFER" && (
           <Badge variant="outline">이체</Badge>
         )}
+        {/*
+          고르는 동안에만 말한다. 카드 대금 납부를 여행에 붙이면 §3-2가 막으려던 이중 계산이
+          그대로 되살아나므로, 못 고르게 막는 대신 왜 안 고르는지를 옆에 적는다(R-15).
+        */}
+        {selecting && transaction.type === "TRANSFER" && (
+          <span className="text-muted-foreground shrink-0 text-[13px]">
+            — 여행 경비가 아니에요
+          </span>
+        )}
+        {/* 이미 붙어 있는 줄. 어느 여행인지는 여행 화면이 말한다. */}
+        {transaction.tripId !== null && <Badge variant="info">여행</Badge>}
         {transaction.source === "REFUND" && (
           <Badge variant="outline">환불</Badge>
         )}

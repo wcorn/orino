@@ -127,3 +127,5 @@ databaseChangeLog:
       file: db/changelog/changes/063-create-ledger-import.yaml
   - include:
       file: db/changelog/changes/064-create-trip-prep-item.yaml
+  - include:
+      file: db/changelog/changes/065-add-trip-id-to-ledger-transaction.yaml

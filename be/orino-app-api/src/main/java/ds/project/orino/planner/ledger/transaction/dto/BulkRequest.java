@@ -17,6 +17,11 @@ public record BulkRequest(
         Long categoryId
 ) {
 
+    /**
+     * 여행에 붙이는 동작은 <b>여기 없다.</b> 그건 「어느 여행의 지출인가」를 정하는 일이라
+     * 여행이 아는 것이고, 가계부에 두면 가계부가 여행의 존재와 소유권을 알아야 한다 —
+     * 의존이 양방향이 되는 자리다. {@code POST /api/travel/trips/{id}/expenses/attach}에 있다.
+     */
     public enum Action {
         SET_CATEGORY,
         /** 소프트 삭제다. 행은 남는다. */

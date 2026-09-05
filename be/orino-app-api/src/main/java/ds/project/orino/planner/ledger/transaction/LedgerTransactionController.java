@@ -55,12 +55,19 @@ public class LedgerTransactionController {
      * <p>기본 구간은 <b>이번 달 1일 ~ 오늘+30일</b>이다 — 앞으로 나갈 돈이 보이지 않으면
      * 「월말에 얼마 남나」에 답할 수 없다.
      */
+    /**
+     * @param tripId      이 여행에 붙은 것만(여행 v2.2). 상단 합계도 함께 걸린다
+     * @param excludeTrip 참이면 어느 여행에도 안 붙은 것만 — 「여행 빼고 이 달에 얼마 썼나」
+     */
     @GetMapping
     public ApiResponse<TransactionListResponse> list(
             @AuthenticationPrincipal Long memberId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        return ApiResponse.success(transactionService.list(memberId, from, to));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) Long tripId,
+            @RequestParam(required = false, defaultValue = "false") boolean excludeTrip) {
+        return ApiResponse.success(
+                transactionService.list(memberId, from, to, tripId, excludeTrip));
     }
 
     @GetMapping("/suggest")

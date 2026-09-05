@@ -36,7 +36,12 @@ public record TransactionCreateRequest(
         Boolean estimated,
         FxInput fx,
         /** 신용카드 할부. 원 거래에는 <b>전액</b>이 적히고 회차는 따로 만들어진다. */
-        InstallmentInput installment
+        InstallmentInput installment,
+        /**
+         * 어느 여행의 지출인지. 없는 여행·남의 여행이면 404다 — {@code @NotNull}을 걸지 않는
+         * 이유는 {@code assetId}와 같다. 대부분의 거래는 여행과 무관하다.
+         */
+        Long tripId
 ) {
 
     /**

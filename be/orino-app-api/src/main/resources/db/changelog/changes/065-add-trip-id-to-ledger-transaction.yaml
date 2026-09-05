@@ -1,0 +1,58 @@
+databaseChangeLog:
+  # 거래에 여행을 붙인다 (#1327, Epic #1322).
+  #
+  # 여행 안에 장부를 만들지 않는다. 원장은 가계부 하나뿐이고, 여행 화면은 그 위의 읽기
+  # 뷰다(가계부 §3-10 · 여행 D-27). 그래서 가계부에 생기는 것은 이 컬럼 하나뿐이다.
+
+  - changeSet:
+      id: 065-add-trip-id-to-ledger-transaction
+      author: wcorn
+      comment: 원장 행이 어느 여행의 지출인지. 백필하지 않는다 — 지난 거래는 사용자가 붙인다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: ledger_transaction
+                columnName: trip_id
+      changes:
+        - addColumn:
+            tableName: ledger_transaction
+            columns:
+              # 여행과 무관한 거래에서는 언제나 NULL이다. FK는 아래에서 따로 건다 —
+              # ON DELETE SET NULL은 인라인 제약으로 표현할 수 없다.
+              - column:
+                  name: trip_id
+                  type: BIGINT
+        # 경비 화면(#1328)이 읽는 유일한 경로다. occurred_on까지 넣는 이유는 그 화면이
+        # 「출발 전 / N일차 / 다녀온 뒤」로 나누기 때문이다 — 여행 하나를 날짜순으로 읽는다.
+        - createIndex:
+            tableName: ledger_transaction
+            indexName: idx_ledger_tx_trip
+            columns:
+              - column:
+                  name: trip_id
+              - column:
+                  name: occurred_on
+        # ON DELETE SET NULL — 여행을 지워도 쓴 돈은 남고 연결만 끊긴다.
+        # 준비 항목(trip_prep_item)이 CASCADE인 것과 정반대다: 「여권 챙기기」는 그 여행이
+        # 없으면 아무 뜻도 없지만, 3만 원을 쓴 것은 여행 밖에서도 사실이다.
+        #
+        # 애플리케이션이 아니라 DB가 보장하게 두는 이유 — 여행을 지우는 길이 하나가 아니고
+        # (API 삭제 · 회원 정리 · 수동 정리), 그중 하나만 빠뜨려도 원장에 죽은 참조가 남는다.
+        - addForeignKeyConstraint:
+            baseTableName: ledger_transaction
+            baseColumnNames: trip_id
+            constraintName: fk_ledger_tx_trip
+            referencedTableName: trip
+            referencedColumnNames: id
+            onDelete: SET NULL
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableName: ledger_transaction
+            constraintName: fk_ledger_tx_trip
+        - dropIndex:
+            indexName: idx_ledger_tx_trip
+            tableName: ledger_transaction
+        - dropColumn:
+            tableName: ledger_transaction
+            columnName: trip_id

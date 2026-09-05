@@ -34,6 +34,11 @@ public record TransactionView(
         LedgerTransactionSource source,
         boolean estimated,
         Long refundOfId,
+        /**
+         * 붙어 있는 여행. 이름은 싣지 않는다 — 화면이 여행 목록을 이미 들고 있고, 여기에
+         * 실으면 여행 제목을 고칠 때마다 원장 응답이 옛 이름을 말하는 자리가 하나 더 생긴다.
+         */
+        Long tripId,
         List<String> tags,
         FxView fx
 ) {
@@ -49,7 +54,7 @@ public record TransactionView(
                 tx.getCounterAssetId(), counterAssetName,
                 tx.getCategoryId(), categoryName,
                 tx.getTitle(), tx.getMemo(), tx.getSource(), tx.isEstimated(),
-                tx.getRefundOfId(), tags,
+                tx.getRefundOfId(), tx.getTripId(), tags,
                 tx.hasFx()
                         ? new FxView(tx.getFxCurrency(), tx.getFxAmount(), tx.getFxRate())
                         : null);

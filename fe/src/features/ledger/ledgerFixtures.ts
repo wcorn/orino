@@ -46,6 +46,7 @@ export function transactionView(overrides: Record<string, unknown> = {}) {
     source: "MANUAL",
     estimated: false,
     refundOfId: null,
+    tripId: null,
     tags: [],
     fx: null,
     ...overrides,
@@ -419,6 +420,8 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
   const budgets: Record<string, unknown>[] = [];
   const duplicated: Record<string, unknown>[] = [];
   const bulkSent: Record<string, unknown>[][] = [];
+  /** 여행에 붙이기 요청. 어느 여행에 무엇을 골라 보냈는지가 이 흐름의 전부다. */
+  const tripAttached: { tripId: number; transactionIds: number[] }[] = [];
   /** 자산 생성 본문. 「무엇을 보냈는가」로만 체크카드 연결 규칙을 확인할 수 있다. */
   const assetsCreated: Record<string, unknown>[] = [];
   /** `analyze`를 몇 번 불렀는지. 첫 시도만 거절하는 흐름을 만드는 데 쓴다. */
@@ -560,22 +563,44 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
     http.get(`${API_BASE}/ledger/transactions/suggest`, () =>
       ok(options.suggestions ?? []),
     ),
-    http.get(`${API_BASE}/ledger/transactions`, () =>
-      ok({
+    // 여행 필터는 서버가 목록과 상단 합계에 <b>함께</b> 건다. 여기서도 같이 걸어야
+    // 「목록만 걸리고 합계는 전체」 같은 화면 버그를 테스트가 잡을 수 있다.
+    http.get(`${API_BASE}/ledger/transactions`, ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      const tripId = params.get("tripId");
+      const excludeTrip = params.get("excludeTrip") === "true";
+      const rows = transactions.filter((tx) => {
+        if (tripId !== null) return String(tx.tripId ?? "") === tripId;
+        if (excludeTrip) return tx.tripId == null;
+        return true;
+      });
+
+      return ok({
         todayLine: "2026-08-28",
         monthTotals: {
           income: 0,
-          expense: transactions
+          expense: rows
             .filter((tx) => tx.type === "EXPENSE" && tx.status === "CONFIRMED")
             .reduce((sum, tx) => sum + (tx.amount as number), 0),
           transfer: 0,
           scheduledExpense: 0,
           scheduledIncome: 0,
-          scheduledCount: transactions.filter((tx) => tx.status === "SCHEDULED")
-            .length,
+          scheduledCount: rows.filter((tx) => tx.status === "SCHEDULED").length,
         },
-        groups: groupByDate(transactions),
-      }),
+        groups: groupByDate(rows),
+      });
+    }),
+    // 여행에 붙이기. 가계부가 아니라 <b>여행</b> API다 — 보낸 요청을 그대로 모아 둔다.
+    http.post(
+      `${API_BASE}/travel/trips/:tripId/expenses/attach`,
+      async ({ params, request }) => {
+        const body = (await request.json()) as { transactionIds: number[] };
+        tripAttached.push({
+          tripId: Number(params.tripId),
+          transactionIds: body.transactionIds,
+        });
+        return ok({ affected: body.transactionIds.length });
+      },
     ),
     http.get(`${API_BASE}/ledger/fx/rate`, ({ request }) => {
       const currency = new URL(request.url).searchParams.get("currency") ?? "";
@@ -1183,6 +1208,7 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
     assetsDeleted,
     duplicated,
     bulkSent,
+    tripAttached,
     occurrenceActions,
     categoryAttributes,
     reverts,
