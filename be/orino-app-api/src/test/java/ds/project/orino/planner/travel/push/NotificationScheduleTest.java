@@ -119,9 +119,15 @@ class NotificationScheduleTest extends ApiTestSupport {
                 .andExpect(status().isOk());
     }
 
+    /**
+     * 대기 중인 <b>일정 알림</b>. 여행 단위로 걸리는 것(준비 알림)은 걸러 낸다 —
+     * 이 파일이 보는 것은 일정에 매달린 알림뿐이고, 여행 하나에 하나씩 붙는 알림까지
+     * 세면 일정과 무관한 이유로 개수가 흔들린다.
+     */
     private List<PushNotification> pending() {
         return notificationRepository.findAllByMemberIdOrderByScheduledAtAsc(memberId).stream()
                 .filter(n -> n.getStatus() == NotificationStatus.PENDING)
+                .filter(n -> n.getActivityId() != null)
                 .toList();
     }
 

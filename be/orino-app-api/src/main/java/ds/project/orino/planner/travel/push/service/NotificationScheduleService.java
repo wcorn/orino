@@ -43,6 +43,9 @@ public class NotificationScheduleService {
     /** 아침 요약을 보내는 현지 시각(§4.3). */
     private static final int MORNING_SUMMARY_HOUR = 8;
 
+    /** 준비 알림을 보내는 현지 시각(v2.2 §14). 출발 <b>전날</b> 이 시각이다. */
+    private static final int PREP_REMINDER_HOUR = 9;
+
     private final PushNotificationRepository notificationRepository;
     private final TripActivityRepository activityRepository;
     private final TripRepository tripRepository;
@@ -112,6 +115,48 @@ public class NotificationScheduleService {
                         trip.getMemberId(), trip.getId(), date, morningAt(date, cities)));
             }
         }
+        // 위에서 이 여행의 대기 중 알림을 전부 접었으므로 준비 알림도 함께 사라졌다.
+        // 기간이 바뀌면 출발 전날도 함께 움직이니, 여기서 다시 만드는 것이 맞다.
+        notificationRepository.save(prepReminderOf(trip, cities));
+    }
+
+    /**
+     * 준비 알림만 다시 잡는다 — <b>첫날 기준 도시가 바뀌었을 때</b>다.
+     *
+     * <p>{@link #rescheduleDate}·{@link #rescheduleMorningSummary} 어느 쪽 그물에도 걸리지
+     * 않는다. 준비 알림은 일정에 매달려 있지 않고, 가는 날짜가 <b>여행 기간 밖</b>이라
+     * 날짜 집합으로 찾는 경로에도 없다. 그래서 자기 경로를 따로 탄다.
+     *
+     * <p>첫날이 아닌 날짜의 도시가 바뀐 것이면 아무 일도 하지 않는다 — 준비 알림의 시계는
+     * 첫날 도시 하나뿐이다.
+     */
+    @Transactional
+    public void reschedulePrepReminder(Long tripId, LocalDate date) {
+        Trip trip = tripRepository.findById(tripId).orElse(null);
+        if (trip == null || !trip.getStartDate().equals(date)) {
+            return;
+        }
+        cancelAll(notificationRepository.findAllByTripIdAndTypeAndStatus(
+                tripId, NotificationType.PREP_REMINDER, NotificationStatus.PENDING));
+        notificationRepository.save(
+                prepReminderOf(trip, tripDayService.baseCitiesOf(tripId)));
+    }
+
+    /**
+     * 출발 전날 09:00을 <b>첫날 기준 도시</b>의 시계로 환산한다.
+     *
+     * <p>전날은 여행 기간 밖이라 그 날짜의 기준 도시가 없다. "떠나는 곳에서 짐을 싼다"가
+     * 이 알림의 전제이므로 첫날 도시를 쓴다 — 여행 상태·D-day가 쓰는 것과 같은 시계다.
+     *
+     * <p>남은 개수는 여기서 세지 않는다. 예약해 둔 뒤에도 체크는 계속 일어나므로,
+     * 지금 센 숫자는 발송 시점에 거의 반드시 틀리다. 0건 판정도 보낼 때 한다(§11.4).
+     */
+    private static PushNotification prepReminderOf(Trip trip,
+                                                   Map<LocalDate, TravelPlace> cities) {
+        LocalDate fireDate = trip.getStartDate().minusDays(1);
+        ZoneId zone = zoneOn(cities, trip.getStartDate());
+        return PushNotification.prepReminder(trip.getMemberId(), trip.getId(), fireDate,
+                fireDate.atTime(PREP_REMINDER_HOUR, 0).atZone(zone).toInstant());
     }
 
     /**

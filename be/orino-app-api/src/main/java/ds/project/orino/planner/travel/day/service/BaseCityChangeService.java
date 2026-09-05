@@ -96,6 +96,10 @@ public class BaseCityChangeService {
             // 아침 요약은 다르다 — 일정이 아니라 날짜에 걸려 있고, "도시가 바뀌는 날인가"가
             // 다음 날짜의 발송 시각까지 뒤집는다(v2.1 §3.6). 위 호출은 요약을 건드리지 않는다.
             notificationService.rescheduleMorningSummary(trip.getId(), day.getDayDate());
+            // 준비 알림도 어느 그물에도 안 걸린다 — 일정에 매달려 있지 않고, 가는 날짜가
+            // 여행 기간 밖(출발 전날)이라 날짜로 찾는 경로에도 없다. 첫날 도시를 바꾸면
+            // 「출발 전날 09:00」이 가리키는 순간이 통째로 달라진다(v2.2 §14).
+            notificationService.reschedulePrepReminder(trip.getId(), day.getDayDate());
         }
         return queryService.days(memberId, trip.getId());
     }

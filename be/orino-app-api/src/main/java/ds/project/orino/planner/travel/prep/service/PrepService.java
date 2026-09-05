@@ -207,6 +207,15 @@ public class PrepService {
         return summaryOf(itemsOf(trip.getId()), trip.getStartDate(), today);
     }
 
+    /**
+     * 아직 체크하지 않은 항목 수. 준비 알림이 <b>보내기 직전에</b> 부른다.
+     *
+     * <p>기한과 무관하므로 「오늘」이 필요 없다 — 「6개 남았어요」의 6은 날짜를 안 본다.
+     */
+    public int remainingCount(Long tripId) {
+        return (int) itemsOf(tripId).stream().filter(item -> !item.isDone()).count();
+    }
+
     // ---------------- helpers ----------------
 
     /**
