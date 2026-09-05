@@ -61,6 +61,16 @@ public class Trip {
     @Column(name = "morning_summary_enabled", nullable = false)
     private boolean morningSummaryEnabled = false;
 
+    /**
+     * 여행 예산(원화). 아직 안 정했으면 null이다 — 0원과 「안 정했다」는 다르다.
+     *
+     * <p>가계부의 {@code ledger_budget}에 넣지 않는다(D-28). 월 예산은 달에 걸리지만 여행
+     * 예산은 여행에 걸리고, 그 둘은 서로 넘나든다 — 10월 예산에 여행 예산을 접어 넣으면
+     * "이 달 여행으로 얼마"를 다시 빼낼 방법이 없다.
+     */
+    @Column(name = "budget_amount")
+    private Long budgetAmount;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -160,6 +170,10 @@ public class Trip {
 
     public boolean isMorningSummaryEnabled() {
         return morningSummaryEnabled;
+    }
+
+    public Long getBudgetAmount() {
+        return budgetAmount;
     }
 
     public Instant getCreatedAt() {

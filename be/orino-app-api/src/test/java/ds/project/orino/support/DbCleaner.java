@@ -51,6 +51,7 @@ public class DbCleaner {
             "trip_activity_log",
             "trip_activity",
             "trip_stay",
+            "trip_prep_item",
             "trip_day",
             "trip",
             "travel_place",
