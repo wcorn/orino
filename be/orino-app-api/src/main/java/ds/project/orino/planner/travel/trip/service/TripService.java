@@ -12,6 +12,8 @@ import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.day.service.BaseCityResolver;
 import ds.project.orino.planner.travel.day.service.LegExpander;
 import ds.project.orino.planner.travel.day.service.TripClock;
+import ds.project.orino.planner.travel.prep.dto.PrepSummary;
+import ds.project.orino.planner.travel.prep.service.PrepService;
 import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.day.service.TripStayShrinkService;
 import ds.project.orino.planner.travel.trip.dto.ShrinkPreviewResponse;
@@ -54,6 +56,7 @@ public class TripService {
     private final TripDayService tripDayService;
     private final BaseCityResolver baseCityResolver;
     private final TripStayShrinkService stayShrinkService;
+    private final PrepService prepService;
     private final Clock clock;
 
     public TripService(TripRepository tripRepository,
@@ -62,6 +65,7 @@ public class TripService {
                        TripDayService tripDayService,
                        BaseCityResolver baseCityResolver,
                        TripStayShrinkService stayShrinkService,
+                       PrepService prepService,
                        Clock clock) {
         this.tripRepository = tripRepository;
         this.activityRepository = activityRepository;
@@ -69,6 +73,7 @@ public class TripService {
         this.tripDayService = tripDayService;
         this.baseCityResolver = baseCityResolver;
         this.stayShrinkService = stayShrinkService;
+        this.prepService = prepService;
         this.clock = clock;
     }
 
@@ -199,13 +204,15 @@ public class TripService {
                                 ongoing.getTitle(), ongoing.getStartDate(),
                                 ongoing.getEndDate(),
                                 counts.getOrDefault(ongoing.getId(), 0L),
-                                citySummaryOf(ongoing, cities)),
-                next == null ? null : new TravelSummaryResponse.NextTrip(
+                                citySummaryOf(ongoing, cities),
+                                prepSummaryOf(ongoing, cities)),
+                next == null ? null : TravelSummaryResponse.NextTrip.of(
                         next.getId(), next.getTitle(), cityNameOf(next, cities),
                         next.getStartDate(), next.getEndDate(),
                         daysUntilStart(next, cities),
                         counts.getOrDefault(next.getId(), 0L),
-                        citySummaryOf(next, cities)),
+                        citySummaryOf(next, cities),
+                        prepSummaryOf(next, cities)),
                 completed == null ? null : new TravelSummaryResponse.CompletedTrip(
                         completed.getId(), completed.getTitle(), completed.getEndDate(),
                         counts.getOrDefault(completed.getId(), 0L)));
@@ -287,6 +294,16 @@ public class TripService {
 
     private TripStatus statusOf(Trip trip, TripCities cities) {
         return TripClock.status(trip, cities.of(trip), clock);
+    }
+
+    /**
+     * 준비 진행률·기한 지남 개수. 기준 "오늘"은 <b>D-day와 같은 시계</b>로 낸다 —
+     * {@code daysUntilStart}가 첫날 기준 도시로 센 값이므로 출발일에서 빼면 그 도시의 오늘이다.
+     * 여기서 서버 로컬 날짜를 쓰면 출발 전날 밤에 카드의 D-day와 기한 경고가 하루 어긋난다.
+     */
+    private PrepSummary prepSummaryOf(Trip trip, TripCities cities) {
+        LocalDate today = trip.getStartDate().minusDays(daysUntilStart(trip, cities));
+        return prepService.summaryOf(trip, today);
     }
 
     private long daysUntilStart(Trip trip, TripCities cities) {

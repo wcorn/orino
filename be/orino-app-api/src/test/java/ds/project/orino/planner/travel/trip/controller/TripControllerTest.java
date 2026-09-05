@@ -26,6 +26,7 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -538,6 +539,64 @@ class TripControllerTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.next.activityCount").value(1))
                     .andExpect(jsonPath("$.data.recentCompleted.id").value((int) recent));
         }
+
+        @Test
+        @DisplayName("준비 요약이 진행 중과 다음 예정 둘 다에 붙는다 — 준비는 출발 전 기능이다")
+        void carriesPrepOnBothOngoingAndNext() throws Exception {
+            long ongoing = createTrip("진행중", "오사카", "2026-01-14", "2026-01-16");
+            long soon = createTrip("곧", "도쿄", "2026-10-24", "2026-10-27");
+            addPrepItem(ongoing, """
+                    {"category": "BAG", "title": "충전기"}""");
+            long packed = addPrepItem(soon, """
+                    {"category": "BAG", "title": "멀티어댑터"}""");
+            addPrepItem(soon, """
+                    {"category": "BOOKING", "title": "항공권 발권"}""");
+            checkPrepItem(packed);
+
+            mockMvc.perform(get("/api/travel/summary")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.ongoing.prep.total").value(1))
+                    .andExpect(jsonPath("$.data.ongoing.prepPath")
+                            .value("/travel/trips/%d/prep".formatted(ongoing)))
+                    // 배지가 여행이 시작된 뒤에만 뜨면 정작 필요한 동안 아무 말도 안 한다.
+                    .andExpect(jsonPath("$.data.next.prep.total").value(2))
+                    .andExpect(jsonPath("$.data.next.prep.done").value(1))
+                    .andExpect(jsonPath("$.data.next.prepPath")
+                            .value("/travel/trips/%d/prep".formatted(soon)));
+        }
+
+        @Test
+        @DisplayName("기한 지난 개수는 준비 화면이 말하는 것과 같은 값이다")
+        void overdueCountMatchesPrepScreen() throws Exception {
+            long soon = createTrip("곧", "도쿄", "2026-10-24", "2026-10-27");
+            // 오늘은 2026-01-15(도쿄). D-300은 2025-12-28이라 이미 지났다.
+            addPrepItem(soon, """
+                    {"category": "BOOKING", "title": "여권 갱신", "dueDaysBefore": 300}""");
+            addPrepItem(soon, """
+                    {"category": "BOOKING", "title": "숙소 잔금", "dueDaysBefore": 200}""");
+
+            mockMvc.perform(get("/api/travel/trips/" + soon + "/prep")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.overdueCount").value(1));
+
+            mockMvc.perform(get("/api/travel/summary")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.next.prep.overdueCount").value(1));
+        }
+
+        @Test
+        @DisplayName("준비를 하나도 안 적었으면 0으로 온다 — 「모른다」가 아니라 0개다")
+        void zeroWhenNothingWritten() throws Exception {
+            createTrip("곧", "도쿄", "2026-10-24", "2026-10-27");
+
+            mockMvc.perform(get("/api/travel/summary")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.next.prep.total").value(0))
+                    .andExpect(jsonPath("$.data.next.prep.overdueCount").value(0));
+        }
     }
 
     @Nested
@@ -660,6 +719,26 @@ class TripControllerTest extends ApiTestSupport {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) JsonPath.read(body, "$.data.id")).longValue();
+    }
+
+    private long addPrepItem(long tripId, String body) throws Exception {
+        String response = mockMvc.perform(
+                        post("/api/travel/trips/" + tripId + "/prep/items")
+                                .header(HttpHeaders.AUTHORIZATION, authHeader)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(body))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) JsonPath.read(response, "$.data.item.id")).longValue();
+    }
+
+    private void checkPrepItem(long itemId) throws Exception {
+        mockMvc.perform(patch("/api/travel/prep/items/" + itemId)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"done": true}"""))
+                .andExpect(status().isOk());
     }
 
     /** 일정 API는 #1032에서 나오므로 여기서는 리포지토리로 직접 넣는다. */

@@ -1,6 +1,7 @@
 import { client } from "@/shared/api";
 
 import type { TripStatus } from "../lib/tripStatus";
+import type { PrepSummary } from "./prep";
 
 interface ApiEnvelope<T> {
   code: string;
@@ -33,10 +34,17 @@ export interface OngoingTripSummary {
   title: string;
   /** 서버가 조립해 주는 보드 경로. 프론트가 경로를 다시 만들지 않는다. */
   boardPath: string;
+  /** 준비 화면 경로. 보드와 같은 규칙으로 서버가 조립한다. */
+  prepPath: string;
   startDate: string;
   endDate: string;
   activityCount: number;
   cities: TripCitySummary;
+  /**
+   * 준비 진행률·기한 지남 개수. <b>화면이 다시 세지 않는다</b> — 사이드바 배지와 준비 화면
+   * 상단이 다른 값을 말하면, 무엇을 눌러야 배지가 사라지는지 알 수 없다.
+   */
+  prep: PrepSummary;
 }
 
 /** 다음 예정 여행 — D-day 카운트다운 카드. */
@@ -44,12 +52,18 @@ export interface NextTripSummary {
   id: number;
   title: string;
   destinationName: string;
+  prepPath: string;
   startDate: string;
   endDate: string;
   /** 시작일까지 남은 일수. 여행 타임존 기준이라 프론트에서 다시 계산하지 않는다. */
   dDay: number;
   activityCount: number;
   cities: TripCitySummary;
+  /**
+   * 준비 요약이 <b>예정 여행에도 붙는다.</b> 준비는 출발 전에 값을 내는 기능이라, 여행이
+   * 시작된 뒤에만 배지가 뜨면 정작 필요한 동안 아무 말도 하지 않는다(명세 v2.2 §13).
+   */
+  prep: PrepSummary;
 }
 
 /** 가장 최근에 끝난 여행. */

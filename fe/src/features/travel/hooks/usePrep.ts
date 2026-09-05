@@ -27,10 +27,18 @@ export function usePrep(tripId: number) {
   });
 }
 
+/**
+ * 준비가 바뀌면 <b>요약도 함께</b> 무효화한다.
+ *
+ * <p>사이드바 배지와 홈 카드의 준비 줄은 요약(`/travel/summary`)을 읽는다. 준비만 무효화하면
+ * 기한 지난 항목을 체크했을 때 화면의 경고는 사라지는데 배지에는 1이 그대로 남는다 —
+ * 사용자는 무엇을 더 눌러야 배지가 사라지는지 알 수 없다(§13에서 막으려던 바로 그 상태다).
+ */
 function useInvalidatePrep(tripId: number) {
   const queryClient = useQueryClient();
   return () => {
     void queryClient.invalidateQueries({ queryKey: travelKeys.prep(tripId) });
+    void queryClient.invalidateQueries({ queryKey: travelKeys.summary });
   };
 }
 

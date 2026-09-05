@@ -17,6 +17,7 @@ import {
   ReceiptText,
   Repeat,
   Settings,
+  SquareCheckBig,
   Star,
   Tag,
   Target,
@@ -61,6 +62,10 @@ interface NavItem {
 const BOARD_PATH = /^\/travel\/trips\/\d+\/(board|map)$/;
 /** `/travel/trips` · `/travel/trips/new` · `/travel/trips/12/edit` (목록과 생성·수정 폼) */
 const TRIP_LIST_PATH = /^\/travel\/trips(\/new|\/\d+\/edit)?$/;
+/** `/travel/trips/12/prep` */
+const PREP_PATH = /^\/travel\/trips\/\d+\/prep$/;
+/** `/travel/trips/12/expenses` — 화면은 #1329에서 채운다. */
+const EXPENSES_PATH = /^\/travel\/trips\/\d+\/expenses$/;
 /** `/ledger/cards` · `/ledger/cards/12/statements` (카드 목록과 그 카드의 청구서) */
 const LEDGER_CARD_PATH = /^\/ledger\/cards(\/\d+\/statements)?$/;
 
@@ -98,6 +103,18 @@ const TRAVEL_NAV_ITEMS: NavItem[] = [
     // 보드·지도·일정 상세를 모두 이 항목이 대표한다.
     matchPath: (pathname) =>
       BOARD_PATH.test(pathname) || pathname.startsWith("/travel/activities/"),
+  },
+  {
+    to: "/travel/trips",
+    label: "준비",
+    icon: SquareCheckBig,
+    matchPath: (pathname) => PREP_PATH.test(pathname),
+  },
+  {
+    to: "/travel/trips",
+    label: "경비",
+    icon: Wallet,
+    matchPath: (pathname) => EXPENSES_PATH.test(pathname),
   },
   { to: "/travel/tools", label: "도구", icon: Wrench },
   { to: "/travel/settings", label: "설정", icon: Settings },
@@ -223,6 +240,27 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   // 일상 화면이 여행·링크 API를 부르기 시작하면 그건 일상 쪽 동작 변경이다.
   const { data: travelData } = useTravelSummary({ enabled: travel });
   const boardPath = travelData?.ongoing?.boardPath ?? "/travel/trips";
+  /**
+   * 준비·경비가 가리키는 여행. <b>진행 중이 없으면 다음 예정 여행이다</b> — 보드와 다른
+   * 점이다. 준비는 출발 전에 값을 내는 기능이라, 여행이 시작되기를 기다렸다가 열어 주면
+   * 정작 짐 싸는 동안 갈 곳이 없다(명세 v2.2 §13).
+   */
+  const prepTrip = travelData?.ongoing ?? travelData?.next ?? null;
+  const prepPath = prepTrip?.prepPath ?? "/travel/trips";
+  const expensesPath = prepTrip
+    ? `/travel/trips/${prepTrip.id}/expenses`
+    : "/travel/trips";
+  // 기한 지난 개수는 서버가 준비 화면과 같은 함수로 센 값이다. 여기서 다시 세지 않는다.
+  const prepOverdueCount = prepTrip?.prep?.overdueCount ?? 0;
+  /**
+   * 여행 항목 셋은 여는 시점에 `to`가 정해진다 — 보드·준비·경비는 여행 없이 열 수 없다.
+   * 라벨로 고르는 것은 셋의 `to`가 전부 `/travel/trips`(자리만 잡아 둔 값)라서다.
+   */
+  const travelPaths: Record<string, string> = {
+    "일정 보드": boardPath,
+    준비: prepPath,
+    경비: expensesPath,
+  };
   // 필터 없는 목록이라 키가 `/links` 화면의 기본 목록과 같다 — 사이드바를 지나온
   // 사용자는 목록이 즉시 그려진다.
   const { data: linkData } = useLinks({ enabled: link });
@@ -355,7 +393,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             const Icon = item.icon;
             const isReviewItem = item.to === "/planner/reviews";
             const isUpcomingItem = item.to === "/ledger/upcoming";
-            const isBoardItem = item.label === "일정 보드";
+            const isPrepItem = item.label === "준비";
             // 링크 메뉴의 우측 숫자. 아직 못 받았으면 자리를 비운다 — `0`은 "링크가 없다"는
             // 뜻이고, 모르는 것과 다르다.
             const count =
@@ -367,7 +405,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             return (
               <li key={item.label}>
                 <NavLink
-                  to={isBoardItem ? boardPath : item.to}
+                  to={travelPaths[item.label] ?? item.to}
                   end={EXACT_MATCH_PATHS.includes(item.to)}
                   className={({ isActive }) => {
                     const active = item.matchLocation
@@ -399,6 +437,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                       className="bg-destructive inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold text-white"
                     >
                       {overdueCount}
+                    </span>
+                  )}
+                  {/*
+                    준비도 「무시」가 없다(§13). 체크하거나 기한을 옮겨야 사라진다 —
+                    끌 수 있는 경고는 곧 아무도 안 보는 경고가 된다.
+                  */}
+                  {isPrepItem && prepOverdueCount > 0 && (
+                    <span
+                      aria-label={`기한 지난 것 ${prepOverdueCount}개`}
+                      className="bg-destructive inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold text-white"
+                    >
+                      {prepOverdueCount}
                     </span>
                   )}
                   {isReviewItem && reviewCount > 0 && (

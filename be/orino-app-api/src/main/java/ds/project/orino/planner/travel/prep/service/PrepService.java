@@ -194,6 +194,19 @@ public class PrepService {
         }
     }
 
+    /**
+     * 진행률과 기한 지남 개수만. 사이드바 배지·홈 카드가 목록 없이 이것만 읽는다.
+     *
+     * <p><b>화면이 세지 않고 여기서 센다.</b> 배지와 준비 화면 상단이 서로 다른 값을 말하면,
+     * 사용자는 무엇을 눌러야 배지가 사라지는지 알 수 없다 — 같은 함수에서 나와야 한다.
+     *
+     * @param today 첫날 기준 도시의 오늘. 호출부가 이미 알고 있으면 그것을 넘긴다 —
+     *              요약 한 번에 날짜 행을 두 번 읽지 않게
+     */
+    public PrepSummary summaryOf(Trip trip, LocalDate today) {
+        return summaryOf(itemsOf(trip.getId()), trip.getStartDate(), today);
+    }
+
     // ---------------- helpers ----------------
 
     /**

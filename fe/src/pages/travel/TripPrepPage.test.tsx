@@ -146,6 +146,24 @@ function mockPrep(initial: StoredItem[] = []) {
       },
     ),
 
+    // 사이드바 배지가 읽는 요약. 같은 저장소에서 센다 — 두 값이 갈리면
+    // 배지와 화면이 다른 말을 하게 되고, 그게 이 화면이 막으려는 상태다.
+    http.get(`${API_BASE}/travel/summary`, () =>
+      HttpResponse.json({
+        code: "OK",
+        data: {
+          ongoing: null,
+          next: {
+            id: TRIP_ID,
+            title: "일본 가을",
+            prepPath: `/travel/trips/${TRIP_ID}/prep`,
+            prep: summary(),
+          },
+          recentCompleted: null,
+        },
+      }),
+    ),
+
     http.delete(`${API_BASE}/travel/prep/items/:itemId`, ({ params }) => {
       const id = Number(params.itemId);
       requests.deleted.push(id);
@@ -381,6 +399,34 @@ describe("TripPrepPage", () => {
 
     await user.click(screen.getByRole("button", { name: "짐" }));
     expect(screen.getByLabelText("수량")).toBeEnabled();
+  });
+
+  it("기한 지난 항목을 체크하면 사이드바 배지도 함께 사라진다", async () => {
+    mockPrep([
+      item({
+        id: 1,
+        title: "여권 갱신",
+        category: "BOOKING",
+        dueDaysBefore: 20,
+        dueDate: "2026-10-04",
+        overdue: true,
+      }),
+    ]);
+    const user = userEvent.setup();
+    renderPrep();
+
+    // 배지와 화면 상단이 같은 값을 읽는지가 요지다(§13).
+    expect(await screen.findByLabelText("기한 지난 것 1개")).toBeVisible();
+    expect(screen.getByText("기한 지난 것 1개")).toBeVisible();
+
+    await user.click(screen.getByRole("checkbox", { name: "여권 갱신" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("기한 지난 것 1개"),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText("기한 지난 것 1개")).not.toBeInTheDocument();
   });
 
   it("오프라인이면 체크도 입력도 막는다 — 큐잉하지 않는다", async () => {
