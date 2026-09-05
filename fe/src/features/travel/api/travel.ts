@@ -240,3 +240,35 @@ export async function fetchShrinkPreview(
 export async function deleteTrip(tripId: number): Promise<void> {
   await client.delete(`/travel/trips/${tripId}`);
 }
+
+/**
+ * 고른 지출을 이 여행에 붙인다(명세 v2.2 §18).
+ *
+ * <p>가계부가 아니라 <b>여행</b> API인 이유 — 「어느 여행의 지출인가」를 정하는 것은 여행이
+ * 아는 일이다. 가계부에 두면 가계부가 여행의 존재와 소유권을 알아야 하고, 그때부터 의존이
+ * 양방향이 된다(의존은 여행 → 가계부 한 방향).
+ *
+ * <p>지출을 <b>만드는</b> 곳은 여전히 가계부 API다. 여기서 하는 것은 연결뿐이다.
+ */
+export async function attachExpensesToTrip(
+  tripId: number,
+  transactionIds: number[],
+): Promise<{ affected: number }> {
+  const { data } = await client.post<ApiEnvelope<{ affected: number }>>(
+    `/travel/trips/${tripId}/expenses/attach`,
+    { transactionIds },
+  );
+  return data.data;
+}
+
+/** 이 여행에서 뗀다. 거래는 지우지 않고 연결만 끊는다. */
+export async function detachExpensesFromTrip(
+  tripId: number,
+  transactionIds: number[],
+): Promise<{ affected: number }> {
+  const { data } = await client.post<ApiEnvelope<{ affected: number }>>(
+    `/travel/trips/${tripId}/expenses/detach`,
+    { transactionIds },
+  );
+  return data.data;
+}

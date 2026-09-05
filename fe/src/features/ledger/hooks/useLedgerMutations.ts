@@ -1,6 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { travelKeys } from "@/features/travel/queryKeys";
 import { toast } from "@/shared/lib/toast";
 
 import {
@@ -8,7 +7,6 @@ import {
   type AssetCreateRequest,
   type AssetUpdateRequest,
   attachReceipt,
-  attachTripToTransactions,
   type BudgetPutRequest,
   bulkCreateTransactions,
   type CategoryAttributesRequest,
@@ -61,8 +59,13 @@ import { ledgerKeys } from "../queryKeys";
 /**
  * 거래 하나가 잔액·요약·자산 상세를 전부 바꾼다. 셋을 따로 갱신하면 화면마다 다른 숫자가
  * 남고, 이 모듈에서 그건 「원장이 틀어졌다」와 구분되지 않는다.
+ *
+ * <p>여행 쪽에서도 쓴다 — 지출을 여행에 붙이면 원장의 그 줄이 달라지므로, 갱신 범위는
+ * 여기 정의된 것과 같아야 한다({@code useAttachExpensesToTrip}).
  */
-function invalidateAll(queryClient: ReturnType<typeof useQueryClient>) {
+export function invalidateLedger(
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
   void queryClient.invalidateQueries({ queryKey: ledgerKeys.all });
 }
 
@@ -87,7 +90,7 @@ export function useCreateTransaction() {
       }
     },
     onError: () => toast("저장하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -103,7 +106,7 @@ export function useUpdateTransaction() {
       body: TransactionUpdateRequest;
     }) => updateTransaction(id, body),
     onError: () => toast("수정하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -115,7 +118,7 @@ export function useDeleteTransaction() {
     mutationFn: (id: number) => deleteTransaction(id),
     onSuccess: () => toast("삭제했어요"),
     onError: () => toast("삭제하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -126,7 +129,7 @@ export function useCreateAsset() {
     mutationFn: (body: AssetCreateRequest) => createAsset(body),
     onSuccess: () => toast("자산을 만들었어요"),
     onError: () => toast("자산을 만들지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -137,7 +140,7 @@ export function useUpdateAsset() {
     mutationFn: ({ id, body }: { id: number; body: AssetUpdateRequest }) =>
       updateAsset(id, body),
     onError: () => toast("자산을 수정하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -155,7 +158,7 @@ export function useDeleteAsset() {
     mutationFn: (id: number) => deleteAsset(id),
     onSuccess: () => toast("자산을 삭제했어요"),
     onError: () => toast("거래가 있는 자산이라 삭제할 수 없어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -178,7 +181,7 @@ export function useReconcileAsset() {
       );
     },
     onError: () => toast("잔액을 맞추지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -199,7 +202,7 @@ export function useApplyTemplate() {
         result.savedAs === "SCHEDULED" ? "info" : "success",
       ),
     onError: () => toast("저장하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -210,7 +213,7 @@ export function useCreateTemplate() {
     mutationFn: (body: TemplateCreateRequest) => createTemplate(body),
     onSuccess: () => toast("템플릿으로 저장했어요"),
     onError: () => toast("템플릿을 만들지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -220,7 +223,7 @@ export function useDeleteTemplate() {
   return useMutation({
     mutationFn: (id: number) => deleteTemplate(id),
     onError: () => toast("템플릿을 지우지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -233,34 +236,7 @@ export function useDuplicateTransaction() {
       duplicateTransaction(id, useToday),
     onSuccess: () => toast("복사했어요"),
     onError: () => toast("복사하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
-  });
-}
-
-/**
- * 고른 거래를 여행에 붙인다(여행 v2.2 §18).
- *
- * <p>여행 요약도 함께 무효화한다 — 홈 카드와 경비 화면이 그 값을 읽으므로, 붙여 놓고
- * 여행으로 건너가면 방금 붙인 것이 안 보이는 상태가 된다.
- */
-export function useAttachTripToTransactions() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ ids, tripId }: { ids: number[]; tripId: number | null }) =>
-      attachTripToTransactions(ids, tripId),
-    onSuccess: (result, { tripId }) =>
-      toast(
-        tripId === null
-          ? `${result.affected}건의 여행 연결을 끊었어요`
-          : `${result.affected}건을 여행에 붙였어요`,
-        "success",
-      ),
-    onError: () => toast("붙이지 못했어요.", "error"),
-    onSettled: () => {
-      invalidateAll(queryClient);
-      void queryClient.invalidateQueries({ queryKey: travelKeys.all });
-    },
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -284,7 +260,7 @@ export function useBulkCreateTransactions() {
       );
     },
     onError: () => toast("한 줄이라도 잘못되면 전부 저장하지 않아요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -319,7 +295,7 @@ export function useAttachReceipt() {
       });
     },
     onError: () => toast("영수증을 올리지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -329,7 +305,7 @@ export function useDetachReceipt() {
   return useMutation({
     mutationFn: (id: number) => detachReceipt(id),
     onError: () => toast("영수증을 떼지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -340,7 +316,7 @@ export function useUpdateSettings() {
     mutationFn: (body: SettingsUpdateRequest) => updateSettings(body),
     onSuccess: () => toast("설정을 저장했어요"),
     onError: () => toast("설정을 저장하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -357,7 +333,7 @@ export function useOccurrenceAction() {
     mutationFn: (body: OccurrenceRequest) => patchOccurrence(body),
     onSuccess: (_, body) => toast(OCCURRENCE_MESSAGES[body.action]),
     onError: () => toast("회차를 고치지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -377,7 +353,7 @@ export function useConfirmOccurrence() {
     mutationFn: (body: OccurrenceConfirmRequest) => confirmOccurrence(body),
     onSuccess: () => toast("실제 출금일로 확정했어요"),
     onError: () => toast("확정하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -399,7 +375,7 @@ export function usePayStatement() {
       body: StatementPayRequest;
     }) => payStatement(statementId, body),
     onError: () => toast("결제 처리를 하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -418,7 +394,7 @@ export function usePauseRecurring() {
     }) => pauseRecurring(id, { from, to }),
     onSuccess: () => toast("일시 정지했어요"),
     onError: () => toast("일시 정지하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -429,7 +405,7 @@ export function useResumeRecurring() {
     mutationFn: (id: number) => resumeRecurring(id),
     onSuccess: () => toast("다시 시작했어요"),
     onError: () => toast("다시 시작하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -446,7 +422,7 @@ export function useEndRecurring() {
       endRecurring(id, body),
     onSuccess: (result) => toast(result.message),
     onError: () => toast("해지하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -463,7 +439,7 @@ export function usePutBudget() {
     }) => putBudget(period, body),
     onSuccess: () => toast("예산을 저장했어요"),
     onError: () => toast("예산을 저장하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -486,7 +462,7 @@ export function useUpdateCategoryAttributes() {
     }) => updateCategoryAttributes(id, body),
     onSuccess: () => toast("카테고리 속성을 저장했어요"),
     onError: () => toast("카테고리 속성을 저장하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -504,7 +480,7 @@ export function useUpdateUsageGoal() {
     }) => updateUsageGoal(cardId, body),
     onSuccess: () => toast("실적 조건을 저장했어요"),
     onError: () => toast("실적 조건을 저장하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -539,7 +515,7 @@ export function useExecuteImport() {
     }) => executeImport(files, requests),
     onSuccess: (result) => toast(`${result.inserted}건을 넣었어요`),
     onError: () => toast("가져오지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -551,7 +527,7 @@ export function useRevertImportBatch() {
     mutationFn: (id: number) => revertImportBatch(id),
     onSuccess: (result) => toast(`${result.reverted}건을 되돌렸어요`),
     onError: () => toast("되돌리지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -566,7 +542,7 @@ export function useCreateAutoRule() {
     }) => createAutoRule(body),
     onSuccess: () => toast("규칙을 추가했어요"),
     onError: () => toast("규칙을 추가하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -582,7 +558,7 @@ export function useUpdateAutoRule() {
       body: { enabled?: boolean; categoryId?: number; keyword?: string };
     }) => updateAutoRule(id, body),
     onError: () => toast("규칙을 고치지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -593,7 +569,7 @@ export function useDeleteAutoRule() {
     mutationFn: (id: number) => deleteAutoRule(id),
     onSuccess: () => toast("규칙을 지웠어요"),
     onError: () => toast("규칙을 지우지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -610,7 +586,7 @@ export function useCreatePoint() {
     }) => createPoint(body),
     onSuccess: () => toast("포인트를 추가했어요"),
     onError: () => toast("포인트를 추가하지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -630,7 +606,7 @@ export function useUpdatePoint() {
       };
     }) => updatePoint(id, body),
     onError: () => toast("포인트를 고치지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }
 
@@ -641,6 +617,6 @@ export function useDeletePoint() {
     mutationFn: (id: number) => deletePoint(id),
     onSuccess: () => toast("포인트를 지웠어요"),
     onError: () => toast("포인트를 지우지 못했어요.", "error"),
-    onSettled: () => invalidateAll(queryClient),
+    onSettled: () => invalidateLedger(queryClient),
   });
 }

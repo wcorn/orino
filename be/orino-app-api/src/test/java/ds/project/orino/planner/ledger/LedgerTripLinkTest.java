@@ -15,8 +15,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.ResultActions;
 
 import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
@@ -90,17 +93,12 @@ class LedgerTripLinkTest extends ApiTestSupport {
         }
 
         @Test
-        @DisplayName("고른 여러 건을 한 번에 붙인다 — 돌아와서 기간으로 걸러 한 번(§18)")
-        void bulkAttaches() throws Exception {
+        @DisplayName("고른 여러 건을 한 번에 붙인다 — 붙이는 길은 여행 쪽에 있다(§18)")
+        void attachesManyThroughTravelApi() throws Exception {
             long first = LedgerFixture.transactionId(expense(4500, null));
             long second = LedgerFixture.transactionId(expense(12000, null));
 
-            mockMvc.perform(post("/api/ledger/transactions/bulk")
-                            .header(HttpHeaders.AUTHORIZATION, authHeader)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"action": "ATTACH_TRIP", "ids": [%d, %d], "tripId": %d}
-                                    """.formatted(first, second, tripId)))
+            attach(tripId, first, second)
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.affected").value(2));
 
@@ -111,9 +109,60 @@ class LedgerTripLinkTest extends ApiTestSupport {
         }
 
         @Test
-        @DisplayName("tripId를 비워 보내면 연결을 끊는다 — 「해제」를 따로 만들지 않는다")
-        void bulkDetaches() throws Exception {
+        @DisplayName("떼면 연결만 끊긴다 — 거래는 지우지 않는다")
+        void detachesWithoutDeleting() throws Exception {
             long id = LedgerFixture.transactionId(expense(4500, tripId));
+
+            detach(tripId, id)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.affected").value(1));
+
+            assertThat(transactionRepository.findById(id)).isPresent();
+            assertThat(transactionRepository.findById(id).orElseThrow().getTripId()).isNull();
+        }
+
+        @Test
+        @DisplayName("다른 여행에 붙어 있는 건은 떼지 않는다 — 화면이 말한 것만 일어난다")
+        void detachLeavesOtherTripsAlone() throws Exception {
+            long otherTrip = createTrip(authHeader, "봄 여행");
+            long id = LedgerFixture.transactionId(expense(4500, otherTrip));
+
+            detach(tripId, id)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.affected").value(0));
+
+            assertThat(transactionRepository.findById(id).orElseThrow().getTripId())
+                    .isEqualTo(otherTrip);
+        }
+
+        @Test
+        @DisplayName("붙이기도 남의 여행은 404다")
+        void attachRejectsOthersTrip() throws Exception {
+            long id = LedgerFixture.transactionId(expense(4500, null));
+            long othersTrip = createTrip(otherAuthHeader, "남의 여행");
+
+            attach(othersTrip, id)
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-001"));
+        }
+
+        @Test
+        @DisplayName("남의 거래는 조용히 빠진다 — 한 건 때문에 전부 거절하지 않는다")
+        void skipsForeignTransactions() throws Exception {
+            long mine = LedgerFixture.transactionId(expense(4500, null));
+
+            attach(tripId, mine, 999999L)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.affected").value(1));
+
+            assertThat(transactionRepository.findById(mine).orElseThrow().getTripId())
+                    .isEqualTo(tripId);
+        }
+
+        @Test
+        @DisplayName("가계부 일괄 편집에는 여행을 붙이는 길이 없다 — 의존은 한 방향이다")
+        void ledgerBulkHasNoTripAction() throws Exception {
+            long id = LedgerFixture.transactionId(expense(4500, null));
 
             mockMvc.perform(post("/api/ledger/transactions/bulk")
                             .header(HttpHeaders.AUTHORIZATION, authHeader)
@@ -121,25 +170,7 @@ class LedgerTripLinkTest extends ApiTestSupport {
                             .content("""
                                     {"action": "ATTACH_TRIP", "ids": [%d]}
                                     """.formatted(id)))
-                    .andExpect(status().isOk());
-
-            assertThat(transactionRepository.findById(id).orElseThrow().getTripId()).isNull();
-        }
-
-        @Test
-        @DisplayName("일괄 붙이기도 남의 여행은 404다")
-        void bulkRejectsUnknownTrip() throws Exception {
-            long id = LedgerFixture.transactionId(expense(4500, null));
-            long othersTrip = createTrip(otherAuthHeader, "남의 여행");
-
-            mockMvc.perform(post("/api/ledger/transactions/bulk")
-                            .header(HttpHeaders.AUTHORIZATION, authHeader)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"action": "ATTACH_TRIP", "ids": [%d], "tripId": %d}
-                                    """.formatted(id, othersTrip)))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-001"));
+                    .andExpect(status().isBadRequest());
         }
     }
 
@@ -267,6 +298,26 @@ class LedgerTripLinkTest extends ApiTestSupport {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) JsonPath.read(body, "$.data.id")).longValue();
+    }
+
+    private ResultActions attach(long trip, long... transactionIds) throws Exception {
+        return expenseAction(trip, "attach", transactionIds);
+    }
+
+    private ResultActions detach(long trip, long... transactionIds) throws Exception {
+        return expenseAction(trip, "detach", transactionIds);
+    }
+
+    private ResultActions expenseAction(long trip, String action, long... transactionIds)
+            throws Exception {
+        String ids = Arrays.stream(transactionIds)
+                .mapToObj(String::valueOf)
+                .collect(Collectors.joining(", "));
+        return mockMvc.perform(
+                post("/api/travel/trips/" + trip + "/expenses/" + action)
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"transactionIds\": [%s]}".formatted(ids)));
     }
 
     private String expense(long amount, Long trip) throws Exception {

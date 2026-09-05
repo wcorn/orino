@@ -14,25 +14,17 @@ import java.util.List;
 public record BulkRequest(
         @NotNull Action action,
         @NotEmpty List<Long> ids,
-        Long categoryId,
-        /**
-         * {@link Action#ATTACH_TRIP}이 붙일 여행. <b>{@code null}이면 연결을 끊는다</b> —
-         * {@code SET_CATEGORY}에 {@code categoryId}를 비워 보내면 미분류가 되는 것과 같은 규칙이라
-         * 「해제」를 위한 동작을 따로 만들지 않는다.
-         */
-        Long tripId
+        Long categoryId
 ) {
 
+    /**
+     * 여행에 붙이는 동작은 <b>여기 없다.</b> 그건 「어느 여행의 지출인가」를 정하는 일이라
+     * 여행이 아는 것이고, 가계부에 두면 가계부가 여행의 존재와 소유권을 알아야 한다 —
+     * 의존이 양방향이 되는 자리다. {@code POST /api/travel/trips/{id}/expenses/attach}에 있다.
+     */
     public enum Action {
         SET_CATEGORY,
         /** 소프트 삭제다. 행은 남는다. */
-        DELETE,
-        /**
-         * 고른 거래를 여행에 붙이거나 뗀다(여행 v2.2 §18).
-         *
-         * <p>경비 화면이 다 밀려도 이것 하나면 「다녀와서 얼마 들었나」는 답이 나온다 —
-         * 여행 중엔 가계부에 그냥 적고, 돌아와 기간으로 걸러 한 번 붙이면 된다.
-         */
-        ATTACH_TRIP
+        DELETE
     }
 }

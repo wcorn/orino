@@ -308,10 +308,11 @@ describe("내역 화면", () => {
 
     await user.click(screen.getByRole("button", { name: "붙이기" }));
 
+    // 붙이는 길은 가계부가 아니라 여행 API다 — 의존은 여행 → 가계부 한 방향이다.
     await waitFor(() => expect(sent.tripAttached).toHaveLength(1));
-    expect(sent.tripAttached[0]).toMatchObject({
-      action: "ATTACH_TRIP",
-      ids: [10, 11],
+    expect(sent.tripAttached[0]).toEqual({
+      tripId: 7,
+      transactionIds: [10, 11],
     });
   });
 

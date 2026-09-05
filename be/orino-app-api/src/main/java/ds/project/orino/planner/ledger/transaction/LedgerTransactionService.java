@@ -356,15 +356,6 @@ public class LedgerTransactionService {
             return new BulkResponse(targets.size());
         }
 
-        if (request.action() == BulkRequest.Action.ATTACH_TRIP) {
-            // null이면 연결을 끊는다. 있는 여행인지는 붙일 때만 묻는다.
-            if (request.tripId() != null) {
-                requireTrip(memberId, request.tripId());
-            }
-            targets.forEach(tx -> tx.attachToTrip(request.tripId()));
-            return new BulkResponse(targets.size());
-        }
-
         Long categoryId = request.categoryId();
         if (categoryId != null) {
             LedgerCategory category = requireCategory(memberId, categoryId);

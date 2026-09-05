@@ -440,25 +440,6 @@ export interface TransactionListParams {
   excludeTrip?: boolean;
 }
 
-/**
- * 고른 거래를 여행에 붙이거나 뗀다(여행 v2.2 §18).
- *
- * <p>여행 중엔 가계부에 그냥 적고, 돌아와 기간으로 걸러 한 번 붙인다. 경비 화면이 다 밀려도
- * 이것 하나면 「다녀와서 얼마 들었나」는 답이 나온다.
- *
- * @param tripId `null`이면 연결을 끊는다
- */
-export async function attachTripToTransactions(
-  ids: number[],
-  tripId: number | null,
-): Promise<{ affected: number }> {
-  const { data } = await client.post<ApiEnvelope<{ affected: number }>>(
-    "/ledger/transactions/bulk",
-    { action: "ATTACH_TRIP", ids, tripId },
-  );
-  return data.data;
-}
-
 export async function fetchAssets(): Promise<AssetListResponse> {
   const { data } =
     await client.get<ApiEnvelope<AssetListResponse>>("/ledger/assets");

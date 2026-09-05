@@ -35,10 +35,7 @@ import { ReceiptsModal } from "@/features/ledger/components/ReceiptsModal";
 import { ScheduledRowActions } from "@/features/ledger/components/ScheduledRowActions";
 import { useTransactionModal } from "@/features/ledger/components/transactionModalContext";
 import { TripAttachBar } from "@/features/ledger/components/TripAttachBar";
-import {
-  useAttachTripToTransactions,
-  useDuplicateTransaction,
-} from "@/features/ledger/hooks/useLedgerMutations";
+import { useDuplicateTransaction } from "@/features/ledger/hooks/useLedgerMutations";
 import {
   useLedgerSettings,
   useLedgerTransactions,
@@ -56,6 +53,7 @@ import {
   formatSigned,
 } from "@/features/ledger/lib/money";
 import { periodLabel, periodOf } from "@/features/ledger/lib/period";
+import { useAttachExpensesToTrip } from "@/features/travel/hooks/useTripExpenses";
 import { cn } from "@/lib/utils";
 
 type StatusFilter = "ALL" | "CONFIRMED" | "SCHEDULED";
@@ -128,7 +126,7 @@ export function LedgerTransactionsPage() {
   const { data, isPending, isError } = useLedgerTransactions(period.start, to, {
     tripId,
   });
-  const attachTrip = useAttachTripToTransactions();
+  const attachTrip = useAttachExpensesToTrip();
   // 지난 달을 보는 중에는 파생 예정이 없다 — 파생 회차는 언제나 오늘 이후다.
   const { data: upcoming } = useLedgerUpcoming(upcomingDays);
 
@@ -366,7 +364,7 @@ export function LedgerTransactionsPage() {
           }}
           onApply={(trip) =>
             attachTrip.mutate(
-              { ids: selected, tripId: trip },
+              { tripId: trip, transactionIds: selected },
               {
                 onSuccess: () => {
                   setSelecting(false);

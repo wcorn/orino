@@ -181,8 +181,10 @@ class PrepReminderTest extends ApiTestSupport {
 
             dispatchService.dispatchDue();
 
-            // 「준비 알림이 무엇을 담았나」만 본다. `dispatchDue`는 그때 보낼 때가 된 것을
-            // 전부 처리하므로, 하나뿐이라고 못박으면 이 알림과 무관한 이유로도 빨개진다.
+            // 「준비 알림이 무엇을 담았나」만 본다 — `dispatchDue`는 보낼 때가 된 것을 전부
+            // 처리하므로, 다른 종류가 함께 나갔는지는 이 단언이 할 말이 아니다.
+            // (한때 이 자리가 빨개진 적이 있는데 원인은 다른 데 있었다 — 폴러가 테스트에서도
+            //  살아 돌고 있었다. SchedulingConfig 참고.)
             assertThat(prepPayloads()).singleElement().satisfies(payload -> {
                 assertThat(payload).contains("\"title\":\"내일 출발\"");
                 assertThat(payload).contains("준비 2개 남았어요");
