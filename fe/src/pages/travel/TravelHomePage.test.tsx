@@ -271,6 +271,57 @@ describe("TravelHomePage", () => {
     });
   });
 
+  it("준비 줄이 진행률과 기한 지난 개수를 보여주고 준비 화면으로 보낸다", async () => {
+    mockSummary({
+      ongoing: null,
+      next: {
+        id: 3,
+        title: "도쿄 3박 4일",
+        destinationName: "도쿄",
+        prepPath: "/travel/trips/3/prep",
+        startDate: "2026-10-24",
+        endDate: "2026-10-27",
+        dDay: 78,
+        activityCount: 13,
+        cities: cities(["도쿄"]),
+        prep: { total: 24, done: 18, overdueCount: 1 },
+      },
+      recentCompleted: null,
+    });
+    mockTrip(TOKYO);
+
+    renderApp();
+
+    const link = await screen.findByRole("link", { name: /준비 18\/24/ });
+    expect(link).toHaveAttribute("href", "/travel/trips/3/prep");
+    expect(link).toHaveTextContent("기한 지난 것 1개");
+  });
+
+  it("적은 준비가 하나도 없으면 준비 줄 자체를 숨긴다 — 0/0은 아무것도 안 알려준다", async () => {
+    mockSummary({
+      ongoing: null,
+      next: {
+        id: 3,
+        title: "도쿄 3박 4일",
+        destinationName: "도쿄",
+        prepPath: "/travel/trips/3/prep",
+        startDate: "2026-10-24",
+        endDate: "2026-10-27",
+        dDay: 78,
+        activityCount: 13,
+        cities: cities(["도쿄"]),
+        prep: { total: 0, done: 0, overdueCount: 0 },
+      },
+      recentCompleted: null,
+    });
+    mockTrip(TOKYO);
+
+    renderApp();
+
+    await screen.findByText("도쿄 3박 4일");
+    expect(screen.queryByText(/^준비 /)).not.toBeInTheDocument();
+  });
+
   it("최근 완료 여행은 별도 행으로 보여주고 그 보드로 보낸다", async () => {
     mockSummary({
       ongoing: null,

@@ -1,4 +1,11 @@
-import { CalendarDays, ChevronRight, MapPin, Plus } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronRight,
+  MapPin,
+  Plus,
+  SquareCheckBig,
+  TriangleAlert,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
@@ -6,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingText } from "@/components/ui/loading-text";
+import type { PrepSummary } from "@/features/travel/api/prep";
 import type {
   CompletedTripSummary,
   NextTripSummary,
@@ -73,6 +81,7 @@ export function TravelHomePage() {
         <FeaturedTripCard
           trip={featured}
           cities={summary?.ongoing?.cities ?? summary?.next?.cities}
+          prep={summary?.ongoing?.prep ?? summary?.next?.prep}
         />
       )}
       {/* 진행 중 여행에 가려진 다음 여행. 첫 구간 도시와 D-day만 한 줄로 남긴다. */}
@@ -100,9 +109,11 @@ function describeState(
 function FeaturedTripCard({
   trip,
   cities,
+  prep,
 }: {
   trip: TripDetail;
   cities: TripCitySummary | undefined;
+  prep: PrepSummary | undefined;
 }) {
   const ongoing = trip.status === "ONGOING";
   // 서버가 준 dDay를 그대로 쓰지 않고 다시 계산한다 — 오프라인 캐시(4단계)로 어제 응답이
@@ -163,6 +174,29 @@ function FeaturedTripCard({
           ))}
         </ul>
       </div>
+      {/*
+        준비 줄. <b>적은 게 하나도 없으면 줄 자체를 숨긴다</b>(§7) — 「0/0」은 아무것도
+        알려주지 않으면서 자리만 차지한다. 경비 줄은 경비 API가 선 뒤에 여기 붙는다(#1328).
+      */}
+      {prep && prep.total > 0 && (
+        <div className="px-4">
+          <Link
+            to={`/travel/trips/${trip.id}/prep`}
+            className="border-border hover:bg-muted flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition-colors"
+          >
+            <SquareCheckBig className="text-muted-foreground size-[15px] shrink-0" />
+            <span className="tabular-nums">
+              준비 {prep.done}/{prep.total}
+            </span>
+            {prep.overdueCount > 0 && (
+              <span className="text-destructive ml-auto flex items-center gap-1 text-[13px] font-semibold">
+                <TriangleAlert className="size-3.5" />
+                기한 지난 것 {prep.overdueCount}개
+              </span>
+            )}
+          </Link>
+        </div>
+      )}
       <footer className="bg-muted/50 flex items-center gap-2 rounded-b-xl border-t p-4">
         <Link
           to={`/travel/trips/${trip.id}/board`}

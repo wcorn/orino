@@ -28,6 +28,14 @@ function mockSummary(now = 0) {
   );
 }
 
+function mockTravelSummary(data: unknown) {
+  server.use(
+    http.get(`${API_BASE}/travel/summary`, () =>
+      HttpResponse.json({ code: "OK", data }),
+    ),
+  );
+}
+
 function renderSidebar(path = "/home") {
   return renderWithRouter(
     <Providers>
@@ -167,6 +175,114 @@ describe("Sidebar", () => {
           "/travel/trips/3/board",
         );
       });
+    });
+
+    it("준비는 진행 중 여행이 없어도 다음 예정 여행으로 연다 — 출발 전에 쓰는 화면이다", async () => {
+      mockTravelSummary({
+        ongoing: null,
+        next: {
+          id: 7,
+          title: "일본 가을",
+          prepPath: "/travel/trips/7/prep",
+          prep: { total: 24, done: 18, overdueCount: 0 },
+        },
+        recentCompleted: null,
+      });
+
+      renderSidebar("/travel");
+
+      await waitFor(() => {
+        expect(screen.getByRole("link", { name: /준비/ })).toHaveAttribute(
+          "href",
+          "/travel/trips/7/prep",
+        );
+      });
+      // 보드는 다르다 — 시작하지 않은 여행의 보드는 목록으로 보낸다(기존 동작).
+      expect(screen.getByRole("link", { name: /일정 보드/ })).toHaveAttribute(
+        "href",
+        "/travel/trips",
+      );
+    });
+
+    it("진행 중 여행이 있으면 준비·경비가 그 여행을 가리킨다", async () => {
+      mockTravelSummary({
+        ongoing: {
+          id: 3,
+          title: "도쿄",
+          boardPath: "/travel/trips/3/board",
+          prepPath: "/travel/trips/3/prep",
+          prep: { total: 5, done: 5, overdueCount: 0 },
+        },
+        next: {
+          id: 9,
+          title: "나중",
+          prepPath: "/travel/trips/9/prep",
+          prep: null,
+        },
+        recentCompleted: null,
+      });
+
+      renderSidebar("/travel");
+
+      await waitFor(() => {
+        expect(screen.getByRole("link", { name: /준비/ })).toHaveAttribute(
+          "href",
+          "/travel/trips/3/prep",
+        );
+      });
+      expect(screen.getByRole("link", { name: /경비/ })).toHaveAttribute(
+        "href",
+        "/travel/trips/3/expenses",
+      );
+    });
+
+    it("기한 지난 개수를 배지로 단다 — 서버가 센 값을 그대로 쓴다", async () => {
+      mockTravelSummary({
+        ongoing: null,
+        next: {
+          id: 7,
+          title: "일본 가을",
+          prepPath: "/travel/trips/7/prep",
+          prep: { total: 24, done: 18, overdueCount: 2 },
+        },
+        recentCompleted: null,
+      });
+
+      renderSidebar("/travel");
+
+      const badge = await screen.findByLabelText("기한 지난 것 2개");
+      expect(badge).toHaveTextContent("2");
+      // 「무시」가 없다 — 체크하거나 기한을 옮겨야 사라진다.
+      expect(
+        screen.queryByRole("button", { name: /무시/ }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("기한 지난 게 없으면 배지를 달지 않는다 — 0은 그리지 않는다", async () => {
+      mockTravelSummary({
+        ongoing: null,
+        next: {
+          id: 7,
+          title: "일본 가을",
+          prepPath: "/travel/trips/7/prep",
+          prep: { total: 24, done: 24, overdueCount: 0 },
+        },
+        recentCompleted: null,
+      });
+
+      renderSidebar("/travel");
+
+      await screen.findByRole("link", { name: /준비/ });
+      expect(screen.queryByLabelText(/기한 지난 것/)).not.toBeInTheDocument();
+    });
+
+    it("준비 경로에서는 여행 목록이 아니라 준비가 활성화된다", async () => {
+      renderSidebar("/travel/trips/3/prep");
+      const prep = await screen.findByRole("link", { name: /준비/ });
+      expect(prep.className).toContain("text-primary");
+      expect(
+        screen.getByRole("link", { name: /여행 목록/ }).className,
+      ).not.toContain("text-primary");
     });
 
     it("보드 경로에서는 여행 목록이 아니라 일정 보드가 활성화된다", async () => {
