@@ -1,5 +1,6 @@
 package ds.project.orino.actuator;
 
+import ds.project.orino.config.TestMySqlConfig;
 import ds.project.orino.config.TestRedisConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -21,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         properties = "management.server.port="
 )
 @ActiveProfiles("test")
-@Import(TestRedisConfig.class)
+@Import({TestMySqlConfig.class, TestRedisConfig.class})
 class ActuatorSecurityTest {
 
     private MockMvc mockMvc;

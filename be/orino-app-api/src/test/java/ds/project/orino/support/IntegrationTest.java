@@ -1,5 +1,6 @@
 package ds.project.orino.support;
 
+import ds.project.orino.config.TestMySqlConfig;
 import ds.project.orino.config.TestRedisConfig;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -26,6 +27,6 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @ActiveProfiles("test")
-@Import({StubExternalsConfig.class, TestRedisConfig.class, TestClockConfig.class})
+@Import({StubExternalsConfig.class, TestMySqlConfig.class, TestRedisConfig.class, TestClockConfig.class})
 public @interface IntegrationTest {
 }

@@ -11,7 +11,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -42,7 +42,7 @@ class TravelMultiCityMigrationTest {
     private static final String TAG = "pre-travel-multi-city";
 
     @SuppressWarnings("resource")
-    private static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4.4");
+    private static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4.4");
 
     private static Connection connection;
 

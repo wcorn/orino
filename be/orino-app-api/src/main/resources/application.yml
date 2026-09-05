@@ -153,3 +153,19 @@ spring:
 shortlink:
   og-preview:
     enabled: false
+
+logging:
+  # 스프링은 컨텍스트를 닫을 때 로그백까지 내린다. 그런데 그 시점 이후에도 로그를 남기는
+  # 쪽이 있다(도커 클라이언트, lettuce). 설정이 사라진 로그백은 그 이벤트를 받고
+  # "No appenders present in context [default]"를 찍는다 — 없는 문제를 보고하는 셈이다.
+  # 로그백은 JVM이 끝날 때까지 그대로 두고, 아래 레벨 설정이 끝까지 살아 있게 한다.
+  register-shutdown-hook: false
+  level:
+    # 종료 중에 커넥션이 끊기면 lettuce의 워치독이 재연결을 걸고, 곧 이어지는 클라이언트
+    # 종료가 그걸 취소한다. 그때 남기는 WARN(CancellationException)은 정상 종료의 일부다.
+    io.lettuce.core.protocol.ConnectionWatchdog: error
+    # 같은 종류. 풀이 닫히며 커넥션을 끊는 사이 같은 풀의 하우스키퍼 스레드가 그 커넥션을
+    # 검증하면 "Failed to validate connection (No operations allowed after connection
+    # closed)"이 뜬다 — 로그의 스레드 이름이 [HikariPool-N:housekeeper]인 것이 그 증거다.
+    # 풀 내부의 종료 경합이고 테스트가 쓰는 커넥션과는 무관하다.
+    com.zaxxer.hikari.pool.PoolBase: error
