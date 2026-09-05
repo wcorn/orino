@@ -72,6 +72,24 @@ public class TravelExpenseService {
         return new ExpenseAttachResponse(targets.size());
     }
 
+    /**
+     * 예산을 정하거나 해제한다(§5.1). 여행이 갖는 <b>유일한 경비 쓰기</b>다 —
+     * 지출 입력은 가계부 API로 나간다.
+     *
+     * <p>{@code null}은 해제이고 <b>0은 400</b>이다. 0원 예산은 「안 정함」과 구분되지 않는데,
+     * 화면은 그 둘을 완전히 다르게 그린다 — 안 정했으면 게이지를 숨기고, 0이면 시작부터
+     * 초과다(§5.3).
+     */
+    @Transactional
+    public Long updateBudget(Long memberId, Long tripId, Long amount) {
+        if (amount != null && amount <= 0) {
+            throw new CustomException(ErrorCode.TRAVEL_BUDGET_INVALID);
+        }
+        Trip trip = requireTrip(memberId, tripId);
+        trip.updateBudgetAmount(amount);
+        return amount;
+    }
+
     /** 남의 여행도 404 — 403이면 「그 id의 여행은 있다」가 새어나간다. */
     private Trip requireTrip(Long memberId, Long tripId) {
         return tripRepository.findByIdAndMemberId(tripId, memberId)

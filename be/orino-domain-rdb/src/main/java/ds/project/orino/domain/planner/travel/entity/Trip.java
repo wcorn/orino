@@ -172,6 +172,11 @@ public class Trip {
         return morningSummaryEnabled;
     }
 
+    /** 예산을 정하거나 해제한다. {@code null}이면 「안 정함」이다 — 0과 다르다. */
+    public void updateBudgetAmount(Long budgetAmount) {
+        this.budgetAmount = budgetAmount;
+    }
+
     public Long getBudgetAmount() {
         return budgetAmount;
     }

@@ -129,6 +129,24 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
                                                     @Param("excludeTrip") boolean excludeTrip);
 
     /**
+     * 여행 경비(여행 v2.2 §4). 그 여행에 붙은 <b>지출</b>만 날짜순으로 준다.
+     *
+     * <p><b>이체는 애초에 빠진다</b> — 합계에서만 빼면 목록에는 보이고 합계에는 없는 줄이
+     * 생겨 더 헷갈린다(§4.2). 카드 대금 납부가 여행 경비로 새는 구멍이 이것 하나다.
+     *
+     * <p>수입도 빠진다. 「여행에 얼마 썼나」에 답하는 목록이라 들어온 돈이 섞이면 합계가
+     * 무슨 값인지 알 수 없다.
+     */
+    @Query("""
+            SELECT t FROM LedgerTransaction t
+            WHERE t.tripId = :tripId
+              AND t.deletedAt IS NULL
+              AND t.type = ds.project.orino.domain.planner.ledger.entity.LedgerFlow.EXPENSE
+            ORDER BY t.occurredOn ASC, t.id ASC
+            """)
+    List<LedgerTransaction> findTripExpenses(@Param("tripId") Long tripId);
+
+    /**
      * 그 자산의 내역. <b>이체받는 쪽도 포함한다</b> — 「이 통장에 무슨 일이 있었나」에는
      * 나간 돈과 들어온 돈이 함께 답해야 한다.
      */
