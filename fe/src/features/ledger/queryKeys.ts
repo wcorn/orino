@@ -8,8 +8,14 @@ export const ledgerKeys = {
   templates: ["ledger", "templates"] as const,
   receipts: (transactionId: number) =>
     ["ledger", "receipts", transactionId] as const,
-  stats: (period?: string, perspective?: string) =>
-    ["ledger", "stats", period ?? "", perspective ?? ""] as const,
+  stats: (period?: string, perspective?: string, excludeTrip?: boolean) =>
+    [
+      "ledger",
+      "stats",
+      period ?? "",
+      perspective ?? "",
+      excludeTrip ?? false,
+    ] as const,
   balanceCurve: (days: number) => ["ledger", "balance-curve", days] as const,
   settings: ["ledger", "settings"] as const,
   assets: ["ledger", "assets"] as const,

@@ -79,14 +79,19 @@ public class LedgerController {
      *
      * <p><b>청구서·예정·예상 잔액 API는 이 파라미터를 받지 않는다</b> — 그쪽은 언제나 청구
      * 기준이고, 「9월 14일에 얼마 빠지나」에 소비 관점이 낄 자리가 없다(§10.1).
+     *
+     * <p>{@code excludeTrip}은 여행에 붙은 지출을 뺀다(§11.2). <b>기본은 끔</b>이다 —
+     * 통계는 평상시 지출과 섞어 집계하는 것이 기본이고, 여행은 걷어 낼 수 있는 렌즈다.
      */
     @GetMapping("/stats")
     public ApiResponse<LedgerStatsResponse> stats(
             @AuthenticationPrincipal Long memberId,
             @RequestParam(required = false) String period,
-            @RequestParam(required = false) LedgerPerspective perspective) {
+            @RequestParam(required = false) LedgerPerspective perspective,
+            @RequestParam(defaultValue = "false") boolean excludeTrip) {
         return ApiResponse.success(statsService.stats(
-                memberId, period == null ? null : YearMonth.parse(period), perspective));
+                memberId, period == null ? null : YearMonth.parse(period), perspective,
+                excludeTrip));
     }
 
     /**

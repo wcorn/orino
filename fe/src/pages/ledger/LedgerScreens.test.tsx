@@ -549,3 +549,141 @@ describe("설정 화면", () => {
     ).toBeInTheDocument();
   });
 });
+
+/**
+ * 월 예산의 「이 달 여행으로」 한 줄(#1331 · 여행 v2.2 §5.2).
+ *
+ * 여행 지출을 게이지에 넣으면 여행 간 달은 **항상** 초과가 되고, 그러면 그 게이지는
+ * 아무것도 알려주지 않는다. 그렇다고 빼기만 하면 이번엔 합계가 안 맞는 것으로 보인다.
+ */
+describe("월 예산 — 여행은 안 세고 말은 한다", () => {
+  beforeEach(() => {
+    useAuthStore.setState({ accessToken: "valid-token" });
+  });
+
+  it("게이지 아래에 「이 달 여행으로」 한 줄을 남긴다", async () => {
+    renderAt("/ledger/budget", {
+      budget: {
+        totalAmount: 2000000,
+        spent: 300000,
+        scheduled: 0,
+        tripExpense: 410000,
+      },
+    });
+
+    expect(await screen.findByText("이 달 여행으로 41만")).toBeInTheDocument();
+    expect(screen.getByText("월 예산에는 세지 않음")).toBeInTheDocument();
+  });
+
+  /** 여행을 안 간 달에 「이 달 여행으로 0원」은 아무 말도 아니다. */
+  it("여행 지출이 0이면 줄을 그리지 않는다", async () => {
+    renderAt("/ledger/budget", {
+      budget: { totalAmount: 2000000, spent: 300000, tripExpense: 0 },
+    });
+
+    expect(await screen.findByText("월 예산 진행")).toBeInTheDocument();
+    expect(screen.queryByText(/이 달 여행으로/)).not.toBeInTheDocument();
+  });
+
+  /** 게이지가 없는 달에도 합계는 맞아야 한다 — 오히려 그때 더 설명이 필요하다. */
+  it("예산을 안 세운 달에도 그 줄은 나온다", async () => {
+    renderAt("/ledger/budget", {
+      budget: { totalAmount: 0, spent: 120000, tripExpense: 410000 },
+    });
+
+    expect(await screen.findByText("이 달 여행으로 41만")).toBeInTheDocument();
+  });
+});
+
+/** 「여행 제외」(가계부 §11.2). 기본은 꺼짐 — 통계는 섞어 세는 것이 기본이다. */
+describe("통계 — 여행 제외", () => {
+  beforeEach(() => {
+    useAuthStore.setState({ accessToken: "valid-token" });
+  });
+
+  /** 합계는 도넛 가운데에만 나오도록 카테고리를 둘로 나눠 둔다. */
+  const withTrip = {
+    total: 710000,
+    withoutTrip: 300000,
+    byCategory: [
+      {
+        categoryId: 4,
+        categoryName: "식비",
+        amount: 500000,
+        count: 5,
+        share: 0.704,
+      },
+      {
+        categoryId: 5,
+        categoryName: "교통",
+        amount: 210000,
+        count: 3,
+        share: 0.296,
+      },
+    ],
+    byCategoryWithoutTrip: [
+      {
+        categoryId: 4,
+        categoryName: "식비",
+        amount: 200000,
+        count: 3,
+        share: 0.667,
+      },
+      {
+        categoryId: 5,
+        categoryName: "교통",
+        amount: 100000,
+        count: 2,
+        share: 0.333,
+      },
+    ],
+  };
+
+  /** 합계는 화면 여러 곳에 나온다 — 도넛 가운데 것만 본다. */
+  async function donutTotal() {
+    const donut = await screen.findByRole("img", { name: "카테고리 분포" });
+    return within(donut.parentElement as HTMLElement);
+  }
+
+  it("기본은 섞어 센다", async () => {
+    renderAt("/ledger/stats", { stats: withTrip });
+
+    expect((await donutTotal()).getByText("710,000")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "여행 제외" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(
+      screen.queryByText(/여행에 붙인 지출은 빼고 셌어요/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("켜면 여행에 붙은 지출이 빠지고, 뺐다고 말한다", async () => {
+    const user = userEvent.setup();
+    renderAt("/ledger/stats", { stats: withTrip });
+
+    await user.click(await screen.findByRole("button", { name: "여행 제외" }));
+
+    expect(
+      await screen.findByText(/여행에 붙인 지출은 빼고 셌어요/),
+    ).toBeInTheDocument();
+    expect((await donutTotal()).getByText("300,000")).toBeInTheDocument();
+    // 합계만 갈리고 목록이 그대로면 둘이 다른 이야기를 한다.
+    expect(screen.getByText("200,000")).toBeInTheDocument();
+    expect(screen.queryByText("500,000")).not.toBeInTheDocument();
+  });
+
+  /**
+   * 이 화면은 링크로 주고받는 자리다. 끈 채로 공유한 링크가 켠 화면으로 열리면
+   * 두 사람이 다른 숫자를 보고 같은 이야기를 한다.
+   */
+  it("켠 상태가 주소에 남는다", async () => {
+    renderAt("/ledger/stats?excludeTrip=1", { stats: withTrip });
+
+    expect((await donutTotal()).getByText("300,000")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "여행 제외" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+});

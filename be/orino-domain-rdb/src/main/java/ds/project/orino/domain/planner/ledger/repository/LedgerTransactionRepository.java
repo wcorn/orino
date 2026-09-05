@@ -176,6 +176,28 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
                                        @Param("from") LocalDate from,
                                        @Param("to") LocalDate to);
 
+    /**
+     * 같은 합계에서 <b>여행에 붙은 것을 뺀다</b>. 통계의 「여행 제외」가 이 질의를 탄다.
+     *
+     * <p>따로 두는 이유는 위 질의가 기본 경로이기 때문이다 — 필터가 꺼진 화면까지 조건 하나를
+     * 더 지고 갈 이유가 없다(같은 이유로 {@link #findAllForTimelineByTrip}도 갈라 두었다).
+     */
+    @Query("""
+            SELECT t.assetId AS assetId, SUM(t.amount) AS total
+            FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.status = :status
+              AND t.deletedAt IS NULL
+              AND t.tripId IS NULL
+              AND t.type = ds.project.orino.domain.planner.ledger.entity.LedgerFlow.EXPENSE
+              AND t.occurredOn BETWEEN :from AND :to
+            GROUP BY t.assetId
+            """)
+    List<AssetTotal> sumExpenseByAssetExcludingTrip(@Param("memberId") Long memberId,
+                                                    @Param("status") LedgerTransactionStatus status,
+                                                    @Param("from") LocalDate from,
+                                                    @Param("to") LocalDate to);
+
     /** 그 구간의 수입 합계. 저축률이 이 값을 분모로 쓴다 — 환불은 수입이 아니라 지출 감소다. */
     @Query("""
             SELECT COALESCE(SUM(t.amount), 0) FROM LedgerTransaction t
@@ -349,6 +371,52 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
                                                  @Param("status") LedgerTransactionStatus status,
                                                  @Param("from") LocalDate from,
                                                  @Param("to") LocalDate to);
+
+    /**
+     * 같은 합계에서 <b>여행에 붙은 것을 뺀다</b>. 월 예산은 언제나 이 값으로 센다 —
+     * 여행 지출이 게이지에 들어가면 여행 간 달은 항상 초과가 되고, 그러면 그 게이지는
+     * 아무것도 알려주지 않는다(가계부 §9 · 여행 v2.2 §5.2).
+     */
+    @Query("""
+            SELECT t.categoryId AS categoryId, t.type AS type, t.source AS source,
+                   SUM(t.amount) AS total, COUNT(t.id) AS count
+            FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.status = :status
+              AND t.deletedAt IS NULL
+              AND t.tripId IS NULL
+              AND t.occurredOn BETWEEN :from AND :to
+            GROUP BY t.categoryId, t.type, t.source
+            """)
+    List<CategoryFlowTotal> sumByCategoryAndFlowExcludingTrip(
+            @Param("memberId") Long memberId,
+            @Param("status") LedgerTransactionStatus status,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
+
+    /**
+     * 반대쪽 — <b>여행에 붙은 것만</b>. 월 예산 화면의 「이 달 여행으로 41만」이 이 값이다.
+     *
+     * <p>합계 하나가 아니라 유형·출처까지 묶어 내는 이유는 <b>환불</b> 때문이다. 여행 중 환불도
+     * 「수입이 늘었다」가 아니라 「그 여행 지출이 줄었다」라, 게이지에서 뺀 금액과 아래 한 줄이
+     * 같은 규칙으로 계산돼야 둘을 더해 원래 합계가 나온다.
+     */
+    @Query("""
+            SELECT t.categoryId AS categoryId, t.type AS type, t.source AS source,
+                   SUM(t.amount) AS total, COUNT(t.id) AS count
+            FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.status = :status
+              AND t.deletedAt IS NULL
+              AND t.tripId IS NOT NULL
+              AND t.occurredOn BETWEEN :from AND :to
+            GROUP BY t.categoryId, t.type, t.source
+            """)
+    List<CategoryFlowTotal> sumByCategoryAndFlowOnTrip(
+            @Param("memberId") Long memberId,
+            @Param("status") LedgerTransactionStatus status,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
 
     /**
      * 위와 같지만 자산으로 좁힌다.

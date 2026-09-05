@@ -212,6 +212,8 @@ export interface UpcomingItem {
   occurrenceDate: string | null;
   statementId: number | null;
   installmentId: number | null;
+  /** 이 예정이 붙은 여행. **직접 예약에만 있다** — 규칙·청구서·할부는 여행에 붙지 않는다. */
+  tripId: number | null;
 }
 
 /**
@@ -856,6 +858,11 @@ export interface PerspectiveDiff {
 export interface LedgerStats {
   period: { start: string; end: string; label: string };
   perspective: LedgerPerspective;
+  /**
+   * 여행에 붙은 지출을 뺀 값인가(가계부 §11.2). **서버가 무엇을 셌는지**를 돌려준다 —
+   * 관점 토글과 같은 이유로, 화면이 제 요청만 믿고 라벨을 달지 않게 한다.
+   */
+  excludeTrip: boolean;
   total: number;
   byCategory: CategoryStat[];
   byAsset: AssetStat[];
@@ -869,15 +876,22 @@ export interface LedgerStats {
   perspectiveDiff: PerspectiveDiff;
 }
 
-/** `period`는 `YYYY-MM`. 생략하면 지금 속한 구간, 관점을 생략하면 설정의 기본값이다. */
+/**
+ * `period`는 `YYYY-MM`. 생략하면 지금 속한 구간, 관점을 생략하면 설정의 기본값이다.
+ *
+ * `excludeTrip`은 여행에 붙은 지출을 뺀다. **기본은 끔** — 통계는 섞어 집계하는 것이
+ * 기본이고, 여행은 걷어 낼 수 있는 렌즈다.
+ */
 export async function fetchStats(
   period?: string,
   perspective?: LedgerPerspective,
+  excludeTrip?: boolean,
 ): Promise<LedgerStats> {
   const { data } = await client.get<ApiEnvelope<LedgerStats>>("/ledger/stats", {
     params: {
       ...(period ? { period } : {}),
       ...(perspective ? { perspective } : {}),
+      ...(excludeTrip ? { excludeTrip: true } : {}),
     },
   });
   return data.data;
@@ -988,6 +1002,13 @@ export interface BudgetResponse {
   remaining: number;
   daysLeft: number;
   dailyAllowance: number;
+  /**
+   * 이 구간에 **여행으로** 쓴 돈. `spent`에도 게이지에도 들어가지 않는다 — 넣으면 여행 간
+   * 달은 항상 예산 초과가 되고, 그러면 그 게이지는 아무것도 알려주지 않는다(§9).
+   *
+   * **그래도 내려온다**: 빼놓고 말하지 않으면 합계가 안 맞는 것으로 보인다.
+   */
+  tripExpense: number;
   categories: BudgetCategoryProgress[];
 }
 

@@ -1,11 +1,13 @@
 package ds.project.orino.planner.ledger;
 
+import com.jayway.jsonpath.JsonPath;
 import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.FixedClock;
 import ds.project.orino.support.MemberFixture;
+import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -45,6 +47,7 @@ class LedgerDashboardAndStatsTest extends ApiTestSupport {
     private long food;
     private long cafe;
     private long salary;
+    private long osaka;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -57,6 +60,7 @@ class LedgerDashboardAndStatsTest extends ApiTestSupport {
         food = LedgerFixture.categoryIdByName(mockMvc, authHeader, "EXPENSE", "식비");
         cafe = LedgerFixture.categoryIdByName(mockMvc, authHeader, "EXPENSE", "카페/간식");
         salary = LedgerFixture.categoryIdByName(mockMvc, authHeader, "INCOME", "급여");
+        osaka = TravelCityFixture.createCity(mockMvc, authHeader, "오사카", "Asia/Tokyo", "JPY");
     }
 
     @Nested
@@ -198,6 +202,86 @@ class LedgerDashboardAndStatsTest extends ApiTestSupport {
                             .param("period", "2025-12"))
                     .andExpect(jsonPath("$.data.total").value(200000))
                     .andExpect(jsonPath("$.data.period.label").value("2025-12"));
+        }
+    }
+
+    /**
+     * 「여행 제외」(가계부 §11.2).
+     *
+     * <p>통계는 <b>섞어 집계하는 것이 기본</b>이다 — 여행도 실제로 쓴 돈이니까. 다만 여행 간
+     * 달은 그것 하나가 모든 칸을 덮어서, 평상시 씀씀이를 보려면 걷어 낼 수 있어야 한다.
+     *
+     * <p>필터는 <b>화면 전체에 걸린다</b>. 상단 합계만 거르고 아래 막대를 그대로 두면 둘이
+     * 다른 이야기를 하고, 어느 쪽이 맞는지 사용자가 알 방법이 없다.
+     */
+    @Nested
+    @DisplayName("여행 제외")
+    class ExcludeTrip {
+
+        @Test
+        @DisplayName("기본은 섞어 센다 — 여행도 실제로 쓴 돈이다")
+        void mixedByDefault() throws Exception {
+            expense(checking, 300000, food);
+            tripExpense(trip(), 410000);
+
+            mockMvc.perform(get("/api/ledger/stats")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.excludeTrip").value(false))
+                    .andExpect(jsonPath("$.data.total").value(710000));
+        }
+
+        @Test
+        @DisplayName("켜면 여행에 붙은 지출이 빠진다")
+        void dropsTripSpending() throws Exception {
+            expense(checking, 300000, food);
+            tripExpense(trip(), 410000);
+
+            mockMvc.perform(get("/api/ledger/stats")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .param("excludeTrip", "true"))
+                    .andExpect(jsonPath("$.data.excludeTrip").value(true))
+                    .andExpect(jsonPath("$.data.total").value(300000))
+                    .andExpect(jsonPath("$.data.byCategory", hasSize(1)))
+                    .andExpect(jsonPath("$.data.byCategory[0].amount").value(300000));
+        }
+
+        /** 상단 합계만 거르면 아래 칸들이 다른 이야기를 한다. */
+        @Test
+        @DisplayName("자산별·고정변동·월별 추이에도 같이 걸린다")
+        void filterCoversTheWholeScreen() throws Exception {
+            expense(checking, 300000, food);
+            tripExpense(trip(), 410000);
+
+            mockMvc.perform(get("/api/ledger/stats")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .param("excludeTrip", "true"))
+                    .andExpect(jsonPath("$.data.byAsset", hasSize(1)))
+                    .andExpect(jsonPath("$.data.byAsset[0].amount").value(300000))
+                    // 프리셋 카테고리는 고정·변동 속성이 비어 있어 미분류로 센다.
+                    .andExpect(jsonPath("$.data.fixedVsVariable.unclassified").value(300000))
+                    // 이번 달은 열두 달 추이의 마지막 점이다.
+                    .andExpect(jsonPath("$.data.monthly[11].expense").value(300000));
+        }
+
+        private long trip() throws Exception {
+            String body = mockMvc.perform(post("/api/travel/trips")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"title": "일본", "startDate": "2026-01-14",
+                                     "endDate": "2026-01-16", %s}
+                                    """.formatted(TravelCityFixture.singleLeg(osaka, 3))))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            return ((Number) JsonPath.read(body, "$.data.id")).longValue();
+        }
+
+        private void tripExpense(long tripId, long amount) throws Exception {
+            LedgerFixture.createTransaction(mockMvc, authHeader, """
+                    {"type": "EXPENSE", "amount": %d, "assetId": %d, "categoryId": %d,
+                     "occurredOn": "%s", "tripId": %d}
+                    """.formatted(amount, checking, food, today(), tripId));
         }
     }
 

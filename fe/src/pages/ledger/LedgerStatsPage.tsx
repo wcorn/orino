@@ -1,6 +1,7 @@
 import {
   ChevronLeft,
   ChevronRight,
+  Plane,
   Search,
   TrendingDown,
   TrendingUp,
@@ -61,7 +62,12 @@ export function LedgerStatsPage() {
   const perspective = (searchParams.get("perspective") ?? undefined) as
     | LedgerPerspective
     | undefined;
-  const { data, isPending, isError } = useLedgerStats(period, perspective);
+  const excludeTrip = searchParams.get("excludeTrip") === "1";
+  const { data, isPending, isError } = useLedgerStats(
+    period,
+    perspective,
+    excludeTrip,
+  );
 
   const shift = (months: number) => {
     const base = data ? new Date(`${data.period.start}T00:00:00`) : new Date();
@@ -73,6 +79,21 @@ export function LedgerStatsPage() {
 
   const setPerspective = (value: string) => {
     searchParams.set("perspective", value);
+    setSearchParams(searchParams);
+  };
+
+  /**
+   * 「여행 제외」(가계부 §11.2). **기본은 꺼짐** — 통계는 여행도 섞어 세는 것이 기본이다.
+   *
+   * 주소에 남긴다. 이 화면은 링크로 주고받는 자리라, 끈 채로 공유한 링크가 켠 화면으로
+   * 열리면 두 사람이 다른 숫자를 보고 같은 이야기를 한다.
+   */
+  const toggleExcludeTrip = () => {
+    if (excludeTrip) {
+      searchParams.delete("excludeTrip");
+    } else {
+      searchParams.set("excludeTrip", "1");
+    }
     setSearchParams(searchParams);
   };
 
@@ -113,11 +134,32 @@ export function LedgerStatsPage() {
             </TabsList>
           </Tabs>
         )}
+
+        <Button
+          type="button"
+          variant={excludeTrip ? "default" : "outline"}
+          size="sm"
+          aria-pressed={excludeTrip}
+          onClick={toggleExcludeTrip}
+        >
+          <Plane className="size-3.5" />
+          여행 제외
+        </Button>
       </div>
 
       {isPending && <LoadingText />}
       {isError && (
         <Alert variant="destructive">통계를 불러오지 못했어요.</Alert>
+      )}
+
+      {/*
+        무엇을 세지 않았는지 말한다. 합계만 줄어들고 이유가 화면에 없으면, 켠 것을 잊은
+        다음 방문에서 「이번 달 왜 이렇게 적게 썼지」가 된다.
+      */}
+      {data?.excludeTrip && (
+        <p className="text-muted-foreground text-[13px]">
+          여행에 붙인 지출은 빼고 셌어요. 여행 경비는 여행 화면에서 봅니다.
+        </p>
       )}
 
       {/*

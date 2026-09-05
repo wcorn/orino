@@ -1,11 +1,13 @@
 package ds.project.orino.planner.ledger;
 
+import com.jayway.jsonpath.JsonPath;
 import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.FixedClock;
 import ds.project.orino.support.MemberFixture;
+import ds.project.orino.support.TravelCityFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -44,6 +46,7 @@ class LedgerBudgetTest extends ApiTestSupport {
     private String authHeader;
     private long checking;
     private long food;
+    private long osaka;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -52,6 +55,7 @@ class LedgerBudgetTest extends ApiTestSupport {
         authHeader = "Bearer " + AuthFixture.loginAndGetAccessToken(mockMvc);
         checking = LedgerFixture.createAsset(mockMvc, authHeader, "급여통장", "CHECKING");
         food = LedgerFixture.categoryIdByName(mockMvc, authHeader, "EXPENSE", "식비");
+        osaka = TravelCityFixture.createCity(mockMvc, authHeader, "오사카", "Asia/Tokyo", "JPY");
     }
 
     @Nested
@@ -217,6 +221,107 @@ class LedgerBudgetTest extends ApiTestSupport {
                             .param("period", "2026-01"))
                     .andExpect(jsonPath("$.data.categories[?(@.categoryId == %d)].spent"
                             .formatted(food)).value(contains(120000)));
+        }
+    }
+
+    /**
+     * 여행 지출은 게이지 밖이고, 그래도 한 줄로 말한다(§9 · 여행 v2.2 §5.2).
+     *
+     * <p>넣으면 여행 간 달은 <b>항상</b> 예산 초과가 되고, 그러면 그 게이지는 아무것도
+     * 알려주지 않는다. 빼기만 하고 안 적으면 이번엔 합계가 안 맞는 것으로 보인다.
+     */
+    @Nested
+    @DisplayName("여행 지출은 게이지에 안 세고 말은 한다")
+    class TripExpense {
+
+        @Test
+        @DisplayName("여행 지출은 spent에도 게이지 폭에도 들어가지 않는다")
+        void tripDoesNotMoveTheGauge() throws Exception {
+            putBudget("2026-01", 2000000, food, 500000);
+            expense(120000, "2026-01-10");
+            long tripId = trip("2026-01-10", "2026-01-12");
+            tripExpense(tripId, 410000, "2026-01-12");
+
+            mockMvc.perform(get("/api/ledger/budget")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .param("period", "2026-01"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.spent").value(120000))
+                    .andExpect(jsonPath("$.data.remaining").value(1880000))
+                    .andExpect(jsonPath("$.data.tripExpense").value(410000))
+                    // 카테고리 줄도 같은 규칙이다 — 게이지만 빼고 아래 줄이 세면 둘이 갈린다.
+                    .andExpect(jsonPath("$.data.categories[?(@.categoryId == %d)].spent"
+                            .formatted(food)).value(contains(120000)));
+        }
+
+        /** 미리 적어 둔 여행 지출까지 게이지 2층에 남으면, 뺀 것이 절반뿐이다. */
+        @Test
+        @DisplayName("여행에 붙은 예약도 예정에서 빠진다")
+        void tripScheduledIsOutToo() throws Exception {
+            putBudget("2026-01", 2000000, food, 500000);
+            expense(30000, "2026-01-20");
+            long tripId = trip("2026-01-20", "2026-01-22");
+            tripExpense(tripId, 80000, "2026-01-22");
+
+            mockMvc.perform(get("/api/ledger/budget")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .param("period", "2026-01"))
+                    .andExpect(jsonPath("$.data.scheduled").value(30000));
+        }
+
+        /** 「이 달 여행으로」는 구간을 따른다 — 월 시작일을 25일로 두면 경계가 옮겨 간다. */
+        @Test
+        @DisplayName("tripExpense는 구간 경계를 따른다")
+        void tripExpenseFollowsThePeriod() throws Exception {
+            mockMvc.perform(patch("/api/ledger/settings")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"monthStartDay": 25}
+                                    """))
+                    .andExpect(status().isOk());
+            long tripId = trip("2025-12-24", "2025-12-26");
+            // 시작일이 25일이면 2025-12 구간은 12-25 ~ 01-24다. 12-24는 그 앞이다.
+            tripExpense(tripId, 200000, "2025-12-24");
+            tripExpense(tripId, 410000, "2025-12-26");
+
+            mockMvc.perform(get("/api/ledger/budget")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .param("period", "2025-12"))
+                    .andExpect(jsonPath("$.data.periodStart").value("2025-12-25"))
+                    .andExpect(jsonPath("$.data.tripExpense").value(410000));
+        }
+
+        /** 여행이 없으면 0이다. 화면은 그 줄을 아예 안 그린다. */
+        @Test
+        @DisplayName("여행 지출이 없으면 0이다")
+        void zeroWithoutTrip() throws Exception {
+            expense(120000, "2026-01-10");
+
+            mockMvc.perform(get("/api/ledger/budget")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .param("period", "2026-01"))
+                    .andExpect(jsonPath("$.data.tripExpense").value(0));
+        }
+
+        private long trip(String start, String end) throws Exception {
+            String body = mockMvc.perform(post("/api/travel/trips")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"title": "일본", "startDate": "%s", "endDate": "%s", %s}
+                                    """.formatted(start, end,
+                                    TravelCityFixture.singleLeg(osaka, 3))))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            return ((Number) JsonPath.read(body, "$.data.id")).longValue();
+        }
+
+        private void tripExpense(long tripId, long amount, String date) throws Exception {
+            LedgerFixture.createTransaction(mockMvc, authHeader, """
+                    {"type": "EXPENSE", "amount": %d, "assetId": %d, "categoryId": %d,
+                     "occurredOn": "%s", "tripId": %d}
+                    """.formatted(amount, checking, food, date, tripId));
         }
     }
 

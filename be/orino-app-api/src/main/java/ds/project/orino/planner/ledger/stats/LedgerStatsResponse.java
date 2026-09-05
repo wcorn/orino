@@ -12,12 +12,16 @@ import java.util.List;
  * 아무 일도 안 하는 것처럼 보였다 — 지금은 할부가 있고, 두 값이 벌어지는 <b>이유까지</b>
  * 서버가 계산해 내려준다.
  *
- * @param total      이번 구간에 <b>쓴 돈</b>. 이체는 들어가지 않고 환불은 깎여 있다
- * @param byCategory 많이 쓴 순. 미분류도 한 칸을 차지한다 — 빼면 정리하지 않는다
+ * @param total       이번 구간에 <b>쓴 돈</b>. 이체는 들어가지 않고 환불은 깎여 있다
+ * @param byCategory  많이 쓴 순. 미분류도 한 칸을 차지한다 — 빼면 정리하지 않는다
+ * @param excludeTrip 여행에 붙은 지출을 뺀 값인가(가계부 §11.2). <b>화면이 아니라 서버가
+ *                    무엇을 셌는지</b>를 돌려준다 — 관점 토글과 같은 이유로, 요청과 응답이
+ *                    어긋났을 때 화면이 거짓 라벨을 달지 않게 한다
  */
 public record LedgerStatsResponse(
         Period period,
         LedgerPerspective perspective,
+        boolean excludeTrip,
         long total,
         List<CategoryStat> byCategory,
         List<AssetStat> byAsset,

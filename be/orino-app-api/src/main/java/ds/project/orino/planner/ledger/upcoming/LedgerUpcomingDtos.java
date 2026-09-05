@@ -53,7 +53,15 @@ public final class LedgerUpcomingDtos {
             Long recurringId,
             LocalDate occurrenceDate,
             Long statementId,
-            Long installmentId) {
+            Long installmentId,
+            /**
+             * 이 예정이 붙은 여행. <b>직접 예약에만 있다</b> — 규칙·청구서·할부는 여행에
+             * 붙지 않는다.
+             *
+             * <p>월 예산의 2단 게이지가 이 값으로 여행분을 뺀다. 이미 쓴 돈만 빼고 예정을
+             * 그대로 두면, 여행 지출을 미리 적어 둔 달의 게이지가 여전히 여행 때문에 찬다.
+             */
+            Long tripId) {
     }
 
     /**

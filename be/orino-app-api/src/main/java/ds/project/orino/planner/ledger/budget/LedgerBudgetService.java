@@ -43,6 +43,10 @@ import java.util.Map;
  *
  * <p>게이지는 <b>2단</b>이다: 이미 쓴 돈(진하게)과 아직 안 썼지만 나갈 게 확정된 돈(연하게).
  * 확정분만 보여주면 「아직 절반 남았네」 하다가 25일에 고정비가 빠지고 놀란다(§8.2).
+ *
+ * <p><b>여행 지출은 게이지 밖이다</b>(§9 · 여행 v2.2 §5.2). 넣으면 여행 간 달은 항상 예산
+ * 초과가 되고, 그러면 그 게이지는 아무것도 알려주지 않는다. 다만 <b>빼놓고 말하지는 않는다</b> —
+ * {@code tripExpense}로 따로 내려 화면이 「이 달 여행으로 41만」 한 줄을 남긴다.
  */
 @Service
 public class LedgerBudgetService {
@@ -142,6 +146,7 @@ public class LedgerBudgetService {
                 // 이미 나갈 게 확정된 돈까지 뺀 뒤 나눈다 — 안 그러면 매일 조금씩 줄어드는
                 // 숫자를 믿다가 월말에 한꺼번에 터진다.
                 Math.max(total - spentTotal - scheduledTotal, 0) / daysLeft,
+                tripExpense(memberId, window),
                 categories(memberId, limits, spent, scheduled));
     }
 
@@ -153,11 +158,26 @@ public class LedgerBudgetService {
     private Map<Long, Long> spendingByCategory(Long memberId, LedgerPeriods.Period window) {
         Map<Long, Long> byCategory = new HashMap<>();
         for (LedgerCategorySpending.Bucket bucket : LedgerCategorySpending.netExpense(
-                transactionRepository.sumByCategoryAndFlow(memberId,
+                transactionRepository.sumByCategoryAndFlowExcludingTrip(memberId,
                         LedgerTransactionStatus.CONFIRMED, window.start(), window.end()))) {
             byCategory.put(bucket.categoryId(), bucket.amount());
         }
         return byCategory;
+    }
+
+    /**
+     * 이 구간에 <b>여행으로</b> 쓴 돈. 게이지 아래 한 줄이 되는 값이다(여행 v2.2 §5.2).
+     *
+     * <p><b>가계부가 자기 데이터로 센다</b> — 여행 모듈을 호출하지 않는다(아키텍처 §11.1).
+     * 조건은 그 구간의 {@code trip_id IS NOT NULL} 지출 합 하나뿐이고, 그래서 여행을
+     * 나중에 지워 {@code trip_id}가 NULL이 되면 이 값도 함께 사라진다 — 그게 맞다.
+     *
+     * <p>환불·이체 규칙은 게이지와 <b>같다</b>. 달라지면 둘을 더해도 원래 합계가 안 나온다.
+     */
+    private long tripExpense(Long memberId, LedgerPeriods.Period window) {
+        return LedgerCategorySpending.total(LedgerCategorySpending.netExpense(
+                transactionRepository.sumByCategoryAndFlowOnTrip(memberId,
+                        LedgerTransactionStatus.CONFIRMED, window.start(), window.end())));
     }
 
     /**
@@ -178,6 +198,11 @@ public class LedgerBudgetService {
         for (LedgerUpcomingDtos.UpcomingItem item
                 : upcomingService.plan(memberId, from, window.end()).items()) {
             if (item.flow() != LedgerFlow.EXPENSE) {
+                continue;
+            }
+            // 여행에 붙은 예약도 게이지 밖이다. 확정분만 빼면 여행 지출을 미리 적어 둔
+            // 달의 게이지가 여전히 여행 때문에 찬다.
+            if (item.tripId() != null) {
                 continue;
             }
             byCategory.merge(item.categoryId(), item.amount(), Long::sum);

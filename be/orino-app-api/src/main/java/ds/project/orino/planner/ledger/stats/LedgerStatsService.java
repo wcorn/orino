@@ -61,10 +61,16 @@ public class LedgerStatsService {
         this.clock = clock;
     }
 
-    /** {@code month}가 없으면 지금 속한 구간, {@code perspective}가 없으면 설정의 기본값이다. */
+    /**
+     * {@code month}가 없으면 지금 속한 구간, {@code perspective}가 없으면 설정의 기본값이다.
+     *
+     * <p>{@code excludeTrip}은 <b>화면 전체에 걸린다</b> — 카테고리·자산·고정변동·월별 추이·
+     * 연간 결산·기간 비교가 모두 같은 렌즈를 쓴다. 한쪽만 거르면 상단 합계와 아래 막대가 다른
+     * 이야기를 하고, 사용자는 어느 쪽이 맞는지 알 방법이 없다.
+     */
     @Transactional
     public LedgerStatsResponse stats(Long memberId, YearMonth month,
-                                     LedgerPerspective requested) {
+                                     LedgerPerspective requested, boolean excludeTrip) {
         LedgerSettings settings = bootstrap.ensureSettings(memberId);
         int startDay = settings.getMonthStartDay();
         LedgerPerspective perspective = requested == null
@@ -83,24 +89,25 @@ public class LedgerStatsService {
         List<LedgerAsset> assets =
                 assetRepository.findAllByMemberIdOrderByDisplayOrderAscIdAsc(memberId);
         List<LedgerCategorySpending.Bucket> buckets =
-                perspectiveSpending.byCategory(memberId, period, perspective);
+                perspectiveSpending.byCategory(memberId, period, perspective, excludeTrip);
         long total = LedgerCategorySpending.total(buckets);
 
         return new LedgerStatsResponse(
                 new LedgerStatsResponse.Period(period.start(), period.end(), label.toString()),
                 perspective,
+                excludeTrip,
                 total,
                 categoryStats(buckets, categoryById, total),
-                assetStats(memberId, assets, period, perspective, total),
+                assetStats(memberId, assets, period, perspective, total, excludeTrip),
                 fixedVsVariable(buckets, categoryById),
-                monthly(memberId, label, startDay, categoryById, assets),
-                settlement(memberId, label, startDay, categoryById),
+                monthly(memberId, label, startDay, categoryById, assets, excludeTrip),
+                settlement(memberId, label, startDay, categoryById, excludeTrip),
                 new LedgerStatsResponse.Comparison(
                         bucketFor(memberId, LedgerPeriods.of(label.minusMonths(1), startDay),
-                                perspective, total),
+                                perspective, total, excludeTrip),
                         bucketFor(memberId, LedgerPeriods.of(label.minusYears(1), startDay),
-                                perspective, total)),
-                perspectiveDiff(memberId, period, perspective, total));
+                                perspective, total, excludeTrip)),
+                perspectiveDiff(memberId, period, perspective, total, excludeTrip));
     }
 
     private List<LedgerStatsResponse.CategoryStat> categoryStats(
@@ -133,7 +140,8 @@ public class LedgerStatsService {
                                                            List<LedgerAsset> assets,
                                                            LedgerPeriods.Period period,
                                                            LedgerPerspective perspective,
-                                                           long total) {
+                                                           long total,
+                                                           boolean excludeTrip) {
         Map<Long, String> names = new HashMap<>();
         for (LedgerAsset asset : assets) {
             names.put(asset.getId(), asset.getName());
@@ -141,7 +149,7 @@ public class LedgerStatsService {
 
         List<LedgerStatsResponse.AssetStat> stats = new ArrayList<>();
         for (LedgerCategorySpending.Bucket bucket
-                : perspectiveSpending.byAsset(memberId, period, perspective)) {
+                : perspectiveSpending.byAsset(memberId, period, perspective, excludeTrip)) {
             stats.add(new LedgerStatsResponse.AssetStat(
                     bucket.categoryId(), names.get(bucket.categoryId()), bucket.amount(),
                     total == 0 ? 0 : (double) bucket.amount() / total));
@@ -179,15 +187,14 @@ public class LedgerStatsService {
     private List<LedgerStatsResponse.MonthlyPoint> monthly(Long memberId, YearMonth label,
                                                            int startDay,
                                                            Map<Long, LedgerCategory> categoryById,
-                                                           List<LedgerAsset> assets) {
+                                                           List<LedgerAsset> assets,
+                                                           boolean excludeTrip) {
         List<LedgerStatsResponse.MonthlyPoint> points = new ArrayList<>();
         for (int back = TREND_MONTHS - 1; back >= 0; back--) {
             YearMonth month = label.minusMonths(back);
             LedgerPeriods.Period period = LedgerPeriods.of(month, startDay);
-            List<LedgerCategorySpending.Bucket> buckets = LedgerCategorySpending.netExpense(
-                    transactionRepository.sumByCategoryAndFlow(
-                            memberId, LedgerTransactionStatus.CONFIRMED,
-                            period.start(), period.end()));
+            List<LedgerCategorySpending.Bucket> buckets =
+                    netExpenseIn(memberId, period, excludeTrip);
             LedgerStatsResponse.FixedVsVariable split = fixedVsVariable(buckets, categoryById);
             points.add(new LedgerStatsResponse.MonthlyPoint(
                     month.toString(),
@@ -232,7 +239,8 @@ public class LedgerStatsService {
      */
     private LedgerStatsResponse.Settlement settlement(Long memberId, YearMonth label,
                                                       int startDay,
-                                                      Map<Long, LedgerCategory> categoryById) {
+                                                      Map<Long, LedgerCategory> categoryById,
+                                                      boolean excludeTrip) {
         int year = label.getYear();
         long income = 0;
         long expense = 0;
@@ -245,10 +253,8 @@ public class LedgerStatsService {
             YearMonth month = YearMonth.of(year, monthValue);
             LedgerPeriods.Period period = LedgerPeriods.of(month, startDay);
             long monthExpense = 0;
-            for (LedgerCategorySpending.Bucket bucket : LedgerCategorySpending.netExpense(
-                    transactionRepository.sumByCategoryAndFlow(
-                            memberId, LedgerTransactionStatus.CONFIRMED,
-                            period.start(), period.end()))) {
+            for (LedgerCategorySpending.Bucket bucket
+                    : netExpenseIn(memberId, period, excludeTrip)) {
                 LedgerCategory category = bucket.categoryId() == null
                         ? null : categoryById.get(bucket.categoryId());
                 if (category != null && category.isExcludeFromSettlement()) {
@@ -288,11 +294,12 @@ public class LedgerStatsService {
     private LedgerStatsResponse.PerspectiveDiff perspectiveDiff(Long memberId,
                                                                 LedgerPeriods.Period period,
                                                                 LedgerPerspective perspective,
-                                                                long total) {
+                                                                long total,
+                                                                boolean excludeTrip) {
         LedgerPerspective other = perspective == LedgerPerspective.SPEND
                 ? LedgerPerspective.BILLING : LedgerPerspective.SPEND;
         long otherTotal = LedgerCategorySpending.total(
-                perspectiveSpending.byCategory(memberId, period, other));
+                perspectiveSpending.byCategory(memberId, period, other, excludeTrip));
         long diff = otherTotal - total;
         return new LedgerStatsResponse.PerspectiveDiff(
                 other, otherTotal, diff, diff == 0 ? null : reasonFor(memberId, period));
@@ -316,6 +323,24 @@ public class LedgerStatsService {
         return hasInstallment ? "할부 때문" : "카드 사이클 경계 때문";
     }
 
+    /**
+     * 그 구간의 소비 기준 순 지출. 월별 추이와 연간 결산이 함께 쓴다.
+     *
+     * <p>「여행 제외」가 켜지면 <b>이쪽도 같이 걸린다</b> — 이번 달만 거르고 추이는 그대로 두면,
+     * 막대 열두 개 중 하나만 다른 규칙으로 그려진다.
+     */
+    private List<LedgerCategorySpending.Bucket> netExpenseIn(Long memberId,
+                                                             LedgerPeriods.Period period,
+                                                             boolean excludeTrip) {
+        return LedgerCategorySpending.netExpense(excludeTrip
+                ? transactionRepository.sumByCategoryAndFlowExcludingTrip(
+                        memberId, LedgerTransactionStatus.CONFIRMED,
+                        period.start(), period.end())
+                : transactionRepository.sumByCategoryAndFlow(
+                        memberId, LedgerTransactionStatus.CONFIRMED,
+                        period.start(), period.end()));
+    }
+
     private long incomeIn(Long memberId, LedgerPeriods.Period period) {
         return transactionRepository.sumIncome(
                 memberId, LedgerTransactionStatus.CONFIRMED, period.start(), period.end());
@@ -332,9 +357,10 @@ public class LedgerStatsService {
     private LedgerStatsResponse.Comparison.Bucket bucketFor(Long memberId,
                                                             LedgerPeriods.Period period,
                                                             LedgerPerspective perspective,
-                                                            long current) {
+                                                            long current,
+                                                            boolean excludeTrip) {
         long total = LedgerCategorySpending.total(
-                perspectiveSpending.byCategory(memberId, period, perspective));
+                perspectiveSpending.byCategory(memberId, period, perspective, excludeTrip));
         return new LedgerStatsResponse.Comparison.Bucket(
                 period.start(), period.end(), total, current - total);
     }
