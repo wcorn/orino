@@ -72,6 +72,10 @@ export const importTripPrep = () =>
   import("../pages/travel/TripPrepPage").then((m) => ({
     default: m.TripPrepPage,
   }));
+export const importTripExpenses = () =>
+  import("../pages/travel/TripExpensesPage").then((m) => ({
+    default: m.TripExpensesPage,
+  }));
 export const importTravelTools = () =>
   import("../pages/travel/TravelToolsPage").then((m) => ({
     default: m.TravelToolsPage,

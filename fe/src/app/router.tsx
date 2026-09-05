@@ -45,6 +45,7 @@ import {
   importTravelSettings,
   importTravelTools,
   importTripBoard,
+  importTripExpenses,
   importTripForm,
   importTripList,
   importTripMap,
@@ -74,6 +75,7 @@ const TripListPage = lazy(importTripList);
 const TripFormPage = lazy(importTripForm);
 const TripBoardPage = lazy(importTripBoard);
 const TripPrepPage = lazy(importTripPrep);
+const TripExpensesPage = lazy(importTripExpenses);
 const PlaceSearchPage = lazy(importPlaceSearch);
 const TripMapPage = lazy(importTripMap);
 const TravelSettingsPage = lazy(importTravelSettings);
@@ -415,6 +417,14 @@ export function AppRouter() {
             element={
               <Suspense fallback={<RouteFallback />}>
                 <TripPrepPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/travel/trips/:tripId/expenses"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <TripExpensesPage />
               </Suspense>
             }
           />
