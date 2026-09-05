@@ -125,3 +125,5 @@ databaseChangeLog:
       file: db/changelog/changes/062-create-ledger-v2-analysis.yaml
   - include:
       file: db/changelog/changes/063-create-ledger-import.yaml
+  - include:
+      file: db/changelog/changes/064-create-trip-prep-item.yaml

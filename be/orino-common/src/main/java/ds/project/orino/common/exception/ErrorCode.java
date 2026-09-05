@@ -76,6 +76,10 @@ public enum ErrorCode {
     TRAVEL_EXTERNAL_REJECTED("TRAVEL-ERR-021",
             "지금은 장소 정보를 새로 가져올 수 없어요. 이미 담아 둔 장소는 그대로 쓸 수 있어요.",
             503),
+    TRAVEL_PREP_ITEM_NOT_FOUND("TRAVEL-ERR-022", "존재하지 않는 준비 항목입니다.", 404),
+    // 기한은 출발 D−N이다. 음수는 「출발 3일 후」인데 그건 준비가 아니다(명세 v2.2 §12).
+    TRAVEL_PREP_INVALID_DUE("TRAVEL-ERR-023",
+            "기한은 출발일로부터 며칠 전인지로 적습니다.", 400),
 
     // SHORTLINK (단축 URL)
     // 이 코드들은 전부 관리 API 전용이다. 공개 리다이렉트(/r/**)는 envelope를 쓰지 않고

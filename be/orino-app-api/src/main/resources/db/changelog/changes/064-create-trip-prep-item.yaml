@@ -1,0 +1,139 @@
+databaseChangeLog:
+  # 여행 준비 (#1323, Epic #1322).
+  #
+  # 자동 롤백에 맡기지 않고 changeSet마다 dropTable/dropColumn을 적는다. 자동 롤백은 인덱스를
+  # FK보다 먼저 지우려 들고, MySQL이 그걸 거부해 롤백이 통째로 멈춘다(060에서 겪었다).
+
+  - changeSet:
+      id: 064-create-trip-prep-item
+      author: wcorn
+      comment: 준비 항목 — 네 분류 안에서만 사는 체크리스트 한 줄(명세 v2.2 §11).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: trip_prep_item
+      changes:
+        - createTable:
+            tableName: trip_prep_item
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              # FK는 아래에서 따로 건다 — ON DELETE CASCADE는 인라인 제약으로 표현할 수 없다.
+              - column:
+                  name: trip_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: member_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # DOCUMENT · BOOKING · BAG · TODO. 다섯 번째 분류를 만들지 않는다 —
+              # 분류가 늘어나는 순간 「어디에 넣지」가 준비보다 오래 걸린다(§11).
+              - column:
+                  name: category
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: title
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              # 정렬에 관여하지 않는다. 체크해도 자리를 옮기지 않는 것이 §13의 규칙이다 —
+              # 방금 체크한 줄이 눈앞에서 사라지면 잘못 눌렀을 때 되돌릴 곳을 잃는다.
+              - column:
+                  name: done
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              # BAG에서만 쓴다. 다른 분류에 값이 오면 저장할 때 NULL로 떨군다.
+              - column:
+                  name: quantity
+                  type: INT
+              # 출발 D−N. 절대 날짜를 저장하지 않는다(§12 · D-29) — 출발일을 하루 당기는
+              # 순간 「10월 10일까지」는 조용히 하루 늦은 기한이 되고 화면은 멀쩡해 보인다.
+              - column:
+                  name: due_days_before
+                  type: INT
+              - column:
+                  name: url
+                  type: VARCHAR(500)
+              - column:
+                  name: memo
+                  type: VARCHAR(500)
+              # 분류 안에서의 순서. 새 항목은 그 분류의 맨 뒤.
+              - column:
+                  name: display_order
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        # 화면이 분류별로 읽는 유일한 경로다. 기한 지남은 조회 시 파생이라 인덱스가 없지만,
+        # 한 여행의 항목은 수십 개라 전부 읽어 애플리케이션에서 판정해도 문제가 없다.
+        - createIndex:
+            tableName: trip_prep_item
+            indexName: idx_prep_trip_category_order
+            columns:
+              - column:
+                  name: trip_id
+              - column:
+                  name: category
+              - column:
+                  name: display_order
+        # 준비는 여행에 종속된다. 여행을 지우면 준비 목록도 사라진다 —
+        # 경비(ledger_transaction.trip_id)가 SET NULL인 것과 반대다. 쓴 돈은 여행 밖에서도
+        # 사실이지만, 「여권 챙기기」는 그 여행이 없으면 아무 뜻도 없다.
+        - addForeignKeyConstraint:
+            baseTableName: trip_prep_item
+            baseColumnNames: trip_id
+            constraintName: fk_trip_prep_item_trip
+            referencedTableName: trip
+            referencedColumnNames: id
+            onDelete: CASCADE
+      rollback:
+        - dropTable:
+            tableName: trip_prep_item
+
+  - changeSet:
+      id: 064-add-trip-budget-amount
+      author: wcorn
+      comment: 여행 예산. 2단계(경비)가 읽지만 여행 테이블을 두 번 ALTER 하지 않는다.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: trip
+                columnName: budget_amount
+      changes:
+        - addColumn:
+            tableName: trip
+            columns:
+              # 원화 정수. 가계부의 ledger_budget에 넣지 않는다(D-28) — 여행 예산은
+              # 달에 걸치지 않고 여행에 걸린다. 아직 안 정했다는 뜻으로 NULL을 허용한다.
+              - column:
+                  name: budget_amount
+                  type: BIGINT
+      rollback:
+        - dropColumn:
+            tableName: trip
+            columns:
+              - column:
+                  name: budget_amount

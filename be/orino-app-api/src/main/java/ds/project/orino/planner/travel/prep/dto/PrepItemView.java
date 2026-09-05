@@ -1,0 +1,42 @@
+package ds.project.orino.planner.travel.prep.dto;
+
+import ds.project.orino.domain.planner.travel.entity.TripPrepItem;
+
+import java.time.LocalDate;
+
+/**
+ * 준비 항목 한 줄(API §10).
+ *
+ * <p>분류는 여기 없다 — 항목은 항상 자기 분류 그룹 안에 실려 나간다({@link PrepGroup}).
+ * 같은 값을 두 자리에 두면 그룹과 항목이 다른 분류를 말하는 응답이 만들어질 수 있다.
+ *
+ * @param dueDate 저장하지 않고 출발일에서 뺀 값. 그래서 출발일이 움직이면 함께 움직인다
+ * @param overdue 첫날 기준 도시의 오늘로 판정한다. 체크한 항목은 지나지 않는다
+ */
+public record PrepItemView(
+        Long id,
+        String title,
+        boolean done,
+        Integer quantity,
+        Integer dueDaysBefore,
+        LocalDate dueDate,
+        boolean overdue,
+        String url,
+        String memo,
+        int displayOrder
+) {
+
+    public static PrepItemView of(TripPrepItem item, LocalDate startDate, LocalDate today) {
+        return new PrepItemView(
+                item.getId(),
+                item.getTitle(),
+                item.isDone(),
+                item.getQuantity(),
+                item.getDueDaysBefore(),
+                item.dueDate(startDate),
+                item.isOverdue(startDate, today),
+                item.getUrl(),
+                item.getMemo(),
+                item.getDisplayOrder());
+    }
+}
