@@ -17,6 +17,8 @@ export const travelKeys = {
    * 분류를 따로 부르면 목록과 진행률이 서로 다른 순간의 값을 보게 된다.
    */
   prep: (tripId: number) => ["travel", "prep", tripId] as const,
+  /** 경비. 여행 하나를 통째로 읽는다 — 날짜 그룹도 합계도 한 응답에서 나온다. */
+  expenses: (tripId: number) => ["travel", "expenses", tripId] as const,
   /** 파생 구간. 저장값이 아니라 날짜에서 매번 계산되므로 날짜를 바꾸면 함께 무효화한다. */
   cityLegs: (tripId: number) => ["travel", "cityLegs", tripId] as const,
   /**
