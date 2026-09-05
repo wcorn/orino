@@ -193,7 +193,13 @@ test.describe("링크 워크스페이스", () => {
 
     await page.getByRole("button", { name: /s\.orino\.dev/ }).click();
     await expect(page).toHaveURL(/\/links\/9dwqr$/);
-    await expect(page.getByRole("link", { name: "링크 목록" })).toBeVisible();
+    // 여기서 확인하는 것은 <b>상세의 되돌아가기 링크</b>다. `exact`가 없으면 사이드바의
+    // 같은 이름 항목과 부딪히는데, 그 항목은 링크 건수가 붙기 전에만("링크 목록") 이름이
+    // 겹치고 붙은 뒤에는("링크 목록 1") 겹치지 않는다 — 응답이 언제 오느냐로 갈리는 경합이라
+    // 세 번에 한 번쯤 빨개졌다.
+    await expect(
+      page.getByRole("link", { name: "링크 목록", exact: true }),
+    ).toBeVisible();
 
     await page.getByRole("button", { name: /목적지 수정/ }).click();
     await page.getByLabel("새 목적지 URL").fill(SEP);

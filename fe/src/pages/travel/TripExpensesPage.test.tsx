@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { Providers } from "@/app/providers";
 import { AppRouter } from "@/app/router";
@@ -98,6 +98,15 @@ function gauge() {
 }
 
 describe("TripExpensesPage", () => {
+  // 오프라인 테스트가 단언에서 실패해도 옆 테스트가 오프라인으로 시작하지 않게 한다.
+  afterEach(() => {
+    Object.defineProperty(navigator, "onLine", {
+      configurable: true,
+      value: true,
+    });
+    window.dispatchEvent(new Event("online"));
+  });
+
   beforeEach(() => {
     useAuthStore.setState({ accessToken: "valid-token" });
     server.use(
@@ -255,6 +264,44 @@ describe("TripExpensesPage", () => {
 
     // 서버도 400으로 막지만, 누른 뒤에 듣는 것과 누르기 전에 아는 것은 다르다.
     expect(modal.getByRole("button", { name: "저장" })).toBeDisabled();
+  });
+
+  it("지출 적기 입구가 헤더와 FAB 둘 다 있다", async () => {
+    mockExpenses();
+    renderExpenses();
+
+    // 데스크톱은 헤더, 모바일은 FAB — 같은 시트를 연다.
+    await screen.findByText("이자카야");
+    const entries = screen.getAllByRole("button", { name: /지출 적기/ });
+    expect(entries).toHaveLength(2);
+  });
+
+  it("오프라인이면 입력 진입 자체를 막는다 — 큐잉하지 않는다", async () => {
+    mockExpenses();
+    renderExpenses();
+    await screen.findByText("이자카야");
+
+    Object.defineProperty(navigator, "onLine", {
+      configurable: true,
+      value: false,
+    });
+    window.dispatchEvent(new Event("offline"));
+
+    expect(
+      await screen.findByText("오프라인 · 경비 조회만 가능합니다"),
+    ).toBeVisible();
+    // FAB은 아예 사라지고, 헤더 버튼은 잠긴다.
+    const entries = screen.queryAllByRole("button", { name: /지출 적기/ });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toBeDisabled();
+    // 예산이 없을 때는 카드 안에도 같은 버튼이 있다(§10.2) — 둘 다 잠긴다.
+    for (const button of screen.getAllByRole("button", {
+      name: "예산 정하기",
+    })) {
+      expect(button).toBeDisabled();
+    }
+    // 보는 것은 그대로 된다.
+    expect(screen.getByText("이자카야")).toBeVisible();
   });
 
   it("외화는 원화 옆에 보조로만 붙는다", async () => {
