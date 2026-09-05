@@ -146,6 +146,34 @@ async function mockPrep(page: Page) {
     );
   });
 
+  // 브레드크럼이 읽는 이름 하나. 좁은 화면에서 잘리는지 보려고 길게 준다.
+  await page.route(`**/api/travel/trips/${TRIP_ID}`, (route) =>
+    route.fulfill(
+      ok({
+        id: TRIP_ID,
+        // 어떤 폰트로 그려도 520px를 넘도록 길게 준다 — 글자 폭은 OS마다 다르다.
+        title:
+          "일본 간사이 한 바퀴 — 오사카 교토 나라 고베 히메지 와카야마 " +
+          "9박 10일 가을 단풍 여행 · 첫날 간사이공항 도착 후 난바 숙소 체크인부터 " +
+          "마지막 날 교토역에서 하루카 타고 돌아오는 일정까지",
+        destinationName: "오사카",
+        destinationPlaceId: 21,
+        startDate: "2026-10-24",
+        endDate: "2026-11-02",
+        timezone: "Asia/Tokyo",
+        currency: "JPY",
+        lat: null,
+        lng: null,
+        defaultNotifyMinutes: 15,
+        morningSummaryEnabled: true,
+        status: "UPCOMING",
+        dDay: 49,
+        totalDays: 10,
+        activityCount: 0,
+      }),
+    ),
+  );
+
   await page.route(`**/api/travel/trips/${TRIP_ID}/prep`, (route) =>
     route.fulfill(
       ok({
@@ -168,6 +196,51 @@ async function mockPrep(page: Page) {
 }
 
 test.describe("준비", () => {
+  /**
+   * 좁은 화면에서 브레드크럼이 <b>한 줄로 남는지</b>(#1348). 모바일에서는 사이드바가 닫혀
+   * 있어 이 줄이 여행 이름을 말하는 유일한 자리인데, 긴 이름에 줄바꿈이 나면 헤더가 통째로
+   * 밀린다. jsdom은 레이아웃을 계산하지 않아 여기서만 잡을 수 있다.
+   */
+  test("520px에서 브레드크럼이 줄바꿈 없이 이름만 자른다", async ({ page }) => {
+    await mockPrep(page);
+    await page.setViewportSize({ width: 520, height: 800 });
+    await page.goto(`/travel/trips/${TRIP_ID}/prep`);
+
+    const crumb = page.getByRole("navigation", { name: "현재 위치" });
+    await expect(crumb).toBeVisible();
+
+    const box = await crumb.boundingBox();
+    // 13px 한 줄. 두 줄이면 30px을 넘는다.
+    expect(box!.height).toBeLessThan(30);
+
+    // 「여행」과 「준비」는 그대로 남고, 잘리는 것은 가운데 이름이다.
+    // 긴 제목에도 「여행」이 들어 있다 — 부분 일치로 잡으면 두 링크가 걸린다.
+    await expect(
+      crumb.getByRole("link", { name: "여행", exact: true }),
+    ).toBeVisible();
+    await expect(crumb.getByText("준비")).toBeVisible();
+    const title = crumb.getByRole("link", { name: /일본 간사이/ });
+    const clipped = await title.evaluate(
+      (el) => el.scrollWidth > el.clientWidth,
+    );
+    expect(clipped).toBe(true);
+
+    /*
+      잘리는 대신 페이지를 넓히면 화면 전체가 가로로 밀린다. 폰트가 뭐든 성립하는
+      단언이라 여기가 실제 안전망이다 — 글자 폭은 OS마다 다르고, CI(리눅스)와 개발
+      기기(맥)의 한글 폭이 달라 같은 제목이 한쪽에서만 잘렸다.
+    */
+    const layout = await page.evaluate(() => ({
+      overflows: document.documentElement.scrollWidth > window.innerWidth,
+      crumbRight: document
+        .querySelector('nav[aria-label="현재 위치"]')!
+        .getBoundingClientRect().right,
+      viewport: window.innerWidth,
+    }));
+    expect(layout.overflows).toBe(false);
+    expect(layout.crumbRight).toBeLessThanOrEqual(layout.viewport);
+  });
+
   test("연달아 적고, 체크하고, 숨기고, 지웠다 되돌린다", async ({ page }) => {
     await mockPrep(page);
     await page.goto(`/travel/trips/${TRIP_ID}/prep`);

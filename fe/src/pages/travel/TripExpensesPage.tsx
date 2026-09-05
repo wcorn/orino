@@ -14,11 +14,13 @@ import { ExpenseBudgetCard } from "@/features/travel/expense/ExpenseBudgetCard";
 import { ExpenseDayCard } from "@/features/travel/expense/ExpenseDayCard";
 import { ExpenseQuickSheet } from "@/features/travel/expense/ExpenseQuickSheet";
 import { useBoard } from "@/features/travel/hooks/useBoard";
+import { useTrip } from "@/features/travel/hooks/useTrip";
 import {
   usePutTripBudget,
   useTripExpenses,
 } from "@/features/travel/hooks/useTripExpensesQuery";
 import { cityOn } from "@/features/travel/lib/baseCity";
+import { TripBreadcrumb } from "@/features/travel/trip/TripBreadcrumb";
 import { useOnline } from "@/shared/lib/useOnline";
 
 /**
@@ -43,6 +45,8 @@ export function TripExpensesPage() {
   const online = useOnline();
 
   const { data, isPending, isError, error } = useTripExpenses(tripId);
+  // 브레드크럼이 쓰는 이름 하나. 준비 화면과 같은 캐시를 탄다.
+  const { data: trip } = useTrip(tripId);
   const putBudget = usePutTripBudget(tripId);
   /**
    * 통화 기본값을 정하려면 <b>오늘 있는 도시</b>가 필요한데, 경비 응답에는 도시 이름만 있고
@@ -96,6 +100,11 @@ export function TripExpensesPage() {
 
   return (
     <div className="mx-auto flex max-w-[720px] flex-col gap-5">
+      {/*
+        안내 한 줄은 여기 없다 — 하단 각주가 이미 「가계부 원장 위의 읽기 뷰」를 말한다.
+        같은 사실을 두 번 적으면 둘 다 안 읽힌다.
+      */}
+      <TripBreadcrumb tripId={tripId} tripTitle={trip?.title} current="경비" />
       <PageHeader
         title="경비"
         description={describe(data)}
