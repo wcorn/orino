@@ -21,6 +21,8 @@ subprojects {
 
     // BOM보다 높은 버전이 필요한 것만 남긴다(CVE 대응). 나머지는 4.0.7 BOM이 이미 커버한다.
     ext['netty.version'] = '4.2.16.Final'
+    // CVE-2026-65182 · 65905 · 68525 (전부 CRITICAL, 인증·인가 우회). BOM은 11.0.22다.
+    ext['tomcat.version'] = '11.0.25'
 
     repositories {
         mavenCentral()
