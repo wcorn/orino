@@ -25,41 +25,60 @@ interface PendingActionsState {
   flushAll: () => void;
 }
 
-export const usePendingActions = create<PendingActionsState>((set, get) => ({
-  pendingIds: [],
-  commits: new Map(),
+/**
+ * 보류함을 하나 만든다. <b>id 이름공간마다 따로 둔다.</b>
+ *
+ * <p>일정 5번과 준비 항목 5번은 다른 것인데 보류함을 함께 쓰면 같은 숫자로 만난다 —
+ * 일정을 지운 채 준비 화면을 열면 준비 5번이 이유 없이 사라져 보이고, 되돌리기 한 번이
+ * 엉뚱한 요청을 취소한다. 문자열 키로 바꿔 접두사를 붙이는 길도 있지만, 그러면 화면마다
+ * 접두사를 기억해야 한다. 보류함을 나누면 타입이 알아서 갈라 준다.
+ */
+function createPendingActions() {
+  return create<PendingActionsState>((set, get) => ({
+    pendingIds: [],
+    commits: new Map(),
 
-  defer: (id, commit) =>
-    set((state) => {
-      const commits = new Map(state.commits);
-      commits.set(id, commit);
-      return {
-        commits,
-        pendingIds: state.pendingIds.includes(id)
-          ? state.pendingIds
-          : [...state.pendingIds, id],
-      };
-    }),
+    defer: (id, commit) =>
+      set((state) => {
+        const commits = new Map(state.commits);
+        commits.set(id, commit);
+        return {
+          commits,
+          pendingIds: state.pendingIds.includes(id)
+            ? state.pendingIds
+            : [...state.pendingIds, id],
+        };
+      }),
 
-  commit: (id) => {
-    const run = get().commits.get(id);
-    get().cancel(id);
-    run?.();
-  },
+    commit: (id) => {
+      const run = get().commits.get(id);
+      get().cancel(id);
+      run?.();
+    },
 
-  cancel: (id) =>
-    set((state) => {
-      const commits = new Map(state.commits);
-      commits.delete(id);
-      return { commits, pendingIds: state.pendingIds.filter((p) => p !== id) };
-    }),
+    cancel: (id) =>
+      set((state) => {
+        const commits = new Map(state.commits);
+        commits.delete(id);
+        return {
+          commits,
+          pendingIds: state.pendingIds.filter((p) => p !== id),
+        };
+      }),
 
-  flushAll: () => {
-    const { commits } = get();
-    set({ commits: new Map(), pendingIds: [] });
-    commits.forEach((run) => run());
-  },
-}));
+    flushAll: () => {
+      const { commits } = get();
+      set({ commits: new Map(), pendingIds: [] });
+      commits.forEach((run) => run());
+    },
+  }));
+}
+
+/** 일정(보드·일정 상세)의 보류함. */
+export const usePendingActions = createPendingActions();
+
+/** 준비 항목의 보류함. 일정과 id 이름공간이 달라 따로 둔다. */
+export const usePendingPrepActions = createPendingActions();
 
 /**
  * 탭을 닫거나 새로고침하면 남은 것을 보낸다. 그냥 사라지면 사용자는 지웠다고 믿는데
@@ -68,5 +87,6 @@ export const usePendingActions = create<PendingActionsState>((set, get) => ({
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
     usePendingActions.getState().flushAll();
+    usePendingPrepActions.getState().flushAll();
   });
 }
