@@ -38,7 +38,9 @@
     <springProfile name="test">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
-                <pattern>%-5level %logger{36} - %msg%n</pattern>
+                <!-- 시각과 스레드를 남긴다. 이게 없어서 테스트가 남긴 WARN을 종료 중에 난
+                     것으로 한참 오해했다 — 언제 났는지가 원인의 절반이다. -->
+                <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
             </encoder>
         </appender>
         <root level="WARN">

@@ -52,10 +52,8 @@ spring:
     activate:
       on-profile: test
   datasource:
-    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
-    url: jdbc:tc:mysql:8.4.4:///toy
-    username: test
-    password: test
+    # url·username·password는 여기 없다. TestMySqlConfig의 컨테이너 빈이 @ServiceConnection으로
+    # 채운다 — 왜 jdbc:tc: URL이 아닌지는 그 클래스의 주석에 적었다.
     # 통합 테스트는 단일 TestContainer MySQL을 여러 Spring 컨텍스트가 공유한다.
     # 컨텍스트마다 Hikari 풀이 붙고 캐시된 컨텍스트가 커넥션을 물고 있어, 컨텍스트 수가
     # 늘면 MySQL max_connections(기본 151)를 넘겨 SQLNonTransientConnectionException이 난다.

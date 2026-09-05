@@ -761,7 +761,7 @@ class FlashcardControllerTest extends ApiTestSupport {
                 cursor = null;
                 break;
             }
-            cursor = data.get("nextCursor").asText();
+            cursor = data.get("nextCursor").asString();
         }
 
         assertThat(cursor).as("마지막 페이지에서 루프가 끝나야 한다").isNull();

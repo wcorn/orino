@@ -38,6 +38,15 @@ subprojects {
         testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     }
 
+    /*
+     * javac는 기본적으로 "Some input files use or override a deprecated API" 한 줄만 남긴다 —
+     * 어디인지는 말해 주지 않아서, 그 줄은 읽어도 할 수 있는 게 없는 로그였다.
+     * 위치까지 찍게 해 둔다. 지금 기준으로 경고는 0이다.
+     */
+    tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs << '-Xlint:deprecation'
+    }
+
     checkstyle {
         toolVersion = '10.25.0'
         configFile = rootProject.file('config/checkstyle/checkstyle.xml')
@@ -89,6 +98,20 @@ subprojects {
          */
         maxHeapSize = '2g'
         jvmArgs '-XX:MaxMetaspaceSize=1g'
+
+        /*
+         * JNA(도커 API 호출)와 netty(lettuce)가 네이티브 라이브러리를 연다. JDK 25는
+         * 그때마다 "restricted method has been called"를 stderr로 찍고, 앞으로는 아예
+         * 막겠다고 예고한다. 이 JVM에서 네이티브 접근을 허용한다고 선언해 둔다.
+         */
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+
+        /*
+         * Mockito가 ByteBuddy 에이전트를 런타임에 붙이면서 부트스트랩 클래스패스에 자기
+         * jar를 얹는다. 그러면 JVM이 "Sharing is only supported for boot loader classes"를
+         * 워커마다 찍는다 — CDS는 그 시점에 이미 반쯤 꺼진 상태다. 처음부터 끄고 조용히 간다.
+         */
+        jvmArgs '-Xshare:off'
     }
 
     jacocoTestReport {
