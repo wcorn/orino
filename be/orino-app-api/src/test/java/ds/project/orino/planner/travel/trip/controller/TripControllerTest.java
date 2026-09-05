@@ -10,6 +10,9 @@ import ds.project.orino.support.DbCleaner;
 import ds.project.orino.support.FixedClock;
 import ds.project.orino.support.MemberFixture;
 import ds.project.orino.support.TravelCityFixture;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -24,6 +27,7 @@ import java.time.LocalTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -47,6 +51,8 @@ class TripControllerTest extends ApiTestSupport {
     private TripActivityRepository activityRepository;
     @Autowired
     private DbCleaner dbCleaner;
+    @Autowired
+    private EntityManagerFactory entityManagerFactory;
 
     private String authHeader;
     private String otherAuthHeader;
@@ -596,6 +602,165 @@ class TripControllerTest extends ApiTestSupport {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.next.prep.total").value(0))
                     .andExpect(jsonPath("$.data.next.prep.overdueCount").value(0));
+        }
+    }
+
+    /**
+     * 사이드바 여행 트리(#1345 · API §2.1). <b>같은 배열을 사이드바와 폴백 화면이 읽는다</b> —
+     * 여기서 빠진 여행은 사이드바에도 폴백에도 없다.
+     */
+    @Nested
+    @DisplayName("GET /summary — trips[]")
+    class SidebarTrips {
+
+        @Test
+        @DisplayName("진행 중이 둘이어도 전부 온다 — 진행 중 → 예정, 각각 시작일 오름차순")
+        void listsOngoingThenUpcoming() throws Exception {
+            // 시작이 늦은 진행 중을 먼저 만들어 둔다 — 정렬이 저장 순서를 타면 여기서 드러난다.
+            long ongoingLate = createTrip("진행중B", "오사카", "2026-01-14", "2026-01-17");
+            long ongoingEarly = createTrip("진행중A", "도쿄", "2026-01-13", "2026-01-16");
+            long soon = createTrip("곧", "삿포로", "2026-10-24", "2026-10-27");
+            long later = createTrip("나중", "후쿠오카", "2026-12-01", "2026-12-04");
+            createTrip("다녀온1", "부산", "2025-12-01", "2025-12-03");
+            createTrip("다녀온2", "제주", "2025-06-01", "2025-06-03");
+
+            mockMvc.perform(get("/api/travel/summary")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    // 다녀온 여행은 배열에 없다 — 있으면 사이드바가 시간이 갈수록 목록 화면이 된다.
+                    .andExpect(jsonPath("$.data.trips", hasSize(4)))
+                    .andExpect(jsonPath("$.data.trips[*].id",
+                            contains((int) ongoingEarly, (int) ongoingLate,
+                                    (int) soon, (int) later)))
+                    .andExpect(jsonPath("$.data.trips[*].status",
+                            contains("ONGOING", "ONGOING", "UPCOMING", "UPCOMING")))
+                    .andExpect(jsonPath("$.data.completedCount").value(2));
+        }
+
+        @Test
+        @DisplayName("진행 중이면 dayNumber, 예정이면 dDay — 둘이 동시에 차지 않는다")
+        void dayNumberAndDDayNeverOverlap() throws Exception {
+            createTrip("진행중", "오사카", "2026-01-14", "2026-01-17");
+            createTrip("곧", "도쿄", "2026-10-24", "2026-10-27");
+
+            mockMvc.perform(get("/api/travel/summary")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    // 오늘은 도쿄 기준 2026-01-15 — 1/14에 떠난 여행의 2일차다.
+                    .andExpect(jsonPath("$.data.trips[0].dayNumber").value(2))
+                    .andExpect(jsonPath("$.data.trips[0].dDay").value(nullValue()))
+                    .andExpect(jsonPath("$.data.trips[1].dDay").value(282))
+                    .andExpect(jsonPath("$.data.trips[1].dayNumber").value(nullValue()))
+                    .andExpect(jsonPath("$.data.trips[1].startDate").value("2026-10-24"))
+                    .andExpect(jsonPath("$.data.trips[1].endDate").value("2026-10-27"));
+        }
+
+        @Test
+        @DisplayName("준비 집계는 준비 화면이 말하는 것과 같은 값이다")
+        void prepMatchesPrepScreen() throws Exception {
+            long soon = createTrip("곧", "도쿄", "2026-10-24", "2026-10-27");
+            long packed = addPrepItem(soon, """
+                    {"category": "BAG", "title": "멀티어댑터"}""");
+            addPrepItem(soon, """
+                    {"category": "BOOKING", "title": "항공권 발권"}""");
+            // 오늘은 2026-01-15(도쿄). D-300은 2025-12-28이라 이미 지났다.
+            addPrepItem(soon, """
+                    {"category": "BOOKING", "title": "여권 갱신", "dueDaysBefore": 300}""");
+            checkPrepItem(packed);
+
+            mockMvc.perform(get("/api/travel/trips/" + soon + "/prep")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.total").value(3))
+                    .andExpect(jsonPath("$.data.done").value(1))
+                    .andExpect(jsonPath("$.data.overdueCount").value(1));
+
+            mockMvc.perform(get("/api/travel/summary")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.trips[0].prep.total").value(3))
+                    .andExpect(jsonPath("$.data.trips[0].prep.done").value(1))
+                    .andExpect(jsonPath("$.data.trips[0].prep.overdueCount").value(1));
+        }
+
+        @Test
+        @DisplayName("준비를 하나도 안 적은 여행도 prep이 0으로 온다 — null이 아니다")
+        void prepIsZeroNotNull() throws Exception {
+            createTrip("곧", "도쿄", "2026-10-24", "2026-10-27");
+
+            mockMvc.perform(get("/api/travel/summary")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.trips[0].prep").exists())
+                    .andExpect(jsonPath("$.data.trips[0].prep.total").value(0))
+                    .andExpect(jsonPath("$.data.trips[0].prep.done").value(0))
+                    .andExpect(jsonPath("$.data.trips[0].prep.overdueCount").value(0));
+        }
+
+        @Test
+        @DisplayName("여행이 하나도 없으면 빈 배열과 0이다")
+        void emptyWhenNoTrips() throws Exception {
+            mockMvc.perform(get("/api/travel/summary")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.trips", hasSize(0)))
+                    .andExpect(jsonPath("$.data.completedCount").value(0));
+        }
+
+        @Test
+        @DisplayName("다녀온 여행만 있으면 배열은 비고 개수만 남는다")
+        void completedOnlyCounts() throws Exception {
+            createTrip("다녀온1", "부산", "2025-12-01", "2025-12-03");
+            createTrip("다녀온2", "제주", "2025-06-01", "2025-06-03");
+
+            mockMvc.perform(get("/api/travel/summary")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.trips", hasSize(0)))
+                    .andExpect(jsonPath("$.data.completedCount").value(2));
+        }
+
+        /**
+         * 여행이 늘어도 질의 수는 그대로다. 준비·경비는 여행 수에 비례하는 유일한 집계라,
+         * 여행마다 부르면 그때부터 사이드바를 여는 값이 여행 수만큼 비싸진다.
+         *
+         * <p>절대 개수를 못박지 않는 이유는 그게 요점이 아니기 때문이다 — <b>두 배로 늘렸을 때
+         * 같은가</b>가 요점이고, 개수를 박으면 무관한 리팩터링마다 이 테스트가 깨진다.
+         */
+        @Test
+        @DisplayName("여행이 늘어도 질의 수가 늘지 않는다")
+        void queryCountDoesNotGrowWithTrips() throws Exception {
+            createTrip("예정1", "도쿄", "2026-10-24", "2026-10-27");
+            createTrip("예정2", "오사카", "2026-11-01", "2026-11-04");
+            summary();  // 첫 호출의 준비 비용(메타데이터·프록시)을 측정에서 뺀다
+
+            long withTwo = queriesForSummary();
+
+            createTrip("예정3", "삿포로", "2026-11-10", "2026-11-13");
+            createTrip("예정4", "후쿠오카", "2026-11-20", "2026-11-23");
+            long withFour = queriesForSummary();
+
+            // 0이면 통계가 안 켜진 것이다 — 그대로 두면 이 테스트는 늘 통과한다.
+            assertThat(withTwo).isPositive();
+            assertThat(withFour).isEqualTo(withTwo);
+        }
+
+        private long queriesForSummary() throws Exception {
+            Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class)
+                    .getStatistics();
+            statistics.setStatisticsEnabled(true);
+            try {
+                statistics.clear();
+                summary();
+                return statistics.getPrepareStatementCount();
+            } finally {
+                statistics.setStatisticsEnabled(false);
+            }
+        }
+
+        private void summary() throws Exception {
+            mockMvc.perform(get("/api/travel/summary")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
         }
     }
 

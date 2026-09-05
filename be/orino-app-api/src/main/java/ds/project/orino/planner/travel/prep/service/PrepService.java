@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * 준비 CRUD(명세 v2.2 §11~§13 · API §10).
@@ -205,6 +206,35 @@ public class PrepService {
      */
     public PrepSummary summaryOf(Trip trip, LocalDate today) {
         return summaryOf(itemsOf(trip.getId()), trip.getStartDate(), today);
+    }
+
+    /**
+     * 여러 여행의 요약을 한 번에. 사이드바 여행 트리가 진행 중·예정 전부의 진행률을 함께
+     * 그린다 — 여행마다 {@link #summaryOf}를 부르면 여행이 늘 때마다 질의가 는다.
+     *
+     * <p>세는 방식은 위와 <b>같은 함수</b>다. 읽어 오는 폭만 넓히고 집계는 건드리지 않는다 —
+     * 사이드바 배지와 준비 화면이 다른 값을 말하면 무엇을 눌러야 배지가 사라지는지 알 수 없다.
+     *
+     * @param todayByTrip 여행 id → 그 여행 첫날 기준 도시의 오늘. 호출부가 상태·D-day를
+     *                    내면서 이미 알고 있는 값이라, 여기서 날짜 행을 다시 읽지 않는다
+     * @return 여행 id → 요약. <b>항목이 하나도 없는 여행도 0으로 들어 있다</b> — 빠뜨리면
+     *         화면이 「모른다」와 「0개」를 구분할 수 없다
+     */
+    public Map<Long, PrepSummary> summariesOf(List<Trip> trips, Map<Long, LocalDate> todayByTrip) {
+        if (trips.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, List<TripPrepItem>> byTrip = prepRepository
+                .findAllByTripIdIn(trips.stream().map(Trip::getId).toList()).stream()
+                .collect(Collectors.groupingBy(TripPrepItem::getTripId));
+
+        Map<Long, PrepSummary> summaries = new LinkedHashMap<>();
+        for (Trip trip : trips) {
+            summaries.put(trip.getId(), summaryOf(
+                    byTrip.getOrDefault(trip.getId(), List.of()),
+                    trip.getStartDate(), todayByTrip.get(trip.getId())));
+        }
+        return summaries;
     }
 
     /**

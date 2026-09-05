@@ -11,6 +11,7 @@ import ds.project.orino.domain.planner.travel.entity.TripStatus;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.day.service.TripClock;
 import ds.project.orino.planner.travel.day.service.TripDayService;
+import ds.project.orino.planner.travel.expense.dto.ExpenseSummary;
 import ds.project.orino.planner.travel.expense.dto.TripExpenseResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 경비 조회(명세 v2.2 §4~§5 · API §11).
@@ -73,6 +75,35 @@ public class TripExpenseQueryService {
                 totalsOf(trip, spent, scheduled, completed),
                 (int) rows.stream().filter(tx -> tx.getCategoryId() == null).count(),
                 groupsOf(trip, cities, rows));
+    }
+
+    /**
+     * 여러 여행의 경비 한 줄씩. 사이드바 여행 트리와 폴백 화면이 진행 중·예정 전부를 함께
+     * 그린다 — 여행마다 {@link #get}을 부르면 화면 한 벌을 여러 번 조립하게 된다.
+     *
+     * <p>여기서 세는 것은 <b>화면과 같은 행</b>이다(확정 · 지출 · 안 지운 것). 다만 합계만
+     * 필요하므로 목록을 끌어오지 않고 DB에서 더한다 — 두 질의를 나란히 두고 함께 고친다
+     * ({@link LedgerTransactionRepository#sumConfirmedExpenseByTrip}).
+     *
+     * @return 여행 id → 요약. <b>지출이 한 건도 없는 여행도 들어 있다</b>({@code spent: 0}) —
+     *         빠뜨리면 화면이 「모른다」와 「안 썼다」를 구분할 수 없다
+     */
+    public Map<Long, ExpenseSummary> summariesOf(List<Trip> trips) {
+        if (trips.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Long> spentByTrip = transactionRepository
+                .sumConfirmedExpenseByTrip(trips.stream().map(Trip::getId).toList()).stream()
+                .collect(Collectors.toMap(
+                        LedgerTransactionRepository.TripTotal::getTripId,
+                        LedgerTransactionRepository.TripTotal::getTotal));
+
+        Map<Long, ExpenseSummary> summaries = new LinkedHashMap<>();
+        for (Trip trip : trips) {
+            summaries.put(trip.getId(), new ExpenseSummary(trip.getBudgetAmount(),
+                    spentByTrip.getOrDefault(trip.getId(), 0L)));
+        }
+        return summaries;
     }
 
     // ---------------- 그룹 ----------------
