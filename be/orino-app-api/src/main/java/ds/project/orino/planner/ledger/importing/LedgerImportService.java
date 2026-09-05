@@ -226,10 +226,12 @@ public class LedgerImportService {
                 if (row.error != null || !wanted.contains(row.rowNumber)) {
                     continue;
                 }
+                // 마지막 null은 여행이다. 은행·카드 파일에는 그런 정보가 없으므로 붙이지
+                // 않는다 — 넣은 뒤 기간으로 걸러 한 번에 붙이는 길이 따로 있다(§18).
                 requests.add(new TransactionCreateRequest(
                         row.type, row.amount, row.occurredOn, null,
                         row.assetId == null ? spec.assetId() : row.assetId, null,
-                        row.categoryId, row.title, row.memo, List.of(), false, null, null));
+                        row.categoryId, row.title, row.memo, List.of(), false, null, null, null));
             }
 
             String fileName = files.get(fileIndex).getOriginalFilename();

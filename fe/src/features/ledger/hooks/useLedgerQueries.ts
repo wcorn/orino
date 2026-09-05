@@ -73,10 +73,15 @@ export function useLedgerCategories(flow?: LedgerFlow) {
   });
 }
 
-export function useLedgerTransactions(from?: string, to?: string) {
+export function useLedgerTransactions(
+  from?: string,
+  to?: string,
+  trip: { tripId?: number; excludeTrip?: boolean } = {},
+) {
+  const { tripId, excludeTrip } = trip;
   return useQuery({
-    queryKey: ledgerKeys.transactions(from, to),
-    queryFn: () => fetchTransactions({ from, to }),
+    queryKey: ledgerKeys.transactions(from, to, tripId, excludeTrip),
+    queryFn: () => fetchTransactions({ from, to, tripId, excludeTrip }),
     staleTime: 30 * 1000,
   });
 }

@@ -104,6 +104,31 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
             Long memberId, LocalDate from, LocalDate to);
 
     /**
+     * 여행으로 거른 내역 타임라인(여행 v2.2 §18).
+     *
+     * <p>필터가 없을 때는 위의 파생 메서드를 그대로 쓴다 — 다섯 화면이 함께 타는 길이라
+     * 조건 하나 때문에 실행 계획을 흔들지 않는다. 이 메서드는 <b>필터가 걸렸을 때만</b> 탄다.
+     *
+     * @param tripId      이 여행에 붙은 것만. {@code null}이면 여행으로 거르지 않는다
+     * @param excludeTrip 참이면 <b>어느 여행에도 안 붙은 것만</b>. 「여행 빼고 이 달에 얼마
+     *                    썼나」가 이 질문이다
+     */
+    @Query("""
+            SELECT t FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.deletedAt IS NULL
+              AND t.occurredOn BETWEEN :from AND :to
+              AND (:tripId IS NULL OR t.tripId = :tripId)
+              AND (:excludeTrip = FALSE OR t.tripId IS NULL)
+            ORDER BY t.occurredOn DESC, t.id DESC
+            """)
+    List<LedgerTransaction> findAllForTimelineByTrip(@Param("memberId") Long memberId,
+                                                    @Param("from") LocalDate from,
+                                                    @Param("to") LocalDate to,
+                                                    @Param("tripId") Long tripId,
+                                                    @Param("excludeTrip") boolean excludeTrip);
+
+    /**
      * 그 자산의 내역. <b>이체받는 쪽도 포함한다</b> — 「이 통장에 무슨 일이 있었나」에는
      * 나간 돈과 들어온 돈이 함께 답해야 한다.
      */
@@ -260,6 +285,28 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
     List<FlowSourceTotal> sumByTypeAndSource(@Param("memberId") Long memberId,
                                              @Param("from") LocalDate from,
                                              @Param("to") LocalDate to);
+
+    /**
+     * 같은 합계를 <b>여행 필터까지 걸어</b> 낸다.
+     *
+     * <p>따로 두는 이유는 화면이 한 벌이어야 하기 때문이다 — 목록만 거르고 상단 합계는 전체를
+     * 세면 「13건 · 41만」 아래에 320만이 적힌다. 어느 쪽이 맞는지 사용자가 알 방법이 없다.
+     */
+    @Query("""
+            SELECT t.type AS type, t.source AS source, t.status AS status, SUM(t.amount) AS total
+            FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.deletedAt IS NULL
+              AND t.occurredOn BETWEEN :from AND :to
+              AND (:tripId IS NULL OR t.tripId = :tripId)
+              AND (:excludeTrip = FALSE OR t.tripId IS NULL)
+            GROUP BY t.type, t.source, t.status
+            """)
+    List<FlowSourceTotal> sumByTypeAndSourceForTrip(@Param("memberId") Long memberId,
+                                                    @Param("from") LocalDate from,
+                                                    @Param("to") LocalDate to,
+                                                    @Param("tripId") Long tripId,
+                                                    @Param("excludeTrip") boolean excludeTrip);
 
     /**
      * 카테고리별 합계 — <b>유형과 출처까지 묶어서</b> 준다.

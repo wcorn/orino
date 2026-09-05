@@ -15,6 +15,8 @@ import ds.project.orino.domain.planner.ledger.repository.LedgerAssetRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerCategoryRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerTagRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerTransactionRepository;
+import ds.project.orino.domain.planner.travel.entity.Trip;
+import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerTransactionTagRepository;
 import ds.project.orino.planner.ledger.card.LedgerInstallmentService;
 import ds.project.orino.planner.ledger.card.LedgerStatementAssigner;
@@ -79,6 +81,7 @@ public class LedgerTransactionService {
     private final LedgerStatementAssigner statementAssigner;
     private final LedgerInstallmentService installmentService;
     private final LedgerAutoRuleService autoRuleService;
+    private final TripRepository tripRepository;
     private final LedgerClock clock;
 
     public LedgerTransactionService(LedgerTransactionRepository transactionRepository,
@@ -91,6 +94,7 @@ public class LedgerTransactionService {
                                     LedgerStatementAssigner statementAssigner,
                                     LedgerInstallmentService installmentService,
                                     LedgerAutoRuleService autoRuleService,
+                                    TripRepository tripRepository,
                                     LedgerClock clock) {
         this.transactionRepository = transactionRepository;
         this.transactionTagRepository = transactionTagRepository;
@@ -102,6 +106,7 @@ public class LedgerTransactionService {
         this.statementAssigner = statementAssigner;
         this.installmentService = installmentService;
         this.autoRuleService = autoRuleService;
+        this.tripRepository = tripRepository;
         this.clock = clock;
     }
 
@@ -166,7 +171,9 @@ public class LedgerTransactionService {
                         : null,
                 // 할부는 복사하지 않는다. 같은 물건을 또 할부로 샀다는 뜻이 아니라
                 // 회차가 두 벌 생겨 빚이 두 배로 잡힌다.
-                null);
+                null,
+                // 여행 연결은 따라간다 — 같은 여행에서 또 쓴 돈이라 복사하는 것이다.
+                origin.getTripId());
         return saveOne(memberId, request);
     }
 
@@ -196,6 +203,11 @@ public class LedgerTransactionService {
                 : request.categoryId();
         validateCategory(memberId, categoryId, type);
 
+        // 없는 여행·남의 여행이면 여기서 404다. FK가 있어 나중에 터지면 500이 되고,
+        // 그때는 무엇이 잘못됐는지 화면이 말해 줄 수 없다.
+        Long tripId = request.tripId() == null ? null
+                : requireTrip(memberId, request.tripId()).getId();
+
         Money money = resolveMoney(request.amount(), request.fx());
 
         // 미래 날짜는 예정이다. 별도 메뉴를 외우게 하지 않는다(확정 명세 §4.2).
@@ -215,6 +227,7 @@ public class LedgerTransactionService {
         tx.updateMemo(request.memo());
         tx.updateOccurredAt(request.occurredAt());
         tx.updateEstimated(Boolean.TRUE.equals(request.estimated()));
+        tx.attachToTrip(tripId);
         if (money.hasFx()) {
             tx.applyFx(money.currency(), money.fxAmount(), money.fxRate());
         }
@@ -343,6 +356,15 @@ public class LedgerTransactionService {
             return new BulkResponse(targets.size());
         }
 
+        if (request.action() == BulkRequest.Action.ATTACH_TRIP) {
+            // null이면 연결을 끊는다. 있는 여행인지는 붙일 때만 묻는다.
+            if (request.tripId() != null) {
+                requireTrip(memberId, request.tripId());
+            }
+            targets.forEach(tx -> tx.attachToTrip(request.tripId()));
+            return new BulkResponse(targets.size());
+        }
+
         Long categoryId = request.categoryId();
         if (categoryId != null) {
             LedgerCategory category = requireCategory(memberId, categoryId);
@@ -360,14 +382,31 @@ public class LedgerTransactionService {
 
     @Transactional(readOnly = true)
     public TransactionListResponse list(Long memberId, LocalDate from, LocalDate to) {
+        return list(memberId, from, to, null, false);
+    }
+
+    /**
+     * 여행으로 거른 내역(여행 v2.2 §18).
+     *
+     * @param tripId      이 여행에 붙은 것만
+     * @param excludeTrip 참이면 어느 여행에도 안 붙은 것만 — 「여행 빼고 얼마 썼나」
+     */
+    @Transactional(readOnly = true)
+    public TransactionListResponse list(Long memberId, LocalDate from, LocalDate to,
+                                        Long tripId, boolean excludeTrip) {
         LocalDate today = clock.today();
         LocalDate start = from != null ? from : today.withDayOfMonth(1);
         // 기본 끝은 오늘+30일이다. 예정이 보이지 않으면 「앞으로 얼마 나가나」에 답할 수 없다.
         LocalDate end = to != null ? to : today.plusDays(30);
 
-        List<LedgerTransaction> rows = transactionRepository
-                .findAllByMemberIdAndDeletedAtIsNullAndOccurredOnBetweenOrderByOccurredOnDescIdDesc(
-                        memberId, start, end);
+        // 필터가 없으면 다섯 화면이 함께 타는 기존 경로 그대로다 — 조건 하나 때문에
+        // 실행 계획을 흔들지 않는다.
+        List<LedgerTransaction> rows = tripId == null && !excludeTrip
+                ? transactionRepository
+                        .findAllByMemberIdAndDeletedAtIsNullAndOccurredOnBetweenOrderByOccurredOnDescIdDesc(
+                                memberId, start, end)
+                : transactionRepository.findAllForTimelineByTrip(
+                        memberId, start, end, tripId, excludeTrip);
         LedgerNames names = names(memberId);
         Map<Long, List<String>> tagsByTransaction = tagsOf(memberId, rows);
 
@@ -404,7 +443,8 @@ public class LedgerTransactionService {
                     entry.getKey(), income, expense, entry.getValue()));
         }
 
-        return new TransactionListResponse(today, totals(memberId, start, end), groups);
+        return new TransactionListResponse(today,
+                totals(memberId, start, end, tripId, excludeTrip), groups);
     }
 
     @Transactional(readOnly = true)
@@ -442,6 +482,18 @@ public class LedgerTransactionService {
      */
     @Transactional(readOnly = true)
     public TransactionListResponse.MonthTotals totals(Long memberId, LocalDate from, LocalDate to) {
+        return totals(memberId, from, to, null, false);
+    }
+
+    /**
+     * 같은 합계를 여행 필터까지 걸어 낸다(여행 v2.2).
+     *
+     * <p>목록만 거르고 합계는 전체를 세면 「13건」 위에 320만이 적힌다 — 어느 쪽이 맞는지
+     * 사용자가 알 방법이 없으므로 같은 필터를 두 곳에 함께 건다.
+     */
+    @Transactional(readOnly = true)
+    public TransactionListResponse.MonthTotals totals(Long memberId, LocalDate from, LocalDate to,
+                                                      Long tripId, boolean excludeTrip) {
         long income = 0;
         long expense = 0;
         long transfer = 0;
@@ -450,7 +502,8 @@ public class LedgerTransactionService {
         int scheduledCount = 0;
 
         for (LedgerTransactionRepository.FlowSourceTotal row
-                : transactionRepository.sumByTypeAndSource(memberId, from, to)) {
+                : transactionRepository.sumByTypeAndSourceForTrip(
+                        memberId, from, to, tripId, excludeTrip)) {
             boolean refund = row.getSource() == LedgerTransactionSource.REFUND;
             long signed = refund ? -row.getTotal() : row.getTotal();
             // 환불은 자기 유형이 아니라 <b>상쇄하는 쪽</b>의 합계를 깎는다.
@@ -588,6 +641,19 @@ public class LedgerTransactionService {
         }
         requireAsset(memberId, counterAssetId);
         return counterAssetId;
+    }
+
+    /**
+     * 붙일 여행이 실재하고 내 것인지.
+     *
+     * <p>가계부가 여행 <b>서비스</b>를 부르지는 않는다 — 읽는 것은 소유권 확인 한 줄이고,
+     * 그건 원장에 죽은 참조를 넣지 않기 위한 최소한이다(의존 방향은 여행 → 가계부 그대로).
+     *
+     * <p>남의 여행도 404다. 403이면 「그 id의 여행은 있다」가 새어나간다.
+     */
+    private Trip requireTrip(Long memberId, Long tripId) {
+        return tripRepository.findByIdAndMemberId(tripId, memberId)
+                .orElseThrow(() -> new CustomException(ErrorCode.TRAVEL_TRIP_NOT_FOUND));
     }
 
     private void validateCategory(Long memberId, Long categoryId, LedgerFlow type) {

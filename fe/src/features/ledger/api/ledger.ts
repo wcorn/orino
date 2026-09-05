@@ -144,6 +144,11 @@ export interface TransactionView {
   source: TransactionSource;
   estimated: boolean;
   refundOfId: number | null;
+  /**
+   * 붙어 있는 여행(여행 v2.2). 이름은 오지 않는다 — 화면이 여행 목록을 이미 들고 있고,
+   * 여기 실으면 여행 제목을 고칠 때마다 옛 이름을 말하는 자리가 하나 더 생긴다.
+   */
+  tripId: number | null;
   tags: string[];
   fx: FxView | null;
 }
@@ -429,6 +434,29 @@ export interface TransactionCreatedResponse {
 export interface TransactionListParams {
   from?: string;
   to?: string;
+  /** 이 여행에 붙은 것만. 상단 합계도 함께 걸린다 — 서버가 같은 필터를 두 곳에 건다. */
+  tripId?: number;
+  /** 어느 여행에도 안 붙은 것만. 「여행 빼고 이 달에 얼마 썼나」 */
+  excludeTrip?: boolean;
+}
+
+/**
+ * 고른 거래를 여행에 붙이거나 뗀다(여행 v2.2 §18).
+ *
+ * <p>여행 중엔 가계부에 그냥 적고, 돌아와 기간으로 걸러 한 번 붙인다. 경비 화면이 다 밀려도
+ * 이것 하나면 「다녀와서 얼마 들었나」는 답이 나온다.
+ *
+ * @param tripId `null`이면 연결을 끊는다
+ */
+export async function attachTripToTransactions(
+  ids: number[],
+  tripId: number | null,
+): Promise<{ affected: number }> {
+  const { data } = await client.post<ApiEnvelope<{ affected: number }>>(
+    "/ledger/transactions/bulk",
+    { action: "ATTACH_TRIP", ids, tripId },
+  );
+  return data.data;
 }
 
 export async function fetchAssets(): Promise<AssetListResponse> {

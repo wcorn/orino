@@ -23,8 +23,21 @@ export const ledgerKeys = {
    * 내역 목록. 조회 구간이 키에 들어간다 — 월을 옮길 때마다 다른 캐시여야
    * 뒤로 돌아왔을 때 이전 달이 즉시 그려진다.
    */
-  transactions: (from?: string, to?: string) =>
-    ["ledger", "transactions", from ?? "", to ?? ""] as const,
+  transactions: (
+    from?: string,
+    to?: string,
+    tripId?: number,
+    excludeTrip?: boolean,
+  ) =>
+    [
+      "ledger",
+      "transactions",
+      from ?? "",
+      to ?? "",
+      // 여행 필터도 키다. 빠뜨리면 「이 여행 건만」을 켠 뒤 끄면 걸러진 목록이 그대로 남는다.
+      tripId ?? "",
+      excludeTrip ? "1" : "",
+    ] as const,
   transactionLists: ["ledger", "transactions"] as const,
   /** 예정. 조회 일수가 키에 들어간다 — 「더 보기」가 다른 캐시여야 이전 범위로 즉시 돌아온다. */
   upcoming: (days: number) => ["ledger", "upcoming", days] as const,

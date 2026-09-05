@@ -122,6 +122,17 @@ public class LedgerTransaction {
     @Column(name = "import_batch_id")
     private Long importBatchId;
 
+    /**
+     * 어느 여행의 지출인지(여행 v2.2 §3). <b>여행 안에 장부를 만들지 않기 위한 컬럼 하나다</b> —
+     * 여행 화면은 이 원장 위의 읽기 뷰이고, 경비는 {@code trip_id}가 그 여행인 행의 합이다.
+     *
+     * <p>FK가 {@code ON DELETE SET NULL}이라 <b>여행을 지워도 이 행은 남는다.</b> 3만 원을 쓴
+     * 것은 여행 밖에서도 사실이라, 연결만 끊고 지출은 원장에 그대로 둔다. 지우는 길이 하나가
+     * 아니어서 그 보장을 애플리케이션이 아니라 DB에 맡겼다(D-27).
+     */
+    @Column(name = "trip_id")
+    private Long tripId;
+
     @Column(name = "fx_currency", length = 3)
     private String fxCurrency;
 
@@ -349,6 +360,15 @@ public class LedgerTransaction {
 
     public Long getImportBatchId() {
         return importBatchId;
+    }
+
+    /** 여행에 붙이거나 뗀다. {@code null}이면 연결을 끊는다 — 지출은 그대로 남는다. */
+    public void attachToTrip(Long tripId) {
+        this.tripId = tripId;
+    }
+
+    public Long getTripId() {
+        return tripId;
     }
 
     public void updateInstallmentId(Long installmentId) {

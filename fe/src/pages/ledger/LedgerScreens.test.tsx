@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { Providers } from "@/app/providers";
@@ -11,7 +12,42 @@ import {
   mockLedgerApi,
   transactionView,
 } from "@/features/ledger/ledgerFixtures";
+import { server } from "@/test/mocks/server";
 import { renderWithRouter } from "@/test/render";
+
+const API_BASE = "https://api.orino.dev/api";
+
+/** 붙일 여행 목록. 「여행에 붙이기」 바가 열릴 때만 불린다. */
+function mockTrips(trips: { id: number; title: string }[]) {
+  server.use(
+    http.get(`${API_BASE}/travel/trips`, () =>
+      HttpResponse.json({
+        code: "OK",
+        data: {
+          counts: { all: trips.length, upcoming: 0, ongoing: 0, completed: 0 },
+          trips: trips.map((trip) => ({
+            ...trip,
+            destinationName: "오사카",
+            startDate: "2026-10-24",
+            endDate: "2026-10-27",
+            status: "COMPLETED",
+            dDay: -1,
+            activityCount: 0,
+            cities: {
+              names: ["오사카"],
+              count: 1,
+              today: null,
+              movedFrom: null,
+              todayDayIndex: null,
+              todayTimezone: null,
+              todayCurrency: null,
+            },
+          })),
+        },
+      }),
+    ),
+  );
+}
 
 function renderAt(path: string, options: LedgerMockOptions = {}) {
   const sent = mockLedgerApi(options);
@@ -244,6 +280,97 @@ describe("자산 수정", () => {
 describe("내역 화면", () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: "valid-token" });
+  });
+
+  it("고른 여러 건을 여행에 붙인다 — 돌아와서 기간으로 걸러 한 번(§18)", async () => {
+    const user = userEvent.setup();
+    mockTrips([{ id: 7, title: "일본 가을" }]);
+    const { sent } = renderAt("/ledger/transactions", {
+      transactions: [
+        transactionView({ id: 10, title: "스타벅스 역삼" }),
+        transactionView({ id: 11, title: "이자카야", amount: 32000 }),
+      ],
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "여행에 붙이기" }),
+    );
+    await user.click(
+      screen.getByRole("checkbox", { name: "스타벅스 역삼 선택" }),
+    );
+    await user.click(screen.getByRole("checkbox", { name: "이자카야 선택" }));
+
+    // 여행 목록은 이 바가 열릴 때 처음 불린다 — 가계부를 열 때마다 부르지 않는다.
+    expect(await screen.findByLabelText("붙일 여행")).toBeInTheDocument();
+    expect(
+      screen.getByText("고른 2건을 「일본 가을」에 붙입니다"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "붙이기" }));
+
+    await waitFor(() => expect(sent.tripAttached).toHaveLength(1));
+    expect(sent.tripAttached[0]).toMatchObject({
+      action: "ATTACH_TRIP",
+      ids: [10, 11],
+    });
+  });
+
+  it("이체는 「여행 경비가 아니에요」라고 말한다 — 카드 대금이 새는 구멍이다", async () => {
+    const user = userEvent.setup();
+    renderAt("/ledger/transactions", {
+      transactions: [
+        transactionView({ id: 10, title: "스타벅스 역삼" }),
+        transactionView({
+          id: 12,
+          type: "TRANSFER",
+          title: "카드 대금 납부",
+          amount: 500000,
+        }),
+      ],
+    });
+
+    // 고르기 전에는 아무 말도 하지 않는다 — 평소 목록에 붙는 주석이 아니다.
+    expect(await screen.findByText("카드 대금 납부")).toBeInTheDocument();
+    expect(screen.queryByText("— 여행 경비가 아니에요")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "여행에 붙이기" }));
+
+    expect(screen.getByText("— 여행 경비가 아니에요")).toBeInTheDocument();
+    // 막지는 않는다. 고르지 않은 채로 두는 것이 기본일 뿐이다.
+    expect(
+      screen.getByRole("checkbox", { name: "카드 대금 납부 선택" }),
+    ).not.toBeChecked();
+  });
+
+  it("여행 필터의 진실도 URL이다 — 목록과 합계가 함께 걸린다", async () => {
+    renderAt("/ledger/transactions?tripId=7", {
+      transactions: [
+        transactionView({
+          id: 10,
+          title: "이자카야",
+          amount: 32000,
+          tripId: 7,
+        }),
+        transactionView({ id: 11, title: "회사 점심", amount: 9000 }),
+      ],
+    });
+
+    expect(await screen.findByText("이자카야")).toBeInTheDocument();
+    expect(screen.queryByText("회사 점심")).toBeNull();
+    expect(
+      screen.getByText(
+        "여행에 붙인 건만 보는 중 — 위 합계도 이 여행 기준이에요",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("이미 붙은 줄에는 여행 배지가 붙는다", async () => {
+    renderAt("/ledger/transactions", {
+      transactions: [transactionView({ id: 10, tripId: 7 })],
+    });
+
+    expect(await screen.findByText("스타벅스 역삼")).toBeInTheDocument();
+    expect(screen.getByText("여행")).toBeInTheDocument();
   });
 
   it("확정만을 고르면 예정이 사라진다", async () => {

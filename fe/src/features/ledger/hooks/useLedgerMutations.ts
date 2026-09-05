@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { travelKeys } from "@/features/travel/queryKeys";
 import { toast } from "@/shared/lib/toast";
 
 import {
@@ -7,6 +8,7 @@ import {
   type AssetCreateRequest,
   type AssetUpdateRequest,
   attachReceipt,
+  attachTripToTransactions,
   type BudgetPutRequest,
   bulkCreateTransactions,
   type CategoryAttributesRequest,
@@ -232,6 +234,33 @@ export function useDuplicateTransaction() {
     onSuccess: () => toast("복사했어요"),
     onError: () => toast("복사하지 못했어요.", "error"),
     onSettled: () => invalidateAll(queryClient),
+  });
+}
+
+/**
+ * 고른 거래를 여행에 붙인다(여행 v2.2 §18).
+ *
+ * <p>여행 요약도 함께 무효화한다 — 홈 카드와 경비 화면이 그 값을 읽으므로, 붙여 놓고
+ * 여행으로 건너가면 방금 붙인 것이 안 보이는 상태가 된다.
+ */
+export function useAttachTripToTransactions() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ ids, tripId }: { ids: number[]; tripId: number | null }) =>
+      attachTripToTransactions(ids, tripId),
+    onSuccess: (result, { tripId }) =>
+      toast(
+        tripId === null
+          ? `${result.affected}건의 여행 연결을 끊었어요`
+          : `${result.affected}건을 여행에 붙였어요`,
+        "success",
+      ),
+    onError: () => toast("붙이지 못했어요.", "error"),
+    onSettled: () => {
+      invalidateAll(queryClient);
+      void queryClient.invalidateQueries({ queryKey: travelKeys.all });
+    },
   });
 }
 

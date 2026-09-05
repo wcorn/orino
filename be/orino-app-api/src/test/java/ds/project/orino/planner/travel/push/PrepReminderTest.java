@@ -181,11 +181,12 @@ class PrepReminderTest extends ApiTestSupport {
 
             dispatchService.dispatchDue();
 
-            assertThat(stub.sent).singleElement().satisfies(sent -> {
-                assertThat(sent.payload()).contains("\"title\":\"내일 출발\"");
-                assertThat(sent.payload()).contains("준비 2개 남았어요");
-                assertThat(sent.payload())
-                        .contains("/travel/trips/%d/prep".formatted(tripId));
+            // 「준비 알림이 무엇을 담았나」만 본다. `dispatchDue`는 그때 보낼 때가 된 것을
+            // 전부 처리하므로, 하나뿐이라고 못박으면 이 알림과 무관한 이유로도 빨개진다.
+            assertThat(prepPayloads()).singleElement().satisfies(payload -> {
+                assertThat(payload).contains("\"title\":\"내일 출발\"");
+                assertThat(payload).contains("준비 2개 남았어요");
+                assertThat(payload).contains("/travel/trips/%d/prep".formatted(tripId));
             });
         }
 
@@ -197,7 +198,7 @@ class PrepReminderTest extends ApiTestSupport {
 
             dispatchService.dispatchDue();
 
-            assertThat(stub.sent).isEmpty();
+            assertThat(prepPayloads()).isEmpty();
             assertThat(canceledPrepReminders()).hasSize(1);
         }
 
@@ -208,7 +209,7 @@ class PrepReminderTest extends ApiTestSupport {
 
             dispatchService.dispatchDue();
 
-            assertThat(stub.sent).isEmpty();
+            assertThat(prepPayloads()).isEmpty();
         }
 
         @Test
@@ -220,7 +221,7 @@ class PrepReminderTest extends ApiTestSupport {
 
             dispatchService.dispatchDue();
 
-            assertThat(stub.sent).isEmpty();
+            assertThat(prepPayloads()).isEmpty();
             assertThat(canceledPrepReminders()).hasSize(1);
         }
     }
@@ -294,6 +295,14 @@ class PrepReminderTest extends ApiTestSupport {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"done\": true}"))
                 .andExpect(status().isOk());
+    }
+
+    /** 실제로 나간 준비 알림의 본문만. 다른 종류가 함께 나갔는지는 이 파일의 관심이 아니다. */
+    private List<String> prepPayloads() {
+        return stub.sent.stream()
+                .map(StubWebPushSender.Sent::payload)
+                .filter(payload -> payload.contains("내일 출발"))
+                .toList();
     }
 
     private List<PushNotification> prepReminders() {
