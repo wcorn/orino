@@ -133,6 +133,32 @@ export const handlers = [
     });
   }),
 
+  // 기본값: 이름만 있는 여행 상세. 준비·경비 화면의 브레드크럼이 이름 하나를 읽는다 —
+  // 없으면 그 화면을 지나는 테스트마다 처리 안 된 요청이 하나씩 샌다.
+  http.get(`${API_BASE}/travel/trips/:tripId`, ({ params }) => {
+    return HttpResponse.json({
+      code: "OK",
+      data: {
+        id: Number(params.tripId),
+        title: "일본 가을",
+        destinationName: "도쿄",
+        destinationPlaceId: 21,
+        startDate: "2026-10-24",
+        endDate: "2026-10-27",
+        timezone: "Asia/Tokyo",
+        currency: "JPY",
+        lat: null,
+        lng: null,
+        defaultNotifyMinutes: 15,
+        morningSummaryEnabled: true,
+        status: "UPCOMING",
+        dDay: 49,
+        totalDays: 4,
+        activityCount: 0,
+      },
+    });
+  }),
+
   // 기본값: 일정 없는 하루짜리 보드. 보드를 거쳐가는 테스트(생성 후 이동 등)가
   // 매번 핸들러를 세우지 않아도 되도록. 내용을 검증하는 테스트는 server.use로 덮어쓴다.
   http.get(`${API_BASE}/travel/trips/:tripId/board`, ({ params }) => {

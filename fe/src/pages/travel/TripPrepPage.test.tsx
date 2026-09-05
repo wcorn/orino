@@ -231,6 +231,42 @@ describe("TripPrepPage", () => {
     );
   });
 
+  /**
+   * 화면이 스스로 스코프를 말한다(#1348 · 화면 §10.8). 모바일에서는 사이드바가 닫혀 있어,
+   * 이 두 줄이 없으면 어느 여행의 준비인지가 화면 어디에도 없다.
+   */
+  describe("스코프", () => {
+    it("브레드크럼이 여행 이름을 말하고, 그 이름이 그 여행의 보드로 간다", async () => {
+      mockPrep();
+      renderPrep();
+
+      const crumb = within(
+        await screen.findByRole("navigation", { name: "현재 위치" }),
+      );
+      expect(crumb.getByRole("link", { name: "여행" })).toHaveAttribute(
+        "href",
+        "/travel/trips",
+      );
+      // 이름을 눌렀을 때 가고 싶은 곳은 목록이 아니라 그 여행이다.
+      expect(crumb.getByRole("link", { name: "일본 가을" })).toHaveAttribute(
+        "href",
+        `/travel/trips/${TRIP_ID}/board`,
+      );
+      expect(crumb.getByText("준비")).toBeVisible();
+    });
+
+    it("준비가 여행마다 따로라는 사실을 화면이 말해 준다", async () => {
+      mockPrep();
+      renderPrep();
+
+      // 템플릿·「지난 여행에서 가져오기」를 안 만들기로 한 결정(§15)이 이 줄을 필요하게
+      // 만든다 — 이유가 없으면 빈 목록이 버그로 읽힌다(D-40).
+      expect(
+        await screen.findByText(/준비 목록은 여행마다 따로입니다/),
+      ).toBeVisible();
+    });
+  });
+
   it("항목이 없어도 분류 카드 넷이 다 보인다 — 화면이 분류 목록을 따로 들지 않는다", async () => {
     mockPrep();
     renderPrep();

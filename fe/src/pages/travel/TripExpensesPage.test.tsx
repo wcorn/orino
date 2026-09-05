@@ -113,10 +113,42 @@ describe("TripExpensesPage", () => {
       http.get(`${API_BASE}/travel/summary`, () =>
         HttpResponse.json({
           code: "OK",
-          data: { ongoing: null, next: null, recentCompleted: null },
+          data: {
+            ongoing: null,
+            next: null,
+            recentCompleted: null,
+            trips: [],
+            completedCount: 0,
+          },
         }),
       ),
     );
+  });
+
+  it("브레드크럼이 여행 이름을 말하고, 그 이름이 그 여행의 보드로 간다", async () => {
+    mockExpenses();
+    renderExpenses();
+
+    const crumb = within(
+      await screen.findByRole("navigation", { name: "현재 위치" }),
+    );
+    expect(crumb.getByRole("link", { name: "여행" })).toHaveAttribute(
+      "href",
+      "/travel/trips",
+    );
+    expect(crumb.getByRole("link", { name: "일본 가을" })).toHaveAttribute(
+      "href",
+      `/travel/trips/${TRIP_ID}/board`,
+    );
+    expect(crumb.getByText("경비")).toBeVisible();
+  });
+
+  it("준비 화면의 안내 줄은 여기 없다 — 하단 각주가 이미 같은 말을 한다", async () => {
+    mockExpenses();
+    renderExpenses();
+
+    await screen.findByRole("navigation", { name: "현재 위치" });
+    expect(screen.queryByText(/여행마다 따로입니다/)).toBeNull();
   });
 
   it("예산을 안 정했으면 게이지를 그리지 않는다 — 0으로 꾸미지 않는다", async () => {

@@ -1,4 +1,4 @@
-import { TriangleAlert } from "lucide-react";
+import { MapPin, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -20,11 +20,13 @@ import {
   usePrep,
   useUpdatePrepItem,
 } from "@/features/travel/hooks/usePrep";
+import { useTrip } from "@/features/travel/hooks/useTrip";
 import { PREP_DEFAULT_OPEN } from "@/features/travel/prep/categories";
 import { PrepAddBar } from "@/features/travel/prep/PrepAddBar";
 import { PrepCategoryCard } from "@/features/travel/prep/PrepCategoryCard";
 import { PrepItemSheet } from "@/features/travel/prep/PrepItemSheet";
 import { usePrepUndo } from "@/features/travel/prep/usePrepUndo";
+import { TripBreadcrumb } from "@/features/travel/trip/TripBreadcrumb";
 import { useOnline } from "@/shared/lib/useOnline";
 
 /**
@@ -57,6 +59,8 @@ export function TripPrepPage() {
   const online = useOnline();
 
   const { data, isPending, isError, error } = usePrep(tripId);
+  // 브레드크럼이 쓰는 이름 하나. 다른 여행 화면이 이미 받아 둔 캐시를 그대로 탄다.
+  const { data: trip } = useTrip(tripId);
   const createItem = useCreatePrepItem(tripId);
   const updateItem = useUpdatePrepItem(tripId);
   const deleteItem = useDeletePrepItem(tripId);
@@ -134,6 +138,7 @@ export function TripPrepPage() {
 
   return (
     <div className="mx-auto flex max-w-[720px] flex-col gap-5">
+      <TripBreadcrumb tripId={tripId} tripTitle={trip?.title} current="준비" />
       <PageHeader
         title="준비"
         description={`출발까지 ${data.dday}일`}
@@ -163,6 +168,17 @@ export function TripPrepPage() {
       />
 
       {!online && <OfflineBanner what="준비" />}
+
+      {/*
+        새 여행의 준비 목록은 <b>항상 비어서 시작한다</b> — 템플릿도 「지난 여행에서
+        가져오기」도 만들지 않기로 했기 때문이다(확정 명세 §15). 그 이유를 화면이 말해
+        주지 않으면 빈 목록이 버그로 읽힌다(D-40).
+      */}
+      <p className="bg-accent text-accent-foreground flex items-start gap-2 rounded-lg px-3 py-2.5 text-[13px]">
+        <MapPin className="mt-px size-[15px] shrink-0" />
+        준비 목록은 여행마다 따로입니다. 사이드바에서 여행을 바꾸면 이 화면도 그
+        여행의 목록으로 바뀝니다.
+      </p>
 
       <section className="bg-card ring-foreground/10 flex flex-col gap-3 rounded-xl p-5 ring-1">
         <div className="flex items-baseline justify-between">
