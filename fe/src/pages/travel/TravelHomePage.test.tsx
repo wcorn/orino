@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -79,10 +79,12 @@ describe("TravelHomePage", () => {
     await waitFor(() => {
       expect(screen.getByText("아직 만든 여행이 없어요.")).toBeInTheDocument();
     });
-    expect(screen.getByRole("link", { name: /여행 만들기/ })).toHaveAttribute(
-      "href",
-      "/travel/trips/new",
-    );
+    // 사이드바에도 「여행 만들기」가 있다(#1346) — 여기서 보는 것은 화면 쪽이다.
+    expect(
+      within(screen.getByRole("main")).getByRole("link", {
+        name: /여행 만들기/,
+      }),
+    ).toHaveAttribute("href", "/travel/trips/new");
   });
 
   it("다음 여행을 예정 배지·기간·일정 수와 함께 보여준다", async () => {
