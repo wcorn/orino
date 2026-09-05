@@ -160,6 +160,21 @@ function mockPrep(initial: StoredItem[] = []) {
             prep: summary(),
           },
           recentCompleted: null,
+          // 사이드바 트리는 이 배열을 읽는다(#1346). 배지도 여기서 나온다.
+          trips: [
+            {
+              id: TRIP_ID,
+              title: "일본 가을",
+              status: "UPCOMING",
+              startDate: "2026-10-24",
+              endDate: "2026-10-27",
+              dDay: 49,
+              dayNumber: null,
+              prep: summary(),
+              expense: { budget: null, spent: 0 },
+            },
+          ],
+          completedCount: 0,
         },
       }),
     ),
@@ -204,7 +219,13 @@ describe("TripPrepPage", () => {
       http.get(`${API_BASE}/travel/summary`, () =>
         HttpResponse.json({
           code: "OK",
-          data: { ongoing: null, next: null, recentCompleted: null },
+          data: {
+            ongoing: null,
+            next: null,
+            recentCompleted: null,
+            trips: [],
+            completedCount: 0,
+          },
         }),
       ),
     );

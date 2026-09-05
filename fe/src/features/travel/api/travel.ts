@@ -74,14 +74,45 @@ export interface CompletedTripSummary {
   activityCount: number;
 }
 
+/** 여행 하나의 경비 한 줄. 예산을 안 정했으면 `budget`이 null이다(0이 아니다). */
+export interface TripExpenseSummary {
+  budget: number | null;
+  spent: number;
+}
+
+/**
+ * 사이드바 여행 트리 한 줄(API §2.1). 폴백 화면도 <b>같은 배열</b>을 읽는다 — 따로 만들면
+ * 사이드바에는 있는데 폴백에는 없는 여행이 생기고, 그 여행은 고를 수 없는 채로 남는다.
+ *
+ * <p>다녀온 여행은 여기 없다 — 개수만 `completedCount`로 온다(D-39).
+ */
+export interface SidebarTripSummary {
+  id: number;
+  title: string;
+  status: TripStatus;
+  startDate: string;
+  endDate: string;
+  /** 출발까지 남은 일수. <b>예정일 때만</b> 찬다. */
+  dDay: number | null;
+  /** 오늘이 며칠째인지(첫날이 1). <b>진행 중일 때만</b> 찬다. */
+  dayNumber: number | null;
+  /** 항목이 하나도 없어도 `{0,0,0}`이다 — 「모른다」가 아니라 0개다. */
+  prep: PrepSummary;
+  expense: TripExpenseSummary;
+}
+
 /**
  * `/select` 카드와 여행 홈(S-01)이 함께 쓰는 요약.
- * 셋 다 null이면 여행을 한 번도 만들지 않은 상태다.
+ * 앞의 셋이 다 null이면 여행을 한 번도 만들지 않은 상태다.
  */
 export interface TravelSummary {
   ongoing: OngoingTripSummary | null;
   next: NextTripSummary | null;
   recentCompleted: CompletedTripSummary | null;
+  /** 진행 중·예정 전부. 진행 중 → 예정, 각각 시작일 오름차순. */
+  trips: SidebarTripSummary[];
+  /** 다녀온 여행 수. 사이드바의 「다녀온 여행 N개」 한 줄이 쓴다. */
+  completedCount: number;
 }
 
 export async function fetchTravelSummary(): Promise<TravelSummary> {

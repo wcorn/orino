@@ -92,7 +92,13 @@ export const handlers = [
   http.get(`${API_BASE}/travel/summary`, () => {
     return HttpResponse.json({
       code: "OK",
-      data: { ongoing: null, next: null, recentCompleted: null },
+      data: {
+        ongoing: null,
+        next: null,
+        recentCompleted: null,
+        trips: [],
+        completedCount: 0,
+      },
     });
   }),
 
