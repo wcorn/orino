@@ -151,8 +151,11 @@ async function mockPrep(page: Page) {
     route.fulfill(
       ok({
         id: TRIP_ID,
+        // 어떤 폰트로 그려도 520px를 넘도록 길게 준다 — 글자 폭은 OS마다 다르다.
         title:
-          "일본 간사이 한 바퀴 — 오사카 교토 나라 고베 히메지 와카야마 9박 10일 가을 단풍",
+          "일본 간사이 한 바퀴 — 오사카 교토 나라 고베 히메지 와카야마 " +
+          "9박 10일 가을 단풍 여행 · 첫날 간사이공항 도착 후 난바 숙소 체크인부터 " +
+          "마지막 날 교토역에서 하루카 타고 돌아오는 일정까지",
         destinationName: "오사카",
         destinationPlaceId: 21,
         startDate: "2026-10-24",
@@ -211,7 +214,10 @@ test.describe("준비", () => {
     expect(box!.height).toBeLessThan(30);
 
     // 「여행」과 「준비」는 그대로 남고, 잘리는 것은 가운데 이름이다.
-    await expect(crumb.getByRole("link", { name: "여행" })).toBeVisible();
+    // 긴 제목에도 「여행」이 들어 있다 — 부분 일치로 잡으면 두 링크가 걸린다.
+    await expect(
+      crumb.getByRole("link", { name: "여행", exact: true }),
+    ).toBeVisible();
     await expect(crumb.getByText("준비")).toBeVisible();
     const title = crumb.getByRole("link", { name: /일본 간사이/ });
     const clipped = await title.evaluate(
@@ -219,11 +225,20 @@ test.describe("준비", () => {
     );
     expect(clipped).toBe(true);
 
-    // 잘리는 대신 페이지를 넓히면 화면 전체가 가로로 밀린다.
-    const overflows = await page.evaluate(
-      () => document.documentElement.scrollWidth > window.innerWidth,
-    );
-    expect(overflows).toBe(false);
+    /*
+      잘리는 대신 페이지를 넓히면 화면 전체가 가로로 밀린다. 폰트가 뭐든 성립하는
+      단언이라 여기가 실제 안전망이다 — 글자 폭은 OS마다 다르고, CI(리눅스)와 개발
+      기기(맥)의 한글 폭이 달라 같은 제목이 한쪽에서만 잘렸다.
+    */
+    const layout = await page.evaluate(() => ({
+      overflows: document.documentElement.scrollWidth > window.innerWidth,
+      crumbRight: document
+        .querySelector('nav[aria-label="현재 위치"]')!
+        .getBoundingClientRect().right,
+      viewport: window.innerWidth,
+    }));
+    expect(layout.overflows).toBe(false);
+    expect(layout.crumbRight).toBeLessThanOrEqual(layout.viewport);
   });
 
   test("연달아 적고, 체크하고, 숨기고, 지웠다 되돌린다", async ({ page }) => {
