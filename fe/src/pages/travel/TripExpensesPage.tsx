@@ -1,12 +1,13 @@
 import { Plus, ReceiptText } from "lucide-react";
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { LoadingText } from "@/components/ui/loading-text";
 import { todayIso } from "@/features/ledger/lib/period";
+import { isTripNotFound } from "@/features/travel/api/travel";
 import { OfflineBanner } from "@/features/travel/board/OfflineBanner";
 import { BudgetModal } from "@/features/travel/expense/BudgetModal";
 import { ExpenseBudgetCard } from "@/features/travel/expense/ExpenseBudgetCard";
@@ -41,7 +42,7 @@ export function TripExpensesPage() {
   // 오프라인은 조회 전용이다. 큐잉하지 않는다(D-33).
   const online = useOnline();
 
-  const { data, isPending, isError } = useTripExpenses(tripId);
+  const { data, isPending, isError, error } = useTripExpenses(tripId);
   const putBudget = usePutTripBudget(tripId);
   /**
    * 통화 기본값을 정하려면 <b>오늘 있는 도시</b>가 필요한데, 경비 응답에는 도시 이름만 있고
@@ -49,6 +50,11 @@ export function TripExpensesPage() {
    * 경비 화면을 열 때마다 보드까지 부르면 그건 이 화면의 비용이 아니다.
    */
   const { data: board } = useBoard(tripId, {}, { enabled: quickOpen });
+
+  // 없는 여행이면 고르게 한다 — 준비와 같은 이유다(뒤로 가기에 죽은 URL을 남기지 않는다).
+  if (isError && isTripNotFound(error)) {
+    return <Navigate to="/travel/expenses" replace />;
+  }
 
   if (isError) {
     return (

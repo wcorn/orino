@@ -28,7 +28,7 @@ import {
   Wallet,
   Wrench,
 } from "lucide-react";
-import { Fragment } from "react";
+import { Fragment, useEffect } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
@@ -41,6 +41,7 @@ import type {
   TravelSummary,
 } from "@/features/travel/api/travel";
 import { useTravelSummary } from "@/features/travel/hooks/useTravelSummary";
+import { readLastTrip, rememberTrip } from "@/features/travel/lib/lastTrip";
 import { travelKeys } from "@/features/travel/queryKeys";
 import { cn } from "@/lib/utils";
 
@@ -286,10 +287,21 @@ export function Sidebar({ open, onClose }: SidebarProps) {
    * <p>URL의 id가 요약에 없으면(삭제된 여행·남의 여행) 그대로 두지 않고 기본 여행으로
    * 내려간다. 죽은 id를 펼치면 트리에 아무 줄도 선택되지 않는다.
    */
+  const urlTripId = tripIdOf(pathname);
+  /*
+    URL이 여행을 말해 주면 그것을 기억한다. 사용자가 실제로 고른 것만 남기려고 URL만 본다 —
+    기본 여행(진행 중·예정)까지 저장하면 「마지막으로 본 여행」이 한 번도 안 고른 여행을
+    가리킨다. 읽는 쪽은 폴백 하나뿐이고, 진실은 언제나 URL이다(D-37).
+  */
+  useEffect(() => {
+    if (urlTripId !== null) rememberTrip(urlTripId);
+  }, [urlTripId]);
+
   const selectedTripId =
-    [tripIdOf(pathname), travelData?.ongoing?.id, travelData?.next?.id].find(
-      (id) => trips.some((trip) => trip.id === id),
+    [urlTripId, travelData?.ongoing?.id, travelData?.next?.id].find((id) =>
+      trips.some((trip) => trip.id === id),
     ) ??
+    readLastTrip(trips) ??
     trips[0]?.id ??
     null;
   // 여행을 바꿔도 보던 탭을 유지한다. 탭 밖(홈·목록·도구)에서는 보드로 들어간다.
@@ -492,6 +504,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {travel && (
           <TravelTripTree
             trips={trips}
+            loaded={travelData !== undefined}
             completedCount={travelData?.completedCount ?? 0}
             selectedTripId={selectedTripId}
             currentTab={currentTab}
@@ -537,6 +550,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
 interface TravelTripTreeProps {
   trips: SidebarTripSummary[];
+  /** 요약을 받았는가. 받기 전에는 폴백 줄을 그리지 않는다 — 아래 주석 참고. */
+  loaded: boolean;
   completedCount: number;
   selectedTripId: number | null;
   currentTab: TripTab;
@@ -559,6 +574,7 @@ interface TravelTripTreeProps {
  */
 function TravelTripTree({
   trips,
+  loaded,
   completedCount,
   selectedTripId,
   currentTab,
@@ -630,6 +646,37 @@ function TravelTripTree({
         {collapsed && selected && (
           <TripTreeChildren trip={selected} pathname={pathname} />
         )}
+        {/*
+          여행을 못 정했을 때도 준비·경비로 들어갈 문은 남긴다 — 여행 목록으로 보내는 대신
+          폴백 화면이 「어느 여행인가요?」를 묻는다(#1337에서 넣은 동작을 바꾼다 · D-38).
+          일정 보드는 여기 없다. 보드는 여행 없이 열 수 없고 고를 것도 없다.
+
+          요약을 받은 뒤에만 그린다. 받기 전에도 그리면 여행이 있는 사람의 사이드바에
+          매번 이 두 줄이 깜빡였다가 트리로 바뀐다 — 눈이 항목을 두 번 찾게 된다.
+        */}
+        {loaded &&
+          selectedTripId === null &&
+          TRIP_TABS.filter((tab) => tab.key !== "board").map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <li key={tab.key}>
+                <NavLink
+                  to={`/travel/${tab.key}`}
+                  className={({ isActive }) =>
+                    cn(
+                      "flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] font-medium transition-colors",
+                      isActive
+                        ? "bg-primary/10 text-primary"
+                        : "text-foreground/70 hover:bg-muted hover:text-foreground",
+                    )
+                  }
+                >
+                  <Icon className="size-[15px]" />
+                  {tab.label}
+                </NavLink>
+              </li>
+            );
+          })}
         <li>
           <NavLink
             to="/travel/trips/new"

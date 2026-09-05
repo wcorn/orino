@@ -1,3 +1,5 @@
+import axios from "axios";
+
 import { client } from "@/shared/api";
 
 import type { TripStatus } from "../lib/tripStatus";
@@ -6,6 +8,21 @@ import type { PrepSummary } from "./prep";
 interface ApiEnvelope<T> {
   code: string;
   data: T;
+}
+
+const TRIP_NOT_FOUND_CODE = "TRAVEL-ERR-001";
+
+/**
+ * 그 여행이 <b>없다</b>. 지웠거나, 남의 여행이거나(소유권 실패도 404다 — 403이면 "그 id의
+ * 여행은 존재한다"가 새어나간다).
+ *
+ * <p>준비·경비 화면이 이걸 「불러오지 못했어요」와 갈라 보는 이유는, 둘의 답이 다르기
+ * 때문이다. 못 불러온 것은 다시 시도할 일이고, 없는 여행은 <b>다른 여행을 고를 일</b>이다.
+ */
+export function isTripNotFound(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  const body = error.response?.data as { code?: string } | undefined;
+  return body?.code === TRIP_NOT_FOUND_CODE;
 }
 
 /**
