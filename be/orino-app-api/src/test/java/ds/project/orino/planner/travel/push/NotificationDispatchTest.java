@@ -2,6 +2,7 @@ package ds.project.orino.planner.travel.push;
 
 import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.domain.planner.push.entity.NotificationStatus;
+import ds.project.orino.domain.planner.push.entity.PushNotification;
 import ds.project.orino.domain.planner.push.entity.PushSubscription;
 import ds.project.orino.domain.planner.push.repository.PushNotificationRepository;
 import ds.project.orino.domain.planner.push.repository.PushSubscriptionRepository;
@@ -19,6 +20,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -97,6 +100,16 @@ class NotificationDispatchTest extends ApiTestSupport {
         return ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();
     }
 
+    /**
+     * 일정에 매달린 알림만. 여행을 만들면 준비 알림이 하나 함께 잡히는데(v2.2 §14),
+     * 이 파일이 보는 것은 일정 알림의 발송·실패 처리라 그것까지 세면 개수가 흔들린다.
+     */
+    private List<PushNotification> activityNotifications() {
+        return notificationRepository.findAll().stream()
+                .filter(n -> n.getActivityId() != null)
+                .toList();
+    }
+
     @Nested
     @DisplayName("보낼 때가 된 알림")
     class Due {
@@ -109,7 +122,7 @@ class NotificationDispatchTest extends ApiTestSupport {
             assertThat(dispatchService.dispatchDue()).isEqualTo(1);
             assertThat(stub.sent).singleElement()
                     .satisfies(s -> assertThat(s.endpoint()).isEqualTo(ENDPOINT));
-            assertThat(notificationRepository.findAll()).singleElement()
+            assertThat(activityNotifications()).singleElement()
                     .satisfies(n -> assertThat(n.getStatus()).isEqualTo(NotificationStatus.SENT));
         }
 
@@ -175,7 +188,7 @@ class NotificationDispatchTest extends ApiTestSupport {
                                     """))
                     .andExpect(status().isOk());
 
-            assertThat(notificationRepository.findAll()).hasSize(2);
+            assertThat(activityNotifications()).hasSize(2);
             // 지난 것만 나간다.
             assertThat(dispatchService.dispatchDue()).isEqualTo(1);
             assertThat(stub.sent).singleElement()
@@ -206,7 +219,7 @@ class NotificationDispatchTest extends ApiTestSupport {
             dispatchService.dispatchDue();
 
             assertThat(subscriptionRepository.findAll()).isEmpty();
-            assertThat(notificationRepository.findAll()).singleElement()
+            assertThat(activityNotifications()).singleElement()
                     .satisfies(n -> assertThat(n.getStatus()).isEqualTo(NotificationStatus.FAILED));
         }
 
@@ -228,7 +241,7 @@ class NotificationDispatchTest extends ApiTestSupport {
             addPastActivity("센소지");
 
             assertThat(dispatchService.dispatchDue()).isZero();
-            assertThat(notificationRepository.findAll()).singleElement()
+            assertThat(activityNotifications()).singleElement()
                     .satisfies(n -> assertThat(n.getStatus()).isEqualTo(NotificationStatus.FAILED));
         }
     }

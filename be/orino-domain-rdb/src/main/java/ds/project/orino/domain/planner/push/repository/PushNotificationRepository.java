@@ -32,5 +32,12 @@ public interface PushNotificationRepository extends JpaRepository<PushNotificati
             Long tripId, NotificationType type, Collection<LocalDate> targetDates,
             NotificationStatus status);
 
+    /**
+     * 종류로 찾는 재계산. 준비 알림은 <b>여행당 하나</b>라 날짜로 좁힐 것이 없다 —
+     * 게다가 그 날짜는 여행 기간 밖(출발 전날)이라 날짜 집합으로 거는 경로에 얹히지 않는다.
+     */
+    List<PushNotification> findAllByTripIdAndTypeAndStatus(
+            Long tripId, NotificationType type, NotificationStatus status);
+
     List<PushNotification> findAllByMemberIdOrderByScheduledAtAsc(Long memberId);
 }

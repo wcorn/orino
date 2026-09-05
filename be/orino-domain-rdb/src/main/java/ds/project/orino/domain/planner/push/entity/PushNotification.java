@@ -96,6 +96,17 @@ public class PushNotification {
                 NotificationType.MORNING_SUMMARY, targetDate, scheduledAt);
     }
 
+    /**
+     * 준비 알림. 여행당 하나이고 <b>여행 기간 밖(출발 전날)에 간다</b> —
+     * 그래서 {@code targetDate}는 여행의 날짜가 아니라 <b>이 알림이 가는 날</b>이다.
+     * 나중에 "왜 그 시각에 갔나"를 볼 때 그 값이 답이 된다.
+     */
+    public static PushNotification prepReminder(Long memberId, Long tripId,
+                                                LocalDate targetDate, Instant scheduledAt) {
+        return new PushNotification(memberId, tripId, null,
+                NotificationType.PREP_REMINDER, targetDate, scheduledAt);
+    }
+
     /** 재계산·삭제로 더는 유효하지 않다. 지우지 않는 이유는 추적 가능성이다. */
     public void cancel() {
         this.status = NotificationStatus.CANCELED;

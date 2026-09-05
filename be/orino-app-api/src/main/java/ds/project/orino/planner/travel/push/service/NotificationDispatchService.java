@@ -9,7 +9,11 @@ import ds.project.orino.domain.planner.push.repository.PushSubscriptionRepositor
 import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.entity.TripActivity;
 import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
+import ds.project.orino.domain.planner.travel.entity.Trip;
+import ds.project.orino.domain.planner.travel.repository.TripRepository;
+import ds.project.orino.planner.travel.day.service.TripClock;
 import ds.project.orino.planner.travel.day.service.TripDayService;
+import ds.project.orino.planner.travel.prep.service.PrepService;
 import ds.project.orino.planner.travel.push.send.WebPushSender;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,6 +43,8 @@ public class NotificationDispatchService {
     private final PushSubscriptionRepository subscriptionRepository;
     private final TripActivityRepository activityRepository;
     private final TripDayService tripDayService;
+    private final TripRepository tripRepository;
+    private final PrepService prepService;
     private final WebPushSender sender;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -47,6 +53,8 @@ public class NotificationDispatchService {
                                        PushSubscriptionRepository subscriptionRepository,
                                        TripActivityRepository activityRepository,
                                        TripDayService tripDayService,
+                                       TripRepository tripRepository,
+                                       PrepService prepService,
                                        WebPushSender sender,
                                        ObjectMapper objectMapper,
                                        Clock clock) {
@@ -54,6 +62,8 @@ public class NotificationDispatchService {
         this.subscriptionRepository = subscriptionRepository;
         this.activityRepository = activityRepository;
         this.tripDayService = tripDayService;
+        this.tripRepository = tripRepository;
+        this.prepService = prepService;
         this.sender = sender;
         this.objectMapper = objectMapper;
         this.clock = clock;
@@ -126,6 +136,9 @@ public class NotificationDispatchService {
         if (notification.getType() == NotificationType.MORNING_SUMMARY) {
             return morningSummaryPayload(notification);
         }
+        if (notification.getType() == NotificationType.PREP_REMINDER) {
+            return prepReminderPayload(notification);
+        }
         return activityRepository.findById(notification.getActivityId())
                 .map(activity -> json(title(notification, activity), body(activity),
                         "/travel/activities/" + activity.getId(),
@@ -150,6 +163,39 @@ public class NotificationDispatchService {
                 tripDayService.baseCitiesOf(notification.getTripId());
         return Optional.of(json("오늘 일정", summaryBody(ordered, date, cities),
                 boardPath(notification), "morning-" + date));
+    }
+
+    /**
+     * 준비 알림(v2.2 §14). <b>보내기 직전에 남은 개수를 다시 센다</b> — 예약해 둔 뒤에도 체크는
+     * 계속 일어나므로, 예약 시점의 숫자를 저장했다면 거의 반드시 틀린 값이 나간다.
+     *
+     * <p>빈 값이면 호출부가 예약을 접는다. 접는 경우는 둘이다.
+     *
+     * <ul>
+     *   <li><b>남은 게 0개</b> — 다 챙긴 사람에게 「0개 남았어요」를 보내지 않는다
+     *   <li><b>이미 출발했다</b> — 「내일 출발」이 거짓이 된다. 폴링이 밀렸거나, 출발 전날
+     *       09:00이 이미 지난 뒤에 여행을 만든 경우다
+     * </ul>
+     */
+    private Optional<String> prepReminderPayload(PushNotification notification) {
+        Trip trip = tripRepository.findById(notification.getTripId()).orElse(null);
+        if (trip == null) {
+            return Optional.empty();
+        }
+        Map<LocalDate, TravelPlace> cities = tripDayService.baseCitiesOf(trip.getId());
+        // 「내일 출발」의 기준은 떠나는 곳의 시계다 — 여행 상태·D-day와 같은 것을 쓴다.
+        LocalDate today = LocalDate.now(
+                clock.withZone(TripClock.zoneOn(trip.getStartDate(), cities)));
+        if (!today.isBefore(trip.getStartDate())) {
+            return Optional.empty();
+        }
+        int remaining = prepService.remainingCount(trip.getId());
+        if (remaining == 0) {
+            return Optional.empty();
+        }
+        return Optional.of(json("내일 출발", "준비 %d개 남았어요".formatted(remaining),
+                "/travel/trips/%d/prep".formatted(trip.getId()),
+                "prep-" + trip.getId()));
     }
 
     /**
@@ -190,7 +236,10 @@ public class NotificationDispatchService {
     private static String title(PushNotification notification, TripActivity activity) {
         return switch (notification.getType()) {
             case DEPARTURE -> "출발할 시간이에요";
+            // 이 둘은 여기까지 오지 않는다 — payloadOf가 먼저 갈라낸다. switch를 닫아 두는 것은
+            // 종류가 하나 더 늘었을 때 컴파일러가 이 자리를 짚어 주게 하려는 것이다.
             case MORNING_SUMMARY -> "오늘 일정";
+            case PREP_REMINDER -> "내일 출발";
             case ACTIVITY -> activity.getTitle();
         };
     }
