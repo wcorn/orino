@@ -1,6 +1,6 @@
 import { TriangleAlert } from "lucide-react";
 import { useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Navigate, useParams, useSearchParams } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Alert } from "@/components/ui/alert";
@@ -11,6 +11,7 @@ import type {
   PrepItemView,
   PrepPatchRequest,
 } from "@/features/travel/api/prep";
+import { isTripNotFound } from "@/features/travel/api/travel";
 import { OfflineBanner } from "@/features/travel/board/OfflineBanner";
 import { usePendingPrepActions } from "@/features/travel/board/pendingActions";
 import {
@@ -55,12 +56,20 @@ export function TripPrepPage() {
   // 들어온다(D-33).
   const online = useOnline();
 
-  const { data, isPending, isError } = usePrep(tripId);
+  const { data, isPending, isError, error } = usePrep(tripId);
   const createItem = useCreatePrepItem(tripId);
   const updateItem = useUpdatePrepItem(tripId);
   const deleteItem = useDeletePrepItem(tripId);
   const undoable = usePrepUndo(tripId);
   const pendingIds = usePendingPrepActions((state) => state.pendingIds);
+
+  /*
+    없는 여행이면 「불러오지 못했어요」가 아니라 고르게 한다 — 지운 직후이거나 남의
+    링크를 받은 경우다. `replace`로 바꿔 죽은 URL을 뒤로 가기에 남기지 않는다.
+  */
+  if (isError && isTripNotFound(error)) {
+    return <Navigate to="/travel/prep" replace />;
+  }
 
   if (isError) {
     return (

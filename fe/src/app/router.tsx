@@ -49,6 +49,7 @@ import {
   importTripForm,
   importTripList,
   importTripMap,
+  importTripPicker,
   importTripPrep,
   importWeeklyPlan,
   importWorkspaceSelect,
@@ -76,6 +77,7 @@ const TripFormPage = lazy(importTripForm);
 const TripBoardPage = lazy(importTripBoard);
 const TripPrepPage = lazy(importTripPrep);
 const TripExpensesPage = lazy(importTripExpenses);
+const TripPickerPage = lazy(importTripPicker);
 const PlaceSearchPage = lazy(importPlaceSearch);
 const TripMapPage = lazy(importTripMap);
 const TravelSettingsPage = lazy(importTravelSettings);
@@ -409,6 +411,26 @@ export function AppRouter() {
             element={
               <Suspense fallback={<RouteFallback />}>
                 <TripBoardPage />
+              </Suspense>
+            }
+          />
+          {/*
+            여행이 정해지지 않은 진입(딥링크 · 여행 삭제 직후 · 사이드바가 못 정한 순간).
+            여행 목록으로 튕기지 않고 고르게 한다(화면 §10.8 · 프레임 `2b`).
+          */}
+          <Route
+            path="/travel/prep"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <TripPickerPage scope="prep" />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/travel/expenses"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <TripPickerPage scope="expenses" />
               </Suspense>
             }
           />

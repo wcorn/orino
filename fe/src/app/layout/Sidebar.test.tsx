@@ -48,6 +48,8 @@ function renderSidebar(path = "/home") {
 describe("Sidebar", () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: "mock-token" });
+    // 마지막으로 본 여행은 폴백이라 남아 있으면 다음 테스트의 판정을 바꾼다.
+    localStorage.clear();
     mockSummary(0);
   });
 
@@ -178,16 +180,14 @@ describe("Sidebar", () => {
       };
     }
 
-    it("여행이 없으면 트리도 없다 — 보드·준비·경비는 여행 없이 열 수 없다", async () => {
+    it("여행이 없으면 펼칠 줄도 없다 — 보드는 여행 없이 열 수 없다", async () => {
       renderSidebar("/travel");
-      await screen.findByRole("link", { name: /여행 목록/ });
-      expect(screen.queryByRole("link", { name: /일정 보드/ })).toBeNull();
-      expect(screen.queryByRole("link", { name: /^준비/ })).toBeNull();
       // 「여행 만들기」는 늘 있다 — 여기서 시작할 수 있어야 한다.
-      expect(screen.getByRole("link", { name: "여행 만들기" })).toHaveAttribute(
-        "href",
-        "/travel/trips/new",
-      );
+      expect(
+        await screen.findByRole("link", { name: "여행 만들기" }),
+      ).toHaveAttribute("href", "/travel/trips/new");
+      expect(screen.queryByRole("link", { name: /일정 보드/ })).toBeNull();
+      expect(screen.queryByRole("link", { name: /여행 트리/ })).toBeNull();
     });
 
     it("진행 중·예정 여행을 한 줄씩 펼치고 선택된 여행만 자식을 편다", async () => {
@@ -419,6 +419,82 @@ describe("Sidebar", () => {
           screen.getByRole("link", { name: /여행 목록/ }).className,
         ).toContain("text-primary");
         expect(board.className).not.toContain("text-primary");
+      });
+    });
+
+    it("여행을 못 정하면 준비·경비가 폴백 화면을 가리킨다 — 목록으로 보내지 않는다", async () => {
+      // 다녀온 여행만 있는 상태. 트리에는 펼칠 줄이 없지만 들어갈 문은 남아야 한다.
+      tripsSummary([], 2);
+
+      renderSidebar("/travel");
+
+      const prep = await screen.findByRole("link", { name: /^준비/ });
+      expect(prep).toHaveAttribute("href", "/travel/prep");
+      expect(screen.getByRole("link", { name: /경비/ })).toHaveAttribute(
+        "href",
+        "/travel/expenses",
+      );
+      // 보드는 없다 — 여행 없이 열 수 없고 고를 것도 없다.
+      expect(screen.queryByRole("link", { name: /일정 보드/ })).toBeNull();
+    });
+
+    it("여행을 펼치고 있으면 폴백 줄은 없다", async () => {
+      tripsSummary([trip(3, "일본 가을")]);
+
+      renderSidebar("/travel");
+
+      await screen.findByRole("link", { name: /^준비/ });
+      expect(screen.getByRole("link", { name: /^준비/ })).toHaveAttribute(
+        "href",
+        "/travel/trips/3/prep",
+      );
+    });
+
+    it("진행 중·예정이 없으면 마지막으로 본 여행을 편다", async () => {
+      localStorage.setItem("travel.lastTripId", "7");
+      tripsSummary([trip(3, "일본 가을"), trip(7, "도쿄")]);
+
+      renderSidebar("/travel");
+
+      await waitFor(() => {
+        expect(screen.getByRole("link", { name: /^준비/ })).toHaveAttribute(
+          "href",
+          "/travel/trips/7/prep",
+        );
+      });
+    });
+
+    it("마지막으로 본 여행이 사라졌으면 조용히 버린다 — 죽은 id를 펼치지 않는다", async () => {
+      // 지웠거나·다른 기기에서 만든 값이다. 요약에 없으면 다음 폴백으로 내려간다.
+      localStorage.setItem("travel.lastTripId", "99");
+      tripsSummary([trip(3, "일본 가을")]);
+
+      renderSidebar("/travel");
+
+      await waitFor(() => {
+        expect(screen.getByRole("link", { name: /^준비/ })).toHaveAttribute(
+          "href",
+          "/travel/trips/3/prep",
+        );
+      });
+    });
+
+    it("여행을 열면 그 여행을 기억한다 — 다음에 여행 id 없이 들어와도 여기로 온다", async () => {
+      tripsSummary([trip(3, "일본 가을"), trip(7, "도쿄")]);
+
+      const { unmount } = renderSidebar("/travel/trips/7/prep");
+      await screen.findByRole("link", { name: /도쿄/ });
+      await waitFor(() => {
+        expect(localStorage.getItem("travel.lastTripId")).toBe("7");
+      });
+      unmount();
+
+      renderSidebar("/travel");
+      await waitFor(() => {
+        expect(screen.getByRole("link", { name: /^준비/ })).toHaveAttribute(
+          "href",
+          "/travel/trips/7/prep",
+        );
       });
     });
 
