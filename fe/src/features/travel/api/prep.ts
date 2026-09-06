@@ -127,11 +127,61 @@ export interface PrepPatchRequest {
   clear?: PrepField[];
 }
 
+/**
+ * 묶음이 없던 시절의 응답(#1358 이전). <b>서비스워커 캐시에 남아 있을 수 있다</b> —
+ * `/api/travel/*`는 오프라인 조회를 위해 NetworkFirst로 캐시되므로, 기내에서 목록을 열면
+ * 그때 꺼내지는 것이 이 모양일 수 있다(#1361).
+ */
+interface LegacyPrepGroup extends Omit<PrepGroup, "sections"> {
+  sections?: PrepSection[];
+  items?: PrepItemView[];
+}
+
+interface RawPrepResponse extends Omit<PrepResponse, "groups"> {
+  groups: LegacyPrepGroup[];
+}
+
+/**
+ * 옛 모양 응답을 지금 화면이 읽는 모양으로 맞춘다(#1361).
+ *
+ * <p><b>화면이 아니라 여기서 한 번만 한다.</b> 컴포넌트마다 `sections ?? []`를 흩어 놓으면
+ * 빠뜨린 한 곳에서 흰 화면이 되고, 그게 어느 화면인지는 배포하고 나서야 안다.
+ *
+ * <p>묶음이 없던 응답은 전부 「묶음 없음」 하나로 감싼다 — 그때 화면은 소제목을 그리지
+ * 않으므로, 사용자에게는 캐시를 읽었다는 사실이 보이지 않는다.
+ */
+function withSections(response: RawPrepResponse): PrepResponse {
+  return {
+    ...response,
+    groups: response.groups.map((group) => {
+      if (group.sections) return { ...group, sections: group.sections };
+      const items = (group.items ?? []).map((item) => ({
+        ...item,
+        sectionLabel: item.sectionLabel ?? null,
+      }));
+      return {
+        ...group,
+        sections:
+          items.length === 0
+            ? []
+            : [
+                {
+                  label: null,
+                  total: group.total,
+                  done: group.done,
+                  items,
+                },
+              ],
+      };
+    }),
+  };
+}
+
 export async function fetchPrep(tripId: number): Promise<PrepResponse> {
-  const { data } = await client.get<ApiEnvelope<PrepResponse>>(
+  const { data } = await client.get<ApiEnvelope<RawPrepResponse>>(
     `/travel/trips/${tripId}/prep`,
   );
-  return data.data;
+  return withSections(data.data);
 }
 
 export async function createPrepItem(
