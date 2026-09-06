@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./support/test";
 
 /**
  * 블록 선택 레이어 + Cmd+A 점진 선택(#1011).

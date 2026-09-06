@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./support/test";
 
 /**
  * 준비 화면 한 바퀴(S-10, #1324).

@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./support/test";
 
 /**
  * 링크 워크스페이스 한 바퀴(#1245) — 발급 → 목록 반영 → 상세 → 목적지 교체 → 이력.

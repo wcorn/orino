@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./support/test";
 
 /**
  * 지도 `이 날짜` / `전체` 토글(S-05, #1144).

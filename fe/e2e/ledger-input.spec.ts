@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./support/test";
 
 /**
  * 거래 입력 — <b>마우스 없이 완결된다</b>(`LDG-018`, #1260).

@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./support/test";
 
 /**
  * 예정 줄 인라인 수정 — <b>그 줄에서 끝난다</b>(#1265).

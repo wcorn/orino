@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./support/test";
 
 /**
  * 워크스페이스 진입 동선(#1258) — `/select` 4카드 → 각 워크스페이스 → 사이드바 스위처.
