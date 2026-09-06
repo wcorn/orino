@@ -620,7 +620,8 @@ class PrepControllerTest extends ApiTestSupport {
                             .header(HttpHeaders.AUTHORIZATION, authHeader)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"category": "BAG", "itemIds": [%d, %d, %d]}"""
+                                    {"category": "BAG", "sections": [
+                                      {"label": null, "itemIds": [%d, %d, %d]}]}"""
                                     .formatted(third, first, second)))
                     .andExpect(status().isOk());
 
@@ -642,7 +643,8 @@ class PrepControllerTest extends ApiTestSupport {
                             .header(HttpHeaders.AUTHORIZATION, authHeader)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"category": "BAG", "itemIds": [%d, %d]}"""
+                                    {"category": "BAG", "sections": [
+                                      {"label": null, "itemIds": [%d, %d]}]}"""
                                     .formatted(bag, todo)))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("TRAVEL-ERR-022"));
@@ -660,7 +662,8 @@ class PrepControllerTest extends ApiTestSupport {
                             .header(HttpHeaders.AUTHORIZATION, authHeader)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"category": "BAG", "itemIds": [%d]}""".formatted(second)))
+                                    {"category": "BAG", "sections": [
+                                      {"label": null, "itemIds": [%d]}]}""".formatted(second)))
                     .andExpect(status().isOk());
 
             getPrep()
@@ -668,6 +671,89 @@ class PrepControllerTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.groups[2].sections[0].items[0].title").value("양말"))
                     .andExpect(jsonPath("$.data.groups[2].sections[0].items[1].title").value("멀티어댑터"));
             assertThat(prepRepository.findById(first)).isPresent();
+        }
+
+        @Test
+        @DisplayName("순서와 묶음을 한 번에 받는다 — 드래그 한 번은 요청도 하나다")
+        void movesBetweenSectionsInOneRequest() throws Exception {
+            long charger = createAndGetId("""
+                    {"category": "BAG", "title": "충전기", "sectionLabel": "캐리어"}""");
+            long clothes = createAndGetId("""
+                    {"category": "BAG", "title": "옷", "sectionLabel": "캐리어"}""");
+            long toothbrush = createAndGetId("""
+                    {"category": "BAG", "title": "칫솔", "sectionLabel": "세면백"}""");
+
+            // 충전기를 세면백의 맨 앞으로 끌어다 놓은 결과다.
+            mockMvc.perform(put("/api/travel/trips/" + tripId + "/prep/order")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"category": "BAG", "sections": [
+                                      {"label": "캐리어", "itemIds": [%d]},
+                                      {"label": "세면백", "itemIds": [%d, %d]}]}"""
+                                    .formatted(clothes, charger, toothbrush)))
+                    .andExpect(status().isOk());
+
+            getPrep()
+                    .andExpect(jsonPath("$.data.groups[2].sections", hasSize(2)))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].label").value("캐리어"))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].items", hasSize(1)))
+                    .andExpect(jsonPath("$.data.groups[2].sections[1].label").value("세면백"))
+                    .andExpect(jsonPath("$.data.groups[2].sections[1].items[0].title")
+                            .value("충전기"))
+                    .andExpect(jsonPath("$.data.groups[2].sections[1].items[1].title")
+                            .value("칫솔"));
+        }
+
+        @Test
+        @DisplayName("묶음 없음으로도 끌어다 놓는다")
+        void movesOutOfSection() throws Exception {
+            long charger = createAndGetId("""
+                    {"category": "BAG", "title": "충전기", "sectionLabel": "캐리어"}""");
+            long passport = createAndGetId("""
+                    {"category": "BAG", "title": "여권 지갑"}""");
+
+            mockMvc.perform(put("/api/travel/trips/" + tripId + "/prep/order")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"category": "BAG", "sections": [
+                                      {"label": null, "itemIds": [%d, %d]}]}"""
+                                    .formatted(charger, passport)))
+                    .andExpect(status().isOk());
+
+            getPrep()
+                    .andExpect(jsonPath("$.data.groups[2].sections", hasSize(1)))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].label")
+                            .value(nullValue()))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].items[0].title")
+                            .value("충전기"));
+        }
+
+        @Test
+        @DisplayName("빠뜨린 항목은 묶음을 그대로 둔 채 뒤로만 밀린다")
+        void keepsSectionOfUnlistedItems() throws Exception {
+            long charger = createAndGetId("""
+                    {"category": "BAG", "title": "충전기", "sectionLabel": "캐리어"}""");
+            create("""
+                    {"category": "BAG", "title": "칫솔", "sectionLabel": "세면백"}""");
+
+            // 완료 숨기기·접힘 때문에 화면이 목록 일부만 들고 있을 수 있다.
+            mockMvc.perform(put("/api/travel/trips/" + tripId + "/prep/order")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"category": "BAG", "sections": [
+                                      {"label": "캐리어", "itemIds": [%d]}]}"""
+                                    .formatted(charger)))
+                    .andExpect(status().isOk());
+
+            // 화면에 없던 줄을 말없이 다른 묶음으로 옮기지 않는다.
+            getPrep()
+                    .andExpect(jsonPath("$.data.groups[2].sections", hasSize(2)))
+                    .andExpect(jsonPath("$.data.groups[2].sections[1].label").value("세면백"))
+                    .andExpect(jsonPath("$.data.groups[2].sections[1].items[0].title")
+                            .value("칫솔"));
         }
 
         @Test

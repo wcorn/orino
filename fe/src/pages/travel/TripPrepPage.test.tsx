@@ -10,6 +10,7 @@ import type {
   PrepCategory,
   PrepItemView,
   PrepPatchRequest,
+  PrepSectionOrder,
 } from "@/features/travel/api/prep";
 import { usePendingPrepActions } from "@/features/travel/board/pendingActions";
 import { useToastStore } from "@/shared/lib/toast";
@@ -94,6 +95,8 @@ function mockPrep(initial: StoredItem[] = []) {
   const requests = {
     deleted: [] as number[],
     patched: [] as PrepPatchRequest[],
+    /** 순서 바꾸기로 나간 배치(#1364). */
+    ordered: [] as { category: PrepCategory; sections: PrepSectionOrder[] }[],
   };
 
   const summary = () => ({
@@ -221,6 +224,27 @@ function mockPrep(initial: StoredItem[] = []) {
           completedCount: 0,
         },
       }),
+    ),
+
+    // 순서 바꾸기(#1364). 화면이 보낸 배치가 곧 결과다 — 서버와 같은 규칙으로 저장한다.
+    http.put(
+      `${API_BASE}/travel/trips/${TRIP_ID}/prep/order`,
+      async ({ request }) => {
+        const body = (await request.json()) as {
+          category: PrepCategory;
+          sections: PrepSectionOrder[];
+        };
+        requests.ordered.push(body);
+        let order = 0;
+        body.sections.forEach((section) =>
+          section.itemIds.forEach((id) => {
+            const stored = items.find((i) => i.id === id)!;
+            stored.sectionLabel = section.label;
+            stored.displayOrder = order++;
+          }),
+        );
+        return HttpResponse.json({ code: "OK", data: null });
+      },
     ),
 
     http.delete(`${API_BASE}/travel/prep/items/:itemId`, ({ params }) => {
@@ -751,6 +775,152 @@ describe("TripPrepPage", () => {
     expect(screen.getByRole("button", { name: "짐 1/2" })).toBeVisible();
     // 「묶음 없음」 하나로 감싸지므로 소제목은 뜨지 않는다 — 캐시를 읽었다는 사실이 안 보인다.
     expect(within(bagCard()).queryByText("묶음 없음")).not.toBeInTheDocument();
+  });
+
+  /**
+   * 순서 바꾸기(#1364). 드래그 자체는 jsdom에서 검증되지 않는다 — 좌표·충돌 판정이 전부
+   * 실제 레이아웃에 달려 있어 E2E가 본다. 여기서는 <b>끌기의 대안</b>인 위/아래 버튼으로
+   * 같은 계산을 확인한다(그 둘은 같은 함수를 쓴다).
+   */
+  describe("순서 바꾸기", () => {
+    /** 주 입력 장치를 마우스로 바꾼다. 폭이 아니라 입력 장치가 기준이다. */
+    function setFinePointer() {
+      const original = window.matchMedia;
+      window.matchMedia = ((query: string) => ({
+        matches: query.includes("pointer: fine"),
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      })) as unknown as typeof window.matchMedia;
+      return () => {
+        window.matchMedia = original;
+      };
+    }
+
+    it("마우스면 길게 누르지 않아도 손잡이와 이동 버튼이 있다", async () => {
+      const restore = setFinePointer();
+      try {
+        mockPrep([
+          item({ id: 1, title: "멀티어댑터" }),
+          item({ id: 2, title: "양말", displayOrder: 1 }),
+        ]);
+        renderPrep();
+
+        expect(
+          await screen.findByRole("button", { name: "멀티어댑터 순서 바꾸기" }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: "멀티어댑터 아래로" }),
+        ).toBeEnabled();
+        // 첫 줄은 더 올라갈 곳이 없다.
+        expect(
+          screen.getByRole("button", { name: "멀티어댑터 위로" }),
+        ).toBeDisabled();
+        // 데스크톱에는 들어갈 모드가 없다.
+        expect(screen.queryByText(/드래그 모드/)).not.toBeInTheDocument();
+      } finally {
+        restore();
+      }
+    });
+
+    it("아래로 누르면 그 분류의 배치가 통째로 간다", async () => {
+      const restore = setFinePointer();
+      try {
+        const requests = mockPrep([
+          item({ id: 1, title: "멀티어댑터" }),
+          item({ id: 2, title: "양말", displayOrder: 1 }),
+          item({ id: 3, title: "상비약", displayOrder: 2 }),
+        ]);
+        const user = userEvent.setup();
+        renderPrep();
+
+        await user.click(
+          await screen.findByRole("button", { name: "멀티어댑터 아래로" }),
+        );
+
+        await waitFor(() => {
+          expect(lastOf(requests.ordered)).toEqual({
+            category: "BAG",
+            sections: [{ label: null, itemIds: [2, 1, 3] }],
+          });
+        });
+        // 낙관적 반영 — 왕복을 기다리지 않고 그 자리에서 순서가 바뀐다.
+        const titles = within(bagCard())
+          .getAllByRole("listitem")
+          .map((li) => li.textContent);
+        expect(titles[0]).toContain("양말");
+        expect(titles[1]).toContain("멀티어댑터");
+      } finally {
+        restore();
+      }
+    });
+
+    it("묶음의 마지막 줄에서 한 번 더 누르면 다음 묶음으로 넘어간다", async () => {
+      const restore = setFinePointer();
+      try {
+        const requests = mockPrep([
+          item({ id: 1, title: "충전기", sectionLabel: "캐리어" }),
+          item({
+            id: 2,
+            title: "칫솔",
+            sectionLabel: "세면백",
+            displayOrder: 1,
+          }),
+        ]);
+        const user = userEvent.setup();
+        renderPrep();
+
+        await user.click(
+          await screen.findByRole("button", { name: "충전기 아래로" }),
+        );
+
+        // 순서와 묶음이 한 요청으로 나간다 — 옮기고 나서 정렬하는 두 걸음이 아니다.
+        await waitFor(() => {
+          expect(lastOf(requests.ordered)).toEqual({
+            category: "BAG",
+            sections: [{ label: "세면백", itemIds: [2, 1] }],
+          });
+        });
+        expect(
+          await within(bagCard()).findByRole("button", { name: "세면백 0/2" }),
+        ).toBeVisible();
+      } finally {
+        restore();
+      }
+    });
+
+    it("손가락은 길게 눌러 모드로 들어간다 — 그 전에는 이동 버튼이 없다", async () => {
+      mockPrep([
+        item({ id: 1, title: "멀티어댑터" }),
+        item({ id: 2, title: "양말", displayOrder: 1 }),
+      ]);
+      const user = userEvent.setup();
+      renderPrep();
+
+      const row = await screen.findByText("멀티어댑터");
+      expect(
+        screen.queryByRole("button", { name: "멀티어댑터 아래로" }),
+      ).not.toBeInTheDocument();
+
+      // 400ms 길게 누른다. 스크롤하려던 손짓과 구분되는 최소한의 길이다.
+      await user.pointer({ keys: "[TouchA>]", target: row });
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      await user.pointer({ keys: "[/TouchA]", target: row });
+
+      expect(await screen.findByText(/드래그 모드/)).toBeVisible();
+      expect(
+        screen.getByRole("button", { name: "멀티어댑터 아래로" }),
+      ).toBeEnabled();
+
+      await user.click(screen.getByRole("button", { name: "완료" }));
+      await waitFor(() => {
+        expect(screen.queryByText(/드래그 모드/)).not.toBeInTheDocument();
+      });
+    });
   });
 
   it("오프라인이면 체크도 입력도 막는다 — 큐잉하지 않는다", async () => {

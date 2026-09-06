@@ -6,11 +6,15 @@ import {
   createPrepItem,
   deletePrepItem,
   fetchPrep,
+  type PrepCategory,
   type PrepCreateRequest,
   type PrepPatchRequest,
   type PrepResponse,
+  type PrepSectionOrder,
+  reorderPrepItems,
   updatePrepItem,
 } from "../api/prep";
+import { applyOrders } from "../prep/reorder";
 import { travelKeys } from "../queryKeys";
 
 /**
@@ -108,6 +112,54 @@ export function useUpdatePrepItem(tripId: number) {
         queryClient.setQueryData(context.key, context.snapshot);
       }
       toast("저장하지 못했어요.", "error");
+    },
+
+    onSettled: invalidate,
+  });
+}
+
+/**
+ * 순서·묶음 바꾸기(#1364). <b>낙관적으로 먼저 반영하고 실패하면 되돌린다</b> —
+ * 드래그는 손을 뗀 순간 결과가 보여야 하고, 왕복을 기다리면 줄이 제자리로 튀었다가 다시
+ * 움직여 「내가 놓은 자리가 아닌 데로 갔다」로 읽힌다.
+ *
+ * <p>집계(진행률·기한 지남)는 손대지 않는다. 순서를 바꿔도 개수는 그대로다.
+ */
+export function useReorderPrep(tripId: number) {
+  const queryClient = useQueryClient();
+  const invalidate = useInvalidatePrep(tripId);
+
+  return useMutation({
+    mutationFn: ({
+      category,
+      sections,
+    }: {
+      category: PrepCategory;
+      sections: PrepSectionOrder[];
+    }) => reorderPrepItems(tripId, category, sections),
+
+    onMutate: async ({ category, sections }) => {
+      const key = travelKeys.prep(tripId);
+      await queryClient.cancelQueries({ queryKey: key });
+      const snapshot = queryClient.getQueryData<PrepResponse>(key);
+      if (snapshot) {
+        queryClient.setQueryData<PrepResponse>(key, {
+          ...snapshot,
+          groups: snapshot.groups.map((group) =>
+            group.category === category
+              ? { ...group, sections: applyOrders(group.sections, sections) }
+              : group,
+          ),
+        });
+      }
+      return { key, snapshot };
+    },
+
+    onError: (_error, _variables, context) => {
+      if (context?.snapshot) {
+        queryClient.setQueryData(context.key, context.snapshot);
+      }
+      toast("순서를 바꾸지 못했어요.", "error");
     },
 
     onSettled: invalidate,

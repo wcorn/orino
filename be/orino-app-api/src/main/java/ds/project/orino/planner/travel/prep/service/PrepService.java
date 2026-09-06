@@ -186,10 +186,16 @@ public class PrepService {
     }
 
     /**
-     * 한 분류 안의 순서를 통째로 다시 매긴다.
+     * 한 분류 안의 배치를 통째로 다시 매긴다 — <b>순서와 묶음을 한 번에</b>(#1364).
      *
-     * <p>보내지 않은 항목은 <b>지우지 않고 뒤에 붙인다</b>. 화면이 목록 일부만 들고 있을 때
-     * 나머지가 사라지는 것보다, 순서가 뒤로 밀리는 편이 되돌리기 쉽다.
+     * <p>화면이 보낸 것이 곧 결과다. 「옮긴 항목이 무엇인가」를 서버가 알아낼 필요가 없고,
+     * 드래그 한 번에 요청도 하나다 — 묶음 이동과 정렬을 두 요청으로 쪼개면 사이에서 실패했을
+     * 때 <b>옮겨는 갔는데 자리는 옛것인</b> 상태가 남는다.
+     *
+     * <p>보내지 않은 항목은 <b>지우지 않고 뒤에 붙인다.</b> 화면이 목록 일부만 들고 있을 때
+     * (완료 숨기기·접힘) 나머지가 사라지는 것보다, 순서가 뒤로 밀리는 편이 되돌리기 쉽다.
+     * <b>그 항목의 묶음은 건드리지 않는다</b> — 화면에 없던 줄을 말없이 다른 묶음으로 옮기는
+     * 것은 순서가 밀리는 것과 달리 되돌릴 방법이 눈에 안 보인다.
      */
     @Transactional
     public void reorder(Long memberId, Long tripId, PrepRequests.Order request) {
@@ -202,13 +208,15 @@ public class PrepService {
 
         int order = 0;
         Set<Long> placed = new HashSet<>();
-        for (Long itemId : request.itemIds()) {
-            TripPrepItem item = byId.get(itemId);
-            // 남의 항목도, 다른 분류의 항목도 여기서는 똑같이 404다.
-            if (item == null || !placed.add(itemId)) {
-                throw new CustomException(ErrorCode.TRAVEL_PREP_ITEM_NOT_FOUND);
+        for (PrepRequests.Order.Section section : request.sections()) {
+            for (Long itemId : section.itemIds()) {
+                TripPrepItem item = byId.get(itemId);
+                // 남의 항목도, 다른 분류의 항목도 여기서는 똑같이 404다.
+                if (item == null || !placed.add(itemId)) {
+                    throw new CustomException(ErrorCode.TRAVEL_PREP_ITEM_NOT_FOUND);
+                }
+                item.changeSectionLabel(section.label(), order++);
             }
-            item.changeOrder(order++);
         }
         for (TripPrepItem item : items) {
             if (!placed.contains(item.getId())) {
