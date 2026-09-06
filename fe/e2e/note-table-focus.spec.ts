@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./support/test";
 
 /**
  * 표가 있는 노트에서 Cmd+A → Backspace가 먹지 않던 회귀(#1008).

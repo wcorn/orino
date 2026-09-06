@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./support/test";
 
 /**
  * 블록 전체 선택 시 표만 선택 안 된 것처럼 보이던 문제(#1021).

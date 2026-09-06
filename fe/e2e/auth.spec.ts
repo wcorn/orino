@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support/test";
 
 /**
  * 앱이 실제로 부르는 주소로 가로챈다.

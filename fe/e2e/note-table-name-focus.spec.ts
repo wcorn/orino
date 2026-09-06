@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./support/test";
 
 /**
  * 표 이름을 클릭해도 포커스가 첫 셀로 튀던 문제(#1017).

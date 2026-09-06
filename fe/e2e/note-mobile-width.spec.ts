@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./support/test";
 
 const NOTE_ID = 1;
 const DATASET_ID = 1;
