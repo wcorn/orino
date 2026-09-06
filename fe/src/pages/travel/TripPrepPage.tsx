@@ -1,3 +1,13 @@
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { MapPin, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
@@ -12,12 +22,14 @@ import type {
   PrepPatchRequest,
 } from "@/features/travel/api/prep";
 import { isTripNotFound } from "@/features/travel/api/travel";
+import { DragModeBar } from "@/features/travel/board/DragModeBar";
 import { OfflineBanner } from "@/features/travel/board/OfflineBanner";
 import { usePendingPrepActions } from "@/features/travel/board/pendingActions";
 import {
   useCreatePrepItem,
   useDeletePrepItem,
   usePrep,
+  useReorderPrep,
   useUpdatePrepItem,
 } from "@/features/travel/hooks/usePrep";
 import { useTrip } from "@/features/travel/hooks/useTrip";
@@ -25,9 +37,11 @@ import { PREP_DEFAULT_OPEN } from "@/features/travel/prep/categories";
 import { PrepAddBar } from "@/features/travel/prep/PrepAddBar";
 import { PrepCategoryCard } from "@/features/travel/prep/PrepCategoryCard";
 import { PrepItemSheet } from "@/features/travel/prep/PrepItemSheet";
+import { moveTo } from "@/features/travel/prep/reorder";
 import { usePrepUndo } from "@/features/travel/prep/usePrepUndo";
 import { TripBreadcrumb } from "@/features/travel/trip/TripBreadcrumb";
 import { useOnline } from "@/shared/lib/useOnline";
+import { usePointerFine } from "@/shared/lib/usePointerFine";
 
 /**
  * 준비 `/travel/trips/:tripId/prep` (S-10).
@@ -55,10 +69,14 @@ export function TripPrepPage() {
   /** 방금 적은 묶음. 분류와 같은 규칙으로 이어받는다(#1358). */
   const [addSection, setAddSection] = useState<string | null>(null);
   const [editing, setEditing] = useState<PrepItemView | null>(null);
+  /** 손가락으로 길게 눌러 들어온 정렬 모드(#1364). 마우스에는 들어갈 모드가 없다. */
+  const [dragMode, setDragMode] = useState(false);
 
   // 오프라인은 조회 전용이다. 큐잉하지 않는다 — 예외를 하나 열면 충돌 해소가 설계에
   // 들어온다(D-33).
   const online = useOnline();
+  // 마우스면 모드 없이 손잡이로 끈다 — 롱프레스는 손가락의 관용구다(일정 보드와 같다).
+  const pointerFine = usePointerFine();
 
   const { data, isPending, isError, error } = usePrep(tripId);
   // 브레드크럼이 쓰는 이름 하나. 다른 여행 화면이 이미 받아 둔 캐시를 그대로 탄다.
@@ -66,8 +84,20 @@ export function TripPrepPage() {
   const createItem = useCreatePrepItem(tripId);
   const updateItem = useUpdatePrepItem(tripId);
   const deleteItem = useDeletePrepItem(tripId);
+  const reorder = useReorderPrep(tripId);
   const undoable = usePrepUndo(tripId);
   const pendingIds = usePendingPrepActions((state) => state.pendingIds);
+
+  /*
+    모드 안에서만(또는 손잡이에서만) 정렬이 켜지므로 지연을 두지 않는다 — 이미 「옮기려는
+    중」이라 곧바로 잡히는 편이 자연스럽다. 8px은 누른 것과 끈 것을 가르는 최소한이다.
+  */
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   /*
     없는 여행이면 「불러오지 못했어요」가 아니라 고르게 한다 — 지운 직후이거나 남의
@@ -92,6 +122,29 @@ export function TripPrepPage() {
       </div>
     );
   }
+
+  /**
+   * 한 줄을 다른 줄이 있던 자리로 옮긴다 — <b>드래그와 위/아래 버튼이 같은 길을 쓴다.</b>
+   * 둘이 다른 계산을 하면 버튼으로 옮긴 결과와 끌어다 놓은 결과가 갈린다.
+   */
+  const move = (category: PrepCategory, activeId: number, overId: number) => {
+    const group = groups.find((item) => item.category === category);
+    if (!group) return;
+    const sections = moveTo(group.sections, activeId, overId);
+    if (sections) reorder.mutate({ category, sections });
+  };
+
+  /** 카드는 자기 분류 안에서만 정렬한다 — 끌어온 줄이 어느 분류의 것인지는 그것으로 정해진다. */
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const group = groups.find((item) =>
+      item.sections.some((section) =>
+        section.items.some((row) => row.id === Number(active.id)),
+      ),
+    );
+    if (group) move(group.category, Number(active.id), Number(over.id));
+  };
 
   const openCategory = (category: PrepCategory) =>
     setOpenCategories((prev) =>
@@ -238,29 +291,44 @@ export function TripPrepPage() {
         </div>
       </section>
 
-      <div className="flex flex-col gap-3.5">
-        {groups.map((group) => (
-          <PrepCategoryCard
-            key={group.category}
-            group={group}
-            open={openCategories.includes(group.category)}
-            onToggleOpen={() =>
-              setOpenCategories((prev) =>
-                prev.includes(group.category)
-                  ? prev.filter((c) => c !== group.category)
-                  : [...prev, group.category],
-              )
-            }
-            hideDone={hideDone}
-            offline={!online}
-            onToggleItem={(item, done) =>
-              updateItem.mutate({ itemId: item.id, body: { done } })
-            }
-            onOpenItem={setEditing}
-            onDeleteItem={remove}
-          />
-        ))}
-      </div>
+      {/* 정렬 모드에 들어와 있다는 사실을 화면이 말한다. 마우스에는 이 바가 없다. */}
+      {dragMode && <DragModeBar onDone={() => setDragMode(false)} />}
+
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="flex flex-col gap-3.5">
+          {groups.map((group) => (
+            <PrepCategoryCard
+              key={group.category}
+              group={group}
+              open={openCategories.includes(group.category)}
+              onToggleOpen={() =>
+                setOpenCategories((prev) =>
+                  prev.includes(group.category)
+                    ? prev.filter((c) => c !== group.category)
+                    : [...prev, group.category],
+                )
+              }
+              hideDone={hideDone}
+              offline={!online}
+              dragMode={dragMode}
+              pointerFine={pointerFine}
+              onEnterDragMode={() => setDragMode(true)}
+              onMove={(activeId, overId) =>
+                move(group.category, activeId, overId)
+              }
+              onToggleItem={(item, done) =>
+                updateItem.mutate({ itemId: item.id, body: { done } })
+              }
+              onOpenItem={setEditing}
+              onDeleteItem={remove}
+            />
+          ))}
+        </div>
+      </DndContext>
 
       <PrepAddBar
         category={addCategory}

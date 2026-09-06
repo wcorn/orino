@@ -209,3 +209,29 @@ export async function updatePrepItem(
 export async function deletePrepItem(itemId: number): Promise<void> {
   await client.delete(`/travel/prep/items/${itemId}`);
 }
+
+/** 묶음 하나의 순서. `label`이 `null`이면 묶음 없음이다. */
+export interface PrepSectionOrder {
+  label: string | null;
+  itemIds: number[];
+}
+
+/**
+ * 한 분류의 배치를 통째로 보낸다 — <b>순서와 묶음을 한 번에</b>(#1364).
+ *
+ * <p>드래그로 다른 묶음의 줄 위에 떨어뜨리는 것은 「옮기고 나서 정렬한다」가 아니라 한
+ * 동작이다. 두 요청으로 쪼개면 사이에서 실패했을 때 옮겨는 갔는데 자리는 옛것인 상태가 남는다.
+ *
+ * <p>보내지 않은 항목은 서버가 지우지 않고 뒤에 붙인다 — 완료 숨기기로 화면에 없던 줄이
+ * 사라지지 않는다.
+ */
+export async function reorderPrepItems(
+  tripId: number,
+  category: PrepCategory,
+  sections: PrepSectionOrder[],
+): Promise<void> {
+  await client.put(`/travel/trips/${tripId}/prep/order`, {
+    category,
+    sections,
+  });
+}

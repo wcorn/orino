@@ -1,3 +1,7 @@
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
@@ -16,6 +20,12 @@ interface PrepCategoryCardProps {
   /** 완료 숨기기가 켜져 있다. 리스트에서만 빼고 <b>헤더의 개수는 그대로다</b>. */
   hideDone: boolean;
   offline: boolean;
+  /** 손가락으로 길게 눌러 들어온 정렬 모드(#1364). */
+  dragMode: boolean;
+  pointerFine: boolean;
+  onEnterDragMode: () => void;
+  /** `activeId`를 `overId`가 있던 자리로 옮긴다 — 드래그와 버튼이 같은 길을 쓴다. */
+  onMove: (activeId: number, overId: number) => void;
   onToggleItem: (item: PrepItemView, done: boolean) => void;
   onOpenItem: (item: PrepItemView) => void;
   onDeleteItem: (item: PrepItemView) => void;
@@ -41,6 +51,10 @@ export function PrepCategoryCard({
   onToggleOpen,
   hideDone,
   offline,
+  dragMode,
+  pointerFine,
+  onEnterDragMode,
+  onMove,
   onToggleItem,
   onOpenItem,
   onDeleteItem,
@@ -62,19 +76,36 @@ export function PrepCategoryCard({
     hideDone ? section.items.filter((item) => !item.done) : section.items;
   const empty = sections.every((section) => visibleOf(section).length === 0);
 
+  /*
+    위/아래 버튼이 보는 이웃은 <b>화면에 보이는 줄</b>이다 — 완료 숨기기로 감춘 줄을 세면
+    한 번 눌렀는데 두 칸 움직인 것처럼 보인다. 묶음 경계도 이 목록에서는 그냥 다음 줄이라,
+    끝에서 한 번 더 누르면 다음 묶음의 처음이 된다(드래그와 같은 규칙이다).
+  */
+  const visibleFlat = sections.flatMap((section) => visibleOf(section));
+
   const rowsOf = (section: PrepSection) => (
     // 묶음이 없을 때는 이 목록이 곧 카드의 내용이라 여기까지 키가 필요하다.
     <ul key={keyOf(section)} className="border-foreground/10 border-t pb-1">
-      {visibleOf(section).map((item) => (
-        <PrepItemRow
-          key={item.id}
-          item={item}
-          offline={offline}
-          onToggle={onToggleItem}
-          onOpen={onOpenItem}
-          onDelete={onDeleteItem}
-        />
-      ))}
+      {visibleOf(section).map((item) => {
+        const at = visibleFlat.findIndex((row) => row.id === item.id);
+        return (
+          <PrepItemRow
+            key={item.id}
+            item={item}
+            offline={offline}
+            dragMode={dragMode}
+            pointerFine={pointerFine}
+            canMoveUp={at > 0}
+            canMoveDown={at < visibleFlat.length - 1}
+            onMoveUp={() => onMove(item.id, visibleFlat[at - 1].id)}
+            onMoveDown={() => onMove(item.id, visibleFlat[at + 1].id)}
+            onEnterDragMode={onEnterDragMode}
+            onToggle={onToggleItem}
+            onOpen={onOpenItem}
+            onDelete={onDeleteItem}
+          />
+        );
+      })}
     </ul>
   );
 
@@ -111,7 +142,14 @@ export function PrepCategoryCard({
       </button>
 
       {open && (
-        <>
+        /*
+          정렬은 <b>분류 카드 안에서만</b> 일어난다(#1364). 분류를 넘는 이동은 편집 시트가
+          한다 — 카드가 접혀 있을 수 있어 끌어다 놓을 자리가 없는 경우가 생긴다.
+        */
+        <SortableContext
+          items={visibleFlat.map((item) => item.id)}
+          strategy={verticalListSortingStrategy}
+        >
           {empty ? (
             <p className="text-muted-foreground px-4 pb-3.5 text-[13px]">
               {hideDone && group.total > 0
@@ -170,7 +208,7 @@ export function PrepCategoryCard({
               );
             })
           )}
-        </>
+        </SortableContext>
       )}
     </section>
   );
