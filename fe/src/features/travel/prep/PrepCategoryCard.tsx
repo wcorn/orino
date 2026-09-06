@@ -6,12 +6,9 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import type { PrepGroup, PrepItemView, PrepSection } from "../api/prep";
-import {
-  PREP_CATEGORY_ICON,
-  PREP_CATEGORY_LABEL,
-  PREP_NO_SECTION_LABEL,
-} from "./categories";
+import { PREP_CATEGORY_ICON, PREP_CATEGORY_LABEL } from "./categories";
 import { PrepItemRow } from "./PrepItemRow";
+import { PrepSectionHeader } from "./PrepSectionHeader";
 
 interface PrepCategoryCardProps {
   group: PrepGroup;
@@ -26,6 +23,8 @@ interface PrepCategoryCardProps {
   onEnterDragMode: () => void;
   /** `activeId`를 `overId`가 있던 자리로 옮긴다 — 드래그와 버튼이 같은 길을 쓴다. */
   onMove: (activeId: number, overId: number) => void;
+  /** 묶음 자체를 옮긴다(#1366). 「묶음 없음」은 대상이 아니다. */
+  onMoveSection: (activeLabel: string, overLabel: string) => void;
   onToggleItem: (item: PrepItemView, done: boolean) => void;
   onOpenItem: (item: PrepItemView) => void;
   onDeleteItem: (item: PrepItemView) => void;
@@ -55,6 +54,7 @@ export function PrepCategoryCard({
   pointerFine,
   onEnterDragMode,
   onMove,
+  onMoveSection,
   onToggleItem,
   onOpenItem,
   onDeleteItem,
@@ -82,6 +82,31 @@ export function PrepCategoryCard({
     끝에서 한 번 더 누르면 다음 묶음의 처음이 된다(드래그와 같은 규칙이다).
   */
   const visibleFlat = sections.flatMap((section) => visibleOf(section));
+
+  /**
+   * 소제목의 정렬 식별자(#1366). 항목은 숫자 id라 한 목록에 섞여도 구별된다.
+   *
+   * <p>분류 이름을 앞에 붙인다 — 다른 분류에 같은 이름의 묶음이 있을 수 있고, 같은
+   * `DndContext` 안에서 식별자가 겹치면 어느 카드의 소제목인지 알 수 없다.
+   */
+  const sectionIdOf = (label: string) => `sec:${group.category}:${label}`;
+
+  /** 이름 붙은 묶음만 순서를 바꾼다 — 「묶음 없음」은 언제나 맨 위다(#1358). */
+  const labeledSections = sections.filter((section) => section.label !== null);
+
+  /*
+    소제목과 항목을 <b>한 목록</b>으로 등록한다. 화면에 보이는 차례 그대로여야 끄는 동안의
+    미리보기가 실제 배치와 같다 — 둘을 따로 두면 소제목을 끌 때 항목이 안 비켜서, 어디에
+    놓이는지가 손을 뗄 때까지 안 보인다.
+  */
+  const sortableIds: (string | number)[] = sections.flatMap((section) => [
+    ...(section.label === null ? [] : [sectionIdOf(section.label)]),
+    ...visibleOf(section).map((item) => item.id),
+  ]);
+
+  /** 이름 붙은 묶음들 안에서의 자리. 「묶음 없음」이면 -1이다. */
+  const labeledAt = (section: PrepSection) =>
+    labeledSections.findIndex((row) => row.label === section.label);
 
   const rowsOf = (section: PrepSection) => (
     // 묶음이 없을 때는 이 목록이 곧 카드의 내용이라 여기까지 키가 필요하다.
@@ -147,7 +172,7 @@ export function PrepCategoryCard({
           한다 — 카드가 접혀 있을 수 있어 끌어다 놓을 자리가 없는 경우가 생긴다.
         */
         <SortableContext
-          items={visibleFlat.map((item) => item.id)}
+          items={sortableIds}
           strategy={verticalListSortingStrategy}
         >
           {empty ? (
@@ -162,39 +187,43 @@ export function PrepCategoryCard({
 
               const key = keyOf(section);
               const sectionOpen = !closed.includes(key);
-              const name = section.label ?? PREP_NO_SECTION_LABEL;
 
               return (
                 <div key={key}>
-                  {/*
-                    소제목도 헤더 전체가 버튼이다 — 분류 카드와 같은 손놀림이라야 한 화면에서
-                    두 겹을 여닫는 것이 하나의 동작으로 읽힌다.
-                  */}
-                  <button
-                    type="button"
-                    aria-expanded={sectionOpen}
-                    aria-label={`${name} ${section.done}/${section.total}`}
-                    onClick={() =>
+                  <PrepSectionHeader
+                    section={section}
+                    sortableId={
+                      section.label === null ? key : sectionIdOf(section.label)
+                    }
+                    open={sectionOpen}
+                    onToggleOpen={() =>
                       setClosed((prev) =>
                         prev.includes(key)
                           ? prev.filter((c) => c !== key)
                           : [...prev, key],
                       )
                     }
-                    className="border-foreground/10 flex w-full items-center gap-2 border-t px-4 py-2 text-left"
-                  >
-                    <span className="text-muted-foreground text-[13px] font-medium">
-                      {name}
-                    </span>
-                    <span className="text-muted-foreground text-xs tabular-nums">
-                      {section.done}/{section.total}
-                    </span>
-                    {sectionOpen ? (
-                      <ChevronDown className="text-muted-foreground ml-auto size-3.5 shrink-0" />
-                    ) : (
-                      <ChevronRight className="text-muted-foreground ml-auto size-3.5 shrink-0" />
-                    )}
-                  </button>
+                    offline={offline}
+                    dragMode={dragMode}
+                    pointerFine={pointerFine}
+                    canMoveUp={labeledAt(section) > 0}
+                    canMoveDown={
+                      labeledAt(section) >= 0 &&
+                      labeledAt(section) < labeledSections.length - 1
+                    }
+                    onMoveUp={() =>
+                      onMoveSection(
+                        section.label as string,
+                        labeledSections[labeledAt(section) - 1].label as string,
+                      )
+                    }
+                    onMoveDown={() =>
+                      onMoveSection(
+                        section.label as string,
+                        labeledSections[labeledAt(section) + 1].label as string,
+                      )
+                    }
+                  />
 
                   {sectionOpen &&
                     (visibleOf(section).length === 0 ? (

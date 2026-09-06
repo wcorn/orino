@@ -34,11 +34,12 @@ interface SectionOrder {
 }
 
 /** 서버를 흉내내되 상태를 들고 있는다 — 옮긴 결과가 다음 조회에 그대로 보여야 한다. */
-async function mockPrep(page: Page) {
+async function mockPrep(page: Page, extra: StoredItem[] = []) {
   const items: StoredItem[] = [
     { id: 1, title: "충전기", sectionLabel: "캐리어", displayOrder: 0 },
     { id: 2, title: "옷", sectionLabel: "캐리어", displayOrder: 1 },
     { id: 3, title: "칫솔", sectionLabel: "세면백", displayOrder: 2 },
+    ...extra,
   ];
   const captured: { orders: { category: string; sections: SectionOrder[] }[] } =
     { orders: [] };
@@ -263,5 +264,59 @@ test.describe("준비 순서 바꾸기", () => {
 
     await page.getByRole("button", { name: "충전기", exact: true }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
+  });
+
+  test("소제목을 끌면 묶음이 통째로 옮겨간다", async ({ page }) => {
+    const captured = await mockPrep(page);
+    await page.goto(`/travel/trips/${TRIP_ID}/prep`);
+
+    const bag = page
+      .locator("section")
+      .filter({ has: page.getByRole("button", { name: /^짐 / }) });
+    await expect(bag.getByRole("button", { name: "캐리어 0/2" })).toBeVisible();
+
+    // 캐리어(2줄)를 세면백 자리로 끌어내린다.
+    await bag.getByRole("button", { name: "캐리어 0/2" }).hover();
+    await dragTo(page, "캐리어 묶음 순서 바꾸기", "칫솔");
+
+    await expect.poll(() => captured.orders.length).toBe(1);
+    // 안의 항목은 그대로 따라간다 — 묶음의 자리는 그 항목들이 만든다.
+    expect(captured.orders[0]).toEqual({
+      category: "BAG",
+      sections: [
+        { label: "세면백", itemIds: [3] },
+        { label: "캐리어", itemIds: [1, 2] },
+      ],
+    });
+
+    const headers = await bag
+      .getByRole("button", { expanded: true })
+      .evaluateAll((buttons) =>
+        buttons.map((button) => button.getAttribute("aria-label")),
+      );
+    expect(headers).toEqual(["짐 0/3", "세면백 0/1", "캐리어 0/2"]);
+  });
+
+  test("묶음 없음은 자리를 지킨다 — 끌 손잡이가 없다", async ({ page }) => {
+    await mockPrep(page, [
+      { id: 4, title: "여권 지갑", sectionLabel: null, displayOrder: 3 },
+    ]);
+    await page.goto(`/travel/trips/${TRIP_ID}/prep`);
+
+    const bag = page
+      .locator("section")
+      .filter({ has: page.getByRole("button", { name: /^짐 / }) });
+    await expect(
+      bag.getByRole("button", { name: "묶음 없음 0/1" }),
+    ).toBeVisible();
+    await bag.getByRole("button", { name: "묶음 없음 0/1" }).hover();
+
+    await expect(
+      page.getByRole("button", { name: "묶음 없음 묶음 순서 바꾸기" }),
+    ).toBeHidden();
+    // 이름 붙은 묶음에는 있다 — 없는 게 아니라 이 줄만 고정이다.
+    await expect(
+      page.getByRole("button", { name: "캐리어 묶음 순서 바꾸기" }),
+    ).toBeAttached();
   });
 });

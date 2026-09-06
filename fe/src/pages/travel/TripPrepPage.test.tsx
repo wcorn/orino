@@ -893,6 +893,90 @@ describe("TripPrepPage", () => {
       }
     });
 
+    it("소제목에도 손잡이와 이동 버튼이 있다 — 묶음 없음에는 없다", async () => {
+      const restore = setFinePointer();
+      try {
+        mockPrep([
+          item({ id: 1, title: "여권 지갑" }),
+          item({
+            id: 2,
+            title: "충전기",
+            sectionLabel: "캐리어",
+            displayOrder: 1,
+          }),
+          item({
+            id: 3,
+            title: "칫솔",
+            sectionLabel: "세면백",
+            displayOrder: 2,
+          }),
+        ]);
+        renderPrep();
+
+        expect(
+          await screen.findByRole("button", {
+            name: "캐리어 묶음 순서 바꾸기",
+          }),
+        ).toBeInTheDocument();
+        // 첫 묶음은 더 올라갈 곳이 없다.
+        expect(
+          screen.getByRole("button", { name: "캐리어 묶음 위로" }),
+        ).toBeDisabled();
+        expect(
+          screen.getByRole("button", { name: "세면백 묶음 위로" }),
+        ).toBeEnabled();
+
+        // 「묶음 없음」은 자리가 고정이다(#1358) — 끌 손잡이를 주지 않는다.
+        expect(
+          screen.queryByRole("button", { name: "묶음 없음 묶음 순서 바꾸기" }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: "묶음 없음 묶음 아래로" }),
+        ).not.toBeInTheDocument();
+      } finally {
+        restore();
+      }
+    });
+
+    it("묶음을 아래로 내리면 그 안의 항목이 통째로 따라간다", async () => {
+      const restore = setFinePointer();
+      try {
+        const requests = mockPrep([
+          item({ id: 1, title: "충전기", sectionLabel: "캐리어" }),
+          item({ id: 2, title: "옷", sectionLabel: "캐리어", displayOrder: 1 }),
+          item({
+            id: 3,
+            title: "칫솔",
+            sectionLabel: "세면백",
+            displayOrder: 2,
+          }),
+        ]);
+        const user = userEvent.setup();
+        renderPrep();
+
+        await user.click(
+          await screen.findByRole("button", { name: "캐리어 묶음 아래로" }),
+        );
+
+        await waitFor(() => {
+          expect(lastOf(requests.ordered)).toEqual({
+            category: "BAG",
+            sections: [
+              { label: "세면백", itemIds: [3] },
+              { label: "캐리어", itemIds: [1, 2] },
+            ],
+          });
+        });
+        // 낙관적 반영 — 소제목 차례가 그 자리에서 바뀐다.
+        const headers = within(bagCard())
+          .getAllByRole("button", { expanded: true })
+          .map((button) => button.getAttribute("aria-label"));
+        expect(headers).toEqual(["짐 0/3", "세면백 0/1", "캐리어 0/2"]);
+      } finally {
+        restore();
+      }
+    });
+
     it("손가락은 길게 눌러 모드로 들어간다 — 그 전에는 이동 버튼이 없다", async () => {
       mockPrep([
         item({ id: 1, title: "멀티어댑터" }),

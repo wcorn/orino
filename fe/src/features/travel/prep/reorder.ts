@@ -64,6 +64,42 @@ export function moveTo(
 }
 
 /**
+ * 묶음 하나를 다른 묶음이 있던 자리로 옮긴 배치(#1366). 옮길 것이 없으면 `null`이다.
+ *
+ * <p><b>「묶음 없음」은 움직이지 않는다.</b> 이름을 안 붙인 것이 분류의 기본 상태라 언제나
+ * 맨 위다(#1358) — 끌려가지도, 그 위로 다른 묶음이 올라가지도 않는다.
+ *
+ * <p>묶음의 자리는 저장된 값이 아니라 <b>그 안의 첫 항목이 정하는 파생값</b>이다(D-41).
+ * 그래서 여기서 하는 일은 「묶음을 옮긴다」가 아니라 <b>항목을 그 차례로 다시 적는 것</b>이고,
+ * 순서 API가 배치를 통째로 받으므로 서버는 그대로 저장하기만 하면 된다.
+ */
+export function moveSection(
+  sections: PrepSection[],
+  activeLabel: string,
+  overLabel: string | null,
+): PrepSectionOrder[] | null {
+  if (activeLabel === overLabel) return null;
+
+  const from = sections.findIndex((section) => section.label === activeLabel);
+  const to = sections.findIndex((section) => section.label === overLabel);
+  if (from < 0 || to < 0) return null;
+  // 「묶음 없음」 자리로는 못 간다. 그 자리는 이름 없는 항목의 것이다.
+  if (sections[from].label === null || sections[to].label === null) return null;
+
+  const next = [...sections];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  // 빈 묶음은 보내지 않는다 — 서버가 받지 않고(빈 배열), 실행취소를 기다리는 줄을 화면이
+  // 걷어낸 사이에 이런 묶음이 잠깐 생긴다.
+  return next
+    .filter((section) => section.items.length > 0)
+    .map((section) => ({
+      label: section.label,
+      itemIds: section.items.map((item) => item.id),
+    }));
+}
+
+/**
  * 새 배치를 화면이 쓰는 묶음 목록으로 되돌린다 — <b>낙관적 반영</b>에 쓴다.
  *
  * <p>손을 뗀 순간 결과가 보여야 한다. 왕복을 기다리면 줄이 제자리로 튀었다가 다시 움직이고,
