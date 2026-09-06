@@ -688,6 +688,71 @@ describe("TripPrepPage", () => {
     });
   });
 
+  /**
+   * 옛 모양 응답(#1361). 서비스워커가 `/api/travel/*`를 캐시하므로, 묶음이 없던 시절의
+   * 응답이 기내에서 그대로 꺼내질 수 있다 — 그때 흰 화면이 되면 「기내에서 목록만 확인한다」가
+   * 통째로 무너진다.
+   */
+  it("묶음이 없던 응답도 읽는다 — 캐시에 남은 옛 모양", async () => {
+    server.use(
+      http.get(`${API_BASE}/travel/trips/${TRIP_ID}/prep`, () =>
+        HttpResponse.json({
+          code: "OK",
+          data: {
+            tripId: TRIP_ID,
+            startDate: "2026-10-24",
+            dday: 49,
+            total: 2,
+            done: 1,
+            overdueCount: 0,
+            // `sections`도 `sectionLabel`도 없던 시절의 응답 그대로다.
+            groups: CATEGORIES.map((category) => ({
+              category,
+              total: category === "BAG" ? 2 : 0,
+              done: category === "BAG" ? 1 : 0,
+              items:
+                category === "BAG"
+                  ? [
+                      {
+                        id: 1,
+                        title: "멀티어댑터",
+                        done: true,
+                        quantity: null,
+                        dueDaysBefore: null,
+                        dueDate: null,
+                        overdue: false,
+                        url: null,
+                        memo: null,
+                        displayOrder: 0,
+                      },
+                      {
+                        id: 2,
+                        title: "양말",
+                        done: false,
+                        quantity: null,
+                        dueDaysBefore: null,
+                        dueDate: null,
+                        overdue: false,
+                        url: null,
+                        memo: null,
+                        displayOrder: 1,
+                      },
+                    ]
+                  : [],
+            })),
+          },
+        }),
+      ),
+    );
+    renderPrep();
+
+    expect(await screen.findByText("멀티어댑터")).toBeVisible();
+    expect(screen.getByText("양말")).toBeVisible();
+    expect(screen.getByRole("button", { name: "짐 1/2" })).toBeVisible();
+    // 「묶음 없음」 하나로 감싸지므로 소제목은 뜨지 않는다 — 캐시를 읽었다는 사실이 안 보인다.
+    expect(within(bagCard()).queryByText("묶음 없음")).not.toBeInTheDocument();
+  });
+
   it("오프라인이면 체크도 입력도 막는다 — 큐잉하지 않는다", async () => {
     mockPrep([item({ id: 1, title: "멀티어댑터" })]);
     renderPrep();

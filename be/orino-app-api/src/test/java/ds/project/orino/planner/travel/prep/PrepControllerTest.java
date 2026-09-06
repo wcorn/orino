@@ -550,6 +550,44 @@ class PrepControllerTest extends ApiTestSupport {
         }
     }
 
+    /**
+     * 옛 번들이 읽는 평면 목록(#1361). <b>#1362에서 이 클래스째 지운다.</b>
+     *
+     * <p>#1360이 응답에서 {@code items}를 빼면서 이미 열려 있던 탭이 통째로 깨졌다 — 이 앱의
+     * 서비스워커는 새 버전을 사용자가 받아들여야 갈고(`registerType: "prompt"`), 앱 셸이
+     * precache라 서버에서 파일이 사라져도 옛 번들은 계속 돈다.
+     */
+    @Nested
+    @DisplayName("옛 클라이언트 호환")
+    class LegacyItems {
+
+        @Test
+        @DisplayName("items는 묶음을 편 것과 같다 — 개수도 순서도")
+        void flattensSectionsIntoItems() throws Exception {
+            create("""
+                    {"category": "BAG", "title": "충전기", "sectionLabel": "캐리어"}""");
+            create("""
+                    {"category": "BAG", "title": "여권 지갑"}""");
+            create("""
+                    {"category": "BAG", "title": "옷", "sectionLabel": "캐리어"}""");
+
+            getPrep()
+                    .andExpect(jsonPath("$.data.groups[2].items", hasSize(3)))
+                    // 묶음을 편 순서 그대로다 — 묶음 없음이 먼저다.
+                    .andExpect(jsonPath("$.data.groups[2].items[0].title").value("여권 지갑"))
+                    .andExpect(jsonPath("$.data.groups[2].items[1].title").value("충전기"))
+                    .andExpect(jsonPath("$.data.groups[2].items[2].title").value("옷"));
+        }
+
+        @Test
+        @DisplayName("빈 분류는 빈 배열이다 — 옛 번들이 map을 도는 자리다")
+        void emptyCategoryKeepsEmptyArray() throws Exception {
+            getPrep()
+                    .andExpect(jsonPath("$.data.groups[0].items", hasSize(0)))
+                    .andExpect(jsonPath("$.data.groups[0].sections", hasSize(0)));
+        }
+    }
+
     @Nested
     @DisplayName("삭제 · 순서")
     class DeleteAndOrder {
