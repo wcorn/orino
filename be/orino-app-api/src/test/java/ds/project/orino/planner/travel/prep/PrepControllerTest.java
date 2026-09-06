@@ -81,7 +81,7 @@ class PrepControllerTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.groups[1].category").value("BOOKING"))
                     .andExpect(jsonPath("$.data.groups[2].category").value("BAG"))
                     .andExpect(jsonPath("$.data.groups[3].category").value("TODO"))
-                    .andExpect(jsonPath("$.data.groups[0].items", hasSize(0)))
+                    .andExpect(jsonPath("$.data.groups[0].sections", hasSize(0)))
                     .andExpect(jsonPath("$.data.total").value(0))
                     .andExpect(jsonPath("$.data.done").value(0))
                     .andExpect(jsonPath("$.data.overdueCount").value(0));
@@ -151,18 +151,18 @@ class PrepControllerTest extends ApiTestSupport {
                     {"category": "BOOKING", "title": "숙소 잔금 결제", "dueDaysBefore": 14}""");
 
             getPrep()
-                    .andExpect(jsonPath("$.data.groups[1].items[0].dueDate")
+                    .andExpect(jsonPath("$.data.groups[1].sections[0].items[0].dueDate")
                             .value("2026-10-10"))
-                    .andExpect(jsonPath("$.data.groups[1].items[0].dueDaysBefore").value(14));
+                    .andExpect(jsonPath("$.data.groups[1].sections[0].items[0].dueDaysBefore").value(14));
 
             // 날짜로 저장했다면 10/10에 그대로 남아 조용히 하루 늦은 기한이 됐을 자리다.
             updateTripPeriod("2026-10-23", "2026-10-26");
 
             getPrep()
                     .andExpect(jsonPath("$.data.startDate").value("2026-10-23"))
-                    .andExpect(jsonPath("$.data.groups[1].items[0].dueDate")
+                    .andExpect(jsonPath("$.data.groups[1].sections[0].items[0].dueDate")
                             .value("2026-10-09"))
-                    .andExpect(jsonPath("$.data.groups[1].items[0].dueDaysBefore").value(14));
+                    .andExpect(jsonPath("$.data.groups[1].sections[0].items[0].dueDaysBefore").value(14));
         }
 
         @Test
@@ -178,7 +178,7 @@ class PrepControllerTest extends ApiTestSupport {
             // 기한이 10/4 → 10/8로 밀려 오늘(10/5)보다 뒤가 된다.
             getPrep()
                     .andExpect(jsonPath("$.data.overdueCount").value(0))
-                    .andExpect(jsonPath("$.data.groups[1].items[0].overdue").value(false));
+                    .andExpect(jsonPath("$.data.groups[1].sections[0].items[0].overdue").value(false));
         }
 
         @Test
@@ -285,12 +285,12 @@ class PrepControllerTest extends ApiTestSupport {
             check(id, true);
 
             getPrep()
-                    .andExpect(jsonPath("$.data.groups[1].items[0].title")
+                    .andExpect(jsonPath("$.data.groups[1].sections[0].items[0].title")
                             .value("숙소 잔금 결제"))
-                    .andExpect(jsonPath("$.data.groups[1].items[0].dueDaysBefore").value(14))
-                    .andExpect(jsonPath("$.data.groups[1].items[0].url")
+                    .andExpect(jsonPath("$.data.groups[1].sections[0].items[0].dueDaysBefore").value(14))
+                    .andExpect(jsonPath("$.data.groups[1].sections[0].items[0].url")
                             .value("https://example.com"))
-                    .andExpect(jsonPath("$.data.groups[1].items[0].memo").value("카드로"));
+                    .andExpect(jsonPath("$.data.groups[1].sections[0].items[0].memo").value("카드로"));
         }
 
         @Test
@@ -323,8 +323,8 @@ class PrepControllerTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.item.displayOrder").value(2));
 
             getPrep()
-                    .andExpect(jsonPath("$.data.groups[2].items[2].title").value("멀티어댑터"))
-                    .andExpect(jsonPath("$.data.groups[3].items", hasSize(0)));
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].items[2].title").value("멀티어댑터"))
+                    .andExpect(jsonPath("$.data.groups[3].sections", hasSize(0)));
         }
 
         @Test
@@ -365,6 +365,191 @@ class PrepControllerTest extends ApiTestSupport {
         }
     }
 
+    /**
+     * 묶음(#1358). 분류를 다섯 번째로 늘리는 대신 그 안에 사용자가 이름 붙이는 겹을 하나 뒀다.
+     *
+     * <p>여기서 지키는 것은 <b>묶음의 자리를 저장하지 않는다</b>는 사실이다. 순서 컬럼을 따로
+     * 두면 항목을 옮길 때마다 둘을 맞춰야 하고, 어긋난 것이 화면에는 안 보인다 — 그래서
+     * 자리는 언제나 그 안의 최소 {@code displayOrder}에서 다시 나온다.
+     */
+    @Nested
+    @DisplayName("묶음")
+    class Section {
+
+        @Test
+        @DisplayName("아무도 묶지 않으면 이름 없는 묶음 하나로 내려간다")
+        void wrapsUnlabeledInSingleSection() throws Exception {
+            create("""
+                    {"category": "BAG", "title": "멀티어댑터"}""");
+            create("""
+                    {"category": "BAG", "title": "양말"}""");
+
+            getPrep()
+                    .andExpect(jsonPath("$.data.groups[2].sections", hasSize(1)))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].label")
+                            .value(nullValue()))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].items", hasSize(2)));
+        }
+
+        @Test
+        @DisplayName("묶음 없음은 나중에 적혔어도 맨 앞이다")
+        void unlabeledSectionComesFirst() throws Exception {
+            create("""
+                    {"category": "BAG", "title": "충전기", "sectionLabel": "캐리어"}""");
+            create("""
+                    {"category": "BAG", "title": "여권 지갑"}""");
+
+            // 아무것도 안 나눈 목록이 가운데로 밀리면, 묶음을 만든 대가를 안 만든 항목이 친다.
+            getPrep()
+                    .andExpect(jsonPath("$.data.groups[2].sections", hasSize(2)))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].label")
+                            .value(nullValue()))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].items[0].title")
+                            .value("여권 지갑"))
+                    .andExpect(jsonPath("$.data.groups[2].sections[1].label").value("캐리어"));
+        }
+
+        @Test
+        @DisplayName("묶음의 자리는 그 안의 첫 항목이 정한다 — 순서를 따로 저장하지 않는다")
+        void ordersSectionsByFirstItem() throws Exception {
+            create("""
+                    {"category": "BAG", "title": "충전기", "sectionLabel": "캐리어"}""");
+            create("""
+                    {"category": "BAG", "title": "칫솔", "sectionLabel": "세면백"}""");
+            create("""
+                    {"category": "BAG", "title": "옷", "sectionLabel": "캐리어"}""");
+
+            getPrep()
+                    .andExpect(jsonPath("$.data.groups[2].sections", hasSize(2)))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].label").value("캐리어"))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].total").value(2))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].items[1].title")
+                            .value("옷"))
+                    .andExpect(jsonPath("$.data.groups[2].sections[1].label").value("세면백"));
+        }
+
+        @Test
+        @DisplayName("묶음별 진행률은 따로 센다")
+        void countsDonePerSection() throws Exception {
+            long id = createAndGetId("""
+                    {"category": "BAG", "title": "충전기", "sectionLabel": "캐리어"}""");
+            create("""
+                    {"category": "BAG", "title": "옷", "sectionLabel": "캐리어"}""");
+            create("""
+                    {"category": "BAG", "title": "칫솔", "sectionLabel": "세면백"}""");
+            check(id, true);
+
+            getPrep()
+                    .andExpect(jsonPath("$.data.groups[2].done").value(1))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].done").value(1))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].total").value(2))
+                    .andExpect(jsonPath("$.data.groups[2].sections[1].done").value(0));
+        }
+
+        @Test
+        @DisplayName("묶음을 옮기면 그 묶음의 맨 뒤로 간다")
+        void movesToEndOfSection() throws Exception {
+            create("""
+                    {"category": "BAG", "title": "충전기", "sectionLabel": "캐리어"}""");
+            long moving = createAndGetId("""
+                    {"category": "BAG", "title": "이어폰"}""");
+
+            patchItem(moving, """
+                    {"sectionLabel": "캐리어"}""")
+                    .andExpect(jsonPath("$.data.item.sectionLabel").value("캐리어"))
+                    .andExpect(jsonPath("$.data.item.displayOrder").value(2));
+
+            // 옮긴 항목이 묶음 한가운데 나타나면, 옮긴 사람이 방금 누른 줄을 다시 찾아야 한다.
+            getPrep()
+                    .andExpect(jsonPath("$.data.groups[2].sections", hasSize(1)))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].items[1].title")
+                            .value("이어폰"));
+        }
+
+        @Test
+        @DisplayName("같은 묶음을 다시 보내면 자리가 그대로다 — 앞뒤 공백은 같은 이름이다")
+        void keepsOrderWhenSectionUnchanged() throws Exception {
+            long id = createAndGetId("""
+                    {"category": "BAG", "title": "충전기", "sectionLabel": "캐리어"}""");
+            create("""
+                    {"category": "BAG", "title": "옷", "sectionLabel": "캐리어"}""");
+
+            // 손대지 않은 순서가 저장할 때마다 흔들리면, 목록이 자기 마음대로 움직이는 것으로
+            // 보인다 — 저장 버튼은 제목만 고쳤을 때도 눌린다.
+            patchItem(id, """
+                    {"title": "충전기", "sectionLabel": "  캐리어 "}""")
+                    .andExpect(jsonPath("$.data.item.displayOrder").value(0));
+
+            getPrep()
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].items[0].title")
+                            .value("충전기"));
+        }
+
+        @Test
+        @DisplayName("묶음에서 빼려면 지운다고 말해야 한다")
+        void clearsSectionOnlyWhenNamed() throws Exception {
+            long id = createAndGetId("""
+                    {"category": "BAG", "title": "충전기", "sectionLabel": "캐리어"}""");
+
+            check(id, true)
+                    .andExpect(jsonPath("$.data.item.sectionLabel").value("캐리어"));
+
+            patchItem(id, """
+                    {"clear": ["SECTION_LABEL"]}""")
+                    .andExpect(jsonPath("$.data.item.sectionLabel").value(nullValue()));
+        }
+
+        @Test
+        @DisplayName("분류를 옮겨도 묶음 이름은 따라간다 — 수량과 다르다")
+        void keepsSectionAcrossCategories() throws Exception {
+            long id = createAndGetId("""
+                    {"category": "BAG", "title": "충전기", "sectionLabel": "캐리어",
+                     "quantity": 2}""");
+
+            // 수량은 짐에서만 뜻이 있다고 우리가 정의한 값이고, 묶음은 사용자가 적은 말이다.
+            patchItem(id, """
+                    {"category": "TODO"}""")
+                    .andExpect(jsonPath("$.data.item.quantity").value(nullValue()))
+                    .andExpect(jsonPath("$.data.item.sectionLabel").value("캐리어"));
+        }
+
+        @Test
+        @DisplayName("분류와 묶음을 함께 옮겨도 자리는 새 분류의 맨 뒤 하나다")
+        void movesOnceWhenCategoryAndSectionChangeTogether() throws Exception {
+            create("""
+                    {"category": "BAG", "title": "충전기", "sectionLabel": "캐리어"}""");
+            create("""
+                    {"category": "BAG", "title": "옷"}""");
+            long moving = createAndGetId("""
+                    {"category": "TODO", "title": "이어폰"}""");
+
+            // 분류를 옮기면서 자리를 이미 맨 뒤로 받았다. 묶음 때문에 또 매기면 빈 자리가 쌓인다.
+            patchItem(moving, """
+                    {"category": "BAG", "sectionLabel": "캐리어"}""")
+                    .andExpect(jsonPath("$.data.item.displayOrder").value(2));
+        }
+
+        @Test
+        @DisplayName("공백만 적은 묶음은 묶음 없음이다")
+        void treatsBlankLabelAsNoSection() throws Exception {
+            create("""
+                    {"category": "BAG", "title": "충전기", "sectionLabel": "   "}""")
+                    .andExpect(jsonPath("$.data.item.sectionLabel").value(nullValue()));
+        }
+
+        @Test
+        @DisplayName("30자를 넘는 묶음 이름은 400")
+        void rejectsTooLongLabel() throws Exception {
+            mockMvc.perform(post("/api/travel/trips/" + tripId + "/prep/items")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"title": "충전기", "sectionLabel": "%s"}"""
+                                    .formatted("가".repeat(31))))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+
     @Nested
     @DisplayName("삭제 · 순서")
     class DeleteAndOrder {
@@ -402,9 +587,9 @@ class PrepControllerTest extends ApiTestSupport {
                     .andExpect(status().isOk());
 
             getPrep()
-                    .andExpect(jsonPath("$.data.groups[2].items[0].title").value("충전기"))
-                    .andExpect(jsonPath("$.data.groups[2].items[1].title").value("멀티어댑터"))
-                    .andExpect(jsonPath("$.data.groups[2].items[2].title").value("양말"));
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].items[0].title").value("충전기"))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].items[1].title").value("멀티어댑터"))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].items[2].title").value("양말"));
         }
 
         @Test
@@ -441,9 +626,9 @@ class PrepControllerTest extends ApiTestSupport {
                     .andExpect(status().isOk());
 
             getPrep()
-                    .andExpect(jsonPath("$.data.groups[2].items", hasSize(2)))
-                    .andExpect(jsonPath("$.data.groups[2].items[0].title").value("양말"))
-                    .andExpect(jsonPath("$.data.groups[2].items[1].title").value("멀티어댑터"));
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].items", hasSize(2)))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].items[0].title").value("양말"))
+                    .andExpect(jsonPath("$.data.groups[2].sections[0].items[1].title").value("멀티어댑터"));
             assertThat(prepRepository.findById(first)).isPresent();
         }
 

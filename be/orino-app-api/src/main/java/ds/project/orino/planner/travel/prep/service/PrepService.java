@@ -16,6 +16,7 @@ import ds.project.orino.planner.travel.prep.dto.PrepItemMutation;
 import ds.project.orino.planner.travel.prep.dto.PrepItemView;
 import ds.project.orino.planner.travel.prep.dto.PrepRequests;
 import ds.project.orino.planner.travel.prep.dto.PrepResponse;
+import ds.project.orino.planner.travel.prep.dto.PrepSection;
 import ds.project.orino.planner.travel.prep.dto.PrepSummary;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -109,6 +110,8 @@ public class PrepService {
 
         TripPrepItem item = new TripPrepItem(tripId, memberId, category,
                 request.title().trim(), nextOrder(tripId, category));
+        // 묶음의 맨 뒤이자 분류의 맨 뒤다 — 새 항목은 어느 묶음에 넣든 위에 끼어들지 않는다.
+        item.changeSectionLabel(request.sectionLabel());
         item.changeQuantity(request.quantity());
         item.changeDueDaysBefore(request.dueDaysBefore());
         item.changeUrl(request.url());
@@ -129,7 +132,9 @@ public class PrepService {
         Trip trip = getOwnedTrip(memberId, item.getTripId());
         requireValidDue(request.dueDaysBefore());
 
-        if (request.category() != null && request.category() != item.getCategory()) {
+        boolean movedCategory = request.category() != null
+                && request.category() != item.getCategory();
+        if (movedCategory) {
             // 새 분류의 맨 뒤로 다시 매긴다. 옛 순서를 들고 가면 그 분류에 이미 있던 항목과
             // 자리가 겹쳐 화면 순서가 저장할 때마다 흔들린다.
             item.changeCategory(request.category(), nextOrder(item.getTripId(),
@@ -143,6 +148,23 @@ public class PrepService {
         }
 
         Set<PrepField> clear = request.clear() == null ? Set.of() : request.clear();
+
+        /*
+          묶음을 옮기면 그 묶음의 맨 뒤로 간다 — 분류를 옮길 때와 같은 규칙이다. 옛 자리를
+          들고 가면 「캐리어」로 옮긴 항목이 캐리어 한가운데에 나타나고, 옮긴 사람은 방금
+          누른 줄을 목록에서 다시 찾아야 한다.
+
+          분류를 방금 옮겼으면 이미 맨 뒤라 다시 매기지 않는다. 여기서 nextOrder를 또 부르면
+          자기 자신을 세어 한 칸씩 비는 자리가 쌓인다.
+         */
+        boolean clearSection = clear.contains(PrepField.SECTION_LABEL);
+        if ((clearSection || request.sectionLabel() != null)
+                && !item.isInSection(clearSection ? null : request.sectionLabel())) {
+            item.changeSectionLabel(clearSection ? null : request.sectionLabel(),
+                    movedCategory ? item.getDisplayOrder()
+                            : nextOrder(item.getTripId(), item.getCategory()));
+        }
+
         applyDetail(clear.contains(PrepField.QUANTITY), request.quantity(),
                 item::changeQuantity);
         applyDetail(clear.contains(PrepField.DUE_DAYS_BEFORE), request.dueDaysBefore(),
@@ -309,6 +331,40 @@ public class PrepService {
     private static PrepGroup toGroup(PrepCategory category, List<TripPrepItem> items,
                                      LocalDate startDate, LocalDate today) {
         return new PrepGroup(category, items.size(),
+                (int) items.stream().filter(TripPrepItem::isDone).count(),
+                toSections(items, startDate, today));
+    }
+
+    /**
+     * 분류 안을 묶음으로 나눈다(#1358).
+     *
+     * <p><b>묶음의 자리는 그 안의 최소 {@code displayOrder}다</b> — 순서 컬럼을 따로 두지
+     * 않는다. 항목이 이미 그 순서로 들어오므로, 처음 나온 차례가 곧 묶음의 차례다.
+     *
+     * <p>「묶음 없음」({@code null})만 예외로 맨 앞에 둔다. 이름을 안 붙인 것이 분류의 기본
+     * 상태인데, 그게 이름 붙은 묶음 사이에 끼면 아무것도 안 나눈 사람의 목록이 이유 없이
+     * 가운데로 밀린다.
+     */
+    private static List<PrepSection> toSections(List<TripPrepItem> items,
+                                                LocalDate startDate, LocalDate today) {
+        Map<String, List<TripPrepItem>> bySection = new LinkedHashMap<>();
+        items.forEach(item -> bySection
+                .computeIfAbsent(item.getSectionLabel(), label -> new ArrayList<>())
+                .add(item));
+
+        List<TripPrepItem> unlabeled = bySection.remove(null);
+        List<PrepSection> sections = new ArrayList<>();
+        if (unlabeled != null) {
+            sections.add(toSection(null, unlabeled, startDate, today));
+        }
+        bySection.forEach((label, own) ->
+                sections.add(toSection(label, own, startDate, today)));
+        return sections;
+    }
+
+    private static PrepSection toSection(String label, List<TripPrepItem> items,
+                                         LocalDate startDate, LocalDate today) {
+        return new PrepSection(label, items.size(),
                 (int) items.stream().filter(TripPrepItem::isDone).count(),
                 items.stream().map(item -> PrepItemView.of(item, startDate, today)).toList());
     }

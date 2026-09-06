@@ -231,7 +231,8 @@ export const handlers = [
           category,
           total: 0,
           done: 0,
-          items: [],
+          // 빈 분류에는 묶음이 없다 — 묶음은 항목이 만든 것이라 빈 채로 내려오지 않는다.
+          sections: [],
         })),
       },
     });

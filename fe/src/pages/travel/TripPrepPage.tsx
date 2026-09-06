@@ -52,6 +52,8 @@ export function TripPrepPage() {
     useState<PrepCategory[]>(PREP_DEFAULT_OPEN);
   /** 방금 적은 분류. 다음 항목이 이걸 이어받는다(§13). */
   const [addCategory, setAddCategory] = useState<PrepCategory>("TODO");
+  /** 방금 적은 묶음. 분류와 같은 규칙으로 이어받는다(#1358). */
+  const [addSection, setAddSection] = useState<string | null>(null);
   const [editing, setEditing] = useState<PrepItemView | null>(null);
 
   // 오프라인은 조회 전용이다. 큐잉하지 않는다 — 예외를 하나 열면 충돌 해소가 설계에
@@ -98,7 +100,7 @@ export function TripPrepPage() {
 
   const add = (title: string) => {
     createItem.mutate(
-      { category: addCategory, title },
+      { category: addCategory, title, sectionLabel: addSection ?? undefined },
       // 어느 분류로 들어갔는지는 서버가 정한다. 그 분류를 펼쳐야 방금 적은 줄이 보인다.
       { onSuccess: (result) => openCategory(result.category) },
     );
@@ -110,6 +112,15 @@ export function TripPrepPage() {
       // 분류를 옮겼으면 옮겨 간 곳을 펼친다 — 안 그러면 저장하자마자 항목이 사라져 보인다.
       setAddCategory(body.category);
       openCategory(body.category);
+    }
+    /*
+      묶음도 방금 손댄 것을 입력줄이 이어받는다. 시트에서 「캐리어」로 옮긴 다음에 하는 일은
+      대개 캐리어에 넣을 것을 더 적는 일이다.
+    */
+    if (body.sectionLabel) {
+      setAddSection(body.sectionLabel);
+    } else if (body.clear?.includes("SECTION_LABEL")) {
+      setAddSection(null);
     }
   };
 
@@ -130,8 +141,24 @@ export function TripPrepPage() {
    */
   const groups = data.groups.map((group) => ({
     ...group,
-    items: group.items.filter((item) => !pendingIds.includes(item.id)),
+    sections: group.sections.map((section) => ({
+      ...section,
+      items: section.items.filter((item) => !pendingIds.includes(item.id)),
+    })),
   }));
+
+  /*
+    분류마다 지금 있는 묶음 이름. 화면이 따로 들지 않고 목록에서 그때그때 뽑는다 —
+    묶음은 항목이 만든 것이라, 마지막 항목이 나가면 고를 이름에서도 함께 사라져야 한다.
+  */
+  const sectionsByCategory = Object.fromEntries(
+    groups.map((group) => [
+      group.category,
+      group.sections
+        .filter((section) => section.label !== null && section.items.length > 0)
+        .map((section) => section.label as string),
+    ]),
+  ) as Record<PrepCategory, string[]>;
 
   const remaining = data.total - data.done;
   const donePercent = data.total === 0 ? 0 : (data.done / data.total) * 100;
@@ -237,7 +264,16 @@ export function TripPrepPage() {
 
       <PrepAddBar
         category={addCategory}
-        onCategoryChange={setAddCategory}
+        onCategoryChange={(next) => {
+          setAddCategory(next);
+          // 묶음 이름은 분류 안에서만 뜻이 있다. 「캐리어」를 든 채 할 일로 옮기면,
+          // 짐에만 있던 이름이 할 일에 하나 더 생긴다.
+          setAddSection(null);
+        }}
+        section={addSection}
+        onSectionChange={setAddSection}
+        // 응답에 그 분류가 없으면 고를 묶음도 없다 — 화면은 분류 목록을 따로 들지 않는다.
+        sections={sectionsByCategory[addCategory] ?? []}
         offline={!online}
         onAdd={add}
       />
@@ -246,10 +282,14 @@ export function TripPrepPage() {
         item={editing}
         category={
           editing
-            ? (groups.find((g) => g.items.some((i) => i.id === editing.id))
-                ?.category ?? null)
+            ? (groups.find((g) =>
+                g.sections.some((s) =>
+                  s.items.some((i) => i.id === editing.id),
+                ),
+              )?.category ?? null)
             : null
         }
+        sectionsByCategory={sectionsByCategory}
         onOpenChange={(open) => {
           if (!open) setEditing(null);
         }}

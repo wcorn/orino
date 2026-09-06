@@ -24,6 +24,7 @@ interface StoredItem {
   category: PrepCategory;
   title: string;
   done: boolean;
+  sectionLabel: string | null;
   quantity: number | null;
   dueDaysBefore: number | null;
   dueDate: string | null;
@@ -63,6 +64,7 @@ async function mockPrep(page: Page) {
     id: stored.id,
     title: stored.title,
     done: stored.done,
+    sectionLabel: stored.sectionLabel,
     quantity: stored.quantity,
     dueDaysBefore: stored.dueDaysBefore,
     dueDate: stored.dueDate,
@@ -71,6 +73,30 @@ async function mockPrep(page: Page) {
     memo: stored.memo,
     displayOrder: stored.displayOrder,
   });
+  /**
+   * 분류 안을 묶음으로 나눈다 — 서버와 같은 규칙이다(#1358). 묶음의 자리는 그 안의 최소
+   * `displayOrder`이고, 「묶음 없음」은 언제나 맨 앞이다.
+   */
+  const sectionsOf = (own: StoredItem[]) => {
+    const sorted = [...own].sort((a, b) => a.displayOrder - b.displayOrder);
+    const labels: (string | null)[] = [];
+    sorted.forEach((i) => {
+      if (!labels.includes(i.sectionLabel)) labels.push(i.sectionLabel);
+    });
+    const ordered = labels.includes(null)
+      ? [null, ...labels.filter((label) => label !== null)]
+      : labels;
+    return ordered.map((label) => {
+      const inSection = sorted.filter((i) => i.sectionLabel === label);
+      return {
+        label,
+        total: inSection.length,
+        done: inSection.filter((i) => i.done).length,
+        items: inSection.map(view),
+      };
+    });
+  };
+
   const summary = () => ({
     total: items.length,
     done: items.filter((i) => i.done).length,
@@ -83,6 +109,7 @@ async function mockPrep(page: Page) {
       const body = route.request().postDataJSON() as {
         category?: PrepCategory;
         title: string;
+        sectionLabel?: string;
       };
       const category = body.category ?? "TODO";
       const stored: StoredItem = {
@@ -90,6 +117,7 @@ async function mockPrep(page: Page) {
         category,
         title: body.title,
         done: false,
+        sectionLabel: body.sectionLabel ?? null,
         quantity: null,
         dueDaysBefore: null,
         dueDate: null,
@@ -118,6 +146,7 @@ async function mockPrep(page: Page) {
       done?: boolean;
       title?: string;
       category?: PrepCategory;
+      sectionLabel?: string;
       dueDaysBefore?: number;
       quantity?: number;
       clear?: string[];
@@ -131,6 +160,17 @@ async function mockPrep(page: Page) {
       stored.dueDate = "2026-10-10";
     }
     if (body.quantity !== undefined) stored.quantity = body.quantity;
+    // 묶음을 옮기면 그 묶음의 맨 뒤다 — 서버와 같은 규칙이라야 화면 순서를 볼 수 있다.
+    if (body.sectionLabel !== undefined) {
+      stored.sectionLabel = body.sectionLabel;
+      stored.displayOrder =
+        Math.max(
+          ...items
+            .filter((i) => i.category === stored.category)
+            .map((i) => i.displayOrder),
+        ) + 1;
+    }
+    if (body.clear?.includes("SECTION_LABEL")) stored.sectionLabel = null;
     if (body.clear?.includes("DUE_DAYS_BEFORE")) {
       stored.dueDaysBefore = null;
       stored.dueDate = null;
@@ -187,7 +227,7 @@ async function mockPrep(page: Page) {
             category,
             total: own.length,
             done: own.filter((i) => i.done).length,
-            items: own.map(view),
+            sections: sectionsOf(own),
           };
         }),
       }),
@@ -305,5 +345,73 @@ test.describe("준비", () => {
     await page.getByRole("button", { name: "실행취소" }).click();
     await expect(medicine).toBeVisible();
     await expect(page.getByRole("button", { name: "짐 1/3" })).toBeVisible();
+  });
+
+  /**
+   * 묶음 한 겹(#1358). 짐이 수십 줄이 되면 분류 하나가 한 화면에 안 들어간다 — 그때 이
+   * 흐름이 성립해야 목록이 다시 짧아진다: 묶음을 만들고, 그 묶음으로 연달아 적고, 다 챙긴
+   * 묶음은 접는다.
+   */
+  test("묶음을 만들어 연달아 적고, 다 챙긴 묶음은 접는다", async ({ page }) => {
+    await mockPrep(page);
+    await page.goto(`/travel/trips/${TRIP_ID}/prep`);
+
+    await page.getByLabel(/추가할 분류/).click();
+    await page.getByRole("menuitem", { name: "짐" }).click();
+
+    // 묶기 전에는 소제목이 없다 — 안 쓰는 사람에게 늘어나는 줄이 없어야 한다.
+    const bag = page
+      .locator("section")
+      .filter({ has: page.getByRole("button", { name: /^짐 / }) });
+    const input = page.getByLabel("준비 항목 추가");
+    await input.fill("여권 지갑");
+    await input.press("Enter");
+    await expect(page.getByRole("button", { name: "짐 0/1" })).toBeVisible();
+    await expect(bag.getByRole("button", { name: /묶음 없음/ })).toBeHidden();
+
+    // 새 묶음은 입력줄에서 만든다. 편집 시트까지 가야 하면 첫 묶음을 아무도 안 만든다.
+    await page.getByLabel(/추가할 묶음/).click();
+    await page.getByRole("menuitem", { name: "새 묶음…" }).click();
+    const name = page.getByLabel("새 묶음 이름");
+    await name.fill("캐리어");
+    await name.press("Enter");
+
+    // 묶음도 방금 적은 것을 이어받는다 — 줄마다 다시 고르면 묶는 게 적는 것보다 오래 걸린다.
+    await input.fill("충전기");
+    await input.press("Enter");
+    await input.fill("옷");
+    await input.press("Enter");
+    await expect(page.getByLabel("추가할 묶음: 캐리어")).toBeVisible();
+
+    // 이름 붙은 묶음이 생기면 그때 소제목이 뜬다. 묶음 없음이 맨 위다.
+    await expect(
+      bag.getByRole("button", { name: "묶음 없음 0/1" }),
+    ).toBeVisible();
+    await expect(bag.getByRole("button", { name: "캐리어 0/2" })).toBeVisible();
+    const headers = await bag
+      .getByRole("button", { expanded: true })
+      .evaluateAll((buttons) =>
+        buttons.map((button) => button.getAttribute("aria-label")),
+      );
+    expect(headers).toEqual(["짐 0/3", "묶음 없음 0/1", "캐리어 0/2"]);
+
+    // 다 챙긴 묶음은 접는다 — 접어도 개수는 남는다.
+    await bag.getByRole("button", { name: "캐리어 0/2" }).click();
+    await expect(
+      page.getByRole("button", { name: "충전기", exact: true }),
+    ).toBeHidden();
+    await expect(bag.getByRole("button", { name: "캐리어 0/2" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "여권 지갑", exact: true }),
+    ).toBeVisible();
+
+    // 시트에서도 묶음을 옮길 수 있다 — 옮기면 그 묶음의 맨 뒤다.
+    await page.getByRole("button", { name: "여권 지갑", exact: true }).click();
+    const sheet = page.getByRole("dialog");
+    await sheet.getByRole("button", { name: "묶음 캐리어(으)로" }).click();
+    await sheet.getByRole("button", { name: "저장" }).click();
+
+    await expect(bag.getByRole("button", { name: "캐리어 0/3" })).toBeVisible();
+    await expect(bag.getByRole("button", { name: /묶음 없음/ })).toBeHidden();
   });
 });

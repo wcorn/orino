@@ -57,6 +57,19 @@ public class TripPrepItem {
     @Column(nullable = false)
     private boolean done;
 
+    /**
+     * 분류 안의 묶음 이름. {@code null}이면 묶음 없음이다(#1358).
+     *
+     * <p><b>분류를 늘리는 대신 한 겹을 넣은 자리다.</b> 분류는 행동이 달라서 넷으로 고정이고
+     * 여행이 바뀌어도 안 변한다(D-31). 묶음은 반대다 — 이번 여행에 캐리어와 기내백을 나눌지,
+     * 출발 전과 현지에서를 나눌지는 매번 다르다. 그래서 enum이 아니라 사용자가 적는 말이다.
+     *
+     * <p>묶음의 순서는 저장하지 않는다. 그 안의 최소 {@code displayOrder}가 묶음의 자리다 —
+     * 순서를 따로 들면 항목을 옮길 때마다 둘을 맞춰야 하고, 어긋난 것이 화면에는 안 보인다.
+     */
+    @Column(name = "section_label", length = 30)
+    private String sectionLabel;
+
     /** {@link PrepCategory#BAG}에서만 쓴다. 다른 분류면 아래 두 메서드가 NULL로 떨어뜨린다. */
     @Column
     private Integer quantity;
@@ -106,6 +119,40 @@ public class TripPrepItem {
         this.quantity = category == PrepCategory.BAG ? quantity : null;
     }
 
+    /**
+     * 묶음을 옮긴다. 빈 이름은 「묶음 없음」과 같은 뜻이라 {@code null}로 떨어뜨린다 —
+     * 공백 하나짜리 묶음이 생기면 목록에 이름 없는 소제목이 뜨고, 그걸 지울 방법이 없다.
+     *
+     * <p>새 자리는 호출부가 정해 넘긴다. 항목 하나는 그 묶음에 뭐가 몇 개 있는지 모른다.
+     */
+    public void changeSectionLabel(String sectionLabel, int displayOrder) {
+        this.sectionLabel = normalizeSection(sectionLabel);
+        this.displayOrder = displayOrder;
+    }
+
+    /** 자리를 그대로 둔 채 이름만. 새로 만들 때처럼 순서가 이미 정해진 자리에서 쓴다. */
+    public void changeSectionLabel(String sectionLabel) {
+        this.sectionLabel = normalizeSection(sectionLabel);
+    }
+
+    /**
+     * 이미 그 묶음인가. <b>앞뒤 공백과 빈 문자열은 같은 뜻으로 본다</b> — 「캐리어 」로 저장을
+     * 눌렀다고 항목이 묶음 맨 뒤로 뛰면, 손대지 않은 순서가 저장할 때마다 흔들린다.
+     */
+    public boolean isInSection(String sectionLabel) {
+        String normalized = normalizeSection(sectionLabel);
+        return this.sectionLabel == null ? normalized == null
+                : this.sectionLabel.equals(normalized);
+    }
+
+    private static String normalizeSection(String sectionLabel) {
+        if (sectionLabel == null) {
+            return null;
+        }
+        String trimmed = sectionLabel.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
     /** 기한(출발 D−N). {@code null}이면 기한 없음이다. 음수 검증은 호출부가 한다. */
     public void changeDueDaysBefore(Integer dueDaysBefore) {
         this.dueDaysBefore = dueDaysBefore;
@@ -133,6 +180,10 @@ public class TripPrepItem {
      *
      * <p>{@link PrepCategory#BAG}에서 나가면 수량은 함께 사라진다. 「멀티어댑터 2개」를 할
      * 일로 옮겨 놓고 수량만 남으면, 아무도 안 읽는 2가 DB에 남는다.
+     *
+     * <p><b>묶음 이름은 반대로 따라간다.</b> 수량은 짐에서만 뜻이 있다고 우리가 정의한 값이지만,
+     * 묶음은 사용자가 적은 말이다 — 「캐리어」를 할 일로 옮겼다고 조용히 지우면, 되돌리려 해도
+     * 무슨 말을 적었는지가 어디에도 남지 않는다.
      */
     public void changeCategory(PrepCategory category, int displayOrder) {
         this.category = category;
@@ -187,6 +238,10 @@ public class TripPrepItem {
 
     public boolean isDone() {
         return done;
+    }
+
+    public String getSectionLabel() {
+        return sectionLabel;
     }
 
     public Integer getQuantity() {

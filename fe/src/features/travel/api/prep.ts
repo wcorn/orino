@@ -23,6 +23,13 @@ export interface PrepItemView {
   id: number;
   title: string;
   done: boolean;
+  /**
+   * 분류 안의 묶음 이름. `null`이면 묶음 없음이다(#1358).
+   *
+   * <p>묶음(`PrepSection`)이 이미 갖고 있는 값을 항목도 든다. 편집 시트는 항목 하나만 들고
+   * 열리고 수정 요청도 항목 단위라, 「지금 무슨 묶음인가」를 항목이 말할 수 있어야 한다.
+   */
+  sectionLabel: string | null;
   /** 짐에서만 쓴다. 다른 분류면 서버가 NULL로 떨어뜨린다(400이 아니다). */
   quantity: number | null;
   /** 출발 D−N. 절대 날짜를 저장하지 않는다(§12). */
@@ -34,11 +41,26 @@ export interface PrepItemView {
   displayOrder: number;
 }
 
+/**
+ * 분류 안의 묶음 하나(#1358).
+ *
+ * <p>`label`이 `null`인 묶음은 「묶음 없음」이고 <b>항상 맨 앞</b>이다. 이름 붙은 묶음이
+ * 하나도 없는 분류는 이 묶음 하나만 오고, 그때 화면은 소제목을 그리지 않는다 — 아무것도
+ * 안 나눈 사람에게 「묶음 없음」이라는 줄 하나가 늘어나는 것이 이 기능의 비용이 되면 안 된다.
+ */
+export interface PrepSection {
+  label: string | null;
+  total: number;
+  done: number;
+  items: PrepItemView[];
+}
+
 export interface PrepGroup {
   category: PrepCategory;
   total: number;
   done: number;
-  items: PrepItemView[];
+  /** 항목이 없는 분류는 빈 배열이다 — 빈 묶음은 내려오지 않는다. */
+  sections: PrepSection[];
 }
 
 export interface PrepSummary {
@@ -66,12 +88,19 @@ export interface PrepItemMutation {
 }
 
 /** 수정 요청이 「비우겠다」고 지목할 수 있는 칸. */
-export type PrepField = "QUANTITY" | "DUE_DAYS_BEFORE" | "URL" | "MEMO";
+export type PrepField =
+  | "QUANTITY"
+  | "DUE_DAYS_BEFORE"
+  | "URL"
+  | "MEMO"
+  | "SECTION_LABEL";
 
 export interface PrepCreateRequest {
   /** 생략하면 서버가 `TODO`로 넣는다(§11: 애매하면 할 일). */
   category?: PrepCategory;
   title: string;
+  /** 묶음 이름. 생략하면 묶음 없음이다. */
+  sectionLabel?: string;
   quantity?: number;
   dueDaysBefore?: number;
   url?: string;
@@ -89,6 +118,8 @@ export interface PrepPatchRequest {
   category?: PrepCategory;
   title?: string;
   done?: boolean;
+  /** 옮겨 갈 묶음. 「묶음에서 빼 달라」는 값이 아니라 `clear`로 적는다. */
+  sectionLabel?: string;
   quantity?: number;
   dueDaysBefore?: number;
   url?: string;
