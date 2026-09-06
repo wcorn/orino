@@ -19,6 +19,11 @@ interface PrepItemSheetProps {
   /** 열려 있는 항목. 닫혀 있으면 `null`이다. */
   item: PrepItemView | null;
   category: PrepCategory | null;
+  /**
+   * 분류마다 이미 있는 묶음 이름들. 고르는 길이 없으면 「캐리어」를 매번 다시 타이핑하다
+   * 오타 하나로 묶음이 둘로 갈린다 — 이름이 곧 묶음이라 되돌릴 방법이 목록에서 안 보인다.
+   */
+  sectionsByCategory: Record<PrepCategory, string[]>;
   onOpenChange: (open: boolean) => void;
   onSave: (itemId: number, body: PrepPatchRequest) => void;
   onDelete: (item: PrepItemView) => void;
@@ -32,16 +37,22 @@ interface PrepItemSheetProps {
  *
  * <p>수량은 짐에서만 활성이다. 다른 분류로 옮기면 서버가 값을 떨어뜨리므로, 여기서도 칸을
  * 잠가 「적었는데 사라졌다」가 생기지 않게 한다.
+ *
+ * <p><b>묶음은 반대로 분류를 옮겨도 따라간다</b>(#1358). 수량은 짐에서만 뜻이 있다고 우리가
+ * 정의한 값이지만, 묶음은 사용자가 적은 말이라 조용히 지우면 무엇을 적었는지가 어디에도
+ * 안 남는다.
  */
 export function PrepItemSheet({
   item,
   category,
+  sectionsByCategory,
   onOpenChange,
   onSave,
   onDelete,
 }: PrepItemSheetProps) {
   const [title, setTitle] = useState("");
   const [draftCategory, setDraftCategory] = useState<PrepCategory>("TODO");
+  const [section, setSection] = useState("");
   const [due, setDue] = useState("");
   const [quantity, setQuantity] = useState("");
 
@@ -51,6 +62,7 @@ export function PrepItemSheet({
     if (!item || !category) return;
     setTitle(item.title);
     setDraftCategory(category);
+    setSection(item.sectionLabel ?? "");
     setDue(item.dueDaysBefore === null ? "" : String(item.dueDaysBefore));
     setQuantity(item.quantity === null ? "" : String(item.quantity));
   }, [item, category]);
@@ -58,6 +70,10 @@ export function PrepItemSheet({
   if (!item) return null;
 
   const isBag = draftCategory === "BAG";
+  // 옮겨 갈 분류의 묶음을 보여준다 — 지금 분류의 목록을 보여주면 옮긴 뒤에 없는 이름이 된다.
+  const suggestions = (sectionsByCategory[draftCategory] ?? []).filter(
+    (name) => name !== section.trim(),
+  );
 
   const save = () => {
     const trimmed = title.trim();
@@ -71,6 +87,14 @@ export function PrepItemSheet({
       if (item.dueDaysBefore !== null) clear.push("DUE_DAYS_BEFORE");
     } else {
       body.dueDaysBefore = Number(due);
+    }
+
+    const trimmedSection = section.trim();
+    if (trimmedSection === "") {
+      if (item.sectionLabel !== null) clear.push("SECTION_LABEL");
+    } else if (trimmedSection !== item.sectionLabel) {
+      // 안 바뀌었으면 아예 안 보낸다. 보내면 서버가 「옮겼다」고 보고 묶음 맨 뒤로 내린다.
+      body.sectionLabel = trimmedSection;
     }
 
     if (!isBag || quantity.trim() === "") {
@@ -111,6 +135,36 @@ export function PrepItemSheet({
               {PREP_CATEGORY_LABEL[value]}
             </button>
           ))}
+        </div>
+
+        {/*
+          묶음은 자유 입력이다. 목록에서 고르기만 되면 첫 묶음을 만들 자리가 없고, 입력만
+          되면 두 번째부터 같은 이름을 다시 쳐야 한다 — 둘 다 둔다.
+        */}
+        <div className="flex flex-col gap-2">
+          <Input
+            value={section}
+            maxLength={30}
+            aria-label="묶음"
+            placeholder="묶음 없음"
+            onChange={(event) => setSection(event.currentTarget.value)}
+            className="h-10"
+          />
+          {suggestions.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {suggestions.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  aria-label={`묶음 ${name}(으)로`}
+                  onClick={() => setSection(name)}
+                  className="border-border text-muted-foreground min-h-8 rounded-full border px-3 py-1 text-[13px]"
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* 「출발 N일 전」. 날짜를 고르는 자리가 아니다. */}

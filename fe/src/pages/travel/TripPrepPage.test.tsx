@@ -28,6 +28,7 @@ function item(partial: Partial<StoredItem> & { id: number; title: string }) {
   return {
     category: "BAG" as PrepCategory,
     done: false,
+    sectionLabel: null,
     quantity: null,
     dueDaysBefore: null,
     dueDate: null,
@@ -37,6 +38,50 @@ function item(partial: Partial<StoredItem> & { id: number; title: string }) {
     displayOrder: 0,
     ...partial,
   } satisfies StoredItem;
+}
+
+/** 저장본에서 서버 응답 모양만 남긴다 — `category`는 항목이 아니라 그룹이 갖는다. */
+function view(stored: StoredItem): PrepItemView {
+  return {
+    id: stored.id,
+    title: stored.title,
+    done: stored.done,
+    sectionLabel: stored.sectionLabel,
+    quantity: stored.quantity,
+    dueDaysBefore: stored.dueDaysBefore,
+    dueDate: stored.dueDate,
+    overdue: stored.overdue,
+    url: stored.url,
+    memo: stored.memo,
+    displayOrder: stored.displayOrder,
+  };
+}
+
+/**
+ * 분류 안을 묶음으로 나눈다 — 서버가 하는 일을 같은 규칙으로 흉내 낸다(#1358).
+ *
+ * <p>묶음의 자리는 그 안의 최소 `displayOrder`이고, 「묶음 없음」은 언제나 맨 앞이다.
+ * 여기서 규칙이 갈리면 화면이 정렬을 스스로 하고 있는지 아닌지를 테스트가 못 잡는다.
+ */
+function sectionsOf(own: StoredItem[]) {
+  const sorted = [...own].sort((a, b) => a.displayOrder - b.displayOrder);
+  const labels: (string | null)[] = [];
+  sorted.forEach((i) => {
+    if (!labels.includes(i.sectionLabel)) labels.push(i.sectionLabel);
+  });
+  // 「묶음 없음」만 앞으로 뽑는다. 비교 함수로 정렬하면 나머지 차례까지 흔들린다.
+  const ordered = labels.includes(null)
+    ? [null, ...labels.filter((label) => label !== null)]
+    : labels;
+  return ordered.map((label) => {
+    const inSection = sorted.filter((i) => i.sectionLabel === label);
+    return {
+      label,
+      total: inSection.length,
+      done: inSection.filter((i) => i.done).length,
+      items: inSection.map(view),
+    };
+  });
 }
 
 /**
@@ -58,20 +103,6 @@ function mockPrep(initial: StoredItem[] = []) {
     overdueCount: items.filter((i) => i.overdue && !i.done).length,
   });
 
-  /** 저장본에서 서버 응답 모양만 남긴다 — `category`는 항목이 아니라 그룹이 갖는다. */
-  const view = (stored: StoredItem): PrepItemView => ({
-    id: stored.id,
-    title: stored.title,
-    done: stored.done,
-    quantity: stored.quantity,
-    dueDaysBefore: stored.dueDaysBefore,
-    dueDate: stored.dueDate,
-    overdue: stored.overdue,
-    url: stored.url,
-    memo: stored.memo,
-    displayOrder: stored.displayOrder,
-  });
-
   server.use(
     http.get(`${API_BASE}/travel/trips/${TRIP_ID}/prep`, () =>
       HttpResponse.json({
@@ -87,7 +118,7 @@ function mockPrep(initial: StoredItem[] = []) {
               category,
               total: own.length,
               done: own.filter((i) => i.done).length,
-              items: own.map(view),
+              sections: sectionsOf(own),
             };
           }),
         },
@@ -100,12 +131,14 @@ function mockPrep(initial: StoredItem[] = []) {
         const body = (await request.json()) as {
           category?: PrepCategory;
           title: string;
+          sectionLabel?: string;
         };
         const category = body.category ?? "TODO";
         const stored = item({
           id: nextId++,
           title: body.title,
           category,
+          sectionLabel: body.sectionLabel ?? null,
           displayOrder: items.filter((i) => i.category === category).length,
         });
         items.push(stored);
@@ -129,6 +162,17 @@ function mockPrep(initial: StoredItem[] = []) {
           stored.dueDaysBefore = body.dueDaysBefore;
         }
         if (body.quantity !== undefined) stored.quantity = body.quantity;
+        // 묶음을 옮기면 그 묶음의 맨 뒤다 — 서버와 같은 규칙이라야 화면 순서를 볼 수 있다.
+        if (body.sectionLabel !== undefined) {
+          stored.sectionLabel = body.sectionLabel;
+          stored.displayOrder =
+            Math.max(
+              ...items
+                .filter((i) => i.category === stored.category)
+                .map((i) => i.displayOrder),
+            ) + 1;
+        }
+        if (body.clear?.includes("SECTION_LABEL")) stored.sectionLabel = null;
         if (body.clear?.includes("DUE_DAYS_BEFORE")) {
           stored.dueDaysBefore = null;
           stored.dueDate = null;
@@ -484,6 +528,164 @@ describe("TripPrepPage", () => {
       ).not.toBeInTheDocument();
     });
     expect(screen.queryByText("기한 지난 것 1개")).not.toBeInTheDocument();
+  });
+
+  /**
+   * 묶음(#1358). 짐이 수십 줄이 되면서 분류 하나가 한 화면에 안 들어간다 — 분류를 늘리는
+   * 대신 그 안에 사용자가 이름 붙이는 겹을 하나 두었다.
+   */
+  describe("묶음", () => {
+    it("아무도 묶지 않았으면 소제목이 없다 — 묶기 전과 같은 화면이다", async () => {
+      mockPrep([
+        item({ id: 1, title: "멀티어댑터" }),
+        item({ id: 2, title: "양말", displayOrder: 1 }),
+      ]);
+      renderPrep();
+
+      expect(await screen.findByText("멀티어댑터")).toBeVisible();
+      /*
+        안 쓰는 사람에게 「묶음 없음」 한 줄이 늘어나면 그건 기능이 아니라 군더더기다.
+        입력줄의 묶음 버튼은 남는다 — 첫 묶음을 만들 자리가 거기뿐이라, 목록에서 빼는 것과
+        만들 길을 없애는 것은 다른 일이다.
+      */
+      expect(
+        within(bagCard()).queryByText("묶음 없음"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("묶음이 하나라도 생기면 소제목이 뜨고, 묶음 없음이 맨 위다", async () => {
+      mockPrep([
+        item({ id: 1, title: "충전기", sectionLabel: "캐리어" }),
+        item({ id: 2, title: "옷", sectionLabel: "캐리어", displayOrder: 1 }),
+        // 나중에 적혔어도 묶음 없음은 맨 위다 — 아무것도 안 나눈 목록이 가운데로 밀리면
+        // 묶음을 만든 대가를 안 만든 항목이 치른다.
+        item({ id: 3, title: "여권 지갑", displayOrder: 2 }),
+      ]);
+      renderPrep();
+
+      await screen.findByRole("button", { name: "짐 0/3" });
+      const headers = within(bagCard())
+        .getAllByRole("button", { expanded: true })
+        .map((button) => button.getAttribute("aria-label"));
+      expect(headers).toEqual(["짐 0/3", "묶음 없음 0/1", "캐리어 0/2"]);
+    });
+
+    it("묶음을 접으면 그 안의 줄만 사라진다 — 개수는 그대로다", async () => {
+      mockPrep([
+        item({ id: 1, title: "충전기", sectionLabel: "캐리어" }),
+        item({ id: 2, title: "여권 지갑", displayOrder: 1 }),
+      ]);
+      const user = userEvent.setup();
+      renderPrep();
+
+      await user.click(
+        await screen.findByRole("button", { name: "캐리어 0/1" }),
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByText("충전기")).not.toBeInTheDocument();
+      });
+      // 접은 것과 진행률은 다른 일이다. 접었다고 0/1이 사라지면 뭐가 남았는지 잃는다.
+      expect(screen.getByRole("button", { name: "캐리어 0/1" })).toBeVisible();
+      expect(screen.getByText("여권 지갑")).toBeVisible();
+    });
+
+    it("새 묶음을 만들면 다음 줄도 그 묶음으로 이어서 적힌다", async () => {
+      mockPrep();
+      const user = userEvent.setup();
+      renderPrep();
+
+      await user.click(await screen.findByLabelText(/추가할 분류/));
+      await user.click(await screen.findByRole("menuitem", { name: "짐" }));
+
+      await user.click(screen.getByLabelText(/추가할 묶음/));
+      await user.click(
+        await screen.findByRole("menuitem", { name: "새 묶음…" }),
+      );
+      await user.type(
+        await screen.findByLabelText("새 묶음 이름"),
+        "캐리어{Enter}",
+      );
+
+      const input = screen.getByLabelText("준비 항목 추가");
+      await user.type(input, "충전기{Enter}");
+      await user.type(input, "옷{Enter}");
+
+      // 줄마다 묶음을 다시 고르게 하면 묶는 것이 적는 것보다 오래 걸린다.
+      await waitFor(() => {
+        expect(
+          within(bagCard()).getByRole("button", { name: "캐리어 0/2" }),
+        ).toBeVisible();
+      });
+      expect(screen.getByLabelText("추가할 묶음: 캐리어")).toBeVisible();
+    });
+
+    it("분류를 바꾸면 묶음은 따라가지 않는다", async () => {
+      mockPrep([item({ id: 1, title: "충전기", sectionLabel: "캐리어" })]);
+      const user = userEvent.setup();
+      renderPrep();
+
+      await user.click(await screen.findByLabelText(/추가할 분류/));
+      await user.click(await screen.findByRole("menuitem", { name: "짐" }));
+      await user.click(screen.getByLabelText(/추가할 묶음/));
+      await user.click(await screen.findByRole("menuitem", { name: "캐리어" }));
+      expect(screen.getByLabelText("추가할 묶음: 캐리어")).toBeVisible();
+
+      await user.click(screen.getByLabelText(/추가할 분류/));
+      await user.click(await screen.findByRole("menuitem", { name: "할 일" }));
+
+      // 짐에만 있던 이름을 들고 넘어가면, 할 일에 「캐리어」가 하나 더 생긴다.
+      expect(screen.getByLabelText("추가할 묶음: 묶음 없음")).toBeVisible();
+    });
+
+    it("시트에서 묶음을 적으면 그 묶음으로 옮겨 간다", async () => {
+      const requests = mockPrep([
+        item({ id: 1, title: "충전기", sectionLabel: "캐리어" }),
+        item({ id: 2, title: "이어폰", displayOrder: 1 }),
+      ]);
+      const user = userEvent.setup();
+      renderPrep();
+
+      await user.click(await screen.findByRole("button", { name: "이어폰" }));
+      await user.click(
+        screen.getByRole("button", { name: "묶음 캐리어(으)로" }),
+      );
+      await user.click(screen.getByRole("button", { name: "저장" }));
+
+      await waitFor(() => {
+        expect(lastOf(requests.patched)).toMatchObject({
+          sectionLabel: "캐리어",
+        });
+      });
+      // 옮긴 항목은 그 묶음의 맨 뒤다 — 한가운데 나타나면 방금 누른 줄을 다시 찾아야 한다.
+      await waitFor(() => {
+        expect(
+          within(bagCard()).getByRole("button", { name: "캐리어 0/2" }),
+        ).toBeVisible();
+      });
+      const rows = within(bagCard())
+        .getAllByRole("listitem")
+        .map((li) => li.textContent);
+      expect(rows[0]).toContain("충전기");
+      expect(rows[1]).toContain("이어폰");
+    });
+
+    it("묶음을 비우면 「지워 달라」고 적어 보낸다 — 안 보낸 것과 다르다", async () => {
+      const requests = mockPrep([
+        item({ id: 1, title: "충전기", sectionLabel: "캐리어" }),
+      ]);
+      const user = userEvent.setup();
+      renderPrep();
+
+      await user.click(await screen.findByRole("button", { name: "충전기" }));
+      await user.clear(screen.getByLabelText("묶음"));
+      await user.click(screen.getByRole("button", { name: "저장" }));
+
+      await waitFor(() => {
+        expect(lastOf(requests.patched)?.clear).toContain("SECTION_LABEL");
+      });
+      expect(lastOf(requests.patched)?.sectionLabel).toBeUndefined();
+    });
   });
 
   it("오프라인이면 체크도 입력도 막는다 — 큐잉하지 않는다", async () => {

@@ -36,3 +36,9 @@ export const PREP_CATEGORY_ICON: Record<PrepCategory, LucideIcon> = {
  * 새로고침하면 여기로 돌아온다.
  */
 export const PREP_DEFAULT_OPEN: PrepCategory[] = ["BOOKING", "BAG"];
+
+/**
+ * 이름을 안 붙인 묶음의 이름(#1358). <b>이름 붙은 묶음이 하나라도 있을 때만 화면에 뜬다</b> —
+ * 아무것도 안 나눈 분류에 이 줄 하나가 늘어나면, 안 쓰는 사람에게는 군더더기다.
+ */
+export const PREP_NO_SECTION_LABEL = "묶음 없음";

@@ -12,5 +12,8 @@ public enum PrepField {
     QUANTITY,
     DUE_DAYS_BEFORE,
     URL,
-    MEMO
+    MEMO,
+
+    /** 묶음에서 빼서 「묶음 없음」으로 돌린다(#1358). */
+    SECTION_LABEL
 }

@@ -89,11 +89,14 @@ export function useUpdatePrepItem(tripId: number) {
           ...snapshot,
           groups: snapshot.groups.map((group) => ({
             ...group,
-            items: group.items.map((item) =>
-              item.id === itemId
-                ? { ...item, done: body.done as boolean }
-                : item,
-            ),
+            sections: group.sections.map((section) => ({
+              ...section,
+              items: section.items.map((item) =>
+                item.id === itemId
+                  ? { ...item, done: body.done as boolean }
+                  : item,
+              ),
+            })),
           })),
         });
       }

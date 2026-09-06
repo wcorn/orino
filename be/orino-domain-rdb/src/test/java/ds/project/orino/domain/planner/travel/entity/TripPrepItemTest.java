@@ -108,4 +108,71 @@ class TripPrepItemTest {
             assertThat(prep.getDisplayOrder()).isEqualTo(7);
         }
     }
+
+    /**
+     * 묶음(#1358). 이름 하나가 곧 묶음이라, 「캐리어」와 「캐리어 」가 다른 것이 되면
+     * 목록에 같은 이름의 소제목이 둘 생기고 화면에서는 구별할 방법이 없다.
+     */
+    @Nested
+    @DisplayName("묶음은 이름이 곧 자기 자신이다")
+    class Section {
+
+        @Test
+        @DisplayName("앞뒤 공백은 지우고, 공백뿐이면 묶음 없음이다")
+        void normalizesLabel() {
+            TripPrepItem prep = item(PrepCategory.BAG);
+
+            prep.changeSectionLabel("  캐리어 ");
+            assertThat(prep.getSectionLabel()).isEqualTo("캐리어");
+
+            prep.changeSectionLabel("   ");
+            assertThat(prep.getSectionLabel()).isNull();
+        }
+
+        @Test
+        @DisplayName("같은 묶음인지는 다듬은 이름으로 본다 — 공백 때문에 자리가 흔들리지 않게")
+        void comparesNormalized() {
+            TripPrepItem prep = item(PrepCategory.BAG);
+            prep.changeSectionLabel("캐리어");
+
+            assertThat(prep.isInSection(" 캐리어 ")).isTrue();
+            assertThat(prep.isInSection("기내백")).isFalse();
+            assertThat(prep.isInSection(null)).isFalse();
+        }
+
+        @Test
+        @DisplayName("묶음 없음도 하나의 묶음이다 — null끼리는 같다")
+        void noSectionEqualsNull() {
+            TripPrepItem prep = item(PrepCategory.BAG);
+
+            assertThat(prep.isInSection(null)).isTrue();
+            assertThat(prep.isInSection("  ")).isTrue();
+            assertThat(prep.isInSection("캐리어")).isFalse();
+        }
+
+        @Test
+        @DisplayName("묶음을 옮기면 자리도 함께 받는다")
+        void takesNewOrderWhenMoved() {
+            TripPrepItem prep = item(PrepCategory.BAG);
+
+            prep.changeSectionLabel("캐리어", 5);
+
+            assertThat(prep.getSectionLabel()).isEqualTo("캐리어");
+            assertThat(prep.getDisplayOrder()).isEqualTo(5);
+        }
+
+        @Test
+        @DisplayName("분류를 옮겨도 묶음 이름은 따라간다 — 수량과 다르다")
+        void survivesCategoryChange() {
+            TripPrepItem prep = item(PrepCategory.BAG);
+            prep.changeSectionLabel("캐리어");
+            prep.changeQuantity(4);
+
+            prep.changeCategory(PrepCategory.TODO, 7);
+
+            // 수량은 우리가 정의한 값이라 지우고, 묶음은 사용자가 적은 말이라 남긴다.
+            assertThat(prep.getQuantity()).isNull();
+            assertThat(prep.getSectionLabel()).isEqualTo("캐리어");
+        }
+    }
 }

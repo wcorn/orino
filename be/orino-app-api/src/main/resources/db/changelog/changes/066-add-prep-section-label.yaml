@@ -1,0 +1,38 @@
+databaseChangeLog:
+  # 준비 목록 안의 묶음 (#1358).
+  #
+  # 자동 롤백에 맡기지 않고 dropColumn을 직접 적는다 — 064와 같은 이유다.
+
+  - changeSet:
+      id: 066-add-prep-section-label
+      author: wcorn
+      comment: 분류 안의 묶음 이름. 분류를 늘리는 대신 한 겹을 넣는다(#1358).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: trip_prep_item
+                columnName: section_label
+      changes:
+        - addColumn:
+            tableName: trip_prep_item
+            columns:
+              # 「캐리어」·「기내백」처럼 사용자가 적는 이름. NULL이면 묶음 없음이고,
+              # 그 분류에 이름 붙은 묶음이 하나도 없으면 화면은 지금과 똑같이 그린다.
+              #
+              # 테이블을 따로 만들지 않는다. 묶음은 이름뿐이라 들고 있을 속성이 없고,
+              # 마지막 항목이 나가면 그대로 사라져야 한다 — 행으로 만들면 아무도 안 쓰는
+              # 빈 묶음이 남고, 그걸 지우는 화면을 또 만들게 된다.
+              #
+              # 순서 컬럼도 두지 않는다. 묶음의 자리는 그 안의 최소 display_order다 —
+              # 순서를 따로 저장하면 항목을 옮길 때마다 둘을 맞춰야 하고, 어긋나면
+              # 화면에서는 보이지 않는다.
+              - column:
+                  name: section_label
+                  type: VARCHAR(30)
+      rollback:
+        - dropColumn:
+            tableName: trip_prep_item
+            columns:
+              - column:
+                  name: section_label
