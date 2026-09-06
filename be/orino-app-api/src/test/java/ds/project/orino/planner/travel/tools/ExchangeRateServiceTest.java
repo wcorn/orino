@@ -52,7 +52,8 @@ class ExchangeRateServiceTest {
 
     private static final ToolsProperties PROPS = new ToolsProperties(
             "https://example.test", "https://example.test/fx.xml",
-            Duration.ofHours(6), Duration.ofHours(24),
+            Duration.ofHours(24), Duration.ofHours(6), Duration.ofMillis(800),
+            Duration.ofHours(24),
             Duration.ofSeconds(5), Duration.ofSeconds(10));
 
     private StubEcbRatesClient client;

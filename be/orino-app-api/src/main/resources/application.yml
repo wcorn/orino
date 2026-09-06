@@ -107,7 +107,12 @@ travel:
     weather-base-url: ${OPEN_METEO_BASE_URL:https://api.open-meteo.com}
     fx-url: ${ECB_FX_URL:https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml}
     # §4.7 — 예보 6시간, 환율 24시간(ECB는 하루 한 번 고시).
-    weather-ttl: ${WEATHER_TTL:6h}
+    # 예보는 6시간이 지나도 버리지 않는다(#1357) — 옛 값을 즉시 주고 뒤에서 갱신한다.
+    # 버리면 그 순간부터 다음 사람이 외부 호출을 기다리고, 그게 보드가 1초 걸리던 이유였다.
+    weather-ttl: ${WEATHER_TTL:24h}
+    weather-fresh-for: ${WEATHER_FRESH_FOR:6h}
+    # 캐시가 아예 없을 때만 기다린다. 넘기면 날씨 없이 보드를 준다.
+    weather-board-timeout: ${WEATHER_BOARD_TIMEOUT:800ms}
     fx-ttl: ${FX_TTL:24h}
     connect-timeout: ${TOOLS_CONNECT_TIMEOUT:5s}
     read-timeout: ${TOOLS_READ_TIMEOUT:10s}
