@@ -37,7 +37,7 @@ import { PREP_DEFAULT_OPEN } from "@/features/travel/prep/categories";
 import { PrepAddBar } from "@/features/travel/prep/PrepAddBar";
 import { PrepCategoryCard } from "@/features/travel/prep/PrepCategoryCard";
 import { PrepItemSheet } from "@/features/travel/prep/PrepItemSheet";
-import { moveTo } from "@/features/travel/prep/reorder";
+import { moveSection, moveTo } from "@/features/travel/prep/reorder";
 import { usePrepUndo } from "@/features/travel/prep/usePrepUndo";
 import { TripBreadcrumb } from "@/features/travel/trip/TripBreadcrumb";
 import { useOnline } from "@/shared/lib/useOnline";
@@ -134,16 +134,77 @@ export function TripPrepPage() {
     if (sections) reorder.mutate({ category, sections });
   };
 
-  /** 카드는 자기 분류 안에서만 정렬한다 — 끌어온 줄이 어느 분류의 것인지는 그것으로 정해진다. */
+  /** 묶음 하나를 다른 묶음 자리로 옮긴다(#1366). 배치를 통째로 보내는 길은 항목과 같다. */
+  const moveSectionTo = (
+    category: PrepCategory,
+    activeLabel: string,
+    overLabel: string,
+  ) => {
+    const group = groups.find((item) => item.category === category);
+    if (!group) return;
+    const sections = moveSection(group.sections, activeLabel, overLabel);
+    if (sections) reorder.mutate({ category, sections });
+  };
+
+  /**
+   * 끌어다 놓은 것을 배치로 옮긴다. 소제목은 문자열 id(`sec:분류:이름`), 항목은 숫자 id다.
+   *
+   * <p><b>소제목과 항목을 서로에게 떨어뜨려도 된다.</b> 소제목만 소제목에 맞추게 하면 접힌
+   * 묶음 사이에서 놓을 자리가 좁고, 항목을 소제목에 놓는 것은 「그 묶음으로」라는 뜻이 분명하다.
+   */
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const group = groups.find((item) =>
-      item.sections.some((section) =>
-        section.items.some((row) => row.id === Number(active.id)),
-      ),
-    );
-    if (group) move(group.category, Number(active.id), Number(over.id));
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    const sectionOf = (id: string) =>
+      id.startsWith("sec:") ? id.split(":")[2] : null;
+
+    /** 그 항목이 사는 분류와 묶음. 화면 전체에서 찾는다 — 카드는 넷이다. */
+    const findItem = (itemId: number) => {
+      for (const group of groups) {
+        for (const section of group.sections) {
+          if (section.items.some((row) => row.id === itemId)) {
+            return { category: group.category, label: section.label };
+          }
+        }
+      }
+      return null;
+    };
+
+    const activeLabel = sectionOf(activeId);
+    const activeCategory = activeLabel
+      ? (activeId.split(":")[1] as PrepCategory)
+      : findItem(Number(activeId))?.category;
+    if (!activeCategory) return;
+
+    const overLabel = sectionOf(overId);
+    const overItem = overLabel ? null : findItem(Number(overId));
+    // 분류가 다르면 아무 일도 없다 — 분류를 넘는 이동은 편집 시트가 한다.
+    const overCategory = overLabel
+      ? (overId.split(":")[1] as PrepCategory)
+      : overItem?.category;
+    if (overCategory !== activeCategory) return;
+
+    if (activeLabel) {
+      // 소제목을 끌었다. 항목 위에 놓았으면 그 항목의 묶음 자리로 간다.
+      const target = overLabel ?? overItem?.label;
+      if (target) moveSectionTo(activeCategory, activeLabel, target);
+      return;
+    }
+
+    if (overLabel) {
+      // 항목을 소제목 위에 놓았다 — 그 묶음의 첫 줄 자리로 보낸다.
+      const group = groups.find((item) => item.category === activeCategory);
+      const first = group?.sections.find(
+        (section) => section.label === overLabel,
+      )?.items[0];
+      if (first) move(activeCategory, Number(activeId), first.id);
+      return;
+    }
+
+    move(activeCategory, Number(activeId), Number(overId));
   };
 
   const openCategory = (category: PrepCategory) =>
@@ -319,6 +380,9 @@ export function TripPrepPage() {
               onEnterDragMode={() => setDragMode(true)}
               onMove={(activeId, overId) =>
                 move(group.category, activeId, overId)
+              }
+              onMoveSection={(activeLabel, overLabel) =>
+                moveSectionTo(group.category, activeLabel, overLabel)
               }
               onToggleItem={(item, done) =>
                 updateItem.mutate({ itemId: item.id, body: { done } })

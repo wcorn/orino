@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PrepItemView, PrepSection } from "../api/prep";
-import { applyOrders, moveTo } from "./reorder";
+import { applyOrders, moveSection, moveTo } from "./reorder";
 
 /**
  * 순서 계산(#1364). <b>규칙만 따로 못 박는다</b> — 화면에서 이걸 틀리면 「끌어다 놓은
@@ -146,5 +146,40 @@ describe("applyOrders", () => {
     ]);
 
     expect(result.map((row) => row.label)).toEqual([null, "캐리어", "세면백"]);
+  });
+});
+
+describe("moveSection", () => {
+  it("묶음을 다른 묶음 자리로 옮긴다 — 안의 항목은 그대로다", () => {
+    expect(moveSection(sections, "세면백", "캐리어")).toEqual([
+      { label: null, itemIds: [1, 2] },
+      { label: "세면백", itemIds: [5] },
+      { label: "캐리어", itemIds: [3, 4] },
+    ]);
+  });
+
+  it("묶음 없음은 움직이지도, 그 자리를 내주지도 않는다", () => {
+    // 이름을 안 붙인 것이 분류의 기본 상태라 언제나 맨 위다(#1358).
+    expect(moveSection(sections, "캐리어", null)).toBeNull();
+  });
+
+  it("제자리이거나 없는 이름이면 아무것도 하지 않는다", () => {
+    expect(moveSection(sections, "캐리어", "캐리어")).toBeNull();
+    expect(moveSection(sections, "없는묶음", "캐리어")).toBeNull();
+    expect(moveSection(sections, "캐리어", "없는묶음")).toBeNull();
+  });
+
+  it("빈 묶음은 배치에서 빠진다 — 서버가 빈 목록을 받지 않는다", () => {
+    // 실행취소를 기다리는 줄을 화면이 걷어낸 사이에 이런 묶음이 잠깐 생긴다.
+    const withEmpty = [
+      section(null, [item(1, "여권 지갑")]),
+      section("캐리어", []),
+      section("세면백", [item(5, "칫솔")]),
+    ];
+
+    expect(moveSection(withEmpty, "세면백", "캐리어")).toEqual([
+      { label: null, itemIds: [1] },
+      { label: "세면백", itemIds: [5] },
+    ]);
   });
 });
