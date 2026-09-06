@@ -25,6 +25,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -59,6 +61,9 @@ class BoardV21Test extends ApiTestSupport {
     private WeatherClient weatherClient;
     @Autowired
     private PlacesClient placesClient;
+
+    @Autowired
+    private ds.project.orino.support.TestClock testClock;
 
     private StubWeatherClient weatherStub;
     private String authHeader;
@@ -206,6 +211,125 @@ class BoardV21Test extends ApiTestSupport {
             board(tripId, today.toString())
                     .andExpect(jsonPath("$.data.days[0].weather.tempMax").value(20))
                     .andExpect(jsonPath("$.data.days[1].weather.tempMax").value(10));
+        }
+    }
+
+    /**
+     * 보드는 날씨를 기다리지 않는다(#1357).
+     *
+     * <p>예전에는 캐시가 비면 도시마다 순서대로 외부를 부르느라 보드 응답이 1~2초였다.
+     * <b>여기서 세는 것은 시간이다</b> — 호출 횟수만 보면 「느리지만 정확한」 구현도 통과한다.
+     */
+    @Nested
+    @DisplayName("날씨를 기다리지 않는다")
+    class WeatherDoesNotBlock {
+
+        /** 마감시한(800ms)에 여유를 둔 상한. 직렬로 기다리면 도시 수만큼 곱해져 훨씬 넘는다. */
+        private static final long BUDGET_MS = 2_000;
+
+        @Test
+        @DisplayName("캐시가 없고 외부가 느리면 날씨 없이 보드를 준다")
+        void servesBoardWithoutWeatherWhenSlow() throws Exception {
+            weatherStub.delay = Duration.ofSeconds(5);
+            long tripId = createTrip(leg(tokyo, 2));
+
+            long elapsed = millisOf(() -> board(tripId)
+                    // 보드는 그대로 뜬다 — 날씨는 부가 정보다.
+                    .andExpect(jsonPath("$.data.days", hasSize(2)))
+                    .andExpect(jsonPath("$.data.days[0].weather").doesNotExist()));
+
+            assertThat(elapsed).isLessThan(BUDGET_MS);
+        }
+
+        @Test
+        @DisplayName("도시가 여럿이어도 상한은 그대로다 — 도시마다 기다리지 않는다")
+        void deadlineIsSharedAcrossCities() throws Exception {
+            weatherStub.delay = Duration.ofSeconds(5);
+            long tripId = createTrip(leg(tokyo, 1), leg(nikko, 1), leg(osaka(), 1));
+
+            long elapsed = millisOf(() -> board(tripId).andExpect(status().isOk()));
+
+            // 도시마다 마감시한을 걸었다면 3배가 된다.
+            assertThat(elapsed).isLessThan(BUDGET_MS);
+        }
+
+        @Test
+        @DisplayName("느려서 못 받은 예보도 캐시에 들어간다 — 다음에 열면 붙어 있다")
+        void lateForecastStillWarmsCache() throws Exception {
+            LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Tokyo"));
+            weatherStub.byCoordinates = coords -> forecast(today, 20);
+            weatherStub.delay = Duration.ofMillis(1_200);
+            long tripId = createTripFrom(today, leg(tokyo, 1));
+
+            board(tripId, today.toString())
+                    .andExpect(jsonPath("$.data.days[0].weather").doesNotExist());
+
+            // 던져 둔 조회가 끝나면 캐시가 찬다. 두 번째 열람은 기다리지 않고 붙여 준다.
+            await(() -> board(tripId, today.toString())
+                    .andExpect(jsonPath("$.data.days[0].weather.tempMax").value(20)));
+        }
+
+        @Test
+        @DisplayName("6시간이 지난 예보는 그대로 주고, 갱신은 뒤에서 한 번만 나간다")
+        void staleForecastIsServedWhileRefreshing() throws Exception {
+            LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Tokyo"));
+            weatherStub.byCoordinates = coords -> forecast(today, 20);
+            long tripId = createTripFrom(today, leg(tokyo, 1));
+
+            Instant fetchedAt = Instant.now();
+            testClock.fixAt(fetchedAt);
+            board(tripId, today.toString())
+                    .andExpect(jsonPath("$.data.days[0].weather.tempMax").value(20));
+            assertThat(weatherStub.calls).hasSize(1);
+
+            // 7시간 뒤. 예보는 낡았지만 여전히 쓸모가 있다 — 버리면 그 순간 콜드가 된다.
+            testClock.fixAt(fetchedAt.plus(Duration.ofHours(7)));
+            weatherStub.byCoordinates = coords -> forecast(today, 30);
+            weatherStub.delay = Duration.ofSeconds(5);
+
+            long elapsed = millisOf(() -> board(tripId, today.toString())
+                    // 옛 값을 그대로 준다. 갱신을 기다리면 그게 보드를 1초 붙잡던 자리다.
+                    .andExpect(jsonPath("$.data.days[0].weather.tempMax").value(20)));
+            assertThat(elapsed).isLessThan(BUDGET_MS);
+
+            // 갱신이 도는 동안 연달아 열어도 외부로 또 나가지 않는다.
+            board(tripId, today.toString());
+            board(tripId, today.toString());
+
+            assertThat(weatherStub.calls).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("신선한 캐시는 외부를 다시 안 부른다")
+        void freshCacheDoesNotRefetch() throws Exception {
+            long tripId = createTrip(leg(tokyo, 2));
+            board(tripId).andExpect(status().isOk());
+            assertThat(weatherStub.calls).hasSize(1);
+
+            board(tripId).andExpect(status().isOk());
+
+            assertThat(weatherStub.calls).hasSize(1);
+        }
+
+        private long millisOf(ThrowingRunnable action) throws Exception {
+            long started = System.nanoTime();
+            action.run();
+            return (System.nanoTime() - started) / 1_000_000;
+        }
+
+        /** 뒤에서 도는 갱신이 끝나기를 기다린다. 끝나는 시점을 우리가 정하지 않는다. */
+        private void await(ThrowingRunnable assertion) throws Exception {
+            AssertionError last = null;
+            for (int i = 0; i < 40; i++) {
+                try {
+                    assertion.run();
+                    return;
+                } catch (AssertionError e) {
+                    last = e;
+                    Thread.sleep(100);
+                }
+            }
+            throw last;
         }
     }
 
@@ -542,6 +666,17 @@ class BoardV21Test extends ApiTestSupport {
         TravelPlace city = placeRepository.findById(cityPlaceId).orElseThrow();
         city.updateCityInfo(city.getName(), cityPlaceRef, "JP");
         placeRepository.saveAndFlush(city);
+    }
+
+    /** 세 번째 도시. 마감시한이 도시 수를 타지 않는지 볼 때만 쓴다. */
+    private long osaka() throws Exception {
+        return city("오사카", "34.6937", "135.5023");
+    }
+
+    /** 예외를 던지는 검증 블록. 시간을 재려면 람다로 감싸야 한다. */
+    @FunctionalInterface
+    private interface ThrowingRunnable {
+        void run() throws Exception;
     }
 
     private static String leg(long cityPlaceId, int days) {

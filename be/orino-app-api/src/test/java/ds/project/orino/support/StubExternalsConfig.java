@@ -22,6 +22,8 @@ import software.amazon.awssdk.services.s3.S3Client;
  *
  * <p>필요한 스텁만 골라 쓰고 나머지는 그대로 두면 된다. 안 쓰는 스텁은 아무 일도 하지 않는다.
  */
+import java.time.Clock;
+
 @TestConfiguration
 public class StubExternalsConfig {
 
@@ -39,8 +41,8 @@ public class StubExternalsConfig {
 
     @Bean
     @Primary
-    public WeatherClient stubWeatherClient() {
-        return new StubWeatherClient();
+    public WeatherClient stubWeatherClient(Clock clock) {
+        return new StubWeatherClient(clock);
     }
 
     @Bean
