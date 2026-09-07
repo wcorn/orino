@@ -42,7 +42,10 @@ import {
   toTimeInputValue,
   toWallClockTime,
 } from "@/features/travel/lib/tripClock";
-import { dayChips, formatShortDate } from "@/features/travel/lib/tripStatus";
+import {
+  dayChips,
+  formatDateWithWeekday,
+} from "@/features/travel/lib/tripStatus";
 import { RecordSection } from "@/features/travel/record/RecordSection";
 import { toast } from "@/shared/lib/toast";
 import { useOnline } from "@/shared/lib/useOnline";
@@ -184,7 +187,7 @@ export function ActivityDetailPage() {
           const where = city ? city.name : chip.weekday;
           return {
             value: chip.date,
-            label: `${chip.dayIndex}일차 · ${where} (${formatShortDate(chip.date)})`,
+            label: `${formatDateWithWeekday(chip.date)} · ${where}`,
           };
         })
       : []),
@@ -192,22 +195,15 @@ export function ActivityDetailPage() {
   ];
 
   /**
-   * 헤더 부제 — 며칠째의 어느 도시인가. 보관함 일정에는 날짜가 없다.
+   * 헤더 부제 — 언제, 어느 도시인가. 보관함 일정에는 날짜가 없다.
    *
-   * <p>아직 못 읽은 조각은 <b>빼고 잇는다.</b> 자리를 비워 두거나 `?일차`로 채우면 로딩 중
-   * 화면이 고장난 것처럼 보인다.
+   * <p>아직 못 읽은 조각은 <b>빼고 잇는다.</b> 자리를 비워 두면 로딩 중 화면이 고장난 것처럼
+   * 보인다. 도시는 늦게 오지만 날짜는 일정 자신이 들고 있어 먼저 뜬다.
    */
-  const dayIndex = board?.days.find(
-    (d) => d.date === activity.activityDate,
-  )?.dayIndex;
   const subtitle =
     activity.activityDate === null
       ? "보관함 · 날짜 미정"
-      : [
-          dayIndex === undefined ? null : `${dayIndex}일차`,
-          dayCity?.name,
-          formatShortDate(activity.activityDate),
-        ]
+      : [formatDateWithWeekday(activity.activityDate), dayCity?.name]
           .filter(Boolean)
           .join(" · ");
 

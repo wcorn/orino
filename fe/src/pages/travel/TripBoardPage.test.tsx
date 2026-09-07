@@ -418,8 +418,8 @@ describe("TripBoardPage", () => {
       const sheet = await screen.findByRole("dialog");
       const options = within(sheet).getAllByRole("button");
       // 교토 장소라 교토 날짜(2일차)가 오사카 날짜보다 위에 있다.
-      expect(options[0]).toHaveTextContent("2일차 · 교토");
-      expect(options[1]).toHaveTextContent("1일차 · 오사카");
+      expect(options[0]).toHaveTextContent("10.25 (일) · 교토");
+      expect(options[1]).toHaveTextContent("10.24 (토) · 오사카");
     });
 
     it("고른 날짜로 옮긴다", async () => {
@@ -438,7 +438,7 @@ describe("TripBoardPage", () => {
       );
       const sheet = await screen.findByRole("dialog");
       await userEvent.click(
-        within(sheet).getByRole("button", { name: /2일차 · 교토/ }),
+        within(sheet).getByRole("button", { name: /10\.25 \(일\) · 교토/ }),
       );
 
       await waitFor(() => expect(seen).toHaveLength(1));
@@ -672,7 +672,9 @@ describe("TripBoardPage", () => {
         vi.advanceTimersByTime(60);
       });
       expect(screen.getByRole("dialog")).toBeInTheDocument();
-      expect(screen.getByText(/2일차 10.25 · 지금은 닛코/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/10\.25 \(일\) · 지금은 닛코/),
+      ).toBeInTheDocument();
       vi.useRealTimers();
     });
 
@@ -817,7 +819,7 @@ describe("TripBoardPage", () => {
       );
 
       expect(await screen.findByRole("dialog")).toHaveTextContent(
-        "1일차 10.24 · 지금은 도쿄",
+        "10.24 (토) · 지금은 도쿄",
       );
     });
   });
@@ -2614,13 +2616,13 @@ describe("TripBoardPage", () => {
 
       // 1일차를 보고 있으니 남는 것은 2·3일차뿐이다.
       expect(
-        within(sheet).queryByRole("button", { name: /1일차/ }),
+        within(sheet).queryByRole("button", { name: /10\.24/ }),
       ).not.toBeInTheDocument();
       expect(
-        within(sheet).getByRole("button", { name: /2일차/ }),
+        within(sheet).getByRole("button", { name: /10\.25/ }),
       ).toBeInTheDocument();
       expect(
-        within(sheet).getByRole("button", { name: /3일차/ }),
+        within(sheet).getByRole("button", { name: /10\.26/ }),
       ).toBeInTheDocument();
     });
 
@@ -2633,10 +2635,10 @@ describe("TripBoardPage", () => {
 
       // DAYS: 2일차 0개, 3일차 1개.
       expect(
-        within(sheet).getByRole("button", { name: /2일차/ }),
+        within(sheet).getByRole("button", { name: /10\.25/ }),
       ).toHaveTextContent("비어 있음");
       expect(
-        within(sheet).getByRole("button", { name: /3일차/ }),
+        within(sheet).getByRole("button", { name: /10\.26/ }),
       ).toHaveTextContent("일정 1개");
     });
 
@@ -2680,7 +2682,7 @@ describe("TripBoardPage", () => {
       await screen.findByText("센소지");
       const sheet = await openSwapSheet();
       await userEvent.click(
-        within(sheet).getByRole("button", { name: /3일차/ }),
+        within(sheet).getByRole("button", { name: /10\.26/ }),
       );
 
       await waitFor(() => expect(seen).toHaveLength(1));
@@ -2689,7 +2691,7 @@ describe("TripBoardPage", () => {
         withDate: "2026-10-26",
       });
       expect(
-        await screen.findByText("1일차와 3일차의 일정을 맞바꿨어요."),
+        await screen.findByText("10.24 (토)와 10.26 (월)의 일정을 맞바꿨어요."),
       ).toBeInTheDocument();
       // 보드를 다시 읽어 이 날짜가 비었다.
       await waitFor(() =>
@@ -2715,7 +2717,7 @@ describe("TripBoardPage", () => {
       await screen.findByText("센소지");
       const sheet = await openSwapSheet();
       await userEvent.click(
-        within(sheet).getByRole("button", { name: /3일차/ }),
+        within(sheet).getByRole("button", { name: /10\.26/ }),
       );
 
       expect(

@@ -166,9 +166,13 @@ function metaLine(trip: SidebarTripSummary): string {
   return parts.join(" · ");
 }
 
-/** 「4일차」 / 「D-49」. 서버가 여행 타임존으로 낸 값이라 여기서 다시 세지 않는다. */
+/**
+ * 「D-49」. 예정 여행에만 붙는다 — 서버가 여행 타임존으로 낸 값이라 다시 세지 않는다.
+ *
+ * <p>진행 중 여행은 <b>비운다</b>(#1370). 예전에는 「4일차」가 있었는데 바로 아래 메타 줄이
+ * 이미 「10.24 – 10.29」를 말하고 있어, 상대값을 한 번 더 얹을 이유가 없다.
+ */
 function dayLabel(trip: SidebarTripSummary): string {
-  if (trip.dayNumber != null) return `${trip.dayNumber}일차`;
   if (trip.dDay == null) return "";
   return trip.dDay === 0 ? "D-day" : `D-${trip.dDay}`;
 }

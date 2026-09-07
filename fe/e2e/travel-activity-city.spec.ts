@@ -211,7 +211,7 @@ test.describe("일정 상세 · 도시를 넘어 들어오는 일정", () => {
     await page.goto("/travel/activities/1");
 
     // 부제가 며칠째의 어느 도시인지 말한다.
-    await expect(page.getByText("1일차 · 교토 · 10.24")).toBeVisible();
+    await expect(page.getByText("10.24 (토) · 교토").first()).toBeVisible();
     await expect(
       page.getByText("보드에서 이동 시간을 적으면 알림이 잡혀요"),
     ).toBeVisible();

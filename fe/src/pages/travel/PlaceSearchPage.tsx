@@ -22,6 +22,7 @@ import {
   getRecentSearches,
 } from "@/features/travel/lib/recentSearches";
 import { failureOf } from "@/features/travel/lib/searchFailure";
+import { formatDateWithWeekday } from "@/features/travel/lib/tripStatus";
 import { GoogleAttribution } from "@/features/travel/places/GoogleAttribution";
 import {
   type PlaceAddInput,
@@ -142,10 +143,7 @@ export function PlaceSearchPage() {
       },
       {
         onSuccess: () => {
-          const where =
-            date === null
-              ? "보관함"
-              : `${board?.days.find((d) => d.date === date)?.dayIndex ?? ""}일차`;
+          const where = date === null ? "보관함" : formatDateWithWeekday(date);
           toast(`${where}에 담았어요`, "success");
           setTarget(null);
         },

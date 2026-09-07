@@ -176,7 +176,10 @@ describe("TravelHomePage", () => {
     renderApp();
 
     expect(await screen.findByText("오늘 · 오사카 → 교토")).toBeInTheDocument();
-    expect(screen.getByText("4일차")).toBeInTheDocument();
+    // 큰 자리와 일자 칩이 같은 날짜를 말한다 — 둘 다 오늘이다.
+    expect(screen.getAllByText("10.27 (화)").length).toBeGreaterThan(0);
+    // 「4일차」는 여행 안에서만 뜻이 있는 값이라 더는 쓰지 않는다(#1370).
+    expect(screen.queryByText(/일차/)).toBeNull();
     expect(screen.getByText("Asia/Tokyo · JPY")).toBeInTheDocument();
   });
 
@@ -209,7 +212,7 @@ describe("TravelHomePage", () => {
     expect(screen.getByText("D-120")).toBeInTheDocument();
   });
 
-  it("일자 칩을 기간만큼 만든다(1단계는 일차·요일만)", async () => {
+  it("일자 칩을 기간만큼 만든다(1단계는 날짜만)", async () => {
     mockSummary({
       ongoing: null,
       next: { ...TOKYO, dDay: 78, cities: cities(["도쿄"]) },
@@ -220,9 +223,9 @@ describe("TravelHomePage", () => {
     renderApp();
 
     await waitFor(() => {
-      expect(screen.getByText("1일차 · 토")).toBeInTheDocument();
+      expect(screen.getByText("10.24 (토)")).toBeInTheDocument();
     });
-    expect(screen.getByText("4일차 · 화")).toBeInTheDocument();
+    expect(screen.getByText("10.27 (화)")).toBeInTheDocument();
     // 날씨는 4단계라 이 화면엔 온도가 없다.
     expect(screen.queryByText(/°/)).toBeNull();
   });

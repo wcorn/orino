@@ -220,7 +220,7 @@ describe("Sidebar", () => {
       );
     });
 
-    it("진행 중이면 「4일차」, 예정이면 「D-49」 — 둘이 같은 자리를 나눠 쓴다", async () => {
+    it("진행 중이면 기간, 예정이면 「D-49」 — 둘이 같은 자리를 나눠 쓴다", async () => {
       tripsSummary([
         trip(3, "일본 가을", { status: "ONGOING", dDay: null, dayNumber: 4 }),
         trip(7, "도쿄 3박 4일"),
@@ -229,7 +229,9 @@ describe("Sidebar", () => {
       renderSidebar("/travel");
 
       const ongoing = await screen.findByRole("link", { name: /일본 가을/ });
-      expect(ongoing).toHaveTextContent("4일차");
+      // 진행 중 여행이 둘이면 「4일차」「2일차」로는 어느 쪽이 언제인지 구별되지 않는다.
+      expect(ongoing).toHaveTextContent("10.24–10.27");
+      expect(ongoing).not.toHaveTextContent("일차");
       expect(ongoing).not.toHaveTextContent("D-");
       expect(
         screen.getByRole("link", { name: /도쿄 3박 4일/ }),

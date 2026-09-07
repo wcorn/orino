@@ -4,6 +4,7 @@ import {
   dayChips,
   daysUntil,
   deriveStatus,
+  formatDateWithWeekday,
   formatPeriod,
   formatShortDate,
   todayIn,
@@ -160,6 +161,23 @@ describe("포맷", () => {
   it("짧은 날짜는 월의 0을 떼고 일은 두 자리로 둔다", () => {
     expect(formatShortDate("2026-10-24")).toBe("10.24");
     expect(formatShortDate("2026-05-03")).toBe("5.03");
+  });
+
+  /**
+   * 여행 화면이 날짜를 말하는 기본 형식(#1370). 예전에는 자리마다 `N일차`가 그 역할을 했는데,
+   * 상대값이라 혼자 있으면 그게 며칠인지 알 수 없었다.
+   */
+  it("날짜에 요일을 붙인다 — 여행 계획은 요일을 탄다", () => {
+    expect(formatDateWithWeekday("2026-10-24")).toBe("10.24 (토)");
+    expect(formatDateWithWeekday("2026-10-27")).toBe("10.27 (화)");
+    // 월의 0은 떼고 일은 두 자리 — formatShortDate와 같은 규칙이다.
+    expect(formatDateWithWeekday("2026-05-03")).toBe("5.03 (일)");
+  });
+
+  it("자정을 넘기지 않는다 — 서머타임 경계에서도 그 날짜의 요일이다", () => {
+    // 로컬 자정으로 읽으면 하루가 23·25시간인 날에 요일이 밀린다(UTC로 읽는 이유).
+    expect(formatDateWithWeekday("2026-03-08")).toBe("3.08 (일)");
+    expect(formatDateWithWeekday("2026-11-01")).toBe("11.01 (일)");
   });
 });
 

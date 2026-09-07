@@ -13,7 +13,7 @@ import {
   failureOf,
   type SearchFailure,
 } from "@/features/travel/lib/searchFailure";
-import { formatShortDate } from "@/features/travel/lib/tripStatus";
+import { formatDateWithWeekday } from "@/features/travel/lib/tripStatus";
 import { GoogleAttribution } from "@/features/travel/places/GoogleAttribution";
 import { SearchUnavailable } from "@/features/travel/places/SearchUnavailable";
 import { cn } from "@/lib/utils";
@@ -134,7 +134,7 @@ export function BaseCitySheet({
       title="기준 도시"
       description={
         day
-          ? `${day.dayIndex}일차 ${formatShortDate(day.date)} · 지금은 ${currentName}`
+          ? `${formatDateWithWeekday(day.date)} · 지금은 ${currentName}`
           : undefined
       }
     >

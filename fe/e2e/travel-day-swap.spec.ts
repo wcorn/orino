@@ -162,17 +162,17 @@ test.describe("하루 통째로 교체", () => {
     await page.getByRole("menuitem", { name: "다른 날짜와 교체" }).click();
 
     const sheet = page.getByRole("dialog");
-    // 보고 있는 1일차는 목록에 없고, 건너올 일정 수가 함께 보인다.
-    await expect(sheet.getByRole("button", { name: /일차/ })).toHaveCount(1);
-    await expect(sheet.getByRole("button", { name: /2일차/ })).toContainText(
+    // 보고 있는 날짜(10.24)는 목록에 없고, 건너올 일정 수가 함께 보인다.
+    await expect(sheet.getByRole("button", { name: /10\./ })).toHaveCount(1);
+    await expect(sheet.getByRole("button", { name: /10\.25/ })).toContainText(
       "일정 1개",
     );
 
-    await sheet.getByRole("button", { name: /2일차/ }).click();
+    await sheet.getByRole("button", { name: /10\.25/ }).click();
 
     await expect(page.getByRole("dialog")).toBeHidden();
     expect(captured.swaps).toEqual([{ date: D1, withDate: D2 }]);
-    // 보드를 다시 읽어 2일차의 일정이 이 날짜에 서 있다.
+    // 보드를 다시 읽어 10.25의 일정이 이 날짜에 서 있다.
     await expect(page.getByText("하코네 온천")).toBeVisible();
     await expect(page.getByText("센소지")).toBeHidden();
 

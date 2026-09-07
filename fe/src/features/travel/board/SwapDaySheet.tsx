@@ -2,6 +2,7 @@ import { ArrowLeftRight, CalendarDays } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import type { BoardDay } from "@/features/travel/api/activities";
+import { formatDateWithWeekday } from "@/features/travel/lib/tripStatus";
 
 interface SwapDaySheetProps {
   open: boolean;
@@ -14,9 +15,11 @@ interface SwapDaySheetProps {
   pending?: boolean;
 }
 
-/** `3일차 · 교토` — 다구간 여행에서 "3일차"만으로는 어디인지 알 수 없다. */
+/** `10.26 (월) · 교토` — 어느 도시의 날짜인지가 날짜만큼 중요하다(다구간 여행). */
 function dayLabel(day: BoardDay) {
-  return `${day.dayIndex}일차${day.baseCity ? ` · ${day.baseCity.name}` : ""}`;
+  return `${formatDateWithWeekday(day.date)}${
+    day.baseCity ? ` · ${day.baseCity.name}` : ""
+  }`;
 }
 
 /**

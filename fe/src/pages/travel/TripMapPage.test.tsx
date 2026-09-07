@@ -189,7 +189,7 @@ describe("TripMapPage", () => {
   });
 
   describe("헤더", () => {
-    it("몇 일차인지와 지도에 찍힌 개수를 보여준다", async () => {
+    it("어느 날짜의 동선인지와 지도에 찍힌 개수를 보여준다", async () => {
       mockBoard({
         "2026-10-24": [
           activity({ id: 1, place: SENSOJI }),
@@ -200,7 +200,7 @@ describe("TripMapPage", () => {
       renderMap();
 
       expect(
-        await screen.findByRole("heading", { name: "1일차 동선" }),
+        await screen.findByRole("heading", { name: "10.24 (토) 동선" }),
       ).toBeInTheDocument();
       expect(
         screen.getByText("장소가 있는 일정 1개 · 직선 연결"),
@@ -219,7 +219,7 @@ describe("TripMapPage", () => {
       renderMap("/travel/trips/3/map?day=1");
 
       expect(
-        await screen.findByRole("heading", { name: "2일차 동선" }),
+        await screen.findByRole("heading", { name: "10.25 (일) 동선" }),
       ).toBeInTheDocument();
       expect(
         screen.getByText("장소가 있는 일정 2개 · 직선 연결"),
@@ -233,7 +233,7 @@ describe("TripMapPage", () => {
 
       const user = userEvent.setup();
       renderMap("/travel/trips/3/map?day=1");
-      await screen.findByRole("heading", { name: "2일차 동선" });
+      await screen.findByRole("heading", { name: "10.25 (일) 동선" });
 
       await user.click(screen.getByRole("button", { name: "리스트로 전환" }));
 
@@ -333,7 +333,7 @@ describe("TripMapPage", () => {
       renderMap();
 
       expect(
-        await screen.findByRole("heading", { name: "1일차 동선" }),
+        await screen.findByRole("heading", { name: "10.24 (토) 동선" }),
       ).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "이 날짜" })).toHaveAttribute(
         "aria-pressed",
@@ -347,7 +347,7 @@ describe("TripMapPage", () => {
 
       const user = userEvent.setup();
       renderMap("/travel/trips/3/map?day=1");
-      await screen.findByRole("heading", { name: "2일차 동선" });
+      await screen.findByRole("heading", { name: "10.25 (일) 동선" });
 
       await user.click(screen.getByRole("button", { name: "전체" }));
       expect(
@@ -357,7 +357,7 @@ describe("TripMapPage", () => {
       // 돌아오면 보던 날짜여야 한다 — 모드만 바꾼 것이지 날짜를 버린 게 아니다.
       await user.click(screen.getByRole("button", { name: "이 날짜" }));
       expect(
-        await screen.findByRole("heading", { name: "2일차 동선" }),
+        await screen.findByRole("heading", { name: "10.25 (일) 동선" }),
       ).toBeInTheDocument();
     });
 
@@ -427,7 +427,7 @@ describe("TripMapPage", () => {
       await user.click(await screen.findByRole("button", { name: "지도" }));
 
       expect(
-        await screen.findByRole("heading", { name: "2일차 동선" }),
+        await screen.findByRole("heading", { name: "10.25 (일) 동선" }),
       ).toBeInTheDocument();
     });
   });
