@@ -32,6 +32,7 @@ import {
 import {
   dayChips,
   daysUntil,
+  formatDateWithWeekday,
   formatPeriod,
 } from "@/features/travel/lib/tripStatus";
 
@@ -120,6 +121,11 @@ function FeaturedTripCard({
   // 돌아와도 숫자가 맞아야 한다. 기준은 첫날 도시다(`trip.timezone`이 그 값이다).
   const days = daysUntil(trip.startDate, firstDayZone(trip.timezone));
   const chips = dayChips(trip.startDate, trip.endDate);
+  // 오늘 날짜 — 서버가 준 「오늘이 며칠째인가」를 기간 위의 날짜로 되돌린다.
+  const todayDate =
+    cities?.todayDayIndex == null
+      ? null
+      : (chips[cities.todayDayIndex - 1]?.date ?? null);
   const cityCount = formatCityCount(cities?.count ?? 0);
   const todayCity = formatTodayCity(cities);
   // 진행 중이면 <b>오늘 도시의</b> 타임존·통화다 — 여행 하나에 값 하나이던 v2.0과 다르다.
@@ -141,8 +147,8 @@ function FeaturedTripCard({
         </div>
         <div className="col-start-2 text-right">
           <p className="text-display text-primary font-semibold tabular-nums">
-            {ongoing && cities?.todayDayIndex
-              ? `${cities.todayDayIndex}일차`
+            {ongoing && todayDate
+              ? formatDateWithWeekday(todayDate)
               : formatDDay(days)}
           </p>
           <p className="text-caption text-muted-foreground">
@@ -168,7 +174,7 @@ function FeaturedTripCard({
               className="border-border min-w-[84px] shrink-0 rounded-lg border px-2.5 py-2"
             >
               <p className="text-caption text-muted-foreground">
-                {chip.dayIndex}일차 · {chip.weekday}
+                {formatDateWithWeekday(chip.date)}
               </p>
             </li>
           ))}

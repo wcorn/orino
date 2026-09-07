@@ -169,13 +169,13 @@ class TripExpenseApiTest extends ApiTestSupport {
             expense(tripId, 32000, "이자카야", "2026-01-15");
 
             expenses(tripId)
-                    .andExpect(jsonPath("$.data.groups[1].label").value("2일차 · 오사카"));
+                    .andExpect(jsonPath("$.data.groups[1].label").value("1.15 (목) · 오사카"));
 
             changeBaseCity(dayIdOf(tripId, 1), kyoto);
 
             // 저장했다면 옛 도시가 조용히 남았을 자리다.
             expenses(tripId)
-                    .andExpect(jsonPath("$.data.groups[1].label").value("2일차 · 교토"))
+                    .andExpect(jsonPath("$.data.groups[1].label").value("1.15 (목) · 교토"))
                     .andExpect(jsonPath("$.data.groups[1].cityName").value("교토"));
         }
     }

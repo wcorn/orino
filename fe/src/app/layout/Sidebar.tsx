@@ -42,6 +42,7 @@ import type {
 } from "@/features/travel/api/travel";
 import { useTravelSummary } from "@/features/travel/hooks/useTravelSummary";
 import { readLastTrip, rememberTrip } from "@/features/travel/lib/lastTrip";
+import { formatShortDate } from "@/features/travel/lib/tripStatus";
 import { travelKeys } from "@/features/travel/queryKeys";
 import { cn } from "@/lib/utils";
 
@@ -153,9 +154,20 @@ function tripTabOf(pathname: string): TripTab | null {
   return null;
 }
 
-/** 「4일차」 / 「D-49」 / 「D-day」. 진행 중과 예정이 같은 자리를 나눠 쓴다. */
+/**
+ * 「10.24–10.29」 / 「D-49」. 진행 중과 예정이 같은 자리를 나눠 쓴다.
+ *
+ * <p>진행 중이면 <b>기간</b>이다(#1370). 예전에는 「4일차」였는데, 진행 중 여행이 둘이면
+ * 「4일차」와 「2일차」가 나란히 떠서 <b>어느 쪽이 언제인지 구별되지 않았다</b> — 여행을
+ * 가려내는 값은 기간이지 진행률이 아니다.
+ *
+ * <p>예정은 그대로 D-day다. 「얼마 남았나」가 질문이면 상대값이 곧 답이고, 출발일은 옆의
+ * 고르기 화면·목록이 말해 준다.
+ */
 function tripBadgeOf(trip: SidebarTripSummary): string | null {
-  if (trip.dayNumber != null) return `${trip.dayNumber}일차`;
+  if (trip.dayNumber != null) {
+    return `${formatShortDate(trip.startDate)}–${formatShortDate(trip.endDate)}`;
+  }
   if (trip.dDay == null) return null;
   return trip.dDay === 0 ? "D-day" : `D-${trip.dDay}`;
 }

@@ -144,7 +144,7 @@ test.describe("검색 기준 도시", () => {
     const { searches, created } = await mockTrip(page);
     await page.goto(`/travel/trips/${TRIP_ID}/places?q=시장`);
 
-    // 보던 날짜(1일차)가 오사카라 기준도 오사카다.
+    // 보던 날짜(10.24)가 오사카라 기준도 오사카다.
     await expect(
       page.getByRole("button", { name: "검색 기준 도시 오사카" }),
     ).toBeVisible();
@@ -180,7 +180,7 @@ test.describe("검색 기준 도시", () => {
     // 담으면 그 도시 식별자가 함께 저장된다 — 보관함 도시 그룹이 여기서 살아난다.
     await page.getByRole("button", { name: "담기" }).click();
     await page.getByRole("combobox", { name: "날짜" }).click();
-    await page.getByRole("option", { name: /2일차/ }).click();
+    await page.getByRole("option", { name: /10\.25/ }).click();
     await page.getByRole("button", { name: "저장" }).click();
 
     await expect.poll(() => created.length).toBe(1);

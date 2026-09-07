@@ -304,7 +304,7 @@ describe("PlaceSearchPage", () => {
       expect(bodies).toHaveLength(0);
 
       await user.click(screen.getByRole("combobox", { name: "날짜" }));
-      await user.click(await screen.findByRole("option", { name: /2일차/ }));
+      await user.click(await screen.findByRole("option", { name: /10\.25/ }));
       await user.click(screen.getByRole("button", { name: "저장" }));
 
       await waitFor(() => expect(bodies).toHaveLength(1));
@@ -313,7 +313,9 @@ describe("PlaceSearchPage", () => {
         activityDate: "2026-10-25",
         googlePlaceId: "ChIJ_senso",
       });
-      expect(await screen.findByText("2일차에 담았어요")).toBeInTheDocument();
+      expect(
+        await screen.findByText("10.25 (일)에 담았어요"),
+      ).toBeInTheDocument();
     });
 
     it("보던 날짜가 미리 골라져 있다 — 3일차를 짜다 들어왔으면 담을 곳도 그 날짜다", async () => {
@@ -439,7 +441,7 @@ describe("PlaceSearchPage", () => {
 
       await user.click(await screen.findByRole("button", { name: "담기" }));
       await user.click(await screen.findByRole("combobox", { name: "날짜" }));
-      await user.click(await screen.findByRole("option", { name: /1일차/ }));
+      await user.click(await screen.findByRole("option", { name: /10\.24/ }));
       await user.click(screen.getByRole("button", { name: "저장" }));
 
       expect(await screen.findByText(/담지 못했어요/)).toBeInTheDocument();
@@ -481,7 +483,7 @@ describe("PlaceSearchPage", () => {
 
       // 장소만 만들고 끝나면 어디에도 보이지 않는다 — 바로 담기 시트를 열어야 한다.
       await user.click(await screen.findByRole("combobox", { name: "날짜" }));
-      await user.click(await screen.findByRole("option", { name: /1일차/ }));
+      await user.click(await screen.findByRole("option", { name: /10\.24/ }));
       await user.click(screen.getByRole("button", { name: "저장" }));
 
       await waitFor(() => expect(bodies).toHaveLength(1));
@@ -636,7 +638,7 @@ describe("PlaceSearchPage", () => {
 
       await user.click(await screen.findByRole("button", { name: "담기" }));
       await user.click(await screen.findByRole("combobox", { name: "날짜" }));
-      await user.click(await screen.findByRole("option", { name: /1일차/ }));
+      await user.click(await screen.findByRole("option", { name: /10\.24/ }));
       await user.click(screen.getByRole("button", { name: "저장" }));
 
       await waitFor(() => expect(created).toHaveLength(1));
@@ -655,8 +657,8 @@ describe("PlaceSearchPage", () => {
 
       const options = (await screen.findAllByRole("option"))
         .map((option) => option.textContent ?? "")
-        .filter((text) => text.includes("일차"));
-      expect(options[0]).toContain("2일차");
+        .filter((text) => text.includes("10."));
+      expect(options[0]).toContain("10.25 (일)");
     });
   });
 });

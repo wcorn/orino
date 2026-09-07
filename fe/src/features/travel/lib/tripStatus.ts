@@ -120,6 +120,21 @@ export function formatShortDate(date: string): string {
 }
 
 /**
+ * "2026-10-24" → "10.24 (금)".
+ *
+ * <p>여행 화면에서 <b>날짜를 말하는 기본 형식</b>이다(#1370). 예전에는 자리마다 `N일차`가
+ * 그 역할을 했는데, 「4일차」는 여행 안에서만 뜻이 있는 상대값이라 <b>혼자 있으면 그게
+ * 며칠인지 알 수 없다</b> — 같은 모양이 여럿 쌓이는 자리(경비 날짜 카드, 진행 중 여행이
+ * 둘인 사이드바)에서는 구별조차 안 됐다.
+ *
+ * <p>요일을 붙이는 이유는 여행 계획이 요일을 탄다는 것이다 — 휴무일·주말 혼잡·항공권 값이
+ * 전부 요일에 걸린다. 「10.24」만으로는 그게 금요일인지 매번 달력을 봐야 한다.
+ */
+export function formatDateWithWeekday(date: string): string {
+  return `${formatShortDate(date)} (${weekdayOf(date)})`;
+}
+
+/**
  * 기간 한 줄. "10월 24일 – 10월 27일", 하루짜리면 한 번만 쓴다.
  */
 export function formatPeriod(startDate: string, endDate: string): string {

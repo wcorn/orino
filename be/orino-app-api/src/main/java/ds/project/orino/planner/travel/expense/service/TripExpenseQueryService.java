@@ -18,10 +18,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.format.TextStyle;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -141,14 +143,28 @@ public class TripExpenseQueryService {
             int dayNumber = trip.dayNumberOf(date);
             String cityName = cityNameOn(date, cities);
             String label = cityName == null
-                    ? "%d일차".formatted(dayNumber)
-                    : "%d일차 · %s".formatted(dayNumber, cityName);
+                    ? labelOf(date)
+                    : "%s · %s".formatted(labelOf(date), cityName);
             groups.add(group("DAY-" + dayNumber, label, dayNumber, date, cityName, dayRows));
         });
         if (!after.isEmpty()) {
             groups.add(group("AFTER", "다녀온 뒤", null, null, null, after));
         }
         return groups;
+    }
+
+    /**
+     * 「10.24 (금)」 — 묶음 이름의 날짜 부분.
+     *
+     * <p>예전에는 「2일차」였다(#1370). 「N일차」는 여행 안에서만 뜻이 있는 상대값이라,
+     * 날짜 카드가 세로로 쌓이면 <b>그게 며칠인지 알 수 없다</b> — 무엇을 언제 썼는지 보려고
+     * 여는 화면에서 그건 답이 아니다.
+     *
+     * <p>{@code dayNumber}는 응답에 그대로 남는다. 화면이 오늘 묶음을 찾는 데 쓴다.
+     */
+    private static String labelOf(LocalDate date) {
+        return "%d.%02d (%s)".formatted(date.getMonthValue(), date.getDayOfMonth(),
+                date.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.KOREAN));
     }
 
     private static TripExpenseResponse.ExpenseGroup group(

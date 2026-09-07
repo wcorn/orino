@@ -85,6 +85,7 @@ import {
 } from "@/features/travel/lib/stayActivity";
 import { stayBadges } from "@/features/travel/lib/stayBadge";
 import { overlapMessage } from "@/features/travel/lib/stayForDay";
+import { formatDateWithWeekday } from "@/features/travel/lib/tripStatus";
 import { PickDaySheet } from "@/features/travel/places/PickDaySheet";
 import { StayBadge } from "@/features/travel/stay/StayBadge";
 import { StayFormSheet } from "@/features/travel/stay/StayFormSheet";
@@ -216,7 +217,6 @@ export function TripBoardPage() {
   const selectedDate = isArchive ? null : (requestedDate ?? board.selectedDate);
   /** 아직 고른 날짜의 일정이 오지 않았다. 앞 날짜의 목록을 그 날의 것처럼 보여줄 수는 없다. */
   const loadingDay = board.selectedDate !== selectedDate;
-  const selectedIndex = board.days.findIndex((d) => d.date === selectedDate);
   // 실행취소를 기다리는 동안에는 이미 사라진 것처럼 보여야 한다(낙관적 반영).
   const activities = loadingDay
     ? []
@@ -417,7 +417,9 @@ export function TripBoardPage() {
         withDate: target.date,
       });
       toast(
-        `${swapFrom.dayIndex}일차와 ${target.dayIndex}일차의 일정을 맞바꿨어요.`,
+        `${formatDateWithWeekday(swapFrom.date)}와 ${formatDateWithWeekday(
+          target.date,
+        )}의 일정을 맞바꿨어요.`,
         "success",
       );
       setSwapFrom(null);
@@ -919,9 +921,7 @@ export function TripBoardPage() {
 
       {/* 선택된 탭 위치를 스크린리더에도 알린다. */}
       <span className="sr-only" aria-live="polite">
-        {selectedDate === null
-          ? "보관함"
-          : `${selectedIndex + 1}일차 ${selectedDate}`}
+        {selectedDate === null ? "보관함" : formatDateWithWeekday(selectedDate)}
       </span>
     </div>
   );

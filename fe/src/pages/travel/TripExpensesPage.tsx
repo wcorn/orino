@@ -20,6 +20,7 @@ import {
   useTripExpenses,
 } from "@/features/travel/hooks/useTripExpensesQuery";
 import { cityOn } from "@/features/travel/lib/baseCity";
+import { formatDateWithWeekday } from "@/features/travel/lib/tripStatus";
 import { TripBreadcrumb } from "@/features/travel/trip/TripBreadcrumb";
 import { useOnline } from "@/shared/lib/useOnline";
 
@@ -202,7 +203,6 @@ export function TripExpensesPage() {
         tripId={tripId}
         cityName={todayCity?.name ?? null}
         cityCurrency={todayCity?.currency ?? null}
-        dayNumber={data.todayDayNumber}
         occurredOn={occurredOn}
         onSaved={() => setQuickOpen(false)}
       />
@@ -220,12 +220,12 @@ export function TripExpensesPage() {
   );
 }
 
-/** 「4일차 · 오사카」. 여행이 끝났으면 총 일수로 말한다. */
+/** 「10.26 (월) · 오사카」. 여행이 끝났으면 총 일수로 말한다. */
 function describe(data: {
   status: string;
   todayDayNumber: number | null;
   totals: { days: number };
-  groups: { key: string; cityName: string | null }[];
+  groups: { key: string; date: string | null; cityName: string | null }[];
 }): string {
   if (data.status === "COMPLETED") {
     return `다녀온 여행 · 총 ${data.totals.days}일`;
@@ -236,7 +236,11 @@ function describe(data: {
   const today = data.groups.find(
     (group) => group.key === `DAY-${data.todayDayNumber}`,
   );
-  return today?.cityName
-    ? `${data.todayDayNumber}일차 · ${today.cityName}`
-    : `${data.todayDayNumber}일차`;
+  // 오늘에 해당하는 묶음이 없으면 말할 날짜도 없다 — 지어내지 않는다.
+  if (!today?.date) {
+    return "";
+  }
+  return today.cityName
+    ? `${formatDateWithWeekday(today.date)} · ${today.cityName}`
+    : formatDateWithWeekday(today.date);
 }

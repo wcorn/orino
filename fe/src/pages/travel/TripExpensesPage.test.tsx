@@ -54,13 +54,13 @@ function mockExpenses(partial: Partial<TripExpenses> = {}) {
     groups: [
       group({
         key: "DAY-1",
-        label: "1일차 · 오사카",
+        label: "10.24 (토) · 오사카",
         dayNumber: 1,
         cityName: "오사카",
       }),
       group({
         key: "DAY-2",
-        label: "2일차 · 오사카",
+        label: "10.25 (일) · 오사카",
         dayNumber: 2,
         cityName: "오사카",
         sum: 32000,
@@ -234,10 +234,10 @@ describe("TripExpensesPage", () => {
     // 오늘(2일차)의 줄은 보이고, 1일차는 접혀 있다.
     expect(await screen.findByText("이자카야")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /1일차 · 오사카/ }),
+      screen.getByRole("button", { name: /10\.24 \(토\) · 오사카/ }),
     ).toHaveAttribute("aria-expanded", "false");
     expect(
-      screen.getByRole("button", { name: /2일차 · 오사카/ }),
+      screen.getByRole("button", { name: /10\.25 \(일\) · 오사카/ }),
     ).toHaveAttribute("aria-expanded", "true");
   });
 
@@ -247,7 +247,7 @@ describe("TripExpensesPage", () => {
     renderExpenses();
 
     await user.click(
-      await screen.findByRole("button", { name: /1일차 · 오사카/ }),
+      await screen.findByRole("button", { name: /10\.24 \(토\) · 오사카/ }),
     );
 
     expect(screen.getByText("아직 적은 게 없어요")).toBeInTheDocument();
@@ -341,7 +341,7 @@ describe("TripExpensesPage", () => {
       groups: [
         group({
           key: "DAY-2",
-          label: "2일차 · 오사카",
+          label: "10.25 (일) · 오사카",
           dayNumber: 2,
           sum: 11300,
           rows: [

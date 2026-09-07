@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { BoardDay } from "@/features/travel/api/activities";
+import { formatDateWithWeekday } from "@/features/travel/lib/tripStatus";
 
 /** 날짜 자리에 쓰는 `보관함` 값. 날짜 문자열과 섞이지 않는 값이어야 한다. */
 const ARCHIVE = "archive";
@@ -70,7 +71,9 @@ export function PlaceAddSheet({
       value: day.date,
       // 어느 도시의 날짜인지가 몇 일차인지만큼 중요하다 — 다구간 여행에서
       // "3일차"만으로는 어디인지 알 수 없다.
-      label: `${day.dayIndex}일차${day.baseCity ? ` · ${day.baseCity.name}` : ""} (${day.date.slice(5)} ${day.weekday})`,
+      label: `${formatDateWithWeekday(day.date)}${
+        day.baseCity ? ` · ${day.baseCity.name}` : ""
+      }`,
     })),
     { value: ARCHIVE, label: "보관함 · 날짜는 나중에" },
   ];

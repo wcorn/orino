@@ -9,7 +9,10 @@ import { useBoard } from "@/features/travel/hooks/useBoard";
 import { useCityLegs } from "@/features/travel/hooks/useCityLegs";
 import { cityLabelOfDays } from "@/features/travel/lib/cityLabel";
 import { cityMarkers, legPath } from "@/features/travel/lib/cityMarkers";
-import { formatShortDate } from "@/features/travel/lib/tripStatus";
+import {
+  formatDateWithWeekday,
+  formatShortDate,
+} from "@/features/travel/lib/tripStatus";
 import { useGoogleMaps } from "@/features/travel/map/googleMaps";
 import { toMapped } from "@/features/travel/map/toMapped";
 import type { MapPoint } from "@/features/travel/map/TripMap";
@@ -86,8 +89,7 @@ export function TripMapPage() {
 
   const mapped = toMapped(board.activities);
   const markers = cityMarkers(legs ?? []);
-  const dayNumber =
-    board.days.findIndex((d) => d.date === board.selectedDate) + 1;
+  const selectedDate = board.selectedDate;
 
   const points: MapPoint[] =
     mode === "all"
@@ -132,7 +134,9 @@ export function TripMapPage() {
         </Button>
         <div className="min-w-0 flex-1">
           <h1 className="text-heading font-semibold">
-            {mode === "all" ? "여행 전체" : `${dayNumber}일차 동선`}
+            {mode === "all" || selectedDate === null
+              ? "여행 전체"
+              : `${formatDateWithWeekday(selectedDate)} 동선`}
           </h1>
           <p className="text-muted-foreground text-xs">
             {mode === "all"

@@ -177,7 +177,7 @@ test.describe("지도 범위 토글", () => {
 
     // 기본은 하루다.
     await expect(
-      page.getByRole("heading", { name: "1일차 동선" }),
+      page.getByRole("heading", { name: "10.24 (토) 동선" }),
     ).toBeVisible();
 
     await page.getByRole("button", { name: "전체" }).click();

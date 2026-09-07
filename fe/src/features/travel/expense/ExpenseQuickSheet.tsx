@@ -10,6 +10,7 @@ import {
   useLedgerCategories,
 } from "@/features/ledger/hooks/useLedgerQueries";
 import { formatAmount } from "@/features/ledger/lib/money";
+import { formatDateWithWeekday } from "@/features/travel/lib/tripStatus";
 import { cn } from "@/lib/utils";
 
 import { getLastAsset, rememberLastAsset } from "./lastAsset";
@@ -33,8 +34,7 @@ interface ExpenseQuickSheetProps {
   /** 오늘 있는 도시. 통화 기본값이 여기서 온다 — `trip.currency`는 v2.1에서 사라졌다. */
   cityName: string | null;
   cityCurrency: string | null;
-  dayNumber: number | null;
-  /** 오늘 날짜(여행 기준). 서버가 준 값을 그대로 쓴다. */
+  /** 오늘 날짜(여행 기준). 서버가 준 값을 그대로 쓴다. 부제도 이 값으로 말한다. */
   occurredOn: string;
   onSaved: () => void;
 }
@@ -57,7 +57,6 @@ export function ExpenseQuickSheet({
   tripId,
   cityName,
   cityCurrency,
-  dayNumber,
   occurredOn,
   onSaved,
 }: ExpenseQuickSheetProps) {
@@ -144,7 +143,7 @@ export function ExpenseQuickSheet({
       open={open}
       onOpenChange={onOpenChange}
       title="지출 적기"
-      description={describe(cityName, dayNumber)}
+      description={describe(cityName, occurredOn)}
     >
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-2">
@@ -222,11 +221,11 @@ export function ExpenseQuickSheet({
   );
 }
 
-/** 「오사카 · 4일차 · 30초 안에 끝나게」. 모르는 값은 조용히 뺀다. */
-function describe(cityName: string | null, dayNumber: number | null): string {
+/** 「오사카 · 10.26 (월) · 30초 안에 끝나게」. 모르는 값은 조용히 뺀다. */
+function describe(cityName: string | null, date: string | null): string {
   return [
     cityName,
-    dayNumber === null ? null : `${dayNumber}일차`,
+    date === null ? null : formatDateWithWeekday(date),
     "30초 안에 끝나게",
   ]
     .filter(Boolean)

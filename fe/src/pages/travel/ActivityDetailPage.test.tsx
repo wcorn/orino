@@ -119,7 +119,7 @@ describe("ActivityDetailPage", () => {
     expect(screen.getByLabelText("링크")).toHaveValue("https://example.com");
   });
 
-  it("날짜 선택지에 1일차~N일차와 보관함이 있다", async () => {
+  it("날짜 선택지에 기간의 날짜 전부와 보관함이 있다", async () => {
     mockDetail();
     renderDetail();
 
@@ -129,15 +129,15 @@ describe("ActivityDetailPage", () => {
     await userEvent.click(screen.getByRole("combobox", { name: "날짜" }));
 
     expect(
-      await screen.findByRole("option", { name: /1일차/ }),
+      await screen.findByRole("option", { name: /10\.24/ }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /3일차/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /10\.26/ })).toBeInTheDocument();
     expect(
       screen.getByRole("option", { name: "보관함 (미배정)" }),
     ).toBeInTheDocument();
   });
 
-  it("날짜 선택지에 도시명이 붙는다 — `4일차`만으로는 어디로 옮기는지 모른다", async () => {
+  it("날짜 선택지에 도시명이 붙는다 — 날짜만으로는 어디로 옮기는지 모른다", async () => {
     mockDetail();
     renderDetail();
     await waitFor(() => {
@@ -148,15 +148,19 @@ describe("ActivityDetailPage", () => {
 
     // 기본 보드 목이 1일차를 도쿄로 준다.
     expect(
-      await screen.findByRole("option", { name: "1일차 · 도쿄 (10.24)" }),
+      await screen.findByRole("option", { name: "10.24 (토) · 도쿄" }),
     ).toBeInTheDocument();
   });
 
-  it("헤더 부제가 며칠째의 어느 도시인지 말한다", async () => {
+  it("헤더 부제가 언제 어느 도시인지 말한다", async () => {
     mockDetail();
     renderDetail();
 
-    expect(await screen.findByText("1일차 · 도쿄 · 10.24")).toBeInTheDocument();
+    // 날짜 선택지도 같은 문구를 쓴다 — 부제는 그중 컨트롤 안에 있지 않은 쪽이다.
+    const subtitle = (await screen.findAllByText("10.24 (토) · 도쿄")).find(
+      (el) => el.closest("button") === null,
+    );
+    expect(subtitle).toBeVisible();
   });
 
   it("보관함 일정은 날짜가 없다고 말한다", async () => {

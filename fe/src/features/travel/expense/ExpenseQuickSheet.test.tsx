@@ -83,7 +83,6 @@ function renderSheet(
         tripId={12}
         cityName="오사카"
         cityCurrency="JPY"
-        dayNumber={4}
         occurredOn="2026-10-27"
         onSaved={() => {}}
         {...props}
@@ -247,11 +246,13 @@ describe("ExpenseQuickSheet", () => {
     expect(created[0]).toMatchObject({ categoryId: null });
   });
 
-  it("어디에서 몇 일차인지 말해 준다", async () => {
+  it("어디에서 언제 쓰는 돈인지 말해 준다", async () => {
     mockLedger();
     renderSheet();
 
     const sheet = within(await screen.findByRole("dialog"));
-    expect(sheet.getByText("오사카 · 4일차 · 30초 안에 끝나게")).toBeVisible();
+    expect(
+      sheet.getByText("오사카 · 10.27 (화) · 30초 안에 끝나게"),
+    ).toBeVisible();
   });
 });

@@ -145,7 +145,8 @@ describe("TripPickerPage", () => {
       "10.24 – 10.29 · 준비 18/24 · 경비 41.2만",
     );
     expect(ongoing).toHaveTextContent("기한 지난 것 1개");
-    expect(ongoing).toHaveTextContent("4일차");
+    // 기간이 바로 위 메타 줄에 있으므로 상대값을 한 번 더 얹지 않는다.
+    expect(ongoing).not.toHaveTextContent("일차");
 
     // 준비도 경비도 없는 여행은 그 조각을 아예 빼고 기간만 남긴다.
     const upcoming = main().getByRole("link", { name: /도쿄 3박 4일/ });
