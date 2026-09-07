@@ -5,6 +5,7 @@ import ds.project.orino.planner.travel.activity.dto.ActivityLogRequest;
 import ds.project.orino.planner.travel.activity.dto.ActivityLogResponse;
 import ds.project.orino.planner.travel.activity.dto.ActivityResponse;
 import ds.project.orino.planner.travel.activity.dto.ActivityWriteRequest;
+import ds.project.orino.planner.travel.activity.dto.DaySwapRequest;
 import ds.project.orino.planner.travel.activity.dto.ReorderRequest;
 import ds.project.orino.planner.travel.activity.dto.ReorderResponse;
 import ds.project.orino.planner.travel.activity.service.ActivityService;
@@ -68,6 +69,23 @@ public class ActivityController {
                                                     @PathVariable Long activityId,
                                                     @Valid @RequestBody ActivityLogRequest request) {
         return ApiResponse.success(activityService.saveLog(memberId, activityId, request));
+    }
+
+    /**
+     * 하루의 일정을 통째로 다른 날짜와 맞바꾼다.
+     *
+     * <p>일정만 건너간다 — 기준 도시·숙소·도시 메모는 날짜에 남는다. 한쪽이 비어 있으면
+     * 그대로 그 날짜로 통째 이동이다.
+     *
+     * <p>돌려줄 것이 없다. 두 날짜와 날짜 탭의 건수가 한꺼번에 바뀌어, 화면은 어차피
+     * 보드를 다시 읽는다 — 반쪽짜리 응답을 만들어 이어붙이는 편이 더 어긋나기 쉽다.
+     */
+    @PutMapping("/trips/{tripId}/activities/swap")
+    public ApiResponse<Void> swapDays(@AuthenticationPrincipal Long memberId,
+                                      @PathVariable Long tripId,
+                                      @Valid @RequestBody DaySwapRequest request) {
+        activityService.swapDays(memberId, tripId, request);
+        return ApiResponse.success();
     }
 
     /** 드래그 결과 반영 — 순서 변경과 날짜 이동을 한 트랜잭션으로 처리한다. */

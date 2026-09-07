@@ -43,6 +43,7 @@ class ActivityControllerTest extends ApiTestSupport {
 
     private static final String DAY1 = "2026-10-24";
     private static final String DAY2 = "2026-10-25";
+    private static final String DAY3 = "2026-10-26";
 
     @Autowired
     private MemberRepository memberRepository;
@@ -491,6 +492,114 @@ class ActivityControllerTest extends ApiTestSupport {
         }
     }
 
+    @Nested
+    @DisplayName("PUT /trips/{id}/activities/swap")
+    class SwapDays {
+
+        @Test
+        @DisplayName("두 날짜의 일정이 순서를 지킨 채 통째로 맞바뀐다")
+        void swapsBothDays() throws Exception {
+            long a = createActivity("A", DAY1);
+            long b = createActivity("B", DAY1);
+            long c = createActivity("C", DAY2);
+
+            swap(DAY1, DAY2);
+
+            assertOrder(DAY1, List.of(c));
+            assertOrder(DAY2, List.of(a, b));
+        }
+
+        @Test
+        @DisplayName("빈 날짜와 바꾸면 그대로 그 날짜로 옮겨간다")
+        void movesWholeDayIntoEmptyDate() throws Exception {
+            long a = createActivity("A", DAY1);
+            long b = createActivity("B", DAY1);
+
+            swap(DAY1, DAY3);
+
+            assertThat(activityRepository
+                    .findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(
+                            tripId, LocalDate.parse(DAY1))).isEmpty();
+            assertOrder(DAY3, List.of(a, b));
+        }
+
+        @Test
+        @DisplayName("보관함 일정은 어느 쪽에도 딸려가지 않는다")
+        void leavesArchiveUntouched() throws Exception {
+            long archived = createActivity("보관됨", null);
+            createActivity("A", DAY1);
+
+            swap(DAY1, DAY2);
+
+            assertThat(activityRepository.findUnscheduled(tripId))
+                    .extracting(TripActivity::getId).containsExactly(archived);
+        }
+
+        @Test
+        @DisplayName("같은 날짜끼리는 바꿀 수 없다(400)")
+        void rejectsSameDate() throws Exception {
+            createActivity("A", DAY1);
+
+            mockMvc.perform(put("/api/travel/trips/" + tripId + "/activities/swap")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"date": "%s", "withDate": "%s"}
+                                    """.formatted(DAY1, DAY1)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-025"));
+        }
+
+        @Test
+        @DisplayName("기간 밖 날짜와는 바꿀 수 없다(400)")
+        void rejectsDateOutsideTrip() throws Exception {
+            long a = createActivity("A", DAY1);
+
+            mockMvc.perform(put("/api/travel/trips/" + tripId + "/activities/swap")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"date": "%s", "withDate": "2026-12-01"}
+                                    """.formatted(DAY1)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-007"));
+
+            // 거절했으니 1일차는 그대로다.
+            assertOrder(DAY1, List.of(a));
+        }
+
+        @Test
+        @DisplayName("보관함(null)과는 바꿀 수 없다(400)")
+        void rejectsArchive() throws Exception {
+            createActivity("A", DAY1);
+
+            mockMvc.perform(put("/api/travel/trips/" + tripId + "/activities/swap")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"date": "%s", "withDate": null}
+                                    """.formatted(DAY1)))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("남의 여행은 바꿀 수 없다(404)")
+        void rejectsOtherMembersTrip() throws Exception {
+            long a = createActivity("A", DAY1);
+
+            mockMvc.perform(put("/api/travel/trips/" + tripId + "/activities/swap")
+                            .header(HttpHeaders.AUTHORIZATION, otherAuthHeader)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"date": "%s", "withDate": "%s"}
+                                    """.formatted(DAY1, DAY2)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-001"));
+
+            assertOrder(DAY1, List.of(a));
+        }
+    }
+
     /**
      * 시각을 밀리게 하는 설정이 다시 들어오지 않게 막는다(#1201).
      *
@@ -576,6 +685,16 @@ class ActivityControllerTest extends ApiTestSupport {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) JsonPath.read(body, "$.data.id")).longValue();
+    }
+
+    private void swap(String date, String withDate) throws Exception {
+        mockMvc.perform(put("/api/travel/trips/" + tripId + "/activities/swap")
+                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"date": "%s", "withDate": "%s"}
+                                """.formatted(date, withDate)))
+                .andExpect(status().isOk());
     }
 
     private void reorder(String body) throws Exception {
