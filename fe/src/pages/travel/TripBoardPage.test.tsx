@@ -2595,4 +2595,145 @@ describe("TripBoardPage", () => {
       expect(screen.queryByText(/숙소로 이동/)).not.toBeInTheDocument();
     });
   });
+  describe("하루 통째로 교체", () => {
+    /** 여행 메뉴에서 교체 시트를 연다. */
+    async function openSwapSheet() {
+      await userEvent.click(screen.getByRole("button", { name: "여행 메뉴" }));
+      await userEvent.click(
+        await screen.findByRole("menuitem", { name: "다른 날짜와 교체" }),
+      );
+      return screen.findByRole("dialog");
+    }
+
+    it("보고 있는 날짜는 목록에 없다 — 자기 자신과는 바꿀 게 없다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+
+      renderBoard();
+      await screen.findByText("센소지");
+      const sheet = await openSwapSheet();
+
+      // 1일차를 보고 있으니 남는 것은 2·3일차뿐이다.
+      expect(
+        within(sheet).queryByRole("button", { name: /1일차/ }),
+      ).not.toBeInTheDocument();
+      expect(
+        within(sheet).getByRole("button", { name: /2일차/ }),
+      ).toBeInTheDocument();
+      expect(
+        within(sheet).getByRole("button", { name: /3일차/ }),
+      ).toBeInTheDocument();
+    });
+
+    it("건너올 일정 수를 미리 보여준다 — 빈 날짜는 통째 이동이라고 말한다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+
+      renderBoard();
+      await screen.findByText("센소지");
+      const sheet = await openSwapSheet();
+
+      // DAYS: 2일차 0개, 3일차 1개.
+      expect(
+        within(sheet).getByRole("button", { name: /2일차/ }),
+      ).toHaveTextContent("비어 있음");
+      expect(
+        within(sheet).getByRole("button", { name: /3일차/ }),
+      ).toHaveTextContent("일정 1개");
+    });
+
+    it("날짜를 고르면 두 날짜를 함께 보내고 바뀐 결과를 다시 읽는다", async () => {
+      const seen: Record<string, unknown>[] = [];
+      let swapped = false;
+      mockBoard({
+        byDate: { "2026-10-24": [activity()], "2026-10-26": [] },
+      });
+      server.use(
+        http.put(
+          `${API_BASE}/travel/trips/:tripId/activities/swap`,
+          async ({ request }) => {
+            seen.push((await request.json()) as Record<string, unknown>);
+            swapped = true;
+            return HttpResponse.json({ code: "OK", data: null });
+          },
+        ),
+        // 교체 뒤의 보드. 무효화가 실제로 일어나는지는 화면이 바뀌는 것으로만 알 수 있다.
+        http.get(`${API_BASE}/travel/trips/:tripId/board`, ({ request }) => {
+          const date =
+            new URL(request.url).searchParams.get("date") ?? "2026-10-24";
+          const activities =
+            swapped || date !== "2026-10-24" ? [] : [activity()];
+          return HttpResponse.json({
+            code: "OK",
+            data: {
+              trip: TRIP,
+              days: DAYS,
+              selectedDate: date,
+              archiveCount: 0,
+              activities,
+              moves: [],
+              stayMove: null,
+            },
+          });
+        }),
+      );
+
+      renderBoard();
+      await screen.findByText("센소지");
+      const sheet = await openSwapSheet();
+      await userEvent.click(
+        within(sheet).getByRole("button", { name: /3일차/ }),
+      );
+
+      await waitFor(() => expect(seen).toHaveLength(1));
+      expect(seen[0]).toEqual({
+        date: "2026-10-24",
+        withDate: "2026-10-26",
+      });
+      expect(
+        await screen.findByText("1일차와 3일차의 일정을 맞바꿨어요."),
+      ).toBeInTheDocument();
+      // 보드를 다시 읽어 이 날짜가 비었다.
+      await waitFor(() =>
+        expect(screen.queryByText("센소지")).not.toBeInTheDocument(),
+      );
+    });
+
+    it("실패하면 시트를 닫지 않고 그대로 둔다 — 다시 고를 곳이 있어야 한다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+      server.use(
+        http.put(`${API_BASE}/travel/trips/:tripId/activities/swap`, () =>
+          HttpResponse.json(
+            {
+              code: "TRAVEL-ERR-025",
+              message: "같은 날짜끼리는 교체할 수 없습니다.",
+            },
+            { status: 400 },
+          ),
+        ),
+      );
+
+      renderBoard();
+      await screen.findByText("센소지");
+      const sheet = await openSwapSheet();
+      await userEvent.click(
+        within(sheet).getByRole("button", { name: /3일차/ }),
+      );
+
+      expect(
+        await screen.findByText("일정을 맞바꾸지 못했어요."),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("보관함에는 맞바꿀 하루가 없다 — 메뉴가 열리지 않는다", async () => {
+      mockBoard({ archive: [activity()] });
+
+      renderBoard("/travel/trips/3/board?day=archive");
+      await screen.findByText("센소지");
+
+      await userEvent.click(screen.getByRole("button", { name: "여행 메뉴" }));
+      expect(
+        await screen.findByRole("menuitem", { name: "다른 날짜와 교체" }),
+      ).toHaveAttribute("aria-disabled", "true");
+    });
+  });
 });

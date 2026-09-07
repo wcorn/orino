@@ -9,6 +9,7 @@ import {
   type MoveWriteRequest,
   reorderActivities,
   saveMove,
+  swapDayActivities,
   updateActivity,
 } from "../api/activities";
 import { travelKeys } from "../queryKeys";
@@ -116,6 +117,19 @@ export function useReorderActivities(tripId: number) {
     },
 
     onSettled: invalidate,
+  });
+}
+
+/**
+ * 하루 통째로 교체. 캐시를 좁혀 손대지 않고 보드를 통째로 비운다 — 두 날짜의 목록과
+ * 날짜 탭 건수가 한꺼번에 바뀌고, 이동·알림도 서버가 다시 짠다.
+ */
+export function useSwapDayActivities(tripId: number) {
+  const invalidate = useInvalidateBoard(tripId);
+  return useMutation({
+    mutationFn: (body: { date: string; withDate: string }) =>
+      swapDayActivities(tripId, body),
+    onSuccess: invalidate,
   });
 }
 

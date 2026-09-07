@@ -16,6 +16,7 @@ import ds.project.orino.planner.travel.activity.dto.ActivityLogResponse;
 import ds.project.orino.planner.travel.activity.dto.ActivityPlace;
 import ds.project.orino.planner.travel.activity.dto.ActivityResponse;
 import ds.project.orino.planner.travel.activity.dto.ActivityWriteRequest;
+import ds.project.orino.planner.travel.activity.dto.DaySwapRequest;
 import ds.project.orino.planner.travel.activity.dto.ReorderRequest;
 import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.photo.dto.PhotoResponse;
@@ -226,6 +227,43 @@ public class ActivityService {
                         activityRepository.findAllByTripIdAndActivityDateOrderBySortOrderAscIdAsc(
                                 tripId, date)).stream())
                 .toList();
+    }
+
+    /**
+     * 두 날짜의 일정을 통째로 맞바꾼다.
+     *
+     * <p><b>일정만 건너간다.</b> 기준 도시·숙소·도시 메모는 날짜에 남는다 — 숙소는 체크인·
+     * 체크아웃 날짜에 묶여 있고, 기준 도시까지 따라가면 구간이 다시 나뉘어 숙소와 어긋난다.
+     *
+     * <p>각 날짜 안의 순서는 그대로 따라간다. 3일차의 세 일정이 5일차에 가서도 같은 순서로
+     * 서야, 맞바꾼 사람이 다시 정렬하지 않는다.
+     *
+     * <p>한쪽이 비어 있으면 그대로 "그 날짜로 통째 이동"이 된다 — 따로 분기하지 않는다.
+     */
+    @Transactional
+    public void swapDays(Long memberId, Long tripId, DaySwapRequest request) {
+        Trip trip = getOwnedTrip(memberId, tripId);
+        requireDateWithinTrip(trip, request.date());
+        requireDateWithinTrip(trip, request.withDate());
+        if (request.date().equals(request.withDate())) {
+            throw new CustomException(ErrorCode.TRAVEL_DAY_SWAP_SAME_DATE);
+        }
+
+        // 두 목록을 먼저 다 읽는다. 한쪽을 옮긴 뒤 다른 쪽을 읽으면 방금 옮겨 놓은 일정이
+        // 딸려 와, 맞바꾸는 대신 한 날짜로 전부 모인다.
+        List<TripActivity> here = activitiesOn(tripId, request.date());
+        List<TripActivity> there = activitiesOn(tripId, request.withDate());
+        here.forEach(activity -> activity.moveTo(request.withDate(), activity.getSortOrder()));
+        there.forEach(activity -> activity.moveTo(request.date(), activity.getSortOrder()));
+        activityRepository.flush();
+
+        // 순서는 이미 날짜별 0..n-1이라 그대로 따라오지만, 옛 데이터에 구멍이 남아 있으면
+        // 다음 드래그가 어긋난다. 옮긴 김에 양쪽을 정규화한다.
+        reindex(tripId, request.date());
+        reindex(tripId, request.withDate());
+        // 두 날짜 모두 무엇을 언제 하는지가 통째로 바뀌었다 — 알림도 이동도 다시 짠다(§4.2).
+        notificationService.rescheduleDate(tripId, request.date());
+        notificationService.rescheduleDate(tripId, request.withDate());
     }
 
     /**

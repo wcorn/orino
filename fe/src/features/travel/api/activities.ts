@@ -339,6 +339,24 @@ export async function deleteMove(
   });
 }
 
+/**
+ * 하루의 일정을 통째로 다른 날짜와 맞바꾼다.
+ *
+ * <p><b>일정만 건너간다.</b> 기준 도시·숙소·도시 메모는 날짜에 남는다 — 숙소는 체크인·
+ * 체크아웃 날짜에 묶여 있고, 기준 도시까지 따라가면 구간이 다시 나뉘어 숙소와 어긋난다.
+ *
+ * <p>맞바꿀 날짜가 비어 있으면 그대로 "그 날짜로 통째 이동"이다. 보관함(null)은 보내지
+ * 않는다 — 거기엔 맞바꿀 하루가 없다.
+ *
+ * <p>응답이 없다. 두 날짜와 날짜 탭의 건수가 한꺼번에 바뀌어 어차피 보드를 다시 읽는다.
+ */
+export async function swapDayActivities(
+  tripId: number,
+  body: { date: string; withDate: string },
+): Promise<void> {
+  await client.put(`/travel/trips/${tripId}/activities/swap`, body);
+}
+
 /** 날짜 하나의 전체 순서. 부분 갱신은 보내지 않는다(순서가 비결정적이 된다). */
 export interface ReorderMove {
   /** null이면 미배정 보관함. */

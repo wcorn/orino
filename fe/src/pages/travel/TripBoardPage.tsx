@@ -54,12 +54,14 @@ import { MoveRow } from "@/features/travel/board/MoveRow";
 import { type MoveDraft, MoveSheet } from "@/features/travel/board/MoveSheet";
 import { OfflineBanner } from "@/features/travel/board/OfflineBanner";
 import { usePendingActions } from "@/features/travel/board/pendingActions";
+import { SwapDaySheet } from "@/features/travel/board/SwapDaySheet";
 import { useUndoableAction } from "@/features/travel/board/useUndoableAction";
 import {
   useCreateActivity,
   useDeleteMove,
   useReorderActivities,
   useSaveMove,
+  useSwapDayActivities,
   useUpdateActivity,
 } from "@/features/travel/hooks/useActivityMutations";
 import { useBoard } from "@/features/travel/hooks/useBoard";
@@ -150,6 +152,8 @@ export function TripBoardPage() {
   const [cityDay, setCityDay] = useState<BoardDay | null>(null);
   /** 날짜를 고르는 중인 보관함 일정. null이면 시트가 닫혀 있다. */
   const [pickingDayFor, setPickingDayFor] = useState<Activity | null>(null);
+  /** 통째로 맞바꿀 날짜를 고르는 중인 날짜. null이면 시트가 닫혀 있다. */
+  const [swapFrom, setSwapFrom] = useState<BoardDay | null>(null);
   const [dragMode, setDragMode] = useState(false);
   /** 편집 시트를 연 이동 구간. null이면 닫혀 있다. */
   const [openMove, setOpenMove] = useState<Move | null>(null);
@@ -181,6 +185,7 @@ export function TripBoardPage() {
   const updateActivity = useUpdateActivity(tripId);
   const updateDay = useUpdateDay(tripId);
   const reorder = useReorderActivities(tripId);
+  const swapDays = useSwapDayActivities(tripId);
   const saveMove = useSaveMove(tripId);
   const removeMove = useDeleteMove(tripId);
   const undoable = useUndoableAction(tripId);
@@ -397,6 +402,30 @@ export function TripBoardPage() {
     }
   };
 
+  /**
+   * 보고 있는 날짜의 일정을 고른 날짜와 통째로 맞바꾼다.
+   *
+   * <p><b>되돌리기를 붙이지 않는다.</b> 한 번 더 맞바꾸면 그대로 원래대로 돌아온다 —
+   * 실행취소 토스트를 두면 같은 일을 하는 길이 둘이 되고, 5초 안에 눌러야 하는 쪽이
+   * 더 조급하다.
+   */
+  const swapWithDay = async (target: BoardDay) => {
+    if (!swapFrom) return;
+    try {
+      await swapDays.mutateAsync({
+        date: swapFrom.date,
+        withDate: target.date,
+      });
+      toast(
+        `${swapFrom.dayIndex}일차와 ${target.dayIndex}일차의 일정을 맞바꿨어요.`,
+        "success",
+      );
+      setSwapFrom(null);
+    } catch {
+      toast("일정을 맞바꾸지 못했어요.", "error");
+    }
+  };
+
   /** 행을 길게 눌렀다 — 드래그 모드로 들어간다. */
   const enterDragMode = () => {
     if (dragMode) return;
@@ -585,6 +614,17 @@ export function TripBoardPage() {
               onClick={() => setCityDay(selectedDay)}
             >
               기준 도시 변경
+            </MenuItem>
+            {/* 하루씩 짜 놓고 나서 "이 날과 저 날을 바꾸자"가 되는 일이 잦다. 일정을
+                한 건씩 옮기면 순서도 이동도 다시 짜야 한다. 날짜가 하나뿐인 여행에는
+                바꿀 상대가 없다. */}
+            <MenuItem
+              disabled={
+                selectedDay === null || board.days.length < 2 || !online
+              }
+              onClick={() => setSwapFrom(selectedDay)}
+            >
+              다른 날짜와 교체
             </MenuItem>
             <MenuItem onClick={() => navigate(`/travel/trips/${tripId}/edit`)}>
               구간 수정
@@ -807,6 +847,17 @@ export function TripBoardPage() {
         onPick={(date) => pickingDayFor && void pickDayFor(pickingDayFor, date)}
         pending={updateActivity.isPending}
       />
+
+      {swapFrom && (
+        <SwapDaySheet
+          open
+          onOpenChange={(open) => !open && setSwapFrom(null)}
+          from={swapFrom}
+          days={board.days}
+          onPick={(target) => void swapWithDay(target)}
+          pending={swapDays.isPending}
+        />
+      )}
 
       <BaseCitySheet
         day={cityDay}
