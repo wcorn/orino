@@ -8,6 +8,7 @@ import ds.project.orino.domain.planner.travel.repository.TravelPlaceRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.day.service.TripDayService;
 import ds.project.orino.planner.travel.external.ExternalApiRejectedException;
+import ds.project.orino.planner.travel.place.dto.CityRefreshResponse;
 import ds.project.orino.planner.travel.place.client.PlaceResult;
 import ds.project.orino.planner.travel.place.client.PlacesClient;
 import ds.project.orino.planner.travel.place.config.PlacesProperties;
@@ -19,6 +20,7 @@ import ds.project.orino.planner.travel.place.dto.PlaceSearchResult;
 import ds.project.orino.redis.planner.travel.PlaceSearchCacheRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.type.TypeReference;
@@ -41,6 +43,12 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(readOnly = true)
 public class PlaceService {
+
+    /**
+     * 새로고침 한 번에 다시 받아 올 장소 수. 유료 호출이라 상한이 필요하다 —
+     * 한 번의 클릭이 수백 번의 호출이 되면 「눌러서 확인한다」는 뜻이 없어진다.
+     */
+    private static final int REFRESH_BATCH = 20;
 
     private static final Logger log = LoggerFactory.getLogger(PlaceService.class);
 
@@ -177,6 +185,9 @@ public class PlaceService {
         // 도시 이름은 상세 응답 것을 쓴다(화면의 `· 오사카` 꼬리표). 식별자는 칩에서만 온다.
         place.updateCityInfo(fresh.cityName(), cityRefOf(memberId, cityPlaceId),
                 fresh.countryCode());
+        // 꼬리표가 먼저 쓰는 값. locality는 장소마다 표기가 갈려 같은 도시가 여러 글자로
+        // 보인다 — 현으로 묶어 두면 그 흔들림이 화면에 안 나온다(#1375).
+        place.updateAdminArea(fresh.adminArea());
         return placeRepository.save(place);
     }
 
@@ -310,6 +321,40 @@ public class PlaceService {
      * 상세를 받아 온다. 거절당하면 503으로 올린다 — <b>보여 줄 값이 아예 없는</b> 자리다
      * (처음 담는 장소). 여기서 404를 주면 "존재하지 않는 장소"라고 잘못 말하게 된다.
      */
+    /**
+     * 광역 행정구역을 아직 못 채운 장소를 <b>한 묶음만</b> 다시 받아 채운다(#1375).
+     *
+     * <p>이 칼럼이 생기기 전에 담긴 장소는 값이 비어 있어 꼬리표가 옛 규칙(locality)으로
+     * 떨어진다. 채우려면 구글에 다시 물어보는 수밖에 없다 — 상세 응답에만 있는 값이다.
+     *
+     * <p><b>자동으로 돌지 않는다.</b> 장소마다 유료 호출 한 번이라, 사용자가 누른 만큼만
+     * 나가고 남은 개수를 함께 돌려준다. 비어 있는 것만 고르므로 두 번 눌러도 이미 채운
+     * 장소로는 호출이 안 나간다.
+     *
+     * <p>한 번에 {@link #REFRESH_BATCH}개까지다. 한 번의 클릭이 수백 번의 호출이 되면
+     * 「눌러서 확인한다」는 뜻이 없어진다.
+     *
+     * <p>중간에 하나가 실패해도 <b>앞의 것은 남긴다</b> — 다음 클릭이 그만큼 덜 부른다.
+     */
+    @Transactional
+    public CityRefreshResponse refreshAdminAreas(Long memberId) {
+        List<TravelPlace> targets = placeRepository
+                .findAllByMemberIdAndAdminAreaIsNullAndGooglePlaceIdIsNotNull(
+                        memberId, Limit.of(REFRESH_BATCH));
+        int refreshed = 0;
+        for (TravelPlace place : targets) {
+            PlaceResult fresh = requireDetails(place.getGooglePlaceId());
+            place.updateAdminArea(fresh.adminArea());
+            if (fresh.adminArea() != null) {
+                refreshed++;
+            }
+        }
+        placeRepository.flush();
+        long remaining = placeRepository
+                .countByMemberIdAndAdminAreaIsNullAndGooglePlaceIdIsNotNull(memberId);
+        return new CityRefreshResponse(refreshed, remaining);
+    }
+
     private PlaceResult requireDetails(String googlePlaceId) {
         Optional<PlaceResult> detail;
         try {

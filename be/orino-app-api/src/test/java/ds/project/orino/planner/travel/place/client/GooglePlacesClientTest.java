@@ -1,6 +1,8 @@
 package ds.project.orino.planner.travel.place.client;
 
 import org.junit.jupiter.api.DisplayName;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +22,57 @@ class GooglePlacesClientTest {
     private static PlaceResult candidate(String name, String... types) {
         return new PlaceResult("id-" + name, name, name + " 주소",
                 new BigDecimal("35.0"), new BigDecimal("139.0"),
-                null, null, null, null, "Asia/Seoul", name, "KR", List.of(types));
+                null, null, null, null, "Asia/Seoul", name, null, "KR", List.of(types));
+    }
+
+    /**
+     * 광역 행정구역(#1375). {@code locality}는 같은 도시인데도 장소마다 갈린다 —
+     * 한국어가 있는 것과 없는 것이 섞이고, 경계 근처는 인접 시로 잡힌다. 현으로 묶어야
+     * 화면에서 하나로 보인다.
+     */
+    @Nested
+    @DisplayName("광역 행정구역")
+    class AdminArea {
+
+        private static JsonNode components(String json) {
+            return new ObjectMapper().readTree(json);
+        }
+
+        @Test
+        @DisplayName("administrative_area_level_1을 뽑는다 — locality가 아니라")
+        void picksLevelOne() {
+            JsonNode node = components("""
+                    [
+                      {"longText": "나라시", "types": ["locality", "political"]},
+                      {"longText": "나라현", "types": ["administrative_area_level_1"]},
+                      {"longText": "일본", "types": ["country"]}
+                    ]""");
+
+            assertThat(GooglePlacesClient.adminArea(node)).isEqualTo("나라현");
+        }
+
+        @Test
+        @DisplayName("시가 갈려도 현은 같다 — 이 값을 쓰는 이유다")
+        void sameAreaAcrossDifferentLocalities() {
+            JsonNode nara = components("""
+                    [{"longText": "나라시", "types": ["locality"]},
+                     {"longText": "나라현", "types": ["administrative_area_level_1"]}]""");
+            JsonNode koriyama = components("""
+                    [{"longText": "야마토코리야마시", "types": ["locality"]},
+                     {"longText": "나라현", "types": ["administrative_area_level_1"]}]""");
+
+            assertThat(GooglePlacesClient.adminArea(nara))
+                    .isEqualTo(GooglePlacesClient.adminArea(koriyama))
+                    .isEqualTo("나라현");
+        }
+
+        @Test
+        @DisplayName("없으면 null — 화면이 도시 이름으로 떨어진다")
+        void nullWhenAbsent() {
+            assertThat(GooglePlacesClient.adminArea(components("""
+                    [{"longText": "나라시", "types": ["locality"]}]"""))).isNull();
+            assertThat(GooglePlacesClient.adminArea(null)).isNull();
+        }
     }
 
     @Nested

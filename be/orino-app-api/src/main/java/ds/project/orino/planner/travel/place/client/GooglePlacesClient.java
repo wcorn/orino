@@ -232,6 +232,7 @@ public class GooglePlacesClient implements PlacesClient {
                 rawJson(node.get("regularOpeningHours")),
                 nestedText(node, "timeZone", "id"),
                 cityName(node.get("addressComponents")),
+                adminArea(node.get("addressComponents")),
                 countryCode(node.get("addressComponents")),
                 types(node.get("types")));
     }
@@ -275,6 +276,37 @@ public class GooglePlacesClient implements PlacesClient {
         return fallback;
     }
 
+    /**
+     * 광역 행정구역({@code administrative_area_level_1}) — 나라현·오사카부·도쿄도.
+     *
+     * <p>{@link #cityName}과 따로 뽑는 이유는 <b>같은 도시가 여러 글자로 보이기</b> 때문이다.
+     * 구글이 주는 {@code locality}는 장소마다 갈린다 — 한국어가 있는 것과 없는 것
+     * (`나라시` / `Nara`)이 섞이고, 경계 근처는 인접 시로 잡힌다(나라마치 →
+     * `야마토코리야마시`). 사용자에게는 전부 「나라」인데 화면이 세 가지로 말한다(#1375).
+     *
+     * <p>없으면 null이다 — 그때 화면은 {@code cityName}으로 떨어진다.
+     *
+     * <p>package-private인 것은 테스트가 주소 구성요소만 넘겨 보기 위해서다 —
+     * 노드 하나만 보는 순수 함수라 클라이언트를 띄울 이유가 없다.
+     */
+    static String adminArea(JsonNode components) {
+        if (components == null || !components.isArray()) {
+            return null;
+        }
+        for (JsonNode component : components) {
+            JsonNode types = component.get("types");
+            if (types == null) {
+                continue;
+            }
+            for (JsonNode type : types) {
+                if ("administrative_area_level_1".equals(type.asString())) {
+                    return text(component, "longText");
+                }
+            }
+        }
+        return null;
+    }
+
     private String countryCode(JsonNode components) {
         if (components == null || !components.isArray()) {
             return null;
@@ -297,12 +329,12 @@ public class GooglePlacesClient implements PlacesClient {
         return node == null || node.isNull() ? null : objectMapper.writeValueAsString(node);
     }
 
-    private String text(JsonNode node, String field) {
+    private static String text(JsonNode node, String field) {
         JsonNode value = node == null ? null : node.get(field);
         return value == null || value.isNull() ? null : value.asString();
     }
 
-    private String nestedText(JsonNode node, String field, String child) {
+    private static String nestedText(JsonNode node, String field, String child) {
         JsonNode value = node == null ? null : node.get(field);
         return text(value, child);
     }

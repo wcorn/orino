@@ -492,7 +492,7 @@ class StayControllerTest extends ApiTestSupport {
     private static PlaceResult hotelResult() {
         return new PlaceResult("ChIJ_namba", "난바 호텔", "오사카시 주오구",
                 new BigDecimal("34.6656"), new BigDecimal("135.5061"), "호텔",
-                new BigDecimal("4.2"), null, null, "Asia/Tokyo", "오사카", "JP",
+                new BigDecimal("4.2"), null, null, "Asia/Tokyo", "오사카", null, "JP",
                 List.of("lodging"));
     }
 

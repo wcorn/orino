@@ -17,6 +17,7 @@ const SENSOJI: Activity = {
     lat: 35.7148,
     lng: 139.7967,
     cityName: "도쿄도",
+    adminArea: null,
     cityPlaceRef: "ChIJ_tokyo",
   },
   memo: "가미나리몬 앞에서 만나기",

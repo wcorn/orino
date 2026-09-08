@@ -7,6 +7,7 @@ import { FormField } from "@/components/ui/form-field";
 import { LoadingText } from "@/components/ui/loading-text";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { refreshPlaceCities } from "@/features/travel/api/places";
 import { sendTestPush } from "@/features/travel/api/push";
 import { useTravelSummary } from "@/features/travel/hooks/useTravelSummary";
 import { useTrip } from "@/features/travel/hooks/useTrip";
@@ -38,6 +39,9 @@ export function TravelSettingsPage() {
   const { data: summary, isPending } = useTravelSummary();
   const push = usePushSubscription();
   const [testing, setTesting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  /** 마지막으로 받은 남은 개수. 누르기 전에는 모른다 — 그때는 줄을 안 그린다. */
+  const [remaining, setRemaining] = useState<number | null>(null);
 
   const tripId = summary?.ongoing?.id ?? summary?.next?.id ?? null;
   const { data: trip } = useTrip(tripId);
@@ -75,6 +79,30 @@ export function TravelSettingsPage() {
       }
     } catch {
       toast("알림을 켜지 못했어요.", "error");
+    }
+  };
+
+  /**
+   * 도시 이름 새로고침(#1375). 광역 행정구역을 아직 못 채운 장소를 한 묶음씩 다시 받아 온다.
+   *
+   * <p><b>자동으로 돌리지 않는다.</b> 장소마다 유료 호출 한 번이라, 누른 만큼만 나가고 남은
+   * 개수를 그대로 보여 준다 — 끝났는지 모르면 될 때까지 계속 누르게 된다.
+   */
+  const refreshCities = async () => {
+    setRefreshing(true);
+    try {
+      const result = await refreshPlaceCities();
+      setRemaining(result.remaining);
+      toast(
+        result.remaining > 0
+          ? `${result.refreshed}곳을 고쳤어요. ${result.remaining}곳 남았어요.`
+          : `${result.refreshed}곳을 고쳤어요. 남은 곳이 없어요.`,
+        "success",
+      );
+    } catch {
+      toast("도시 이름을 새로고침하지 못했어요.", "error");
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -217,6 +245,40 @@ export function TravelSettingsPage() {
       </section>
 
       <OfflineSection />
+
+      <section className="flex flex-col gap-2 border-t pt-5">
+        <h2 className="text-caption text-muted-foreground font-semibold">
+          장소
+        </h2>
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">도시 이름 새로고침</p>
+            {/*
+              무엇이 왜 바뀌는지 적는다 — 「새로고침」만으로는 누를 이유가 없고, 유료 호출이
+              나가는 버튼이라 누르기 전에 알아야 한다.
+            */}
+            <p className="text-muted-foreground text-xs">
+              담을 때 도시를 못 받은 장소를 다시 확인해요. 같은 도시가
+              「나라시」와 「Nara」로 갈려 보이는 것을 고칩니다.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={refreshing || remaining === 0}
+            onClick={() => void refreshCities()}
+          >
+            {refreshing ? "확인 중…" : "새로고침"}
+          </Button>
+        </div>
+        {remaining !== null && (
+          <p className="text-muted-foreground text-xs">
+            {remaining > 0
+              ? `${remaining}곳 남았어요. 한 번 더 누르면 이어서 확인해요.`
+              : "모두 확인했어요."}
+          </p>
+        )}
+      </section>
 
       <section className="flex flex-col gap-2 border-t pt-5">
         <h2 className="text-caption text-muted-foreground font-semibold">

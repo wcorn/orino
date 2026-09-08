@@ -12,6 +12,8 @@ import java.util.List;
  * @param googlePlaceId 구글 장소 식별자
  * @param timezone      IANA 타임존. <b>Places가 직접 준다</b>(좌표→타임존 매핑이 필요 없다)
  * @param cityName      이 장소가 속한 도시 이름. 도시 이탈 표시(§1124)가 쓴다
+ * @param adminArea     광역 행정구역(현·부·도). 도시 꼬리표가 이 값을 먼저 쓴다 — locality는
+ *                      장소마다 표기가 갈려 같은 도시가 여러 글자로 보인다(#1375)
  * @param countryCode   ISO 3166-1 alpha-2. 통화를 여기서 유도한다
  * @param openingHours  영업시간 원본 JSON. 구조를 해석하지 않고 그대로 캐시해 FE에 넘긴다
  * @param types         Google place type 목록. 목적지 검색에서 행정구역만 골라내는 데 쓴다
@@ -28,6 +30,7 @@ public record PlaceResult(
         String openingHours,
         String timezone,
         String cityName,
+        String adminArea,
         String countryCode,
         List<String> types
 ) {

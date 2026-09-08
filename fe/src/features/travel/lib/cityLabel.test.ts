@@ -22,73 +22,66 @@ const TRIP_CITIES = [
   city(2, "교토시", "ChIJ_kyoto"),
 ];
 
+/**
+ * 꼬리표는 세 값을 순서대로 본다 — 광역 행정구역 → 장소가 아는 도시 → 담을 때 누른 칩.
+ *
+ * <p>순서가 이렇게 된 사연이 이 파일의 내용이다. 처음엔 칩이 먼저였는데(표기를 통일하려고),
+ * 그러면 교토에서 담은 나라 장소가 「교토시」가 됐다(#1373). 장소가 아는 이름으로 바꿨더니
+ * 같은 나라 장소들이 `나라시`·`Nara`·`야마토코리야마시`로 갈렸다(#1375). 현으로 묶어야
+ * 하나가 된다.
+ */
 describe("도시 표시명", () => {
-  /**
-   * 이 파일의 핵심(#1373). `cityPlaceRef`는 「이 장소가 어느 도시에 있는가」가 아니라
-   * <b>「어느 도시 칩으로 담았는가」</b>다 — 둘이 갈리는 순간 칩으로 이름을 지으면 거짓말이 된다.
-   */
-  it("담을 때 누른 칩이 아니라 장소가 아는 도시를 말한다", () => {
-    // 교토에 묵으며 나라 당일치기를 짜면 나라 장소에 교토 칩이 찍힌다.
+  it("광역 행정구역이 있으면 그것을 쓴다 — 같은 도시가 여러 글자로 보이지 않게", () => {
+    // 구글이 주는 locality는 장소마다 갈린다. 현은 그 셋을 하나로 묶는다.
+    const labels = [
+      { cityName: "나라시", adminArea: "나라현", cityPlaceRef: "ChIJ_kyoto" },
+      { cityName: "Nara", adminArea: "나라현", cityPlaceRef: "ChIJ_kyoto" },
+      {
+        cityName: "야마토코리야마시",
+        adminArea: "나라현",
+        cityPlaceRef: "ChIJ_kyoto",
+      },
+    ].map((place) => cityLabelOf(place, TRIP_CITIES));
+
+    expect(labels).toEqual(["나라현", "나라현", "나라현"]);
+  });
+
+  it("현을 아직 못 받았으면 장소가 아는 도시로 떨어진다", () => {
+    // 이 값이 생기기 전에 담긴 장소다. 「도시 이름 새로고침」 전까지는 옛 규칙으로 그린다.
     const label = cityLabelOf(
-      { cityName: "나라시", cityPlaceRef: "ChIJ_kyoto" },
+      { cityName: "나라시", adminArea: null, cityPlaceRef: "ChIJ_kyoto" },
       TRIP_CITIES,
     );
 
     expect(label).toBe("나라시");
   });
 
-  it("장소가 준 이름을 그대로 쓴다 — 여행 도시와 표기가 달라도", () => {
-    // 잃는 것을 여기 적어 둔다. 탭은 `오사카시`인데 장소 상세는 `Osaka`로 온다.
-    // 표기가 갈리지만, 다른 도시 이름을 씌우는 것보다는 낫다.
-    const label = cityLabelOf(
-      { cityName: "Osaka", cityPlaceRef: "ChIJ_osaka" },
-      TRIP_CITIES,
-    );
-
-    expect(label).toBe("Osaka");
-  });
-
-  it("구 단위로 와도 그대로 쓴다 — 도시로 올려 주지 않는다", () => {
-    // 신주쿠 호텔의 주소 구성요소는 `Shinjuku City`로 온다. 예전에는 칩으로 도시 이름을
-    // 씌웠지만, 그 방식이 나라 장소를 「교토시」로 만든 원인이었다.
-    const label = cityLabelOf(
-      { cityName: "Shinjuku City", cityPlaceRef: "ChIJ_kyoto" },
-      TRIP_CITIES,
-    );
-
-    expect(label).toBe("Shinjuku City");
+  it("담을 때 누른 칩은 맨 마지막이다 — 그건 장소의 도시가 아니다", () => {
+    // 교토에 묵으며 나라 당일치기를 짜면 나라 장소에 교토 칩이 찍힌다(#1373).
+    // 장소가 자기 도시를 아무것도 모를 때만 이 값으로 떨어진다.
+    expect(
+      cityLabelOf(
+        { cityName: null, adminArea: null, cityPlaceRef: "ChIJ_kyoto" },
+        TRIP_CITIES,
+      ),
+    ).toBe("교토시");
   });
 
   it("여행에 없는 도시면 장소가 준 이름을 쓴다 — 그게 가진 전부다", () => {
     const label = cityLabelOf(
-      { cityName: "Nagoya", cityPlaceRef: "ChIJ_nagoya" },
+      { cityName: "Nagoya", adminArea: null, cityPlaceRef: "ChIJ_nagoya" },
       TRIP_CITIES,
     );
 
     expect(label).toBe("Nagoya");
   });
 
-  it("식별자가 없어도 장소가 아는 이름이 있으면 그것을 쓴다", () => {
-    const label = cityLabelOf(
-      { cityName: "오사카시", cityPlaceRef: null },
-      TRIP_CITIES,
-    );
-
-    expect(label).toBe("오사카시");
-  });
-
-  it("장소가 자기 도시를 모르면 담을 때의 칩으로 떨어진다 — 그게 가진 전부다", () => {
-    const label = cityLabelOf(
-      { cityName: null, cityPlaceRef: "ChIJ_kyoto" },
-      TRIP_CITIES,
-    );
-
-    expect(label).toBe("교토시");
-  });
-
-  it("이름조차 없으면 null — 화면이 그 자리를 비운다", () => {
+  it("아무것도 없으면 null — 화면이 그 자리를 비운다", () => {
     expect(
-      cityLabelOf({ cityName: null, cityPlaceRef: null }, TRIP_CITIES),
+      cityLabelOf(
+        { cityName: null, adminArea: null, cityPlaceRef: null },
+        TRIP_CITIES,
+      ),
     ).toBeNull();
   });
 

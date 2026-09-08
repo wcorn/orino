@@ -15,8 +15,16 @@ export interface ActivityPlace {
   address: string | null;
   lat: number | null;
   lng: number | null;
-  /** 이 장소가 속한 도시 표시명. 도시를 벗어난 일정의 `· 오사카` 꼬리표. */
+  /** 이 장소가 속한 도시 표시명(locality). 장소마다 표기가 갈린다 — 아래 참고. */
   cityName: string | null;
+  /**
+   * 광역 행정구역(현·부·도). 도시를 벗어난 일정의 `· 나라현` 꼬리표가 **이 값을 먼저** 쓴다.
+   *
+   * 구글이 주는 locality는 같은 도시인데도 갈린다 — 한국어가 있는 것과 없는 것
+   * (`나라시` / `Nara`)이 섞이고, 경계 근처는 인접 시로 잡힌다(나라마치 → `야마토코리야마시`).
+   * 현으로 묶으면 그 셋이 하나가 된다.
+   */
+  adminArea: string | null;
   /** 도시 식별자. 도시 일치 판정은 이 값으로만 한다(좌표 거리로 추측하지 않는다). */
   cityPlaceRef: string | null;
 }
