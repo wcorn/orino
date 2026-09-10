@@ -65,10 +65,15 @@ spec:
                 # 버킷은 **route마다** 따로다(IP별이 아니다). applyTo가 HTTP_ROUTE라
                 # 설정이 vhost가 아니라 그 안의 route 각각에 붙는다.
                 #
-                # api.orino.dev는 VirtualService에 match가 없어 route가 하나뿐이라, 지금은
-                # 「vhost 전체가 하나의 버킷」과 결과가 같다 — 다만 **그건 우연이다.**
-                # match를 하나 넣는 순간 버킷이 조용히 두 배가 된다. 파드가 2개이므로
-                # 지금 전체 상한은 분당 1,200이다.
+                # #1379에서 api.orino.dev의 route가 둘이 됐다(import · default). 이 패치는
+                # route를 가리지 않으므로 **둘 다에 같은 버킷이 하나씩** 붙는다 — 즉
+                # (route x 파드 x IP)마다 분당 600이고, 파드가 2개이니 한 IP가 쓸 수 있는
+                # 전체는 분당 2,400이다. route를 더 가르면 이 숫자가 또 늘어난다.
+                #
+                # 그래도 이 값을 안 내린다. 실측 꼭대기가 분당 246이라 default 쪽은
+                # 여전히 2.4배 여유고, import 쪽은 로그인한 사용자만 닿는 데다 분당 600번
+                # 파일을 올릴 방법이 없다. 여기서 막고 싶은 것은 평소 사용량이 아니라
+                # 폭주이고, 폭주는 route를 갈라도 route별로 걸린다.
                 token_bucket:
                   max_tokens: 600
                   tokens_per_fill: 600
