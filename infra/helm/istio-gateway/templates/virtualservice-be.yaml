@@ -1,3 +1,10 @@
+{{- /*
+api.orino.dev의 라우팅.
+
+corsPolicy는 **라우트마다** 붙는다. 라우트를 하나 더 만들면 그쪽에도 똑같이 적어야
+한다 — Authorization 헤더를 싣는 요청은 프리플라이트를 타고, corsPolicy가 없는
+라우트가 OPTIONS를 받으면 브라우저가 응답을 버린다. 서버 로그에는 200만 남는다.
+*/ -}}
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -9,7 +16,21 @@ spec:
   gateways:
     - orino-gateway
   http:
-    - corsPolicy:
+    # ── 가계부 가져오기 (#1379) ───────────────────────────────────
+    #
+    # 파일을 올려 전부 파싱하고 거래를 insert한다. 아래 기본 라우트의 10초(시도당 3초)
+    # 안에 끝날 수 있는 일이 아니다 — 실제로 실행이 **항상** 504로 끝났고, 서버는 그
+    # 사이 계속 일하고 있어서 **앱 로그에는 아무 흔적도 남지 않았다.** 게이트웨이
+    # 지표(504 URX,UT)와 be 사이드카의 끊긴 스트림(response_code 0, DC)에만 보였다.
+    #
+    # 재시도는 **끈다.** 실행은 멱등이 아니다. 시도마다 배치가 하나씩 생기므로,
+    # BE가 8초에 커밋을 마친 뒤 게이트웨이가 10초에 끊는 타이밍이면 같은 파일이
+    # 세 번 들어간다. 이번에는 매번 커밋 전에 잘려서 살았을 뿐이다.
+    - name: import
+      match:
+        - uri:
+            prefix: /api/ledger/import/
+      corsPolicy: &cors
         allowOrigins:
           - exact: "https://orino.dev"
           - exact: "http://orino.dev"
@@ -32,10 +53,32 @@ spec:
           - Content-Disposition
         allowCredentials: true
         maxAge: "86400s"
+      # 스무 장 상한(LedgerImportService.MAX_FILES) x 줄 수 상한을 파싱하고 넣는 시간이다.
+      # 넉넉히 두는 쪽이 맞다 — 여기서 잘리면 사람은 「무엇이 들어갔는지」를 모른 채 남는다.
+      timeout: 120s
+      retries:
+        attempts: 0
+      route:
+        - destination:
+            host: be.orino.svc.cluster.local
+            port:
+              number: 8080
+
+    # ── 나머지 전부 ──────────────────────────────────────────────
+    - name: default
+      corsPolicy: *cors
       timeout: 10s
+      # 재시도 조건은 connect-failure **뿐**이다(#1379).
+      #
+      # 5xx와 reset은 요청이 이미 서버에 닿아 처리된 뒤에도 걸린다. 이 라우트로는
+      # 거래 생성·일괄 입력 같은 비멱등 POST가 지나가므로, 3초를 넘긴 요청이
+      # 조용히 두 번 더 들어갈 수 있다. connect-failure는 연결 자체가 안 된 경우라
+      # 서버가 요청을 본 적이 없다 — 어떤 메서드에도 안전하다.
+      #
+      # 롤아웃 중 죽는 파드는 DestinationRule의 outlierDetection이 빼낸다.
       retries:
         attempts: 2
-        retryOn: 5xx,reset,connect-failure
+        retryOn: connect-failure
         perTryTimeout: 3s
       route:
         - destination:
