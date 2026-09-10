@@ -32,6 +32,7 @@ const SENSOJI = {
   lat: 35.7147651,
   lng: 139.7966553,
   cityName: "도쿄",
+  adminArea: null,
   cityPlaceRef: "ChIJ_tokyo",
 };
 const SKYTREE = {
@@ -41,6 +42,7 @@ const SKYTREE = {
   lat: 35.7100627,
   lng: 139.8107004,
   cityName: "도쿄",
+  adminArea: null,
   cityPlaceRef: "ChIJ_tokyo",
 };
 
@@ -64,6 +66,7 @@ describe("지도에 올릴 일정 고르기", () => {
       lat: null,
       lng: null,
       cityName: null,
+      adminArea: null,
       cityPlaceRef: null,
     };
 

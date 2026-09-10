@@ -215,6 +215,7 @@ describe("ActivityDetailPage", () => {
         lat: 35.7147651,
         lng: 139.7966553,
         cityName: "도쿄",
+        adminArea: null,
         cityPlaceRef: "ChIJ_tokyo",
       },
     });
@@ -408,6 +409,7 @@ describe("ActivityDetailPage", () => {
       lat: 35.7147651,
       lng: 139.7966553,
       cityName: "도쿄",
+      adminArea: null,
       cityPlaceRef: "ChIJ_tokyo",
     };
 
@@ -416,6 +418,7 @@ describe("ActivityDetailPage", () => {
       id: 11,
       name: "기요미즈데라",
       cityName: "교토",
+      adminArea: null,
       cityPlaceRef: "ChIJ_kyoto",
     };
 

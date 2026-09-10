@@ -77,7 +77,7 @@ class PlaceControllerTest extends ApiTestSupport {
 
     private static PlaceResult city(String id, String name, String tz, String country) {
         return new PlaceResult(id, name, "일본 도쿄도", new BigDecimal("35.6762"),
-                new BigDecimal("139.6503"), null, null, null, null, tz, name, country,
+                new BigDecimal("139.6503"), null, null, null, null, tz, name, null, country,
                 List.of("locality", "political"));
     }
 
@@ -85,7 +85,15 @@ class PlaceControllerTest extends ApiTestSupport {
         return new PlaceResult(id, name, "도쿄도 다이토구", new BigDecimal("35.7147"),
                 new BigDecimal("139.7966"), "사찰", new BigDecimal("4.5"),
                 "+81 3-3842-0181", "{\"weekdayDescriptions\":[\"월: 06:00~17:00\"]}",
-                "Asia/Tokyo", "도쿄", "JP", List.of("tourist_attraction"));
+                "Asia/Tokyo", "도쿄", null, "JP", List.of("tourist_attraction"));
+    }
+
+    /** 광역 행정구역까지 주는 장소. 꼬리표가 먼저 쓰는 값이다(#1375). */
+    private static PlaceResult placeIn(String id, String name, String cityName,
+                                       String adminArea) {
+        return new PlaceResult(id, name, "일본", new BigDecimal("34.6851"),
+                new BigDecimal("135.8048"), null, null, null, null,
+                "Asia/Tokyo", cityName, adminArea, "JP", List.of("tourist_attraction"));
     }
 
     @Nested
@@ -770,5 +778,82 @@ class PlaceControllerTest extends ApiTestSupport {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();
+    }
+
+    /**
+     * 도시 이름 새로고침(#1375). 광역 행정구역 칼럼이 생기기 전에 담긴 장소를 채운다.
+     *
+     * <p>여기서 지키는 것은 <b>헛나가지 않는가</b>다 — 장소마다 유료 호출 한 번이라,
+     * 이미 채운 장소를 다시 부르면 그만큼이 그대로 청구서에 오른다.
+     */
+    @Nested
+    @DisplayName("도시 이름 새로고침")
+    class RefreshCity {
+
+        @Test
+        @DisplayName("비어 있던 장소를 채우고, 두 번째 호출은 나가지 않는다")
+        void fillsOnceAndStops() throws Exception {
+            long tripId = createTripWithCoordinates();
+            // 이 칼럼이 생기기 전처럼 광역 행정구역 없이 담긴 장소.
+            stub.detailResult = Optional.of(placeIn("ChIJ_nara", "나라역", "나라시", null));
+            addPlaceToTrip(tripId, "ChIJ_nara", "");
+            assertThat(savedGooglePlace().getAdminArea()).isNull();
+
+            // 이제 구글이 현을 준다.
+            stub.detailResult = Optional.of(placeIn("ChIJ_nara", "나라역", "나라시", "나라현"));
+            stub.detailFetches.clear();
+
+            mockMvc.perform(post("/api/travel/places/refresh-city")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.refreshed").value(1))
+                    .andExpect(jsonPath("$.data.remaining").value(0));
+
+            assertThat(savedGooglePlace().getAdminArea()).isEqualTo("나라현");
+            assertThat(stub.detailFetches).containsExactly("ChIJ_nara");
+
+            // 두 번째 클릭 — 채울 것이 없으므로 호출이 아예 안 나간다.
+            stub.detailFetches.clear();
+            mockMvc.perform(post("/api/travel/places/refresh-city")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.refreshed").value(0))
+                    .andExpect(jsonPath("$.data.remaining").value(0));
+            assertThat(stub.detailFetches).isEmpty();
+        }
+
+        @Test
+        @DisplayName("구글이 현을 안 줘도 알던 값을 지우지 않는다")
+        void keepsWhatWeKnew() throws Exception {
+            long tripId = createTripWithCoordinates();
+            stub.detailResult = Optional.of(placeIn("ChIJ_nara", "나라역", "나라시", "나라현"));
+            addPlaceToTrip(tripId, "ChIJ_nara", "");
+            assertThat(savedGooglePlace().getAdminArea()).isEqualTo("나라현");
+
+            // 이미 채워져 있으니 대상이 아니다 — 호출도 안 나간다.
+            stub.detailFetches.clear();
+            mockMvc.perform(post("/api/travel/places/refresh-city")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(jsonPath("$.data.refreshed").value(0));
+
+            assertThat(stub.detailFetches).isEmpty();
+            assertThat(savedGooglePlace().getAdminArea()).isEqualTo("나라현");
+        }
+
+        @Test
+        @DisplayName("남의 장소는 건드리지 않는다")
+        void staysWithinMember() throws Exception {
+            long tripId = createTripWithCoordinates();
+            stub.detailResult = Optional.of(placeIn("ChIJ_nara", "나라역", "나라시", null));
+            addPlaceToTrip(tripId, "ChIJ_nara", "");
+
+            stub.detailFetches.clear();
+            mockMvc.perform(post("/api/travel/places/refresh-city")
+                            .header(HttpHeaders.AUTHORIZATION, otherAuthHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.refreshed").value(0))
+                    .andExpect(jsonPath("$.data.remaining").value(0));
+
+            assertThat(stub.detailFetches).isEmpty();
+        }
     }
 }

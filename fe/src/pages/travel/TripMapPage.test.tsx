@@ -132,6 +132,7 @@ const SENSOJI = {
   lat: 35.7147651,
   lng: 139.7966553,
   cityName: "도쿄",
+  adminArea: null,
   cityPlaceRef: "ChIJ_21",
 };
 

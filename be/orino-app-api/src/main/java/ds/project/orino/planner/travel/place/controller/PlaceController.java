@@ -1,6 +1,7 @@
 package ds.project.orino.planner.travel.place.controller;
 
 import ds.project.orino.common.response.ApiResponse;
+import ds.project.orino.planner.travel.place.dto.CityRefreshResponse;
 import ds.project.orino.planner.travel.place.dto.CityResponse;
 import ds.project.orino.planner.travel.place.dto.PlaceCreateRequest;
 import ds.project.orino.planner.travel.place.dto.PlaceDetail;
@@ -62,5 +63,18 @@ public class PlaceController {
     public ApiResponse<PlaceDetail> create(@AuthenticationPrincipal Long memberId,
                                            @Valid @RequestBody PlaceCreateRequest request) {
         return ApiResponse.success(placeService.createManual(memberId, request));
+    }
+
+    /**
+     * 도시 이름 새로고침(#1375). 광역 행정구역을 아직 못 채운 장소를 <b>한 묶음만</b> 다시
+     * 받아 온다.
+     *
+     * <p>장소마다 유료 호출 한 번이라 <b>자동으로 돌지 않는다</b> — 사용자가 누른 만큼만
+     * 나가고, 남은 개수를 함께 돌려줘 몇 번 더 눌러야 하는지 보이게 한다.
+     */
+    @PostMapping("/refresh-city")
+    public ApiResponse<CityRefreshResponse> refreshCity(
+            @AuthenticationPrincipal Long memberId) {
+        return ApiResponse.success(placeService.refreshAdminAreas(memberId));
     }
 }

@@ -54,7 +54,11 @@ const DAYS = [
 function activity(
   id: number,
   title: string,
-  place: { cityName: string | null; cityPlaceRef: string | null } | null,
+  place: {
+    cityName: string | null;
+    adminArea: string | null;
+    cityPlaceRef: string | null;
+  } | null,
 ): Activity {
   return {
     id,
@@ -69,6 +73,7 @@ function activity(
       lat: null,
       lng: null,
       cityName: place.cityName,
+      adminArea: null,
       cityPlaceRef: place.cityPlaceRef,
     },
     memo: null,
@@ -90,10 +95,12 @@ describe("groupArchiveByCity", () => {
       [
         activity(1, "니시키 시장", {
           cityName: "교토",
+          adminArea: null,
           cityPlaceRef: "ChIJ_kyoto",
         }),
         activity(2, "구로몬 시장", {
           cityName: "오사카",
+          adminArea: null,
           cityPlaceRef: "ChIJ_osaka",
         }),
       ],
@@ -111,10 +118,12 @@ describe("groupArchiveByCity", () => {
         activity(1, "이름만 아는 곳", null),
         activity(2, "나라 공원", {
           cityName: "나라",
+          adminArea: null,
           cityPlaceRef: "ChIJ_nara",
         }),
         activity(3, "구로몬 시장", {
           cityName: "오사카",
+          adminArea: null,
           cityPlaceRef: "ChIJ_osaka",
         }),
       ],
@@ -129,10 +138,12 @@ describe("groupArchiveByCity", () => {
       [
         activity(1, "구로몬 시장", {
           cityName: "오사카",
+          adminArea: null,
           cityPlaceRef: "ChIJ_osaka",
         }),
         activity(2, "이름만 오사카", {
           cityName: "오사카",
+          adminArea: null,
           cityPlaceRef: null,
         }),
       ],

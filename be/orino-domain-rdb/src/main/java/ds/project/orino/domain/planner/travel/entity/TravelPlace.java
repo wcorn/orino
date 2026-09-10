@@ -81,6 +81,10 @@ public class TravelPlace {
      * 도시 식별자(구글 장소 id). <b>도시 일치 판정은 이 값으로만 한다</b> — 좌표 거리 임계로
      * 하면 오사카-교토(43km)와 도쿄-요코하마(30km)에서 서로 다른 답이 나온다(D-23).
      */
+    /** 광역 행정구역(현·부·도). 도시 꼬리표가 먼저 쓴다 — {@link #updateAdminArea} 참고. */
+    @Column(name = "admin_area", length = 100)
+    private String adminArea;
+
     @Column(name = "city_place_ref", length = 255)
     private String cityPlaceRef;
 
@@ -173,6 +177,25 @@ public class TravelPlace {
         this.cityName = cityName;
         this.cityPlaceRef = cityPlaceRef;
         this.countryCode = countryCode;
+    }
+
+    /**
+     * 광역 행정구역(현·부·도). 화면의 도시 꼬리표가 이 값을 먼저 쓴다(#1375).
+     *
+     * <p>{@code cityName}(locality)과 따로 두는 이유는 <b>같은 도시가 여러 글자로 보이기</b>
+     * 때문이다 — 구글이 주는 locality는 장소마다 갈리고(`나라시` / `Nara`), 경계 근처
+     * 장소는 인접 시로 잡힌다(나라마치 → `야마토코리야마시`). 현은 그 셋을 하나로 묶는다.
+     *
+     * <p>못 받았으면 <b>덮지 않는다.</b> 이미 알던 값을 null로 지우면 꼬리표가 도로 흔들린다.
+     */
+    public void updateAdminArea(String adminArea) {
+        if (adminArea != null) {
+            this.adminArea = adminArea;
+        }
+    }
+
+    public String getAdminArea() {
+        return adminArea;
     }
 
     public boolean isCity() {

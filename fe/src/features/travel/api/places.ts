@@ -126,3 +126,27 @@ export async function createManualPlace(
   );
   return data.data;
 }
+
+/**
+ * 도시 이름 새로고침 결과(#1375).
+ *
+ * @property refreshed 이번에 값을 채운 장소 수
+ * @property remaining 아직 못 채운 장소 수. 0이면 끝이다
+ */
+export interface CityRefreshResult {
+  refreshed: number;
+  remaining: number;
+}
+
+/**
+ * 광역 행정구역을 아직 못 채운 장소를 <b>한 묶음만</b> 다시 받아 온다.
+ *
+ * <p>장소마다 유료 호출 한 번이라 자동으로 돌지 않는다 — 누른 만큼만 나가고, 남은 개수를
+ * 함께 받아 몇 번 더 눌러야 하는지 보여 준다.
+ */
+export async function refreshPlaceCities(): Promise<CityRefreshResult> {
+  const { data } = await client.post<ApiEnvelope<CityRefreshResult>>(
+    "/travel/places/refresh-city",
+  );
+  return data.data;
+}

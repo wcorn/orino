@@ -617,7 +617,7 @@ class BoardV21Test extends ApiTestSupport {
     private static PlaceResult googleCity(String googlePlaceId, String name, String countryCode) {
         return new PlaceResult(googlePlaceId, name, name, new BigDecimal("35.0116"),
                 new BigDecimal("135.7681"), null, null, null, null,
-                "Asia/Tokyo", name, countryCode, List.of());
+                "Asia/Tokyo", name, null, countryCode, List.of());
     }
 
     /** 날짜 목록에서 {@code index}번째 날짜의 id. */

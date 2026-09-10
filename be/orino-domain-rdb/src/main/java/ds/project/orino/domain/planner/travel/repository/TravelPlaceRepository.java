@@ -2,6 +2,7 @@ package ds.project.orino.domain.planner.travel.repository;
 
 import ds.project.orino.domain.planner.travel.entity.PlaceKind;
 import ds.project.orino.domain.planner.travel.entity.TravelPlace;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -22,6 +23,18 @@ public interface TravelPlaceRepository extends JpaRepository<TravelPlace, Long> 
 
     /** 검색 결과 중 이미 담아 둔 장소를 한 번에 찾는다(결과 20개마다 조회하지 않게). */
     List<TravelPlace> findAllByMemberIdAndGooglePlaceIdIn(Long memberId, List<String> googlePlaceIds);
+
+    /**
+     * 광역 행정구역을 아직 못 채운 구글 장소. 이 칼럼이 생기기 전에 담긴 것들이다(#1375).
+     *
+     * <p><b>비어 있는 것만</b> 고른다 — 채워진 장소를 다시 부르면 유료 호출이 그만큼 헛나간다.
+     * 직접 입력한 장소는 구글 id가 없어 애초에 물어볼 곳이 없다.
+     */
+    List<TravelPlace> findAllByMemberIdAndAdminAreaIsNullAndGooglePlaceIdIsNotNull(
+            Long memberId, Limit limit);
+
+    /** 남은 개수. 화면이 「몇 번 더 눌러야 하나」를 말해 준다. */
+    long countByMemberIdAndAdminAreaIsNullAndGooglePlaceIdIsNotNull(Long memberId);
 
     /** 여러 일정의 장소를 한 번에 붙일 때 쓰는 배치 조회(N+1 회피). */
     List<TravelPlace> findAllByIdIn(List<Long> ids);
