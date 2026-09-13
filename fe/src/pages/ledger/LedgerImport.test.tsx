@@ -183,6 +183,14 @@ describe("가져오기", () => {
             amount: 5500,
             title: "스타벅스 역삼",
             duplicateOf: 42,
+            duplicateOfTransaction: {
+              id: 42,
+              occurredOn: "2026-08-09",
+              type: "EXPENSE",
+              amount: 5500,
+              title: "스타벅스역삼",
+              assetName: "급여통장",
+            },
           },
           {
             rowNumber: 3,
@@ -201,6 +209,18 @@ describe("가져오기", () => {
     expect(
       await screen.findByText(/중복 후보 1건 — 자동으로 병합하지 않습니다/),
     ).toBeInTheDocument();
+
+    // 「이미 있는 거래」가 무엇인지 옆에 놓는다 — 날짜가 하루 다른 것까지 여기서 보인다(#1385).
+    expect(
+      screen.getByText("같아 보이는 거래 — 이미 내역에 있어요"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("2026-08-09 · 스타벅스역삼 · 5,500 · 급여통장"),
+    ).toBeInTheDocument();
+    // 같은 탭으로 옮기면 고른 파일과 체크가 사라진다 — 새 탭으로 연다.
+    const link = screen.getByRole("link", { name: "내역에서 보기" });
+    expect(link).toHaveAttribute("href", "/ledger/transactions/42");
+    expect(link).toHaveAttribute("target", "_blank");
 
     // 중복 줄은 꺼져 있고, 나머지는 켜져 있다.
     expect(screen.getByLabelText(/2번째 줄 넣기/)).not.toBeChecked();
@@ -403,7 +423,7 @@ describe("가져오기", () => {
      * 미리 보면 <b>둘째 파일을 볼 때 첫 파일은 아직 원장에 없어서</b> 「중복 없음」으로
      * 지나간다 — 그래서 한 번에 보고, 어느 파일 몇 번째 줄인지까지 말한다.
      */
-    it("앞 파일과 겹치는 줄을 어느 파일 몇 번째 줄인지까지 알리고 꺼 둔다", async () => {
+    it("앞 파일과 겹치는 줄을 어느 파일 몇 행인지와 그 줄의 내용까지 알리고 꺼 둔다", async () => {
       const user = userEvent.setup();
       renderAt("/ledger/import", {
         importPreview: {
@@ -413,10 +433,10 @@ describe("가져오기", () => {
               rows: [
                 {
                   rowNumber: 3,
-                  occurredOn: "2026-01-11",
+                  occurredOn: "2026-01-10",
                   type: "EXPENSE",
                   amount: 3200,
-                  title: "편의점",
+                  title: "GS25 역삼",
                 },
               ],
             },
@@ -450,7 +470,12 @@ describe("가져오기", () => {
       // 여러 장이면 파일이 접힌 채로 온다(#1383) — 펴서 줄을 본다.
       await user.click(screen.getByRole("button", { name: "1월.csv" }));
       expect(
-        screen.getByText(/「3분기.csv」의 3번째 줄과 같아 보여요/),
+        screen.getByText("같아 보이는 줄 — 「3분기.csv」 3행"),
+      ).toBeInTheDocument();
+      // 자리만 말하면 그 줄을 찾아가야 한다 — 그 줄의 내용을 옆에 놓는다(#1385).
+      // 앞 파일은 접혀 있어도 보인다. 날짜가 하루 다른 것도 여기서 드러난다.
+      expect(
+        screen.getByText("2026-01-10 · GS25 역삼 · 3,200"),
       ).toBeInTheDocument();
       // 앞 파일의 줄도 기존 거래와 똑같이 꺼진 채로 온다.
       expect(screen.getByLabelText(/1월.csv 2번째 줄 넣기/)).not.toBeChecked();

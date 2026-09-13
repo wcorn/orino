@@ -156,7 +156,7 @@ public class LedgerImportService {
 
             for (ParsedRow row : parsed) {
                 Long assetId = row.assetId == null ? defaultAssetId : row.assetId;
-                Long duplicateOf = null;
+                LedgerTransaction duplicateOf = null;
                 ImportDtos.RowRef duplicateOfRow = null;
                 if (row.error != null) {
                     errors++;
@@ -173,9 +173,17 @@ public class LedgerImportService {
                     fromThisFile.add(new PriorRow(fileIndex, row.rowNumber, row.occurredOn,
                             row.amount, assetId, normalize(row.title)));
                 }
+                // 같아 보이는 거래는 id만이 아니라 내용까지 준다 — 그래야 옆에 놓고 견준다(#1385).
+                ImportDtos.DuplicateTransaction duplicateOfTransaction = duplicateOf == null
+                        ? null
+                        : new ImportDtos.DuplicateTransaction(duplicateOf.getId(),
+                                duplicateOf.getOccurredOn(), duplicateOf.getType(),
+                                duplicateOf.getAmount(), duplicateOf.getTitle(),
+                                assetNames.get(duplicateOf.getAssetId()));
                 rows.add(new ImportDtos.PreviewRow(
                         row.rowNumber, row.occurredOn, row.type, row.amount, row.title, row.memo,
-                        row.categoryId, categoryNames.get(row.categoryId), row.error, duplicateOf,
+                        row.categoryId, categoryNames.get(row.categoryId), row.error,
+                        duplicateOf == null ? null : duplicateOf.getId(), duplicateOfTransaction,
                         duplicateOfRow, assetId, assetNames.get(assetId)));
             }
 
@@ -450,7 +458,8 @@ public class LedgerImportService {
      * <p>내용이 양쪽 다 비어 있으면 날짜·금액·자산만으로 후보로 본다. 같은 날 같은 금액을
      * 같은 자산에서 두 번 쓰는 일은 드물고, <b>드문 것을 보여주는 비용이 놓치는 비용보다 싸다.</b>
      */
-    private Long duplicateOf(ParsedRow row, List<LedgerTransaction> existing, Long assetId) {
+    private LedgerTransaction duplicateOf(ParsedRow row, List<LedgerTransaction> existing,
+                                          Long assetId) {
         String title = normalize(row.title);
         for (LedgerTransaction tx : existing) {
             if (!assetId.equals(tx.getAssetId()) || tx.getAmount() != row.amount) {
@@ -463,7 +472,7 @@ public class LedgerImportService {
             String other = normalize(tx.getTitle());
             if (title.isEmpty() || other.isEmpty() || title.equals(other)
                     || title.contains(other) || other.contains(title)) {
-                return tx.getId();
+                return tx;
             }
         }
         return null;

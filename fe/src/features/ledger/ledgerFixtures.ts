@@ -173,6 +173,15 @@ type ImportPreviewRowFixture = {
   categoryName?: string | null;
   error?: string | null;
   duplicateOf?: number | null;
+  /** `duplicateOf`가 가리키는 거래의 내용. */
+  duplicateOfTransaction?: {
+    id: number;
+    occurredOn: string;
+    type: string;
+    amount: number;
+    title: string | null;
+    assetName: string | null;
+  } | null;
   /** 같아 보이는 앞 파일의 줄. 기간이 겹치게 내려받은 파일을 함께 올렸을 때 걸린다. */
   duplicateOfRow?: { fileIndex: number; rowNumber: number } | null;
   assetId?: number | null;
@@ -1022,6 +1031,7 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
           categoryName: null,
           error: null,
           duplicateOf: null,
+          duplicateOfTransaction: null,
           duplicateOfRow: null,
           assetId: 1,
           assetName: "급여통장",
