@@ -1,7 +1,7 @@
 import { House, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 
-import { Alert } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingText } from "@/components/ui/loading-text";
@@ -40,7 +40,11 @@ export function SubscriptionSection({ assetId }: { assetId: number }) {
   }
   if (isError) {
     return (
-      <Alert variant="destructive">청약 인정 현황을 불러오지 못했어요.</Alert>
+      // 글자는 AlertDescription에 담는다 — Alert는 첫 칸을 아이콘 자리로 비워 둔 격자라,
+      // 맨글자를 넣으면 폭 0인 그 칸에 들어가 한 글자씩 세로로 찍힌다.
+      <Alert variant="destructive">
+        <AlertDescription>청약 인정 현황을 불러오지 못했어요.</AlertDescription>
+      </Alert>
     );
   }
 
@@ -88,8 +92,10 @@ export function SubscriptionSection({ assetId }: { assetId: number }) {
     <section className="flex flex-col gap-3">
       {change?.before && (
         <Alert variant="info">
-          추정 {change.before.count}회 → 청약홈 {change.after.count}회로
-          맞췄어요
+          <AlertDescription className="text-foreground">
+            추정 {change.before.count}회 → 청약홈 {change.after.count}회로
+            맞췄어요
+          </AlertDescription>
         </Alert>
       )}
 
