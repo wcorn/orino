@@ -140,8 +140,32 @@ class LedgerImportTest extends ApiTestSupport {
             preview(csv)
                     .andExpect(jsonPath("$.data.duplicateCount").value(1))
                     // 어느 거래와 같아 보이는지까지 알려야 사람이 판단할 수 있다.
-                    .andExpect(jsonPath("$.data.files[0].rows[0].duplicateOf").isNumber());
+                    .andExpect(jsonPath("$.data.files[0].rows[0].duplicateOf").isNumber())
+                    // id만으로는 그 거래를 따로 찾아 열어야 한다 — 내용을 옆에 놓는다(#1385).
+                    .andExpect(jsonPath("$.data.files[0].rows[0].duplicateOfTransaction.id")
+                            .isNumber())
+                    .andExpect(jsonPath("$.data.files[0].rows[0].duplicateOfTransaction.occurredOn")
+                            .value("2026-01-10"))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].duplicateOfTransaction.title")
+                            .value("스타벅스 역삼"))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].duplicateOfTransaction.amount")
+                            .value(5500))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].duplicateOfTransaction.type")
+                            .value("EXPENSE"))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].duplicateOfTransaction.assetName")
+                            .value("급여통장"));
+        }
 
+        @Test
+        @DisplayName("중복이 아닌 줄에는 같아 보이는 거래 내용이 없다")
+        void noDuplicateTransactionWhenUnique() throws Exception {
+            preview("""
+                    날짜,내용,금액
+                    2026-01-10,스타벅스,-5500
+                    """)
+                    .andExpect(jsonPath("$.data.files[0].rows[0].duplicateOf").doesNotExist())
+                    .andExpect(jsonPath("$.data.files[0].rows[0].duplicateOfTransaction")
+                            .doesNotExist());
         }
 
         /**

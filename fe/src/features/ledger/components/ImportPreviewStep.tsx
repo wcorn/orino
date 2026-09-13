@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
+  ImportDuplicateTransaction,
   ImportFilePreview,
   ImportPreviewResponse,
   ImportPreviewRow,
@@ -51,6 +53,51 @@ function matches(view: View, row: ImportPreviewRow, included: boolean) {
     case "error":
       return row.error !== null;
   }
+}
+
+/**
+ * 같아 보이는 상대 — 앞 파일의 줄이거나 이미 내역에 있는 거래(#1385).
+ *
+ * <p>「554번째 줄과 같아 보여요」처럼 자리만 말하면 사람은 그 줄을 찾아가야 판단할 수 있다.
+ * 견줄 때 쓴 값(날짜·내용·금액)을 한 줄로 붙여, 이 줄과 위아래로 놓고 본다.
+ *
+ * <p>내역 링크는 **새 탭**으로 연다 — 같은 탭에서 옮기면 고른 파일과 체크가 모두 사라진다.
+ */
+function Counterpart({
+  caption,
+  row,
+  transaction,
+}: {
+  caption: string;
+  row?: ImportPreviewRow;
+  transaction?: ImportDuplicateTransaction | null;
+}) {
+  const source = transaction ?? row;
+  const detail = source
+    ? [
+        source.occurredOn ?? "—",
+        source.title ?? "제목 없음",
+        source.amount === null ? "—" : formatAmount(source.amount),
+        ...(transaction?.assetName ? [transaction.assetName] : []),
+      ].join(" · ")
+    : null;
+
+  return (
+    <span className="bg-muted text-muted-foreground mt-1 flex flex-col gap-0.5 rounded-md px-2 py-1 text-[13px]">
+      <span>{caption}</span>
+      {detail && <span className="text-foreground tabular-nums">{detail}</span>}
+      {transaction && (
+        <Link
+          to={`/ledger/transactions/${transaction.id}`}
+          target="_blank"
+          rel="noreferrer"
+          className="w-fit underline underline-offset-2"
+        >
+          내역에서 보기
+        </Link>
+      )}
+    </span>
+  );
 }
 
 /**
@@ -337,20 +384,27 @@ export function ImportPreviewStep({
                               </span>
                             )}
                             {row.duplicateOf !== null && (
-                              <span className="text-muted-foreground text-[13px]">
-                                이미 있는 거래와 같아 보여요
-                              </span>
+                              <Counterpart
+                                caption="같아 보이는 거래 — 이미 내역에 있어요"
+                                transaction={row.duplicateOfTransaction}
+                              />
                             )}
-                            {/* 어느 파일 몇 번째 줄인지 말해야 사람이 그 줄을 찾아 판단한다. */}
+                            {/* 어느 파일 몇 행인지만 말하면 사람은 그 줄을 찾아가야 한다 — 내용을 옆에 놓는다(#1385). */}
                             {row.duplicateOfRow !== null && (
-                              <span className="text-muted-foreground text-[13px]">
-                                「
-                                {preview.files[row.duplicateOfRow.fileIndex]
-                                  ?.fileName ??
-                                  `${row.duplicateOfRow.fileIndex + 1}번째 파일`}
-                                」의 {row.duplicateOfRow.rowNumber}번째 줄과
-                                같아 보여요
-                              </span>
+                              <Counterpart
+                                caption={`같아 보이는 줄 — 「${
+                                  preview.files[row.duplicateOfRow.fileIndex]
+                                    ?.fileName ??
+                                  `${row.duplicateOfRow.fileIndex + 1}번째 파일`
+                                }」 ${row.duplicateOfRow.rowNumber}행`}
+                                row={preview.files[
+                                  row.duplicateOfRow.fileIndex
+                                ]?.rows.find(
+                                  (other) =>
+                                    other.rowNumber ===
+                                    row.duplicateOfRow?.rowNumber,
+                                )}
+                              />
                             )}
                           </span>
                         </TableCell>

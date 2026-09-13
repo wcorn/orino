@@ -1453,12 +1453,23 @@ export interface ImportPreviewRow {
   /** 형식 오류 사유. 있으면 이 줄은 넣을 수 없다. */
   error: string | null;
   duplicateOf: number | null;
+  /** `duplicateOf`가 가리키는 거래의 내용. id만으로는 옆에 놓고 견줄 수 없다(#1385). */
+  duplicateOfTransaction: ImportDuplicateTransaction | null;
   /**
    * 같아 보이는 **앞 파일의 줄**. 기간이 겹치게 내려받은 파일을 함께 올렸을 때 걸린다 —
    * 아직 원장에 없어서 id가 없으므로 자리로 가리킨다. `duplicateOf`가 있으면 비어 있다.
    */
   duplicateOfRow: ImportRowRef | null;
   assetId: number | null;
+  assetName: string | null;
+}
+
+export interface ImportDuplicateTransaction {
+  id: number;
+  occurredOn: string;
+  type: LedgerFlow;
+  amount: number;
+  title: string | null;
   assetName: string | null;
 }
 

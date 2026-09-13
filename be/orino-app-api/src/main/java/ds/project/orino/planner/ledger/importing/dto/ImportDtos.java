@@ -125,11 +125,28 @@ public final class ImportDtos {
     }
 
     /**
+     * 같아 보이는 <b>기존 거래</b>가 무엇인가(#1385).
+     *
+     * <p>id만 주면 사람은 그 거래를 따로 찾아 열어 봐야 판단할 수 있다. 견줄 때 쓴 값
+     * (날짜·금액·내용·자산)을 그대로 내려 옆에 놓는다.
+     */
+    public record DuplicateTransaction(
+            Long id,
+            LocalDate occurredOn,
+            LedgerFlow type,
+            long amount,
+            String title,
+            String assetName
+    ) {
+    }
+
+    /**
      * 미리보기 한 줄.
      *
      * @param rowNumber  파일에서 몇 번째 줄인가. 오류를 파일에서 찾으려면 이 번호가 필요하다
      * @param error      형식 오류 사유. 있으면 이 줄은 넣을 수 없다
      * @param duplicateOf 같아 보이는 기존 거래의 id. <b>자동으로 합치지 않는다</b>(`LDG-092`)
+     * @param duplicateOfTransaction {@code duplicateOf}가 가리키는 거래의 내용. 있으면 함께 온다
      * @param duplicateOfRow 같아 보이는 <b>앞 파일의 줄</b>. 기간이 겹치게 내려받은 파일을 함께
      *                   올렸을 때 걸린다. {@code duplicateOf}가 있으면 비어 있다 — 이미 원장에
      *                   있는 거래를 가리키는 편이 구체적이다
@@ -145,6 +162,7 @@ public final class ImportDtos {
             String categoryName,
             String error,
             Long duplicateOf,
+            DuplicateTransaction duplicateOfTransaction,
             RowRef duplicateOfRow,
             /** 이 줄이 들어갈 자산. 파일의 자산 열이 정했거나, 못 정했으면 기본 자산이다. */
             Long assetId,
