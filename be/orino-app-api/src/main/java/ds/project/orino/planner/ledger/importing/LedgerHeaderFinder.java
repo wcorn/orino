@@ -41,7 +41,9 @@ final class LedgerHeaderFinder {
 
         for (int i = 0; i < limit; i++) {
             List<Integer> columns = filledColumns(rows.get(i));
-            if (columns.size() < MIN_CELLS) {
+            // 날짜가 든 줄은 거래지 머리글이 아니다. 이걸 거르지 않으면 머리글이 칸을 더 많이
+            // 채운 파일(국민은행 10칸)에서 조건이 느슨한 첫 거래 줄이 이겨, 그 줄이 조용히 빠진다.
+            if (columns.size() < MIN_CELLS || hasDate(rows.get(i))) {
                 continue;
             }
             int score = 0;
@@ -49,11 +51,13 @@ final class LedgerHeaderFinder {
             for (int j = i + 1; j < until; j++) {
                 if (looksLikeData(rows.get(j), columns)) {
                     score++;
-                } else {
+                } else if (!hasDate(rows.get(j))) {
                     // 이어지지 않으면 거기서 끝이다. 안내문은 한두 줄 뒤 끊기고,
                     // 진짜 데이터는 끊기지 않는다.
                     break;
                 }
+                // 날짜는 있는데 칸이 덜 찬 줄은 거래다(ATM 출금은 보낸분·메모가 빈다).
+                // 세지는 않되 끊지도 않는다.
             }
             if (score > bestScore) {
                 bestScore = score;
@@ -72,6 +76,15 @@ final class LedgerHeaderFinder {
             }
         }
         return columns;
+    }
+
+    private static boolean hasDate(List<String> row) {
+        for (String cell : row) {
+            if (LedgerDateParser.parse(cell, null) != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 머리글이 쓴 칸들이 이 줄에서도 대체로 채워져 있는가. */

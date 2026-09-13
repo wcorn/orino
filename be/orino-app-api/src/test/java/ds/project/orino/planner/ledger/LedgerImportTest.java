@@ -508,9 +508,15 @@ class LedgerImportTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.code").value("LDG-ERR-036"));
         }
 
-        /** 국민은행은 거래내역을 구형 .xls로 내려준다(#1381). 머리글은 5행이다. */
+        /**
+         * 국민은행은 거래내역을 구형 .xls로 내려준다(#1381). 머리글은 5행이고, 그 위 4행은
+         * 통째로 빈 행이다 — 빈 행을 건너뛰고 세면 머리글이 한 줄 당겨진다.
+         *
+         * <p>첫 거래가 칸이 덜 찬 줄(ATM 출금)이어도 그 줄을 머리글로 잡지 않는다. 잡으면
+         * 그 거래가 머리글이 되어 조용히 빠진다 — 실제 파일 아홉 장 중 세 장이 그랬다.
+         */
         @Test
-        @DisplayName("구형 .xls도 읽고 머리글 줄을 찾아낸다")
+        @DisplayName("구형 .xls도 읽고, 첫 거래 칸이 덜 차도 머리글 줄을 찾아낸다")
         void readsLegacyWorkbook() throws Exception {
             mockMvc.perform(multipart("/api/ledger/import/analyze")
                             .file(xlsPart("file", kbWorkbook(null)))
@@ -520,9 +526,10 @@ class LedgerImportTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.headers[0]").value("거래일시"))
                     .andExpect(jsonPath("$.data.headers[4]").value("출금액"))
                     .andExpect(jsonPath("$.data.headers[5]").value("입금액"))
-                    // 두 줄 + 끝의 「합계」 줄
-                    .andExpect(jsonPath("$.data.totalRows").value(3))
-                    .andExpect(jsonPath("$.data.sample[0][2]").value("스타벅스 역삼"));
+                    // 세 줄 + 끝의 「합계」 줄
+                    .andExpect(jsonPath("$.data.totalRows").value(4))
+                    .andExpect(jsonPath("$.data.sample[0][1]").value("ATM출금"))
+                    .andExpect(jsonPath("$.data.sample[1][2]").value("스타벅스 역삼"));
         }
 
         /**
@@ -540,11 +547,13 @@ class LedgerImportTest extends ApiTestSupport {
             multiPreview(request, xlsPart("files", kbWorkbook(null)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.files[0].rows[0].type").value("EXPENSE"))
-                    .andExpect(jsonPath("$.data.files[0].rows[0].amount").value(5500))
-                    .andExpect(jsonPath("$.data.files[0].rows[0].occurredOn").value("2026-01-12"))
-                    .andExpect(jsonPath("$.data.files[0].rows[1].type").value("INCOME"))
-                    .andExpect(jsonPath("$.data.files[0].rows[1].amount").value(3000000))
-                    .andExpect(jsonPath("$.data.files[0].rows[2].error").isNotEmpty());
+                    .andExpect(jsonPath("$.data.files[0].rows[0].amount").value(10000))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].occurredOn").value("2026-01-13"))
+                    .andExpect(jsonPath("$.data.files[0].rows[1].type").value("EXPENSE"))
+                    .andExpect(jsonPath("$.data.files[0].rows[1].amount").value(5500))
+                    .andExpect(jsonPath("$.data.files[0].rows[2].type").value("INCOME"))
+                    .andExpect(jsonPath("$.data.files[0].rows[2].amount").value(3000000))
+                    .andExpect(jsonPath("$.data.files[0].rows[3].error").isNotEmpty());
         }
 
         @Test
@@ -701,19 +710,22 @@ class LedgerImportTest extends ApiTestSupport {
                     row.createCell(1).setCellValue(preamble[i][1]);
                 }
                 String[] headers = {"거래일시", "적요", "보낸분/받는분", "송금메모",
-                        "출금액", "입금액", "잔액", "거래점"};
+                        "출금액", "입금액", "잔액", "거래점", "구분", "메모"};
                 Row header = sheet.createRow(4);
                 for (int i = 0; i < headers.length; i++) {
                     header.createCell(i).setCellValue(headers[i]);
                 }
-                kbRow(sheet.createRow(5), "2026-01-12 13:09:12", "체크카드", "스타벅스 역삼",
+                // 첫 줄이 ATM 출금 — 보낸분이 비어 머리글 10칸 중 6칸만 찬다.
+                kbRow(sheet.createRow(5), "2026-01-13 11:55:28", "ATM출금", "",
+                        10000, 0, 2984500);
+                kbRow(sheet.createRow(6), "2026-01-12 13:09:12", "체크카드", "스타벅스 역삼",
                         5500, 0, 2994500);
-                kbRow(sheet.createRow(6), "2026-01-11 10:00:00", "전자금융", "급여",
+                kbRow(sheet.createRow(7), "2026-01-11 10:00:00", "전자금융", "급여",
                         0, 3000000, 3000000);
-                Row total = sheet.createRow(7);
+                Row total = sheet.createRow(8);
                 total.createCell(3).setCellValue("합계");
-                total.createCell(4).setCellFormula("SUM(E6:E7)");
-                total.createCell(5).setCellFormula("SUM(F6:F7)");
+                total.createCell(4).setCellFormula("SUM(E6:E8)");
+                total.createCell(5).setCellFormula("SUM(F6:F8)");
                 workbook.write(out);
                 plain = out.toByteArray();
             }
@@ -732,7 +744,7 @@ class LedgerImportTest extends ApiTestSupport {
             }
         }
 
-        /** 송금메모는 비는 일이 흔하다 — 잔액·거래점까지 채워야 머리글 아래로 모양이 이어진다. */
+        /** 실제 파일처럼 송금메모·메모는 비고, 구분은 전각 공백 한 칸이다. */
         private void kbRow(Row row, String at, String kind, String who,
                            long out, long in, long balance) {
             row.createCell(0).setCellValue(at);
@@ -743,6 +755,8 @@ class LedgerImportTest extends ApiTestSupport {
             row.createCell(5).setCellValue(in);
             row.createCell(6).setCellValue(balance);
             row.createCell(7).setCellValue("KB카드");
+            row.createCell(8).setCellValue("　");
+            row.createCell(9).setCellValue("");
         }
 
         private MockMultipartFile xlsPart(String partName, byte[] bytes) {
