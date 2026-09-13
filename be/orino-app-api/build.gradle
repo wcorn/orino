@@ -25,8 +25,8 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:5.2.1'
     // 가계부 이관(#1268 · D-6). 엑셀을 BE에서 읽고 쓴다 — 중복 검사가 원장 전체를
     // 조회해야 하고, 자동 분류 규칙은 수동 입력과 SSOT를 나눠 갖기 때문이다.
-    // poi-ooxml은 .xlsx만 다룬다. 구형 .xls(poi-scratchpad·HSSF)는 받지 않는다 —
-    // 쓰는 사람이 없는 형식을 위해 스캔 대상을 넓히지 않는다.
+    // poi-ooxml이 끌어오는 poi에 구형 .xls를 읽는 HSSF가 들어 있다 — 국민은행이 .xls로
+    // 내려준다(#1381). poi-scratchpad(.doc·.ppt 등)는 필요 없다.
     implementation 'org.apache.poi:poi-ooxml:5.4.1'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
 

@@ -103,7 +103,7 @@ export function readFailure(error: unknown): string {
   if (code === "LDG-ERR-025") {
     return "한 번에 넣을 수 있는 줄 수를 넘었어요. 기간을 나눠 내려받아 주세요.";
   }
-  return "이 파일은 읽을 수 없어요. CSV 또는 .xlsx만 됩니다.";
+  return "이 파일은 읽을 수 없어요. CSV 또는 엑셀(.xlsx·.xls)만 됩니다.";
 }
 
 /** 여러 장을 한 번에 보낼 때의 실패. 어느 파일 때문인지는 서버가 알려주지 않는다. */

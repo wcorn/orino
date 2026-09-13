@@ -87,6 +87,22 @@ describe("가져오기", () => {
   });
 
   /**
+   * 국민은행은 거래내역을 구형 .xls로 내려준다(#1381). 고르는 창의 `accept`가 막으면
+   * 파일이 흐리게 보여 고를 수조차 없다.
+   */
+  it("구형 .xls 파일도 고를 수 있다", async () => {
+    const user = userEvent.setup();
+    renderAt("/ledger/import");
+
+    // 걸러지면 고른 파일이 없어 「열 맞추기」가 뜨지 않고, 여기서 멈춘다.
+    await pickFiles(user, [
+      new File(["xls"], "KB_거래내역조회.xls", {
+        type: "application/vnd.ms-excel",
+      }),
+    ]);
+  });
+
+  /**
    * 은행 파일을 받은 그대로(#1318).
    *
    * <p>카카오뱅크 거래내역은 앞 10줄이 안내문이고 11행이 머리글이다. 1행을 머리글로 못 박으면

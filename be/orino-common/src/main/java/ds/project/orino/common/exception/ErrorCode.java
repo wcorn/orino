@@ -138,7 +138,7 @@ public enum ErrorCode {
     LEDGER_RECURRING_CARD_PAYMENT("LDG-ERR-013", "카드 대금은 정기 항목으로 만들 수 없습니다.", 400),
 
     // 이관 — 파일이 원장에 닿기 전에 걸러야 한다. 들어간 뒤에 알면 되돌리기밖에 없다.
-    LEDGER_IMPORT_UNSUPPORTED_FILE("LDG-ERR-023", "CSV 또는 .xlsx 파일만 읽을 수 있습니다.", 400),
+    LEDGER_IMPORT_UNSUPPORTED_FILE("LDG-ERR-023", "CSV 또는 엑셀(.xlsx·.xls) 파일만 읽을 수 있습니다.", 400),
     LEDGER_IMPORT_EMPTY_FILE("LDG-ERR-024", "읽을 줄이 없습니다.", 400),
     LEDGER_IMPORT_TOO_MANY_ROWS("LDG-ERR-025", "한 번에 넣을 수 있는 줄 수를 넘었습니다.", 400),
     LEDGER_IMPORT_MAPPING_REQUIRED("LDG-ERR-026", "날짜·금액 열은 반드시 지정해야 합니다.", 400),

@@ -13,6 +13,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.apache.poi.hssf.record.crypto.Biff8EncryptionKey;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.poifs.crypt.EncryptionInfo;
 import org.apache.poi.poifs.crypt.EncryptionMode;
 import org.apache.poi.poifs.crypt.Encryptor;
@@ -23,6 +25,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.ResultActions;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -505,6 +508,95 @@ class LedgerImportTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.code").value("LDG-ERR-036"));
         }
 
+        /** 국민은행은 거래내역을 구형 .xls로 내려준다(#1381). 머리글은 5행이다. */
+        @Test
+        @DisplayName("구형 .xls도 읽고 머리글 줄을 찾아낸다")
+        void readsLegacyWorkbook() throws Exception {
+            mockMvc.perform(multipart("/api/ledger/import/analyze")
+                            .file(xlsPart("file", kbWorkbook(null)))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.headerRow").value(4))
+                    .andExpect(jsonPath("$.data.headers[0]").value("거래일시"))
+                    .andExpect(jsonPath("$.data.headers[4]").value("출금액"))
+                    .andExpect(jsonPath("$.data.headers[5]").value("입금액"))
+                    // 두 줄 + 끝의 「합계」 줄
+                    .andExpect(jsonPath("$.data.totalRows").value(3))
+                    .andExpect(jsonPath("$.data.sample[0][2]").value("스타벅스 역삼"));
+        }
+
+        /**
+         * 출금·입금 두 열 모두에 숫자가 찬다 — 쓰지 않은 쪽은 비지 않고 {@code 0}이다.
+         * 끝의 「합계」 줄은 거래가 아니므로 형식 오류로 보여 준다(조용히 빼지 않는다).
+         */
+        @Test
+        @DisplayName("구형 .xls를 출금·입금 두 열로 미리 본다")
+        void previewsLegacyWorkbook() throws Exception {
+            String request = """
+                    {"files": [{"assetId": %d, "skipRows": 5,
+                     "mapping": {"date": 0, "title": 2, "outflow": 4, "inflow": 5}}]}
+                    """.formatted(checking);
+
+            multiPreview(request, xlsPart("files", kbWorkbook(null)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.files[0].rows[0].type").value("EXPENSE"))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].amount").value(5500))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].occurredOn").value("2026-01-12"))
+                    .andExpect(jsonPath("$.data.files[0].rows[1].type").value("INCOME"))
+                    .andExpect(jsonPath("$.data.files[0].rows[1].amount").value(3000000))
+                    .andExpect(jsonPath("$.data.files[0].rows[2].error").isNotEmpty());
+        }
+
+        @Test
+        @DisplayName("비밀번호를 함께 주면 암호 걸린 .xls를 읽는다")
+        void readsEncryptedLegacyWorkbook() throws Exception {
+            mockMvc.perform(multipart("/api/ledger/import/analyze")
+                            .file(xlsPart("file", kbWorkbook("990820")))
+                            .param("password", "990820")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.headers[0]").value("거래일시"));
+        }
+
+        @Test
+        @DisplayName("암호 걸린 .xls도 비밀번호가 없으면 없다고, 틀리면 틀렸다고 답한다")
+        void namesPasswordProblemsOfLegacyWorkbook() throws Exception {
+            byte[] encrypted = kbWorkbook("990820");
+
+            mockMvc.perform(multipart("/api/ledger/import/analyze")
+                            .file(xlsPart("file", encrypted))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("LDG-ERR-035"));
+            mockMvc.perform(multipart("/api/ledger/import/analyze")
+                            .file(xlsPart("file", encrypted))
+                            .param("password", "000000")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("LDG-ERR-036"));
+        }
+
+        /**
+         * POI는 .xls 비밀번호를 스레드에 붙여 둔다. 비우지 않으면 같은 스레드의 다음 요청이
+         * 앞사람의 비밀번호로 파일을 연다 — MockMvc는 같은 스레드로 돌아 그 누수가 드러난다.
+         */
+        @Test
+        @DisplayName(".xls 비밀번호가 다음 요청에 남지 않는다")
+        void doesNotLeakLegacyPassword() throws Exception {
+            byte[] encrypted = kbWorkbook("990820");
+
+            mockMvc.perform(multipart("/api/ledger/import/analyze")
+                            .file(xlsPart("file", encrypted))
+                            .param("password", "990820")
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isOk());
+            mockMvc.perform(multipart("/api/ledger/import/analyze")
+                            .file(xlsPart("file", encrypted))
+                            .header(HttpHeaders.AUTHORIZATION, authHeader))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("LDG-ERR-035"));
+        }
+
         /**
          * 카카오뱅크는 앞 10줄이 제목·성명·계좌번호·주의사항이고 11행이 머리글이다.
          * 1행을 머리글로 못 박으면 화면의 열 이름이 전부 「(이름 없음)」이 된다.
@@ -586,6 +678,76 @@ class LedgerImportTest extends ApiTestSupport {
                 fs.writeFilesystem(out);
                 return out.toByteArray();
             }
+        }
+
+        /**
+         * 국민은행 거래내역조회 파일과 같은 모양 — 조회기간·계좌번호·예금종류 3줄, 빈 줄, 5행 머리글,
+         * 거래 두 줄, 끝의 「합계」 수식 줄. 금액은 숫자 셀이고 쓰지 않은 쪽은 0이다.
+         *
+         * @param password 걸 비밀번호. {@code null}이면 암호 없이
+         */
+        private byte[] kbWorkbook(String password) throws Exception {
+            byte[] plain;
+            try (HSSFWorkbook workbook = new HSSFWorkbook();
+                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                Sheet sheet = workbook.createSheet("거래내역조회");
+                String[][] preamble = {
+                        {"조회기간", "2026-01-01 ~ 2026-01-31"},
+                        {"계좌번호", "123456-00-000000"},
+                        {"예금종류", "ＫＢ마이핏통장"}};
+                for (int i = 0; i < preamble.length; i++) {
+                    Row row = sheet.createRow(i);
+                    row.createCell(0).setCellValue(preamble[i][0]);
+                    row.createCell(1).setCellValue(preamble[i][1]);
+                }
+                String[] headers = {"거래일시", "적요", "보낸분/받는분", "송금메모",
+                        "출금액", "입금액", "잔액", "거래점"};
+                Row header = sheet.createRow(4);
+                for (int i = 0; i < headers.length; i++) {
+                    header.createCell(i).setCellValue(headers[i]);
+                }
+                kbRow(sheet.createRow(5), "2026-01-12 13:09:12", "체크카드", "스타벅스 역삼",
+                        5500, 0, 2994500);
+                kbRow(sheet.createRow(6), "2026-01-11 10:00:00", "전자금융", "급여",
+                        0, 3000000, 3000000);
+                Row total = sheet.createRow(7);
+                total.createCell(3).setCellValue("합계");
+                total.createCell(4).setCellFormula("SUM(E6:E7)");
+                total.createCell(5).setCellFormula("SUM(F6:F7)");
+                workbook.write(out);
+                plain = out.toByteArray();
+            }
+            if (password == null) {
+                return plain;
+            }
+
+            // .xls 암호는 쓰는 순간 스레드에 붙은 비밀번호로 걸린다.
+            Biff8EncryptionKey.setCurrentUserPassword(password);
+            try (HSSFWorkbook workbook = new HSSFWorkbook(new ByteArrayInputStream(plain));
+                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                workbook.write(out);
+                return out.toByteArray();
+            } finally {
+                Biff8EncryptionKey.setCurrentUserPassword(null);
+            }
+        }
+
+        /** 송금메모는 비는 일이 흔하다 — 잔액·거래점까지 채워야 머리글 아래로 모양이 이어진다. */
+        private void kbRow(Row row, String at, String kind, String who,
+                           long out, long in, long balance) {
+            row.createCell(0).setCellValue(at);
+            row.createCell(1).setCellValue(kind);
+            row.createCell(2).setCellValue(who);
+            row.createCell(3).setCellValue("");
+            row.createCell(4).setCellValue(out);
+            row.createCell(5).setCellValue(in);
+            row.createCell(6).setCellValue(balance);
+            row.createCell(7).setCellValue("KB카드");
+        }
+
+        private MockMultipartFile xlsPart(String partName, byte[] bytes) {
+            return new MockMultipartFile(partName, "KB_거래내역조회.xls",
+                    "application/vnd.ms-excel", bytes);
         }
 
         private MockMultipartFile xlsxPart(byte[] bytes) {

@@ -44,7 +44,8 @@ export function ImportFilePicker({
       <section className="bg-card ring-foreground/10 flex flex-col items-center gap-3 rounded-xl p-8 ring-1">
         <Upload className="text-muted-foreground size-8" />
         <p className="text-sm font-medium">
-          CSV 또는 .xlsx 파일을 고르세요 — 여러 장을 한 번에 고를 수 있어요
+          CSV 또는 엑셀(.xlsx·.xls) 파일을 고르세요 — 여러 장을 한 번에 고를 수
+          있어요
         </p>
         <p className="text-muted-foreground text-[13px]">
           카드사 명세서 · 은행 거래내역 · 다른 가계부 앱의 내보내기 파일
@@ -74,7 +75,7 @@ export function ImportFilePicker({
           id="import-file"
           type="file"
           multiple
-          accept=".csv,.xlsx,.txt"
+          accept=".csv,.xlsx,.xls,.txt"
           disabled={busy}
           className="max-w-[320px]"
           onChange={(event) => {

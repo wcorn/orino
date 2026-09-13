@@ -2,6 +2,9 @@ package ds.project.orino.planner.ledger.importing;
 
 import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
+import org.apache.poi.EncryptedDocumentException;
+import org.apache.poi.hssf.record.crypto.Biff8EncryptionKey;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.poifs.crypt.Decryptor;
 import org.apache.poi.poifs.crypt.EncryptionInfo;
 import org.apache.poi.poifs.filesystem.FileMagic;
@@ -34,8 +37,9 @@ import java.util.List;
  * 그건 다음 단계의 일이다. 읽기와 해석을 섞으면 「이 파일은 왜 안 되나」를 물었을 때
  * 파일 문제인지 매핑 문제인지 갈라 볼 수 없다.
  *
- * <p>엑셀은 <b>.xlsx만</b> 받는다(D-6에서 BE POI로 정했다). 구형 .xls를 받으려면 HSSF가
- * 따라 들어오는데, 쓰는 사람이 없는 형식을 위해 스캔 대상을 넓히지 않는다.
+ * <p>엑셀은 <b>.xlsx와 구형 .xls</b>를 받는다(D-6에서 BE POI로 정했다). 국민은행은 거래내역을
+ * .xls로 내려준다(#1381). .xls를 읽는 HSSF는 이미 쓰는 {@code poi} jar에 들어 있어
+ * 의존성이 늘지 않는다.
  *
  * <p><b>암호가 걸린 xlsx는 비밀번호를 받아 푼다</b>(#1318). 은행 거래내역은 비밀번호를 걸어
  * 내려주는 것이 기본이라, 받지 않으면 사람이 엑셀로 열어 다시 저장하는 단계를 매번 거쳐야 한다.
@@ -60,13 +64,15 @@ public class LedgerSheetReader {
         return read(file, null);
     }
 
-    /** @param password 암호가 걸린 xlsx의 비밀번호. 없으면 {@code null} */
+    /** @param password 암호가 걸린 엑셀 파일의 비밀번호. 없으면 {@code null} */
     public List<List<String>> read(MultipartFile file, String password) {
         String name = file.getOriginalFilename() == null
                 ? "" : file.getOriginalFilename().toLowerCase();
         List<List<String>> rows;
         if (name.endsWith(".xlsx")) {
-            rows = readXlsx(file, password);
+            rows = readExcel(file, password, false);
+        } else if (name.endsWith(".xls")) {
+            rows = readExcel(file, password, true);
         } else if (name.endsWith(".csv") || name.endsWith(".txt")) {
             rows = readCsv(file);
         } else {
@@ -86,19 +92,19 @@ public class LedgerSheetReader {
         return rows;
     }
 
-    private List<List<String>> readXlsx(MultipartFile file, String password) {
-        try (InputStream raw = file.getInputStream();
-             // 매직 넘버를 보려면 되감을 수 있어야 한다. 확장자는 .xlsx인데 알맹이가
-             // 암호화 컨테이너(OLE2)인 것이 은행 파일의 기본 모습이다.
-             InputStream in = FileMagic.prepareToCheckMagic(raw);
-             Workbook workbook = FileMagic.valueOf(in) == FileMagic.OLE2
-                     ? decrypt(in, password)
-                     : new XSSFWorkbook(in)) {
+    /** @param legacy 구형 .xls(BIFF8)인가 */
+    private List<List<String>> readExcel(MultipartFile file, String password, boolean legacy) {
+        try (InputStream in = file.getInputStream();
+             Workbook workbook = legacy ? openXls(in, password) : openXlsx(in, password)) {
             // 첫 시트만 읽는다. 여러 시트를 합치면 어느 시트에서 온 줄인지 알 수 없다.
             Sheet sheet = workbook.getSheetAt(0);
             List<List<String>> rows = new ArrayList<>();
-            for (Row row : sheet) {
-                rows.add(cellsOf(row));
+            // 번호로 돈다. 시트의 반복자는 통째로 빈 행을 건너뛰어, 국민은행 파일처럼 안내문
+            // 아래 빈 줄이 있으면 뒤 줄이 한 칸씩 당겨진다 — 엑셀의 5행이 여기서 4번째가 되어
+            // 사람이 엑셀을 보고 적은 「건너뛸 줄 수」가 한 줄 밀린다. 빈 셀과 같은 이유다.
+            for (int i = 0; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                rows.add(row == null ? new ArrayList<>() : cellsOf(row));
                 if (rows.size() > MAX_ROWS) {
                     throw new CustomException(ErrorCode.LEDGER_IMPORT_TOO_MANY_ROWS);
                 }
@@ -109,6 +115,38 @@ public class LedgerSheetReader {
                 throw custom;
             }
             throw new CustomException(ErrorCode.LEDGER_IMPORT_UNSUPPORTED_FILE);
+        }
+    }
+
+    private Workbook openXlsx(InputStream raw, String password) throws IOException {
+        // 매직 넘버를 보려면 되감을 수 있어야 한다. 확장자는 .xlsx인데 알맹이가
+        // 암호화 컨테이너(OLE2)인 것이 은행 파일의 기본 모습이다.
+        InputStream in = FileMagic.prepareToCheckMagic(raw);
+        return FileMagic.valueOf(in) == FileMagic.OLE2
+                ? decrypt(in, password)
+                : new XSSFWorkbook(in);
+    }
+
+    /**
+     * 구형 .xls(BIFF8)를 연다.
+     *
+     * <p>.xls의 암호는 컨테이너가 아니라 레코드마다 걸려 있어, POI는 비밀번호를
+     * <b>스레드에 붙여 두고</b> 여는 동안 읽는다. 열고 나면 반드시 비운다 — 남겨 두면 같은
+     * 스레드가 다음 요청에서 앞사람의 비밀번호로 파일을 연다.
+     *
+     * <p>레코드는 생성자에서 모두 읽히므로, 비운 뒤에 셀을 읽어도 된다.
+     */
+    private Workbook openXls(InputStream in, String password) throws IOException {
+        boolean given = password != null && !password.isBlank();
+        Biff8EncryptionKey.setCurrentUserPassword(given ? password : null);
+        try {
+            return new HSSFWorkbook(in);
+        } catch (EncryptedDocumentException e) {
+            throw new CustomException(given
+                    ? ErrorCode.LEDGER_IMPORT_PASSWORD_WRONG
+                    : ErrorCode.LEDGER_IMPORT_PASSWORD_REQUIRED);
+        } finally {
+            Biff8EncryptionKey.setCurrentUserPassword(null);
         }
     }
 
