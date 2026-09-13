@@ -185,7 +185,7 @@ describe("가져오기", () => {
             duplicateOf: 42,
             duplicateOfTransaction: {
               id: 42,
-              occurredOn: "2026-08-09",
+              occurredOn: "2026-08-10",
               type: "EXPENSE",
               amount: 5500,
               title: "스타벅스역삼",
@@ -210,12 +210,13 @@ describe("가져오기", () => {
       await screen.findByText(/중복 후보 1건 — 자동으로 병합하지 않습니다/),
     ).toBeInTheDocument();
 
-    // 「이미 있는 거래」가 무엇인지 옆에 놓는다 — 날짜가 하루 다른 것까지 여기서 보인다(#1385).
+    // 「이미 있는 거래」가 무엇인지 옆에 놓는다(#1385). 판정은 같은 날짜만 보므로(#1387)
+    // 상대도 같은 날이다 — 내용 표기가 다른 것(「스타벅스 역삼」·「스타벅스역삼」)이 보인다.
     expect(
       screen.getByText("같아 보이는 거래 — 이미 내역에 있어요"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("2026-08-09 · 스타벅스역삼 · 5,500 · 급여통장"),
+      screen.getByText("2026-08-10 · 스타벅스역삼 · 5,500 · 급여통장"),
     ).toBeInTheDocument();
     // 같은 탭으로 옮기면 고른 파일과 체크가 사라진다 — 새 탭으로 연다.
     const link = screen.getByRole("link", { name: "내역에서 보기" });
@@ -433,7 +434,7 @@ describe("가져오기", () => {
               rows: [
                 {
                   rowNumber: 3,
-                  occurredOn: "2026-01-10",
+                  occurredOn: "2026-01-11",
                   type: "EXPENSE",
                   amount: 3200,
                   title: "GS25 역삼",
@@ -448,7 +449,7 @@ describe("가져오기", () => {
                   occurredOn: "2026-01-11",
                   type: "EXPENSE",
                   amount: 3200,
-                  title: "편의점",
+                  title: "GS25역삼",
                   duplicateOfRow: { fileIndex: 0, rowNumber: 3 },
                 },
               ],
@@ -473,9 +474,9 @@ describe("가져오기", () => {
         screen.getByText("같아 보이는 줄 — 「3분기.csv」 3행"),
       ).toBeInTheDocument();
       // 자리만 말하면 그 줄을 찾아가야 한다 — 그 줄의 내용을 옆에 놓는다(#1385).
-      // 앞 파일은 접혀 있어도 보인다. 날짜가 하루 다른 것도 여기서 드러난다.
+      // 앞 파일은 접혀 있어도 보인다.
       expect(
-        screen.getByText("2026-01-10 · GS25 역삼 · 3,200"),
+        screen.getByText("2026-01-11 · GS25 역삼 · 3,200"),
       ).toBeInTheDocument();
       // 앞 파일의 줄도 기존 거래와 똑같이 꺼진 채로 온다.
       expect(screen.getByLabelText(/1월.csv 2번째 줄 넣기/)).not.toBeChecked();
