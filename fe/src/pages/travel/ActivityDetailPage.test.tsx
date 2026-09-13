@@ -203,8 +203,51 @@ describe("ActivityDetailPage", () => {
     expect(seen[0].startTime).toBeNull();
   });
 
+  describe("장소 (#1396)", () => {
+    it("장소가 있으면 장소 변경이 검색 화면을 교체 모드로 연다", async () => {
+      mockDetail({
+        place: {
+          id: 10,
+          name: "센소지",
+          address: "다이토구",
+          lat: null,
+          lng: null,
+          cityName: "도쿄",
+          adminArea: null,
+          cityPlaceRef: "ChIJ_tokyo",
+        },
+      });
+      const user = userEvent.setup();
+      renderDetail();
+
+      await user.click(
+        await screen.findByRole("button", { name: "장소 변경" }),
+      );
+
+      expect(await screen.findByLabelText("장소 검색")).toBeInTheDocument();
+      expect(
+        await screen.findByText("“센소지” 일정의 장소를 바꿔요"),
+      ).toBeInTheDocument();
+    });
+
+    it("장소가 없으면 장소 추가로 붙일 수 있다", async () => {
+      mockDetail({ place: null });
+      const user = userEvent.setup();
+      renderDetail();
+
+      await user.click(
+        await screen.findByRole("button", { name: "장소 추가" }),
+      );
+
+      expect(
+        await screen.findByText("“센소지” 일정의 장소를 바꿔요"),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "장소 변경" })).toBeNull();
+    });
+  });
+
   it("시각을 넣고 저장해도 장소가 살아남는다 — 수정은 전체 교체다(#1197)", async () => {
-    // 이 화면의 장소 블록은 읽기 전용이라 사용자가 장소를 지울 방법이 없다.
+    // 폼 저장은 장소를 건드리지 않는다(장소는 검색 화면에서 따로 바꾼다, #1396).
     // `placeId`를 빠뜨리면 서버가 place_id를 NULL로 덮어 이름·주소·좌표가 다 사라진다.
     mockDetail({
       startTime: null,

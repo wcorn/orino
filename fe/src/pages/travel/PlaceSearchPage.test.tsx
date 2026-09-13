@@ -571,6 +571,166 @@ describe("PlaceSearchPage", () => {
     });
   });
 
+  describe("장소 바꾸기 (#1396)", () => {
+    /** 교체할 일정. 저장 후 상세 화면이 다시 그려지므로 온전한 모양이어야 한다. */
+    function mockReplacing() {
+      server.use(
+        http.get(`${API_BASE}/travel/activities/:id`, () =>
+          HttpResponse.json({
+            code: "OK",
+            data: {
+              id: 1,
+              tripId: 3,
+              title: "아사쿠사 산책",
+              activityDate: "2026-10-24",
+              startTime: "09:00",
+              place: {
+                id: 10,
+                name: "가미나리몬",
+                address: "다이토구",
+                lat: 35.71,
+                lng: 139.79,
+                cityName: "도쿄",
+                adminArea: null,
+                cityPlaceRef: "ChIJ_tokyo",
+              },
+              memo: "나카미세부터",
+              url: null,
+              notifyEnabled: true,
+              notifyMinutes: 30,
+              departureNotifyEnabled: false,
+              outOfBaseCity: false,
+              canDepartureNotify: false,
+              sortOrder: 0,
+              log: null,
+              hasLog: false,
+            },
+          }),
+        ),
+      );
+    }
+
+    function captureWrites() {
+      const updates: Record<string, unknown>[] = [];
+      const creates: unknown[] = [];
+      server.use(
+        http.put(`${API_BASE}/travel/activities/:id`, async ({ request }) => {
+          updates.push((await request.json()) as Record<string, unknown>);
+          return HttpResponse.json({ code: "OK", data: { id: 1 } });
+        }),
+        http.post(
+          `${API_BASE}/travel/trips/:tripId/activities`,
+          async ({ request }) => {
+            creates.push(await request.json());
+            return HttpResponse.json({ code: "OK", data: { id: 99 } });
+          },
+        ),
+      );
+      return { updates, creates };
+    }
+
+    it("어느 일정의 장소를 바꾸는지 말하고, 버튼은 담기가 아니라 선택이다", async () => {
+      mockReplacing();
+      mockSearch();
+      renderSearch("/travel/trips/3/places?replace=1&q=센소지");
+
+      expect(
+        await screen.findByText("“아사쿠사 산책” 일정의 장소를 바꿔요"),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "선택" })).toBeEnabled();
+      expect(screen.queryByRole("button", { name: "담기" })).toBeNull();
+    });
+
+    it("고르면 날짜를 묻지 않고 그 일정의 장소만 바꾼다 — 나머지는 그대로 되돌려 보낸다", async () => {
+      mockReplacing();
+      mockSearch();
+      const { updates, creates } = captureWrites();
+      const user = userEvent.setup();
+      renderSearch("/travel/trips/3/places?replace=1&q=센소지&date=2026-10-24");
+
+      await user.click(await screen.findByRole("button", { name: "선택" }));
+
+      await waitFor(() => expect(updates).toHaveLength(1));
+      expect(screen.queryByRole("combobox", { name: "날짜" })).toBeNull();
+      expect(creates).toHaveLength(0);
+      expect(updates[0]).toMatchObject({
+        googlePlaceId: "ChIJ_senso",
+        placeId: null,
+        // 보던 날짜(1일차 오사카)의 도시가 기준이다.
+        cityPlaceId: 21,
+        title: "아사쿠사 산책",
+        activityDate: "2026-10-24",
+        startTime: "09:00",
+        memo: "나카미세부터",
+        notifyEnabled: true,
+        notifyMinutes: 30,
+      });
+      expect(
+        await screen.findByText("장소를 센소지(으)로 바꿨어요"),
+      ).toBeInTheDocument();
+      // 떠나온 일정 상세로 돌아간다.
+      expect(await screen.findByLabelText("제목")).toHaveValue("아사쿠사 산책");
+    });
+
+    it("검색으로 안 나오면 직접 입력한 장소로 바꾼다", async () => {
+      mockReplacing();
+      mockSearch([]);
+      server.use(
+        http.post(`${API_BASE}/travel/places`, () =>
+          HttpResponse.json({
+            code: "OK",
+            data: { id: 7, name: "골목 카페", manualEntry: true },
+          }),
+        ),
+      );
+      const { updates, creates } = captureWrites();
+      const user = userEvent.setup();
+      renderSearch("/travel/trips/3/places?replace=1&q=골목");
+
+      await screen.findByText("“아사쿠사 산책” 일정의 장소를 바꿔요");
+      await user.click(
+        await screen.findByRole("button", { name: /직접 입력/ }),
+      );
+      await user.type(screen.getByLabelText("장소 이름"), "골목 카페");
+      await user.click(screen.getByRole("button", { name: "만들기" }));
+
+      await waitFor(() => expect(updates).toHaveLength(1));
+      expect(updates[0]).toMatchObject({ placeId: 7, memo: "나카미세부터" });
+      expect(updates[0].googlePlaceId).toBeUndefined();
+      expect(creates).toHaveLength(0);
+    });
+
+    it("바꾸지 못하면 알려 주고 검색 화면에 남는다", async () => {
+      mockReplacing();
+      mockSearch();
+      server.use(
+        http.put(`${API_BASE}/travel/activities/:id`, () =>
+          HttpResponse.json({ code: "ERR" }, { status: 500 }),
+        ),
+      );
+      const user = userEvent.setup();
+      renderSearch("/travel/trips/3/places?replace=1&q=센소지");
+
+      await user.click(await screen.findByRole("button", { name: "선택" }));
+
+      expect(
+        await screen.findByText(/장소를 바꾸지 못했어요/),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("장소 검색")).toBeInTheDocument();
+    });
+
+    it("뒤로 가면 일정 상세로 돌아간다", async () => {
+      mockReplacing();
+      const user = userEvent.setup();
+      renderSearch("/travel/trips/3/places?replace=1");
+
+      await screen.findByText("“아사쿠사 산책” 일정의 장소를 바꿔요");
+      await user.click(screen.getByRole("button", { name: "뒤로" }));
+
+      expect(await screen.findByLabelText("제목")).toHaveValue("아사쿠사 산책");
+    });
+  });
+
   describe("검색 기준 도시 (§2.7)", () => {
     it("보던 날짜의 도시가 기준이 되고, placeholder도 따라간다", async () => {
       const calls = mockSearch();

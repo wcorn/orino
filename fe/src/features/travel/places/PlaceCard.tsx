@@ -5,6 +5,8 @@ interface PlaceCardProps {
   place: PlaceSearchResult;
   onAdd: (place: PlaceSearchResult) => void;
   pending?: boolean;
+  /** 버튼 문구. 일정의 장소를 바꾸러 들어왔으면 `선택`이다. */
+  actionLabel?: string;
 }
 
 /** 카테고리 · 평점 · 주소를 한 줄로 — 셋 다 없을 수 있어 있는 것만 잇는다. */
@@ -24,7 +26,12 @@ function metaLine(place: PlaceSearchResult): string {
  * <p>썸네일 자리가 없다 — 구글 장소 사진은 약관상 캐시할 수 없어 넣지 않기로 했고(D-16),
  * 영영 빈 자리 표시만 뜰 슬롯을 남겨두지 않는다.
  */
-export function PlaceCard({ place, onAdd, pending = false }: PlaceCardProps) {
+export function PlaceCard({
+  place,
+  onAdd,
+  pending = false,
+  actionLabel = "담기",
+}: PlaceCardProps) {
   const meta = metaLine(place);
 
   return (
@@ -42,7 +49,7 @@ export function PlaceCard({ place, onAdd, pending = false }: PlaceCardProps) {
         onClick={() => onAdd(place)}
         disabled={pending}
       >
-        담기
+        {actionLabel}
       </Button>
     </li>
   );

@@ -149,6 +149,20 @@ export function ActivityDetailPage() {
     return index >= 0 ? `${base}?day=${index}` : base;
   };
   const boardPath = boardPathFor(form.day);
+
+  /**
+   * 장소는 검색 화면(S-06)의 교체 모드에서 고른다(#1396). 고르는 즉시 그 일정의 장소로
+   * 저장되고 이 화면으로 돌아온다 — 결과 목록·도시 칩·직접 입력을 이 폼 안에 한 벌 더 만들지
+   * 않는다.
+   *
+   * <p>보던 날짜를 들고 간다. 검색 기준 도시가 그 날짜의 도시로 잡혀야 교토 일정의 장소를
+   * 오사카 주변에서 찾지 않는다.
+   */
+  const changePlace = () => {
+    const params = new URLSearchParams({ replace: String(activity.id) });
+    if (activity.activityDate) params.set("date", activity.activityDate);
+    navigate(`/travel/trips/${activity.tripId}/places?${params}`);
+  };
   // 시각이 없으면 언제 보낼지 정할 수 없다(§1.2) — 서버도 같은 규칙이다.
   const hasStartTime = form.startTime !== "";
   /**
@@ -214,7 +228,7 @@ export function ActivityDetailPage() {
       await updateActivity.mutateAsync({
         activityId,
         // 폼에 없는 필드(장소)는 지금 값 그대로 되돌려 보낸다 — 수정은 전체 교체라
-        // 빠뜨리면 서버가 지운다. 이 화면의 장소 블록은 읽기 전용이다(#1197).
+        // 빠뜨리면 서버가 지운다(#1197). 장소는 검색 화면에서 따로 바꾼다(#1396).
         body: activityWriteBodyFrom(activity, {
           title: form.title.trim(),
           activityDate: form.day === ARCHIVE_VALUE ? null : form.day,
@@ -317,7 +331,7 @@ export function ActivityDetailPage() {
           <div className="border-border bg-card flex flex-col gap-2.5 rounded-xl border p-3">
             <div className="flex items-start gap-1.5">
               <MapPin className="text-primary mt-0.5 size-[15px] shrink-0" />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-[15px] font-medium">{activity.place.name}</p>
                 {activity.place.address && (
                   <p className="text-muted-foreground text-xs">
@@ -325,6 +339,16 @@ export function ActivityDetailPage() {
                   </p>
                 )}
               </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="-my-1 shrink-0"
+                disabled={!online}
+                onClick={changePlace}
+              >
+                장소 변경
+              </Button>
             </div>
 
             {/* 영업시간·전화는 상세 조회에서 온다. 서버가 30일 캐시한다(§4.7). */}
@@ -370,6 +394,21 @@ export function ActivityDetailPage() {
               </Button>
             )}
           </div>
+        )}
+
+        {/* 직접 입력으로 만든 일정도 나중에 장소를 붙일 수 있다 — 출발 알림·지도가 장소를 쓴다. */}
+        {!activity.place && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="self-start"
+            disabled={!online}
+            onClick={changePlace}
+          >
+            <MapPin className="size-3.5" />
+            장소 추가
+          </Button>
         )}
 
         {/*
