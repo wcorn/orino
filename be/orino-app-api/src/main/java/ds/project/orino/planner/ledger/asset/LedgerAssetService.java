@@ -7,6 +7,7 @@ import ds.project.orino.domain.planner.ledger.entity.LedgerAssetGroup;
 import ds.project.orino.domain.planner.ledger.entity.LedgerAssetGroupKind;
 import ds.project.orino.domain.planner.ledger.entity.LedgerAssetType;
 import ds.project.orino.domain.planner.ledger.entity.LedgerFlow;
+import ds.project.orino.domain.planner.ledger.entity.LedgerSavingsKind;
 import ds.project.orino.domain.planner.ledger.entity.LedgerTransaction;
 import ds.project.orino.domain.planner.ledger.entity.LedgerTransactionSource;
 import ds.project.orino.domain.planner.ledger.entity.LedgerTransactionStatus;
@@ -29,6 +30,7 @@ import ds.project.orino.planner.ledger.common.LedgerBootstrap;
 import ds.project.orino.planner.ledger.common.LedgerCategorySpending;
 import ds.project.orino.planner.ledger.common.LedgerClock;
 import ds.project.orino.planner.ledger.common.LedgerNames;
+import ds.project.orino.planner.ledger.subscription.LedgerSubscriptionService;
 import ds.project.orino.planner.ledger.transaction.dto.TransactionView;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,6 +71,7 @@ public class LedgerAssetService {
     private final LedgerSettingsRepository settingsRepository;
     private final LedgerBootstrap bootstrap;
     private final LedgerClock clock;
+    private final LedgerSubscriptionService subscriptionService;
 
     public LedgerAssetService(LedgerAssetRepository assetRepository,
                               LedgerAssetGroupRepository groupRepository,
@@ -79,7 +82,9 @@ public class LedgerAssetService {
                               LedgerStatementRepository statementRepository,
                               LedgerSettingsRepository settingsRepository,
                               LedgerBootstrap bootstrap,
-                              LedgerClock clock) {
+                              LedgerClock clock,
+                              LedgerSubscriptionService subscriptionService) {
+        this.subscriptionService = subscriptionService;
         this.assetRepository = assetRepository;
         this.groupRepository = groupRepository;
         this.categoryRepository = categoryRepository;
@@ -110,7 +115,8 @@ public class LedgerAssetService {
         List<AssetView> hidden = new ArrayList<>();
         for (LedgerAsset asset : assets) {
             AssetView view = AssetView.of(asset, assetNames.get(asset.getLinkedAssetId()),
-                    balances.balanceOf(asset.getId()), balances.unpaidOf(asset.getId()));
+                    balances.balanceOf(asset.getId()), balances.unpaidOf(asset.getId()),
+                    subscriptionService.estimatedCount(memberId, asset));
             if (asset.isHidden()) {
                 hidden.add(view);
             } else {
@@ -153,9 +159,13 @@ public class LedgerAssetService {
         asset.updateMaturityDate(request.maturityDate());
         asset.updateTargetAmount(request.targetAmount());
         applyLink(memberId, asset, request.type(), request.linkedAssetId());
+        if (request.savingsKind() != null) {
+            applySavingsKind(asset, request.savingsKind());
+        }
 
         assetRepository.save(asset);
-        return AssetView.of(asset, linkedName(memberId, asset), null, null);
+        // 막 만든 청약에는 기준값이 없다 — 인정 회차는 「모른다」다.
+        return AssetView.of(asset, linkedName(memberId, asset), null, null, null);
     }
 
     @Transactional
@@ -189,11 +199,17 @@ public class LedgerAssetService {
         if (request.linkedAssetId() != null) {
             applyLink(memberId, asset, asset.getType(), request.linkedAssetId());
         }
+        if (Boolean.TRUE.equals(request.clearSavingsKind())) {
+            asset.updateSavingsKind(null);
+        } else if (request.savingsKind() != null) {
+            applySavingsKind(asset, request.savingsKind());
+        }
 
         List<LedgerAsset> assets = assetRepository.findAllByMemberIdOrderByDisplayOrderAscIdAsc(memberId);
         LedgerBalances balances = balances(memberId, assets);
         return AssetView.of(asset, linkedName(memberId, asset),
-                balances.balanceOf(asset.getId()), balances.unpaidOf(asset.getId()));
+                balances.balanceOf(asset.getId()), balances.unpaidOf(asset.getId()),
+                subscriptionService.estimatedCount(memberId, asset));
     }
 
     /**
@@ -223,6 +239,8 @@ public class LedgerAssetService {
                 .ifPresent(settings -> settings.updateDefaultAssetId(null));
 
         statementRepository.deleteAllByMemberIdAndCardAssetId(memberId, id);
+        // 청약홈 기준값은 원장이 아니라 외부 조회 값이다(D-18). 막을 근거가 아니라 함께 지운다.
+        subscriptionService.forget(id);
         assetRepository.delete(asset);
     }
 
@@ -282,7 +300,8 @@ public class LedgerAssetService {
                 blockers.isEmpty(),
                 blockers,
                 AssetView.of(asset, linkedName(memberId, asset),
-                        balances.balanceOf(asset.getId()), balances.unpaidOf(asset.getId())),
+                        balances.balanceOf(asset.getId()), balances.unpaidOf(asset.getId()),
+                        subscriptionService.estimatedCount(memberId, asset)),
                 effective,
                 trend(memberId, asset, effective, from, today),
                 categoryShare(memberId, asset, chargedTo(memberId, asset), from, today));
@@ -596,6 +615,19 @@ public class LedgerAssetService {
             throw new CustomException(ErrorCode.LEDGER_DEBIT_CARD_LINK_REQUIRED);
         }
         asset.updateLinkedAssetId(linkedAssetId);
+    }
+
+    /**
+     * 예·적금의 종류(D-15). <b>예·적금에만</b> 붙는다(LDG-ERR-040).
+     *
+     * <p>유형과 달리 바꿀 수 있다 — 잔액의 의미가 그대로이기 때문이다. 청약을 일반으로 되돌려도
+     * 적어 둔 청약홈 기준값은 지우지 않는다: 잘못 눌러 되돌렸을 때 다시 적게 하지 않는다.
+     */
+    private void applySavingsKind(LedgerAsset asset, LedgerSavingsKind savingsKind) {
+        if (asset.getType() != LedgerAssetType.SAVINGS) {
+            throw new CustomException(ErrorCode.LEDGER_SAVINGS_KIND_MISMATCH);
+        }
+        asset.updateSavingsKind(savingsKind);
     }
 
     private String linkedName(Long memberId, LedgerAsset asset) {

@@ -71,6 +71,16 @@ public class LedgerAsset {
     private Long targetAmount;
 
     /**
+     * 예·적금의 종류. <b>{@code SAVINGS}일 때만</b> 채운다(LDG-ERR-040). {@code null}이면 일반
+     * 예·적금이다.
+     *
+     * <p>유형과 달리 바꿀 수 있다(D-15) — 청약이 되어도 잔액의 의미가 그대로이기 때문이다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "savings_kind", length = 20)
+    private LedgerSavingsKind savingsKind;
+
+    /**
      * 체크카드의 연결 계좌. <b>체크카드에는 반드시 있어야 한다</b>(LDG-ERR-019) —
      * 연결이 없으면 잔액이 어디서도 빠지지 않는 유령 자산이 된다.
      */
@@ -163,6 +173,19 @@ public class LedgerAsset {
 
     public void updateLinkedAssetId(Long linkedAssetId) {
         this.linkedAssetId = linkedAssetId;
+    }
+
+    public void updateSavingsKind(LedgerSavingsKind savingsKind) {
+        this.savingsKind = savingsKind;
+    }
+
+    public LedgerSavingsKind getSavingsKind() {
+        return savingsKind;
+    }
+
+    /** 청약인가. 유형까지 함께 본다 — 종류만 보면 예·적금이 아닌 행을 청약으로 셀 길이 남는다. */
+    public boolean isHousingSubscription() {
+        return type == LedgerAssetType.SAVINGS && savingsKind == LedgerSavingsKind.HOUSING_SUBSCRIPTION;
     }
 
     /**
