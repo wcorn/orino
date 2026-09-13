@@ -190,6 +190,8 @@ public class LedgerTransactionService {
         LedgerFlow type = request.type();
         LedgerAsset asset = requireAsset(memberId, request.assetId());
         Long counterAssetId = resolveCounterAsset(memberId, type, asset, request.counterAssetId());
+        // 가져오기·복사도 이 길을 지난다 — 한 곳에서 막아야 대출에 지출이 새는 경로가 없다.
+        requireTransferForLoan(type, asset);
 
         /*
          * 자동 분류(`LDG-062`)는 지출에만 걸린다. 수입·이체에 지출 카테고리가 붙으면
@@ -258,6 +260,8 @@ public class LedgerTransactionService {
                 : requireAsset(memberId, tx.getAssetId());
         Long counterAssetId = resolveCounterAsset(memberId, type, asset,
                 request.counterAssetId() != null ? request.counterAssetId() : tx.getCounterAssetId());
+        // 이체였던 대출 줄을 지출로 바꾸는 것도 같은 구멍이다.
+        requireTransferForLoan(type, asset);
 
         Long categoryId = Boolean.TRUE.equals(request.clearCategory())
                 ? null
@@ -632,6 +636,19 @@ public class LedgerTransactionService {
         }
         requireAsset(memberId, counterAssetId);
         return counterAssetId;
+    }
+
+    /**
+     * 대출에는 이체만 붙는다(LDG-ERR-039, 덧붙인 명세 §4.1).
+     *
+     * <p>상대 자산은 이체일 때만 있으므로 붙는 자산 쪽만 보면 된다. 대출에 지출·수입이 붙으면
+     * 잔여 원금이 이체 말고 다른 길로 움직여 부채와 통계가 함께 틀어진다 — 상환 이자는 대출이
+     * 아니라 <b>출금 계좌의 지출</b>이다.
+     */
+    private void requireTransferForLoan(LedgerFlow type, LedgerAsset asset) {
+        if (type != LedgerFlow.TRANSFER && asset.isLoan()) {
+            throw new CustomException(ErrorCode.LEDGER_LOAN_TRANSFER_ONLY);
+        }
     }
 
     /**

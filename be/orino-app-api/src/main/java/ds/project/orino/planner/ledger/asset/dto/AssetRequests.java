@@ -3,6 +3,7 @@ package ds.project.orino.planner.ledger.asset.dto;
 import ds.project.orino.domain.planner.ledger.entity.LedgerAssetGroupKind;
 import ds.project.orino.domain.planner.ledger.entity.LedgerAssetType;
 import ds.project.orino.domain.planner.ledger.entity.LedgerSavingsKind;
+import ds.project.orino.planner.ledger.liability.LoanDtos;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -21,6 +22,8 @@ public final class AssetRequests {
      * @param linkedAssetId 체크카드면 <b>필수</b>다(LDG-ERR-019). 연결 계좌가 없으면 잔액이
      *                      어디서도 빠지지 않는 유령 자산이 된다(D-4)
      * @param savingsKind   예·적금에만 붙는다(LDG-ERR-040)
+     * @param loan          대출이면 <b>필수</b>, 대출이 아니면 붙일 수 없다(LDG-ERR-041). 대출 속성과
+     *                      금리 첫 행이 자산과 함께 생긴다
      */
     public record Create(
             @NotBlank @Size(max = 60) String name,
@@ -31,7 +34,8 @@ public final class AssetRequests {
             LocalDate maturityDate,
             Long targetAmount,
             Long linkedAssetId,
-            LedgerSavingsKind savingsKind
+            LedgerSavingsKind savingsKind,
+            LoanDtos.Open loan
     ) {
     }
 

@@ -138,7 +138,7 @@ public class LedgerSubscriptionService {
         if (request.count() == null || request.amount() == null || request.throughMonth() == null
                 || request.count() < 0 || request.amount() < 0
                 || request.throughMonth().isAfter(currentMonth)) {
-            throw new CustomException(ErrorCode.LEDGER_SUBSCRIPTION_BASELINE_INVALID);
+            throw new CustomException(ErrorCode.LEDGER_BASELINE_INVALID);
         }
         return new LedgerSubscriptionEstimator.Baseline(
                 request.count(), request.amount(), request.throughMonth());
