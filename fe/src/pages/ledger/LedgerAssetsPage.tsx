@@ -1,4 +1,4 @@
-import { Banknote, CreditCard, Landmark, Plus } from "lucide-react";
+import { Banknote, CreditCard, House, Landmark, Plus } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -26,6 +26,7 @@ import {
   usePoints,
 } from "@/features/ledger/hooks/useLedgerQueries";
 import { formatAmount, formatBalance } from "@/features/ledger/lib/money";
+import { isHousingSubscription } from "@/features/ledger/lib/subscription";
 import { cn } from "@/lib/utils";
 
 const GROUP_ICON = {
@@ -309,6 +310,7 @@ function AssetRow({
   muted?: boolean;
 }) {
   const navigate = useNavigate();
+  const subscription = isHousingSubscription(asset);
   return (
     <button
       type="button"
@@ -318,14 +320,30 @@ function AssetRow({
         muted && "opacity-60",
       )}
     >
-      <span className="flex min-w-0 items-center gap-2">
-        <span className="truncate text-sm font-medium">{asset.name}</span>
-        {asset.accountLast4 && (
+      <span className="flex min-w-0 flex-col">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium">{asset.name}</span>
+          {asset.accountLast4 && (
+            <span className="text-muted-foreground text-[13px] tabular-nums">
+              ···{asset.accountLast4}
+            </span>
+          )}
+          {subscription && (
+            <Badge variant="outline">
+              <House />
+              청약
+            </Badge>
+          )}
+          {asset.hidden && <Badge variant="outline">해지</Badge>}
+        </span>
+        {/* 인정 회차는 추정이다. 기준값이 없으면 숫자 대신 적을 곳을 가리킨다 — 0회와 「모른다」는 다르다. */}
+        {subscription && (
           <span className="text-muted-foreground text-[13px] tabular-nums">
-            ···{asset.accountLast4}
+            {asset.subscriptionCount != null
+              ? `${asset.subscriptionCount}회 인정 (추정)`
+              : "청약홈 값을 적어 주세요"}
           </span>
         )}
-        {asset.hidden && <Badge variant="outline">해지</Badge>}
       </span>
       <span className="shrink-0 text-sm tabular-nums">
         <AssetAmount asset={asset} />

@@ -41,6 +41,7 @@ import {
   revertImportBatch,
   type SettingsUpdateRequest,
   type StatementPayRequest,
+  type SubscriptionBaseline,
   type TemplateCreateRequest,
   type TransactionCreatedResponse,
   type TransactionCreateRequest,
@@ -50,6 +51,7 @@ import {
   updateCategoryAttributes,
   updatePoint,
   updateSettings,
+  updateSubscriptionBaseline,
   updateTransaction,
   updateUsageGoal,
   type UsageGoalRequest,
@@ -151,6 +153,21 @@ export function useUpdateAsset() {
  * 방금 한 일을 다시 하라는 말이 된다(#1316) — 다음 행동 안내는 상황을 아는 화면이 한다.
  * 애초에 지울 수 없는 자산은 버튼이 비활성이라, 이 길로 오는 것은 드문 경우다.
  */
+/**
+ * 청약홈 기준값 저장. 응답의 `before`(바꾸기 직전 추정)는 화면이 차이를 한 번 알리는 데 쓴다 —
+ * 그래서 토스트로 흘려보내지 않고 호출한 쪽에 돌려준다.
+ */
+export function useUpdateSubscriptionBaseline() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: SubscriptionBaseline }) =>
+      updateSubscriptionBaseline(id, body),
+    onError: () => toast("청약홈 값을 저장하지 못했어요.", "error"),
+    onSettled: () => invalidateLedger(queryClient),
+  });
+}
+
 export function useDeleteAsset() {
   const queryClient = useQueryClient();
 

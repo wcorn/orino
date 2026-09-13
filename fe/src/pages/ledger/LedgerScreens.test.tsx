@@ -277,6 +277,166 @@ describe("자산 수정", () => {
   });
 });
 
+/**
+ * 청약 인정 현황(#1390).
+ *
+ * <p>확인하는 것은 <b>단정하지 않는가</b>다 — 숫자 옆에 늘 「추정」이 있고, 기준값이 없으면
+ * 가입일부터 센 틀린 숫자 대신 적을 자리만 둔다. 다시 맞추면 어긋났던 만큼을 한 번 말한다.
+ */
+describe("청약 인정 현황", () => {
+  beforeEach(() => {
+    useAuthStore.setState({ accessToken: "valid-token" });
+  });
+
+  const subscriptionAsset = (overrides: Record<string, unknown> = {}) =>
+    assetView({
+      id: 5,
+      name: "주택청약",
+      type: "SAVINGS",
+      savingsKind: "HOUSING_SUBSCRIPTION",
+      subscriptionCount: 40,
+      balance: 6200000,
+      ...overrides,
+    });
+
+  const estimated = {
+    assetId: 5,
+    baseline: { count: 38, amount: 5300000, throughMonth: "2026-06" },
+    estimate: { count: 40, amount: 5800000, isEstimate: true },
+    months: [
+      { month: "2026-07", deposited: 250000, recognized: 250000, flag: null },
+      {
+        month: "2026-08",
+        deposited: 500000,
+        recognized: 250000,
+        flag: "OVER_CAP",
+      },
+      { month: "2026-09", deposited: 0, recognized: 0, flag: "NO_DEPOSIT" },
+    ],
+    monthlyCap: 250000,
+  };
+
+  it("목록에 청약 배지와 인정 회차 추정을 붙이고, 기준값이 없으면 적을 곳을 가리킨다", async () => {
+    renderAt("/ledger/assets", {
+      assets: [
+        subscriptionAsset(),
+        subscriptionAsset({ id: 6, name: "새 청약", subscriptionCount: null }),
+        assetView({ id: 7, name: "비상금", type: "SAVINGS" }),
+      ],
+    });
+
+    expect(await screen.findByText("40회 인정 (추정)")).toBeInTheDocument();
+    // 0회와 「모른다」는 다르다.
+    expect(screen.getByText("청약홈 값을 적어 주세요")).toBeInTheDocument();
+    // 일반 예·적금에는 배지가 붙지 않는다.
+    expect(screen.getAllByText("청약")).toHaveLength(2);
+  });
+
+  it("기준값이 없으면 숫자를 그리지 않고 적을 자리만 둔다", async () => {
+    renderAt("/ledger/assets/5", {
+      assets: [subscriptionAsset({ subscriptionCount: null })],
+    });
+
+    expect(
+      await screen.findByText(/청약홈\(applyhome\.co\.kr\)에서 본/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("인정 회차")).toBeNull();
+    expect(screen.getByRole("button", { name: "적기" })).toBeInTheDocument();
+  });
+
+  it("인정 회차·금액 옆에 추정을 붙이고, 상한 초과·입금 없음 달을 드러낸다", async () => {
+    renderAt("/ledger/assets/5", {
+      assets: [subscriptionAsset()],
+      subscription: estimated,
+    });
+
+    expect(await screen.findByText("40회")).toBeInTheDocument();
+    expect(screen.getByText("5,800,000")).toBeInTheDocument();
+    expect(screen.getAllByText("추정")).toHaveLength(2);
+    expect(
+      screen.getByText("청약홈 2026년 6월분까지 38회 + 이후 원장 2회"),
+    ).toBeInTheDocument();
+    // 선납·연체는 계산하지 않는 대신 드러낸다(D-16).
+    expect(screen.getByText(/25만 원까지만 셌어요/)).toBeInTheDocument();
+    expect(
+      screen.getByText("입금 없음 — 인정일이 늦춰질 수 있어요"),
+    ).toBeInTheDocument();
+  });
+
+  it("청약홈 값으로 다시 맞추면 어긋났던 만큼을 한 번 알린다", async () => {
+    const user = userEvent.setup();
+    const { sent } = renderAt("/ledger/assets/5", {
+      assets: [subscriptionAsset()],
+      subscription: estimated,
+      subscriptionBaselineChange: {
+        before: { count: 40, amount: 5800000 },
+        after: { count: 41, amount: 6050000 },
+      },
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "청약홈 값으로 다시 맞추기" }),
+    );
+    const modal = within(await screen.findByRole("dialog"));
+    await user.clear(modal.getByLabelText("인정 회차"));
+    await user.type(modal.getByLabelText("인정 회차"), "41");
+    await user.clear(modal.getByLabelText("인정 금액"));
+    // 청약홈에서 복사한 쉼표가 섞여도 숫자만 간다.
+    await user.type(modal.getByLabelText("인정 금액"), "6,050,000");
+    await user.click(modal.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => expect(sent.subscriptionBaselines).toHaveLength(1));
+    expect(sent.subscriptionBaselines[0]).toMatchObject({
+      count: 41,
+      amount: 6050000,
+    });
+    // 기준일이 아니라 「몇 월분까지」다.
+    expect(sent.subscriptionBaselines[0].throughMonth).toMatch(/^\d{4}-\d{2}$/);
+    expect(
+      await screen.findByText("추정 40회 → 청약홈 41회로 맞췄어요"),
+    ).toBeInTheDocument();
+  });
+
+  it("예·적금을 만들 때 종류를 청약으로 고른다", async () => {
+    const user = userEvent.setup();
+    const { sent } = renderAt("/ledger/assets");
+
+    await user.click(await screen.findByRole("button", { name: "자산 추가" }));
+    const modal = within(await screen.findByRole("dialog"));
+    await user.type(modal.getByLabelText("이름"), "주택청약");
+    // 종류는 예·적금에만 있다.
+    expect(modal.queryByRole("combobox", { name: "종류" })).toBeNull();
+    await choose(user, "유형", "예·적금");
+    await choose(user, "종류", "청약");
+    await user.click(modal.getByRole("button", { name: "만들기" }));
+
+    await waitFor(() => expect(sent.assetsCreated).toHaveLength(1));
+    expect(sent.assetsCreated[0]).toMatchObject({
+      type: "SAVINGS",
+      savingsKind: "HOUSING_SUBSCRIPTION",
+    });
+  });
+
+  it("수정에서 종류를 일반으로 되돌린다 — 유형과 달리 종류는 바뀐다", async () => {
+    const user = userEvent.setup();
+    const { sent } = renderAt("/ledger/assets/5", {
+      assets: [subscriptionAsset()],
+      subscription: estimated,
+    });
+
+    await user.click(await screen.findByRole("button", { name: "수정" }));
+    await within(await screen.findByRole("dialog")).findByText("종류");
+    await choose(user, "종류", "일반");
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "저장" }),
+    );
+
+    await waitFor(() => expect(sent.assetPatches).toHaveLength(1));
+    expect(sent.assetPatches[0]).toMatchObject({ clearSavingsKind: true });
+    expect(sent.assetPatches[0]).not.toHaveProperty("savingsKind");
+  });
+});
+
 describe("내역 화면", () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: "valid-token" });

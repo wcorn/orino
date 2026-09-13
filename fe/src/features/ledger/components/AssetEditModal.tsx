@@ -7,9 +7,30 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/select";
 
-import type { AssetType, AssetView, DeleteBlocker } from "../api/ledger";
+import type {
+  AssetType,
+  AssetUpdateRequest,
+  AssetView,
+  DeleteBlocker,
+  SavingsKind,
+} from "../api/ledger";
 import { useDeleteAsset, useUpdateAsset } from "../hooks/useLedgerMutations";
 import { useLedgerAssets } from "../hooks/useLedgerQueries";
+import { SAVINGS_KIND_OPTIONS } from "../lib/subscription";
+
+/**
+ * 종류 바꾸기. 그룹처럼 「비운다」와 「그대로 둔다」가 달라 떼기는 별도 플래그다.
+ * 예·적금이 아니면 종류라는 개념이 없어 아무것도 보내지 않는다.
+ */
+function savingsKindBody(
+  type: AssetType,
+  kind: SavingsKind | "",
+): Pick<AssetUpdateRequest, "savingsKind" | "clearSavingsKind"> {
+  if (type !== "SAVINGS") {
+    return {};
+  }
+  return kind === "" ? { clearSavingsKind: true } : { savingsKind: kind };
+}
 
 /** 막은 이유를 한 문장으로. 서버가 이름을 주지 않는 옛 응답도 말이 되게 둔다. */
 function blockerText(blockers: DeleteBlocker[]): string {
@@ -81,6 +102,9 @@ export function AssetEditModal({
   const [linkedAssetId, setLinkedAssetId] = useState(
     asset.linkedAssetId === null ? "" : String(asset.linkedAssetId),
   );
+  const [savingsKind, setSavingsKind] = useState<SavingsKind | "">(
+    asset.savingsKind ?? "",
+  );
   const [closedReason, setClosedReason] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -116,6 +140,7 @@ export function AssetEditModal({
             : { groupId: Number(groupId) }),
           accountLast4: accountLast4.trim(),
           linkedAssetId: needsLink ? Number(linkedAssetId) : null,
+          ...savingsKindBody(asset.type, savingsKind),
         },
       },
       { onSuccess: close },
@@ -162,6 +187,18 @@ export function AssetEditModal({
             onChange={(event) => setName(event.target.value)}
           />
         </FormField>
+
+        {/* 유형은 못 바꾸지만 종류는 바꾼다 — 청약이 되어도 잔액의 의미가 그대로다(D-15). */}
+        {asset.type === "SAVINGS" && (
+          <FormField label="종류" labelId="ledger-asset-edit-savings-kind">
+            <Select
+              value={savingsKind}
+              onValueChange={setSavingsKind}
+              options={SAVINGS_KIND_OPTIONS}
+              ariaLabelledby="ledger-asset-edit-savings-kind"
+            />
+          </FormField>
+        )}
 
         {needsLink && (
           <FormField label="연결 계좌" labelId="ledger-asset-edit-linked">

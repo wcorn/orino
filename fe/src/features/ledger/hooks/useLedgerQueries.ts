@@ -22,6 +22,7 @@ import {
   fetchStatements,
   fetchStatementTransactions,
   fetchStats,
+  fetchSubscription,
   fetchSuggestions,
   fetchTemplates,
   fetchTransactions,
@@ -57,6 +58,16 @@ export function useLedgerAssetTransactions(id: number) {
     queryFn: () => fetchAssetTransactions(id),
     staleTime: 30 * 1000,
     enabled: Number.isFinite(id),
+  });
+}
+
+/** 청약 인정 현황. 청약 자산 상세에서만 부른다 — 일반 예·적금이면 서버가 거부한다. */
+export function useLedgerSubscription(assetId: number) {
+  return useQuery({
+    queryKey: ledgerKeys.subscription(assetId),
+    queryFn: () => fetchSubscription(assetId),
+    staleTime: 30 * 1000,
+    enabled: Number.isFinite(assetId),
   });
 }
 

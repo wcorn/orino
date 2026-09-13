@@ -18,6 +18,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { TrendPoint, TrendRange } from "@/features/ledger/api/ledger";
 import { AssetEditModal } from "@/features/ledger/components/AssetEditModal";
 import { ReconcileModal } from "@/features/ledger/components/ReconcileModal";
+import { SubscriptionSection } from "@/features/ledger/components/SubscriptionSection";
 import {
   useLedgerAssetDetail,
   useLedgerAssetTransactions,
@@ -28,6 +29,7 @@ import {
   formatBalance,
   formatSigned,
 } from "@/features/ledger/lib/money";
+import { isHousingSubscription } from "@/features/ledger/lib/subscription";
 import { cn } from "@/lib/utils";
 
 const RANGE_TABS: { value: TrendRange; label: string }[] = [
@@ -112,6 +114,11 @@ export function LedgerAssetDetailPage() {
 
       {detail.data && (
         <>
+          {/* 청약이면 인정 현황이 먼저다. 잔액·추이·내역은 그 아래에 그대로 둔다(§14.3). */}
+          {asset && isHousingSubscription(asset) && (
+            <SubscriptionSection assetId={asset.id} />
+          )}
+
           <div className="flex flex-col gap-1">
             {headline === null ? (
               // 체크카드에는 잔액이라는 개념이 없다. 0을 적으면 「돈이 없다」로 읽힌다.
@@ -231,7 +238,7 @@ export function LedgerAssetDetailPage() {
       {asset && (
         // key로 다시 만든다 — 저장 뒤 새 값이 폼의 초기값이 되어야 한다.
         <AssetEditModal
-          key={`${asset.id}:${asset.name}:${asset.hidden}`}
+          key={`${asset.id}:${asset.name}:${asset.hidden}:${asset.savingsKind}`}
           open={editOpen}
           onOpenChange={setEditOpen}
           asset={asset}

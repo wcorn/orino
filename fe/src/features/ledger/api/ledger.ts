@@ -32,6 +32,13 @@ export type AssetType =
 export type AssetGroupKind = "BANK" | "CARD_ISSUER" | "ETC";
 
 /**
+ * 예·적금의 종류. `null`이면 일반 예·적금이다.
+ *
+ * 청약은 새 유형이 아니다(D-15) — 잔액의 의미가 그대로라 유형과 달리 **바꿀 수 있다**.
+ */
+export type SavingsKind = "HOUSING_SUBSCRIPTION";
+
+/**
  * 자산 한 줄.
  *
  * `balance`와 `unpaidAmount`는 **둘 다 채워지지 않는다**. 잔액을 갖는 자산이면 앞의 것,
@@ -53,6 +60,12 @@ export interface AssetView {
   linkedAssetName: string | null;
   balance: number | null;
   unpaidAmount: number | null;
+  savingsKind: SavingsKind | null;
+  /**
+   * 청약 인정 회차 **추정**. 청약이 아니거나 청약홈 기준값이 없으면 `null`이다 —
+   * 0회와 「모른다」는 다르다.
+   */
+  subscriptionCount: number | null;
 }
 
 export interface AssetGroupView {
@@ -480,6 +493,8 @@ export interface AssetCreateRequest {
   accountLast4?: string | null;
   /** 체크카드면 **필수**다 — 없으면 서버가 `LDG-ERR-019`로 거부한다. */
   linkedAssetId?: number | null;
+  /** 예·적금에만 붙는다(`LDG-ERR-040`). */
+  savingsKind?: SavingsKind;
 }
 
 export async function createAsset(
@@ -501,6 +516,9 @@ export interface AssetUpdateRequest {
   hidden?: boolean;
   closedReason?: string | null;
   linkedAssetId?: number | null;
+  savingsKind?: SavingsKind;
+  /** 일반 예·적금으로 되돌린다. 그룹처럼 「비운다」와 「그대로 둔다」가 달라 따로 받는다. */
+  clearSavingsKind?: boolean;
 }
 
 export async function updateAsset(
@@ -520,6 +538,70 @@ export async function updateAsset(
  */
 export async function deleteAsset(id: number): Promise<void> {
   await client.delete(`/ledger/assets/${id}`);
+}
+
+/** 원장만으로는 판단할 수 없어 사람에게 보여줄 달(D-16). */
+export type SubscriptionFlag = "OVER_CAP" | "NO_DEPOSIT";
+
+export interface SubscriptionMonth {
+  /** `2026-07` */
+  month: string;
+  deposited: number;
+  recognized: number;
+  flag: SubscriptionFlag | null;
+}
+
+/** 청약홈에서 본 값. `throughMonth`는 몇 월분까지 인정됐는지다. */
+export interface SubscriptionBaseline {
+  count: number;
+  amount: number;
+  throughMonth: string;
+}
+
+export interface SubscriptionTotals {
+  count: number;
+  amount: number;
+}
+
+/**
+ * 청약 인정 현황(API §10.2).
+ *
+ * 기준값이 없으면 `baseline`·`estimate`가 `null`이고 `months`가 비어 있다 —
+ * **가입일부터 세서 채우지 않는다**.
+ */
+export interface SubscriptionResponse {
+  assetId: number;
+  baseline: SubscriptionBaseline | null;
+  estimate: (SubscriptionTotals & { isEstimate: boolean }) | null;
+  /** 기준 월 다음 달부터 이번 달까지. 오래된 달이 앞이다. */
+  months: SubscriptionMonth[];
+  monthlyCap: number;
+}
+
+/** `before`는 바꾸기 직전의 추정. 처음 적으면 `null`이다. */
+export interface SubscriptionBaselineChange {
+  before: SubscriptionTotals | null;
+  after: SubscriptionTotals;
+}
+
+export async function fetchSubscription(
+  assetId: number,
+): Promise<SubscriptionResponse> {
+  const { data } = await client.get<ApiEnvelope<SubscriptionResponse>>(
+    `/ledger/assets/${assetId}/subscription`,
+  );
+  return data.data;
+}
+
+export async function updateSubscriptionBaseline(
+  assetId: number,
+  body: SubscriptionBaseline,
+): Promise<SubscriptionBaselineChange> {
+  const { data } = await client.put<ApiEnvelope<SubscriptionBaselineChange>>(
+    `/ledger/assets/${assetId}/subscription/baseline`,
+    body,
+  );
+  return data.data;
 }
 
 export async function fetchCategories(

@@ -23,6 +23,8 @@ export const ledgerKeys = {
     ["ledger", "asset", id, range] as const,
   assetTransactions: (id: number) =>
     ["ledger", "asset", id, "transactions"] as const,
+  subscription: (id: number) =>
+    ["ledger", "asset", id, "subscription"] as const,
   categories: (flow?: LedgerFlow) =>
     ["ledger", "categories", flow ?? "ALL"] as const,
   /**
