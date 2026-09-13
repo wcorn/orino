@@ -56,9 +56,6 @@ import java.util.Set;
 @Service
 public class LedgerImportService {
 
-    /** 중복을 견줄 때 앞뒤로 볼 날. 같은 거래가 하루 어긋나 적히는 소스가 있다. */
-    private static final int DUPLICATE_WINDOW_DAYS = 1;
-
     /**
      * 한 번에 받을 파일 수.
      *
@@ -151,6 +148,14 @@ public class LedgerImportService {
             List<ParsedRow> parsed = byFile.get(fileIndex);
             List<ImportDtos.PreviewRow> rows = new ArrayList<>();
             List<PriorRow> fromThisFile = new ArrayList<>();
+            /*
+              이 파일에서 이미 짝이 난 상대. 한 파일 안에서 상대 하나는 <b>한 줄의 후보로만</b>
+              쓴다 — 같은 파일에 같은 날 같은 거래가 두 줄이면 실제로 두 번 일어난 일이고, 둘 다
+              같은 상대를 가리키게 두면 진짜 거래 하나가 꺼진 채로 빠진다. 다른 파일끼리는 같은
+              거래의 사본이라 같은 상대를 가리켜도 된다.
+            */
+            Set<Long> claimedTransactions = new HashSet<>();
+            Set<ImportDtos.RowRef> claimedRows = new HashSet<>();
             int duplicates = 0;
             int errors = 0;
 
@@ -161,11 +166,11 @@ public class LedgerImportService {
                 if (row.error != null) {
                     errors++;
                 } else {
-                    duplicateOf = duplicateOf(row, existing, assetId);
+                    duplicateOf = duplicateOf(row, existing, assetId, claimedTransactions);
                     // 원장에 이미 있는 거래가 먼저다 — 그쪽이 더 구체적이고, 사람이 열어
                     // 확인할 수 있다. 앞 파일의 줄은 아직 아무 데도 없다.
                     if (duplicateOf == null) {
-                        duplicateOfRow = duplicateInPriorFiles(row, prior, assetId);
+                        duplicateOfRow = duplicateInPriorFiles(row, prior, assetId, claimedRows);
                     }
                     if (duplicateOf != null || duplicateOfRow != null) {
                         duplicates++;
@@ -452,26 +457,26 @@ public class LedgerImportService {
     /**
      * 중복 후보 찾기(`LDG-092`).
      *
-     * <p>날짜(±1일) + 금액 + 자산이 같고 <b>내용이 비슷하면</b> 후보다. 내용 비교는 공백·
-     * 대소문자를 지우고 견준다 — 「스타벅스 역삼」과 「스타벅스역삼」은 같은 거래다.
+     * <p><b>날짜가 정확히 같고</b> 금액 + 자산이 같고 <b>내용이 비슷하면</b> 후보다(#1387).
+     * 날짜에 여유를 두지 않는다 — 하루 다르면 다른 거래다. 여유를 두었을 때 국민은행 파일에서
+     * 하루 전의 다른 거래(잔액도 달랐다)가 후보로 꺼졌다. 날짜가 틀리게 적힌 내역은 그 내역을
+     * 고칠 일이지, 판정을 느슨하게 해 덮을 일이 아니다.
      *
-     * <p>내용이 양쪽 다 비어 있으면 날짜·금액·자산만으로 후보로 본다. 같은 날 같은 금액을
-     * 같은 자산에서 두 번 쓰는 일은 드물고, <b>드문 것을 보여주는 비용이 놓치는 비용보다 싸다.</b>
+     * <p>내용 비교는 공백·대소문자를 지우고 견준다 — 「스타벅스 역삼」과 「스타벅스역삼」은 같은
+     * 거래다. 내용이 한쪽이라도 비어 있으면 날짜·금액·자산만으로 후보로 본다.
+     *
+     * @param claimed 이 파일에서 이미 짝이 난 거래. 찾으면 여기에 더한다
      */
     private LedgerTransaction duplicateOf(ParsedRow row, List<LedgerTransaction> existing,
-                                          Long assetId) {
+                                          Long assetId, Set<Long> claimed) {
         String title = normalize(row.title);
         for (LedgerTransaction tx : existing) {
-            if (!assetId.equals(tx.getAssetId()) || tx.getAmount() != row.amount) {
+            if (claimed.contains(tx.getId()) || !assetId.equals(tx.getAssetId())
+                    || tx.getAmount() != row.amount || !tx.getOccurredOn().equals(row.occurredOn)) {
                 continue;
             }
-            long gap = Math.abs(tx.getOccurredOn().toEpochDay() - row.occurredOn.toEpochDay());
-            if (gap > DUPLICATE_WINDOW_DAYS) {
-                continue;
-            }
-            String other = normalize(tx.getTitle());
-            if (title.isEmpty() || other.isEmpty() || title.equals(other)
-                    || title.contains(other) || other.contains(title)) {
+            if (similar(title, normalize(tx.getTitle()))) {
+                claimed.add(tx.getId());
                 return tx;
             }
         }
@@ -481,29 +486,35 @@ public class LedgerImportService {
     /**
      * 앞 파일과 겹치는 줄 찾기(#1320).
      *
-     * <p>견주는 규칙은 원장과 견줄 때와 <b>같다</b>(날짜 ±1일 · 금액 · 자산 · 내용). 다르면
+     * <p>견주는 규칙은 원장과 견줄 때와 <b>같다</b>(같은 날짜 · 금액 · 자산 · 내용). 다르면
      * 「원장에 있으면 걸리는데 앞 파일에 있으면 안 걸린다」는 설명할 수 없는 차이가 생긴다.
      *
      * <p>{@code prior}에는 <b>앞 파일의 줄만</b> 들어 있다 — 같은 파일 안의 줄끼리는 견주지
      * 않는다. 은행이 같은 날 같은 금액을 두 줄로 준 것은 실제로 두 번 일어난 일이다.
+     *
+     * @param claimed 이 파일에서 이미 짝이 난 앞 파일의 줄. 찾으면 여기에 더한다
      */
     private ImportDtos.RowRef duplicateInPriorFiles(ParsedRow row, List<PriorRow> prior,
-                                                    Long assetId) {
+                                                    Long assetId, Set<ImportDtos.RowRef> claimed) {
         String title = normalize(row.title);
         for (PriorRow other : prior) {
-            if (!assetId.equals(other.assetId) || other.amount != row.amount) {
+            ImportDtos.RowRef ref = new ImportDtos.RowRef(other.fileIndex, other.rowNumber);
+            if (claimed.contains(ref) || !assetId.equals(other.assetId)
+                    || other.amount != row.amount || !other.occurredOn.equals(row.occurredOn)) {
                 continue;
             }
-            long gap = Math.abs(other.occurredOn.toEpochDay() - row.occurredOn.toEpochDay());
-            if (gap > DUPLICATE_WINDOW_DAYS) {
-                continue;
-            }
-            if (title.isEmpty() || other.title.isEmpty() || title.equals(other.title)
-                    || title.contains(other.title) || other.title.contains(title)) {
-                return new ImportDtos.RowRef(other.fileIndex, other.rowNumber);
+            if (similar(title, other.title)) {
+                claimed.add(ref);
+                return ref;
             }
         }
         return null;
+    }
+
+    /** 공백·대소문자를 지운 내용끼리. 한쪽이 비었거나 한쪽이 다른 쪽을 품으면 같다고 본다. */
+    private boolean similar(String title, String other) {
+        return title.isEmpty() || other.isEmpty() || title.equals(other)
+                || title.contains(other) || other.contains(title);
     }
 
     /** 견줄 구간을 파일이 정한다 — 원장 전체를 읽으면 몇 년치 이관에서 메모리가 터진다. */
@@ -520,8 +531,7 @@ public class LedgerImportService {
         if (from == null) {
             return List.of();
         }
-        return transactionRepository.findDuplicateCandidates(memberId,
-                from.minusDays(DUPLICATE_WINDOW_DAYS), to.plusDays(DUPLICATE_WINDOW_DAYS));
+        return transactionRepository.findDuplicateCandidates(memberId, from, to);
     }
 
     private void stampBatch(List<TransactionView> created, Long batchId) {

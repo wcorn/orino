@@ -384,6 +384,99 @@ class LedgerImportTest extends ApiTestSupport {
         }
 
         /**
+         * 날짜에 여유를 두지 않는다(#1387). 하루 다르면 다른 거래다 — 여유를 두었을 때
+         * 국민은행 파일에서 하루 전의 다른 거래가 후보로 꺼졌다.
+         */
+        @Test
+        @DisplayName("날짜가 하루 다르면 원장 거래의 중복이 아니다")
+        void dayApartIsNotADuplicateOfTheLedger() throws Exception {
+            LedgerFixture.createTransaction(mockMvc, authHeader, """
+                    {"type": "EXPENSE", "amount": 5500, "assetId": %d,
+                     "occurredOn": "2026-01-09", "title": "스타벅스"}
+                    """.formatted(checking));
+
+            preview("""
+                    날짜,내용,금액
+                    2026-01-10,스타벅스,-5500
+                    """)
+                    .andExpect(jsonPath("$.data.duplicateCount").value(0))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].duplicateOf").doesNotExist());
+        }
+
+        /** 실제 국민은행 파일 모양 — 9/14 거래는 앞 파일에 있고, 9/13 거래는 별개다. */
+        @Test
+        @DisplayName("날짜가 하루 다르면 앞 파일 줄의 중복이 아니다")
+        void dayApartIsNotADuplicateOfAPriorFile() throws Exception {
+            String earlier = """
+                    날짜,내용,금액
+                    2025-09-14,배민페이머니,-20000
+                    """;
+            String later = """
+                    날짜,내용,금액
+                    2025-09-14,배민페이머니,-20000
+                    2025-09-13,배민페이머니,-20000
+                    """;
+
+            multiPreview("""
+                    {"files": [%s, %s]}
+                    """.formatted(previewSpec(checking), previewSpec(checking)),
+                    csvFile("a.csv", earlier), csvFile("b.csv", later))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.duplicateCount").value(1))
+                    .andExpect(jsonPath("$.data.files[1].rows[0].duplicateOfRow.rowNumber")
+                            .value(2))
+                    .andExpect(jsonPath("$.data.files[1].rows[1].duplicateOfRow").doesNotExist());
+        }
+
+        /**
+         * 한 파일 안에서 상대 하나는 <b>한 줄의 후보로만</b> 쓴다(#1387).
+         *
+         * <p>같은 날 같은 거래가 파일에 두 줄이면 실제로 두 번 일어난 일이다. 원장에 그중 하나만
+         * 있는데 두 줄이 모두 그 거래를 가리키면, 진짜 거래 하나가 꺼진 채로 빠진다.
+         */
+        @Test
+        @DisplayName("원장 거래 하나는 한 파일에서 한 줄의 중복 후보로만 쓰인다")
+        void ledgerTransactionIsClaimedOncePerFile() throws Exception {
+            LedgerFixture.createTransaction(mockMvc, authHeader, """
+                    {"type": "EXPENSE", "amount": 5500, "assetId": %d,
+                     "occurredOn": "2026-01-10", "title": "스타벅스"}
+                    """.formatted(checking));
+
+            preview("""
+                    날짜,내용,금액
+                    2026-01-10,스타벅스,-5500
+                    2026-01-10,스타벅스,-5500
+                    """)
+                    .andExpect(jsonPath("$.data.duplicateCount").value(1))
+                    .andExpect(jsonPath("$.data.files[0].rows[0].duplicateOf").isNumber())
+                    .andExpect(jsonPath("$.data.files[0].rows[1].duplicateOf").doesNotExist());
+        }
+
+        @Test
+        @DisplayName("앞 파일 줄 하나는 한 파일에서 한 줄의 중복 후보로만 쓰인다")
+        void priorRowIsClaimedOncePerFile() throws Exception {
+            String earlier = """
+                    날짜,내용,금액
+                    2026-01-10,스타벅스,-5500
+                    """;
+            String later = """
+                    날짜,내용,금액
+                    2026-01-10,스타벅스,-5500
+                    2026-01-10,스타벅스,-5500
+                    """;
+
+            multiPreview("""
+                    {"files": [%s, %s]}
+                    """.formatted(previewSpec(checking), previewSpec(checking)),
+                    csvFile("a.csv", earlier), csvFile("b.csv", later))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.files[1].duplicateCount").value(1))
+                    .andExpect(jsonPath("$.data.files[1].rows[0].duplicateOfRow.rowNumber")
+                            .value(2))
+                    .andExpect(jsonPath("$.data.files[1].rows[1].duplicateOfRow").doesNotExist());
+        }
+
+        /**
          * 짝이 밀린 채로 읽으면 은행 파일이 카드 매핑으로 해석된다. 그 결과는 「오류」가 아니라
          * <b>그럴듯하게 틀린 줄</b>이라 사람이 찾지 못한다.
          */
