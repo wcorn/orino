@@ -123,6 +123,13 @@ public enum ErrorCode {
     // 청구서가 하나라도 붙었으면 그것들이 갈 곳을 잃는다 — 그때는 지우는 게 아니라 해지한다.
     LEDGER_ASSET_IN_USE("LDG-ERR-034", "이미 쓰인 자산은 삭제할 수 없습니다. 해지해 주세요.", 409),
 
+    // 청약 — 청약은 예·적금의 종류다(D-15). 통장·카드에 붙이면 잔액의 의미와 인정 추정이
+    // 서로 다른 말을 한다.
+    LEDGER_SAVINGS_KIND_MISMATCH("LDG-ERR-040", "청약은 예·적금에만 붙일 수 있습니다.", 400),
+    // 셋 중 일부만 있으면 어디서부터 셀지 모른다. 미래 월은 청약홈이 보여줄 수 없는 값이다.
+    LEDGER_SUBSCRIPTION_BASELINE_INVALID("LDG-ERR-045",
+            "청약홈 기준값은 회차·금액·기준 월이 함께 있어야 하고, 음수나 미래 월일 수 없습니다.", 400),
+
     // 카드 청구서 — 여기가 이 모듈의 심장이라 실패도 또렷해야 한다.
     LEDGER_STATEMENT_NOT_FOUND("LDG-ERR-007", "존재하지 않는 청구서입니다.", 404),
     LEDGER_STATEMENT_ALREADY_PAID("LDG-ERR-008", "이미 납부가 끝난 청구서입니다.", 409),

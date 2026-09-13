@@ -522,6 +522,35 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
                      @Param("sourceCategoryId") Long sourceCategoryId,
                      @Param("targetCategoryId") Long targetCategoryId);
 
+    /**
+     * 그 자산으로 <b>이체로 들어온</b> 확정 금액을 날짜별로(청약 인정 추정, 덧붙인 명세 §3.2).
+     *
+     * <p>수입(이자)·조정 거래는 이체가 아니라 빠진다 — 청약홈이 인정하는 것은 납입이지
+     * 이자가 아니다. 달로 묶는 일은 애플리케이션이 한다: 달력 월 함수는 DB마다 달라
+     * JPQL로 쓰면 테스트와 운영이 다른 질의가 된다.
+     */
+    @Query("""
+            SELECT t.occurredOn AS date, SUM(t.amount) AS total
+            FROM LedgerTransaction t
+            WHERE t.memberId = :memberId
+              AND t.counterAssetId = :assetId
+              AND t.type = ds.project.orino.domain.planner.ledger.entity.LedgerFlow.TRANSFER
+              AND t.status = ds.project.orino.domain.planner.ledger.entity.LedgerTransactionStatus.CONFIRMED
+              AND t.deletedAt IS NULL
+              AND t.occurredOn >= :from
+            GROUP BY t.occurredOn
+            """)
+    List<DailyTotal> sumConfirmedTransfersIntoByDay(@Param("memberId") Long memberId,
+                                                    @Param("assetId") Long assetId,
+                                                    @Param("from") LocalDate from);
+
+    /** 날짜별 합계 한 줄. */
+    interface DailyTotal {
+        LocalDate getDate();
+
+        long getTotal();
+    }
+
     /** 자산별·유형별 합계 한 줄. */
     interface AssetFlowTotal {
         Long getAssetId();
