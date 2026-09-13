@@ -11,9 +11,14 @@ import { LoadingText } from "@/components/ui/loading-text";
 import type { BaseCity } from "@/features/travel/api/activities";
 import type { PlaceSearchResult } from "@/features/travel/api/places";
 import { createManualPlace } from "@/features/travel/api/places";
-import { useCreateActivity } from "@/features/travel/hooks/useActivityMutations";
+import { useActivity } from "@/features/travel/hooks/useActivity";
+import {
+  useCreateActivity,
+  useUpdateActivity,
+} from "@/features/travel/hooks/useActivityMutations";
 import { useBoard } from "@/features/travel/hooks/useBoard";
 import { usePlaceSearch } from "@/features/travel/hooks/usePlaceSearch";
+import { activityWriteBodyFrom } from "@/features/travel/lib/activityWriteBody";
 import { daysForPlace } from "@/features/travel/lib/archiveGroups";
 import { cityOn, tripCities } from "@/features/travel/lib/baseCity";
 import {
@@ -62,6 +67,13 @@ export function PlaceSearchPage() {
    * 담기 시트의 기본 날짜가 된다 — 3일차를 짜다 들어왔으면 담을 곳도 3일차다.
    */
   const dateParam = searchParams.get("date");
+  /**
+   * 교체 모드(`?replace=일정id`, #1396). 일정 상세의 "장소 변경"이 데려온다.
+   * 새 일정을 담는 대신 <b>그 일정의 장소만</b> 바꾸므로 날짜를 묻지 않는다.
+   */
+  const replaceParam = Number(searchParams.get("replace"));
+  const replaceId =
+    Number.isInteger(replaceParam) && replaceParam > 0 ? replaceParam : null;
   const [citySheetOpen, setCitySheetOpen] = useState(false);
 
   const [recent, setRecent] = useState<string[]>(() =>
@@ -100,6 +112,20 @@ export function PlaceSearchPage() {
     // 보드가 오기 전에 부르면 편향 없는 결과를 한 번 사게 된다(호출당 과금).
   } = usePlaceSearch(query, tripId, city?.placeId, !boardPending);
   const createActivity = useCreateActivity(tripId);
+  const { data: replacing } = useActivity(replaceId ?? 0, {
+    enabled: replaceId !== null,
+  });
+  const updateActivity = useUpdateActivity(tripId);
+  /** 교체 모드면 떠나온 일정 상세로 돌아간다. */
+  const backPath =
+    replaceId === null
+      ? `/travel/trips/${tripId}/board`
+      : `/travel/activities/${replaceId}`;
+  // 교체할 일정을 아직 못 읽었으면 고를 수 없다 — 나머지 필드를 되돌려 보낼 값이 없다.
+  const pending =
+    createActivity.isPending ||
+    updateActivity.isPending ||
+    (replaceId !== null && !replacing);
 
   /** 검색어·도시가 한 URL에 같이 산다 — 한쪽을 바꿀 때 다른 쪽을 지우면 안 된다. */
   const setParams = (next: { q?: string; city?: number }) => {
@@ -153,6 +179,40 @@ export function PlaceSearchPage() {
     );
   };
 
+  /**
+   * 교체 모드에서 고른 장소로 그 일정을 저장한다.
+   *
+   * <p>수정은 전체 교체라 제목·날짜·메모·알림은 서버가 마지막으로 준 값을 그대로 되돌려
+   * 보낸다(#1197). 제목도 바꾸지 않는다 — 장소 이름과 다른 제목("점심")을 쓰는 일정이 흔하다.
+   */
+  const replacePlace = (next: Target) => {
+    if (!replacing) return;
+    updateActivity.mutate(
+      {
+        activityId: replacing.id,
+        body: activityWriteBodyFrom(
+          replacing,
+          next.kind === "google"
+            ? {
+                placeId: null,
+                googlePlaceId: next.googlePlaceId,
+                // 담기와 같은 이유로 기준 도시를 함께 보낸다 — 새로 저장되는 장소에만 쓰인다.
+                cityPlaceId: city?.placeId,
+              }
+            : { placeId: next.placeId },
+        ),
+      },
+      {
+        onSuccess: () => {
+          toast(`장소를 ${next.name}(으)로 바꿨어요`, "success");
+          navigate(backPath, { replace: true });
+        },
+        onError: () =>
+          toast("장소를 바꾸지 못했어요. 잠시 후 다시 시도해 주세요", "error"),
+      },
+    );
+  };
+
   const submitManual = async (event: FormEvent) => {
     event.preventDefault();
     const name = manualName.trim();
@@ -165,8 +225,17 @@ export function PlaceSearchPage() {
       setManualOpen(false);
       setManualName("");
       setManualAddress("");
+      const created: Target = {
+        kind: "manual",
+        placeId: place.id,
+        name: place.name,
+      };
+      if (replaceId !== null) {
+        replacePlace(created);
+        return;
+      }
       // 만들자마자 날짜를 물어야 한다 — 장소만 만들어 두면 어디에도 보이지 않는다.
-      setTarget({ kind: "manual", placeId: place.id, name: place.name });
+      setTarget(created);
     } catch {
       toast("장소를 만들지 못했어요", "error");
     }
@@ -182,7 +251,7 @@ export function PlaceSearchPage() {
           variant="ghost"
           size="icon"
           aria-label="뒤로"
-          onClick={() => navigate(`/travel/trips/${tripId}/board`)}
+          onClick={() => navigate(backPath)}
         >
           <ArrowLeft className="size-4" />
         </Button>
@@ -196,6 +265,13 @@ export function PlaceSearchPage() {
           autoFocus
         />
       </form>
+
+      {/* 담기와 다른 동작이라 들어온 이유를 말한다 — 모르고 누르면 기존 장소가 바뀐다. */}
+      {replaceId !== null && replacing && (
+        <p className="text-muted-foreground text-[13px]">
+          &ldquo;{replacing.title}&rdquo; 일정의 장소를 바꿔요
+        </p>
+      )}
 
       <SearchCityChip
         city={city}
@@ -270,14 +346,17 @@ export function PlaceSearchPage() {
               <PlaceCard
                 key={place.googlePlaceId}
                 place={place}
-                pending={createActivity.isPending}
-                onAdd={(p) =>
-                  setTarget({
+                pending={pending}
+                actionLabel={replaceId === null ? "담기" : "선택"}
+                onAdd={(p) => {
+                  const picked: Target = {
                     kind: "google",
                     googlePlaceId: p.googlePlaceId,
                     name: p.name,
-                  })
-                }
+                  };
+                  if (replaceId === null) setTarget(picked);
+                  else replacePlace(picked);
+                }}
               />
             ))}
           </ul>

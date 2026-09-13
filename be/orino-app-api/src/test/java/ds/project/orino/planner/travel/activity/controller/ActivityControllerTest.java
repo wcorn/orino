@@ -4,6 +4,9 @@ import com.jayway.jsonpath.JsonPath;
 import ds.project.orino.domain.member.repository.MemberRepository;
 import ds.project.orino.domain.planner.travel.entity.TripActivity;
 import ds.project.orino.domain.planner.travel.repository.TripActivityRepository;
+import ds.project.orino.planner.travel.place.StubPlacesClient;
+import ds.project.orino.planner.travel.place.client.PlaceResult;
+import ds.project.orino.planner.travel.place.client.PlacesClient;
 import ds.project.orino.support.ApiTestSupport;
 import ds.project.orino.support.AuthFixture;
 import ds.project.orino.support.DbCleaner;
@@ -20,8 +23,10 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -56,6 +61,8 @@ class ActivityControllerTest extends ApiTestSupport {
     private JdbcTemplate jdbcTemplate;
     @Autowired
     private EntityManagerFactory entityManagerFactory;
+    @Autowired
+    private PlacesClient placesClient;
 
     private String authHeader;
     private String otherAuthHeader;
@@ -239,6 +246,42 @@ class ActivityControllerTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.startTime").value("09:00"))
                     .andExpect(jsonPath("$.data.place.id").value(placeId))
                     .andExpect(jsonPath("$.data.place.address").value("다이토구"));
+        }
+
+        @Test
+        @DisplayName("googlePlaceId를 보내면 장소가 그 장소로 바뀐다 — 상세 화면의 장소 변경 경로다(#1396)")
+        void replacesPlaceByGooglePlaceId() throws Exception {
+            long oldPlaceId = createPoi("센소지", "다이토구");
+            long id = createActivityWithPlace("센소지", DAY1, oldPlaceId);
+            StubPlacesClient stub = (StubPlacesClient) placesClient;
+            stub.reset();
+            stub.detailResult = Optional.of(new PlaceResult("ChIJ_kiyomizu", "기요미즈데라",
+                    "교토시 히가시야마구", new BigDecimal("34.9948"), new BigDecimal("135.7850"),
+                    null, null, null, null, "Asia/Tokyo", "교토", null, "JP", List.of()));
+
+            try {
+                mockMvc.perform(put("/api/travel/activities/" + id)
+                                .header(HttpHeaders.AUTHORIZATION, authHeader)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {"title": "센소지", "activityDate": "%s", "memo": "그대로",
+                                         "googlePlaceId": "ChIJ_kiyomizu"}
+                                        """.formatted(DAY1)))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.place.name").value("기요미즈데라"))
+                        .andExpect(jsonPath("$.data.place.address").value("교토시 히가시야마구"))
+                        // 장소만 바뀐다 — 제목·메모는 요청에 실린 그대로다.
+                        .andExpect(jsonPath("$.data.title").value("센소지"))
+                        .andExpect(jsonPath("$.data.memo").value("그대로"));
+
+                assertThat(activityRepository.findById(id).orElseThrow().getPlaceId())
+                        .isNotEqualTo(oldPlaceId);
+                assertThat(stub.detailFetches).containsExactly("ChIJ_kiyomizu");
+            } finally {
+                // 스텁은 컨텍스트가 공유하는 빈이다 — 다른 테스트로 상세 응답이 새지 않게 비운다.
+                stub.detailResult = Optional.empty();
+                stub.reset();
+            }
         }
 
         @Test
