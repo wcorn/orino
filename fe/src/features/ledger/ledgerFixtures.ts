@@ -23,6 +23,8 @@ export function assetView(overrides: Record<string, unknown> = {}) {
     linkedAssetName: null,
     balance: 1000000,
     unpaidAmount: null,
+    savingsKind: null,
+    subscriptionCount: null,
     ...overrides,
   };
 }
@@ -424,6 +426,10 @@ export interface LedgerMockOptions {
   assetDeletable?: boolean;
   /** 막은 이유. `assetDeletable: false`일 때만 의미가 있다(기본 `["TRANSACTION"]`). */
   assetDeleteBlockers?: string[];
+  /** 청약 인정 현황 응답. 없으면 기준값을 아직 적지 않은 청약이다. */
+  subscription?: unknown;
+  /** 기준값 저장 응답. 없으면 처음 적는 것처럼 `before: null`을 돌려준다. */
+  subscriptionBaselineChange?: unknown;
   groups?: unknown[];
   transactions?: ReturnType<typeof transactionView>[];
   monthStartDay?: number;
@@ -459,6 +465,8 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
   const assetPatches: Record<string, unknown>[] = [];
   /** 삭제된 자산 id. */
   const assetsDeleted: number[] = [];
+  /** 청약홈 기준값 저장 본문. */
+  const subscriptionBaselines: Record<string, unknown>[] = [];
   const assets = options.assets ?? [assetView()];
   const transactions = options.transactions ?? [];
 
@@ -543,6 +551,30 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
           runningBalance: null,
         })),
       }),
+    ),
+    http.get(`${API_BASE}/ledger/assets/:id/subscription`, ({ params }) =>
+      ok(
+        options.subscription ?? {
+          assetId: Number(params.id),
+          baseline: null,
+          estimate: null,
+          months: [],
+          monthlyCap: 250000,
+        },
+      ),
+    ),
+    http.put(
+      `${API_BASE}/ledger/assets/:id/subscription/baseline`,
+      async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        subscriptionBaselines.push(body);
+        return ok(
+          options.subscriptionBaselineChange ?? {
+            before: null,
+            after: { count: body.count, amount: body.amount },
+          },
+        );
+      },
     ),
     http.get(`${API_BASE}/ledger/categories`, () =>
       ok([
@@ -1248,6 +1280,7 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
     assetsCreated,
     assetPatches,
     assetsDeleted,
+    subscriptionBaselines,
     duplicated,
     bulkSent,
     tripAttached,

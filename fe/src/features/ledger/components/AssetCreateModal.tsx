@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/select";
 
-import type { AssetType } from "../api/ledger";
+import type { AssetType, SavingsKind } from "../api/ledger";
 import { useCreateAsset } from "../hooks/useLedgerMutations";
 import { useLedgerAssets } from "../hooks/useLedgerQueries";
+import { SAVINGS_KIND_OPTIONS } from "../lib/subscription";
 
 /** 유형 순서는 「많이 만드는 것」 순이다 — 통장이 맨 위, 선불이 맨 아래. */
 const TYPE_OPTIONS: { value: AssetType; label: string }[] = [
@@ -56,6 +57,7 @@ export function AssetCreateModal({
   const [groupId, setGroupId] = useState<string>(NO_GROUP);
   const [accountLast4, setAccountLast4] = useState("");
   const [linkedAssetId, setLinkedAssetId] = useState<string>("");
+  const [savingsKind, setSavingsKind] = useState<SavingsKind | "">("");
 
   const groups = (data?.groups ?? []).filter((group) => group.id !== null);
   // 숨긴 자산은 `hidden`에 따로 있어 후보에 들어오지 않는다 — 해지한 통장에 카드를 매달지 않는다.
@@ -73,6 +75,7 @@ export function AssetCreateModal({
     setGroupId(NO_GROUP);
     setAccountLast4("");
     setLinkedAssetId("");
+    setSavingsKind("");
   };
 
   const close = () => {
@@ -94,6 +97,8 @@ export function AssetCreateModal({
         // 체크카드가 아니면 연결이라는 개념이 없다. 고른 값이 남아 있어도 보내지 않는다.
         linkedAssetId:
           needsLink && linkedAssetId !== "" ? Number(linkedAssetId) : null,
+        // 종류는 예·적금에만 있다. 유형을 바꿔도 고른 값이 남으니 여기서 거른다.
+        ...(type === "SAVINGS" && savingsKind !== "" ? { savingsKind } : {}),
       },
       { onSuccess: close },
     );
@@ -127,6 +132,17 @@ export function AssetCreateModal({
             ariaLabelledby="ledger-asset-type"
           />
         </FormField>
+
+        {type === "SAVINGS" && (
+          <FormField label="종류" labelId="ledger-asset-savings-kind">
+            <Select
+              value={savingsKind}
+              onValueChange={setSavingsKind}
+              options={SAVINGS_KIND_OPTIONS}
+              ariaLabelledby="ledger-asset-savings-kind"
+            />
+          </FormField>
+        )}
 
         {needsLink && (
           <FormField label="연결 계좌" labelId="ledger-asset-linked">
