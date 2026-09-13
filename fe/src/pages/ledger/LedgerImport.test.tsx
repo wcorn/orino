@@ -447,6 +447,8 @@ describe("가져오기", () => {
       expect(
         await screen.findByText(/중복 후보 1건 — 자동으로 병합하지 않습니다/),
       ).toBeInTheDocument();
+      // 여러 장이면 파일이 접힌 채로 온다(#1383) — 펴서 줄을 본다.
+      await user.click(screen.getByRole("button", { name: "1월.csv" }));
       expect(
         screen.getByText(/「3분기.csv」의 3번째 줄과 같아 보여요/),
       ).toBeInTheDocument();
@@ -455,6 +457,173 @@ describe("가져오기", () => {
       expect(
         screen.getByRole("button", { name: "1건 넣기" }),
       ).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * 확인 단계 보기(#1383).
+   *
+   * <p>은행 파일 아홉 장이면 수천 줄이다. 줄을 전부 펼쳐 두면 <b>무엇이 빠지는지</b>는 끝까지
+   * 내려야 보인다 — 그래서 빠지는 줄만 골라 보고, 걸리는 게 없는 파일은 접어 둔다.
+   * 보여주는 방식만 바뀐다. 중복은 여전히 꺼진 채로 오고, 켜고 끄는 것은 사람이 한다.
+   */
+  describe("확인 단계 보기", () => {
+    it("넣을 줄과 빠지는 줄을 세고, 빠지는 줄만 골라 본다", async () => {
+      const user = userEvent.setup();
+      renderAt("/ledger/import", {
+        importPreview: {
+          rows: [
+            {
+              rowNumber: 2,
+              occurredOn: "2026-08-10",
+              type: "EXPENSE",
+              amount: 5500,
+              title: "스타벅스 역삼",
+            },
+            {
+              rowNumber: 3,
+              occurredOn: "2026-08-11",
+              type: "EXPENSE",
+              amount: 3200,
+              title: "편의점",
+              duplicateOf: 42,
+            },
+            {
+              rowNumber: 4,
+              occurredOn: null,
+              type: null,
+              amount: null,
+              title: "깨진 줄",
+              error: "날짜를 읽을 수 없습니다",
+            },
+            {
+              rowNumber: 5,
+              occurredOn: "2026-08-12",
+              type: "EXPENSE",
+              amount: 120000,
+              title: "관리비",
+            },
+          ],
+        },
+      });
+
+      await pickFileAndMap(user);
+
+      expect(
+        await screen.findByRole("tab", { name: "전체 4" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("tab", { name: "넣을 줄 2" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("tab", { name: "빠지는 줄 2" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("tab", { name: "중복 후보 1" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "오류 1" })).toBeInTheDocument();
+
+      // 직접 끈 줄도 빠지는 줄이다 — 중복·오류만 세면 사람이 끈 것은 어디에도 안 보인다.
+      await user.click(screen.getByLabelText(/5번째 줄 넣기/));
+      expect(
+        await screen.findByRole("tab", { name: "빠지는 줄 3" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "1건 넣기" })).toBeEnabled();
+
+      await user.click(screen.getByRole("tab", { name: "빠지는 줄 3" }));
+      expect(screen.queryByText("스타벅스 역삼")).toBeNull();
+      expect(screen.getByText("편의점")).toBeInTheDocument();
+      expect(screen.getByText("깨진 줄")).toBeInTheDocument();
+      expect(screen.getByText("관리비")).toBeInTheDocument();
+
+      // 켜도 그 자리에 남는다 — 누르는 순간 줄이 사라지면 무엇을 켰는지 확인할 수 없다.
+      await user.click(screen.getByLabelText(/3번째 줄 넣기/));
+      expect(screen.getByText("편의점")).toBeInTheDocument();
+      expect(
+        await screen.findByRole("tab", { name: "빠지는 줄 2" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "2건 넣기" })).toBeEnabled();
+
+      await user.click(screen.getByRole("tab", { name: "오류 1" }));
+      expect(screen.getByText("깨진 줄")).toBeInTheDocument();
+      expect(screen.queryByText("편의점")).toBeNull();
+      expect(screen.queryByText("관리비")).toBeNull();
+    });
+
+    it("여러 장이면 파일을 접어 두고 파일마다 넣을 줄을 세며, 보기를 고르면 해당 파일만 편다", async () => {
+      const user = userEvent.setup();
+      renderAt("/ledger/import", {
+        importPreview: {
+          files: [
+            {
+              fileName: "A.csv",
+              rows: [
+                {
+                  rowNumber: 2,
+                  occurredOn: "2026-01-10",
+                  type: "EXPENSE",
+                  amount: 5500,
+                  title: "스타벅스",
+                },
+              ],
+            },
+            {
+              fileName: "B.csv",
+              rows: [
+                {
+                  rowNumber: 2,
+                  occurredOn: "2026-02-10",
+                  type: "EXPENSE",
+                  amount: 3200,
+                  title: "편의점",
+                  duplicateOf: 42,
+                },
+                {
+                  rowNumber: 3,
+                  occurredOn: "2026-02-11",
+                  type: "EXPENSE",
+                  amount: 9900,
+                  title: "관리비",
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      await pickFiles(user, [csvFile("A.csv"), csvFile("B.csv")]);
+      await mapActiveFile(user);
+      await user.click(
+        screen.getByRole("button", { name: /이 설정을 나머지 1장에도/ }),
+      );
+      await user.click(screen.getByRole("button", { name: "미리 보기" }));
+
+      const fileA = await screen.findByRole("button", { name: "A.csv" });
+      const fileB = screen.getByRole("button", { name: "B.csv" });
+      // 모두 접혀 온다. 「중복·오류가 있는 파일만 편다」로는 은행 파일(끝의 합계 줄이 늘
+      // 오류)이 전부 펼쳐져 수천 줄을 다 펴 둔 것과 같아진다.
+      expect(fileA).toHaveAttribute("aria-expanded", "false");
+      expect(fileB).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByText("스타벅스")).toBeNull();
+      expect(screen.queryByText("편의점")).toBeNull();
+      // 접혀 있어도 이 파일에서 몇 건이 들어가는지는 보인다.
+      expect(
+        screen.getByText("1줄 · 넣을 줄 1 · 중복 후보 0 · 오류 0"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("2줄 · 넣을 줄 1 · 중복 후보 1 · 오류 0"),
+      ).toBeInTheDocument();
+
+      await user.click(fileA);
+      expect(fileA).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByText("스타벅스")).toBeInTheDocument();
+
+      // 보기를 바꾸면 그 보기에 해당하는 줄이 있는 파일만 펼친다.
+      await user.click(screen.getByRole("tab", { name: "빠지는 줄 1" }));
+      expect(fileA).toHaveAttribute("aria-expanded", "false");
+      expect(fileB).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByText("편의점")).toBeInTheDocument();
+      expect(screen.queryByText("관리비")).toBeNull();
     });
   });
 

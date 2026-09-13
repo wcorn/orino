@@ -209,6 +209,14 @@ test.describe("가져오기 — 파일 여러 장", () => {
       page.getByRole("heading", { name: "2026-01.csv" }),
     ).toBeVisible();
 
+    // 보기 탭 다섯 개가 좁은 화면(mobile-touch)에서 페이지를 가로로 밀어내지 않는다(#1383).
+    await expect(page.getByRole("tab", { name: "빠지는 줄 0" })).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+
     /*
      * 여기가 이 스펙의 값이다 — 두 파일이 <b>한 요청에</b> 담겼는지는 본문을 봐야 안다.
      * 나눠 보내면 둘째 파일을 볼 때 첫 파일이 아직 없어서 겹치는 줄이 안 걸린다.
