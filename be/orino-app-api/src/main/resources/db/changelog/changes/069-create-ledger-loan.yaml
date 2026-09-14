@@ -1,0 +1,160 @@
+databaseChangeLog:
+  # 대출 자산 (#1400). 데이터 모델 §7.2·§7.4.
+  #
+  # 상환·이자 처리 기록(§7.5)은 여기 넣지 않는다 — 상환 처리(#1401)가 쓰기 전까지 값이 없다.
+  # 각 단계에는 Hibernate validate가 통과하는 최소 집합만 넣는다(§6).
+  #
+  # 자동 롤백에 맡기지 않고 되돌리는 변경을 직접 적는다 — 066과 같은 이유다.
+
+  - changeSet:
+      id: 069-create-ledger-loan
+      author: wcorn
+      comment: 대출 속성. 잔여 원금은 저장하지 않고 기준 원금 + 기준일 이후 이체로 센다(D-18, #1400).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_loan
+      changes:
+        - createTable:
+            tableName: ledger_loan
+            columns:
+              # 자산과 1:1이다(D-20). 대출만 열 개가 넘어 ledger_asset 컬럼으로 늘리지 않는다.
+              - column:
+                  name: asset_id
+                  type: BIGINT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              # EQUAL_PAYMENT(원리금균등) · EQUAL_PRINCIPAL(원금균등) · BULLET(만기일시).
+              - column:
+                  name: repayment_method
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              # 출금 계좌. 잔액을 갖는 자산만 — 카드에서 원금이 빠질 수는 없다.
+              - column:
+                  name: payment_asset_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # 1~28, 99=말일.
+              - column:
+                  name: payment_day
+                  type: TINYINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: business_day_policy
+                  type: VARCHAR(20)
+                  defaultValue: AS_IS
+                  constraints:
+                    nullable: false
+              - column:
+                  name: started_on
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: maturity_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              # 약정 원금 — 표시용이다. 계산은 읽지 않는다.
+              - column:
+                  name: original_principal
+                  type: BIGINT
+              # 기준 원금. 새로 받는 대출은 0으로 두고 실행을 이체로 적는다.
+              - column:
+                  name: baseline_principal
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              # 기준일. 이 날까지의 실행·상환은 기준 원금에 이미 들어 있다.
+              - column:
+                  name: baseline_as_of
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: ledger_loan
+            baseColumnNames: asset_id
+            constraintName: fk_ledger_loan_asset
+            referencedTableName: ledger_asset
+            referencedColumnNames: id
+        - addForeignKeyConstraint:
+            baseTableName: ledger_loan
+            baseColumnNames: payment_asset_id
+            constraintName: fk_ledger_loan_payment_asset
+            referencedTableName: ledger_asset
+            referencedColumnNames: id
+      rollback:
+        - dropTable:
+            tableName: ledger_loan
+
+  - changeSet:
+      id: 069-create-ledger-rate-history
+      author: wcorn
+      comment: 금리 이력. 대출·마이너스통장 공용이다(§7.4, #1400).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ledger_rate_history
+      changes:
+        - createTable:
+            tableName: ledger_rate_history
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: asset_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # 이 날부터 적용한다. 그 전 회차는 이전 금리로 이미 원장에 있다.
+              - column:
+                  name: effective_from
+                  type: DATE
+                  constraints:
+                    nullable: false
+              # 연 %. 금액이 아니라 BIGINT 규칙(§0) 대상이 아니다.
+              - column:
+                  name: annual_rate
+                  type: DECIMAL(6,3)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: DATETIME(6)
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: ledger_rate_history
+            columnNames: asset_id, effective_from
+            constraintName: uk_ledger_rate
+        - addForeignKeyConstraint:
+            baseTableName: ledger_rate_history
+            baseColumnNames: asset_id
+            constraintName: fk_ledger_rate_history_asset
+            referencedTableName: ledger_asset
+            referencedColumnNames: id
+      rollback:
+        - dropTable:
+            tableName: ledger_rate_history

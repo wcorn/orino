@@ -8,6 +8,7 @@ import ds.project.orino.domain.planner.ledger.entity.LedgerSettings;
 import ds.project.orino.domain.planner.ledger.entity.LedgerTransactionStatus;
 import ds.project.orino.domain.planner.ledger.repository.LedgerAssetRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerCategoryRepository;
+import ds.project.orino.domain.planner.ledger.repository.LedgerLoanRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerTransactionRepository;
 import ds.project.orino.planner.ledger.common.LedgerBalances;
 import ds.project.orino.planner.ledger.common.LedgerBootstrap;
@@ -46,13 +47,16 @@ public class LedgerStatsService {
     private final LedgerPerspectiveSpending perspectiveSpending;
     private final LedgerBootstrap bootstrap;
     private final LedgerClock clock;
+    private final LedgerLoanRepository loanRepository;
 
     public LedgerStatsService(LedgerTransactionRepository transactionRepository,
                               LedgerCategoryRepository categoryRepository,
                               LedgerAssetRepository assetRepository,
                               LedgerPerspectiveSpending perspectiveSpending,
                               LedgerBootstrap bootstrap,
-                              LedgerClock clock) {
+                              LedgerClock clock,
+                              LedgerLoanRepository loanRepository) {
+        this.loanRepository = loanRepository;
         this.transactionRepository = transactionRepository;
         this.categoryRepository = categoryRepository;
         this.assetRepository = assetRepository;
@@ -224,11 +228,13 @@ public class LedgerStatsService {
             return null;
         }
         LocalDate until = period.end().isAfter(today) ? today : period.end();
+        // 대출 잔여 원금도 그 날까지로 센다. 빼면 대출이 있는 달의 순자산이 빚만큼 부풀려진다.
         return LedgerBalances.of(assets,
                 transactionRepository.sumConfirmedByAssetAndTypeUpTo(
                         memberId, LedgerTransactionStatus.CONFIRMED, until),
                 transactionRepository.sumConfirmedByCounterAssetUpTo(
-                        memberId, LedgerTransactionStatus.CONFIRMED, until)).netWorth();
+                        memberId, LedgerTransactionStatus.CONFIRMED, until),
+                loanRepository.sumPrincipalUpTo(memberId, until)).netWorth();
     }
 
     /**

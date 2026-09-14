@@ -7,6 +7,7 @@ import ds.project.orino.domain.planner.ledger.entity.LedgerRecurringStatus;
 import ds.project.orino.domain.planner.ledger.entity.LedgerSettings;
 import ds.project.orino.domain.planner.ledger.entity.LedgerTransactionStatus;
 import ds.project.orino.domain.planner.ledger.repository.LedgerAssetRepository;
+import ds.project.orino.domain.planner.ledger.repository.LedgerLoanRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerRecurringOverrideRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerRecurringRepository;
 import ds.project.orino.domain.planner.ledger.repository.LedgerTransactionRepository;
@@ -51,6 +52,7 @@ public class LedgerSummaryService {
     private final LedgerPeriodResolver periods;
     private final LedgerBootstrap bootstrap;
     private final LedgerClock clock;
+    private final LedgerLoanRepository loanRepository;
 
     public LedgerSummaryService(LedgerTransactionService transactionService,
                                 LedgerTransactionRepository transactionRepository,
@@ -61,7 +63,9 @@ public class LedgerSummaryService {
                                 LedgerStatementService statementService,
                                 LedgerPeriodResolver periods,
                                 LedgerBootstrap bootstrap,
-                                LedgerClock clock) {
+                                LedgerClock clock,
+                                LedgerLoanRepository loanRepository) {
+        this.loanRepository = loanRepository;
         this.transactionService = transactionService;
         this.transactionRepository = transactionRepository;
         this.assetRepository = assetRepository;
@@ -151,7 +155,7 @@ public class LedgerSummaryService {
         return unpaidOccurrences + statementService.overdue(memberId).size();
     }
 
-    /** 순자산 = 잔액 자산 − 부채(카드 미결제 + 할부 잔여). */
+    /** 순자산 = 잔액 자산 − 부채(카드 미결제 + 대출 잔여 원금). 자산 화면과 같은 계산이다. */
     private LedgerDashboardResponse.NetWorth netWorth(Long memberId) {
         List<LedgerAsset> assets =
                 assetRepository.findAllByMemberIdOrderByDisplayOrderAscIdAsc(memberId);
@@ -159,7 +163,8 @@ public class LedgerSummaryService {
                 transactionRepository.sumConfirmedByAssetAndType(
                         memberId, LedgerTransactionStatus.CONFIRMED),
                 transactionRepository.sumConfirmedByCounterAsset(
-                        memberId, LedgerTransactionStatus.CONFIRMED));
+                        memberId, LedgerTransactionStatus.CONFIRMED),
+                loanRepository.sumPrincipalUpTo(memberId, clock.today()));
         return new LedgerDashboardResponse.NetWorth(
                 balances.totalAssets(), balances.liabilities(), balances.netWorth());
     }

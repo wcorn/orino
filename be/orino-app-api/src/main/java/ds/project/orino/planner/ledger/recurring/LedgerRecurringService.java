@@ -482,6 +482,10 @@ public class LedgerRecurringService {
                                 Long counterAssetId, Long categoryId) {
         LedgerAsset asset = assetRepository.findByIdAndMemberId(assetId, memberId)
                 .orElseThrow(() -> new CustomException(ErrorCode.LEDGER_ASSET_NOT_FOUND));
+        if (asset.isLoan()) {
+            // 대출에서 나가는 정기 항목도 막는다. 원금은 회차 확정으로만 움직인다(D-17).
+            throw new CustomException(ErrorCode.LEDGER_RECURRING_LOAN);
+        }
         if (txType == LedgerFlow.TRANSFER) {
             if (counterAssetId == null) {
                 throw new CustomException(ErrorCode.LEDGER_TRANSFER_COUNTER_REQUIRED);
@@ -493,6 +497,11 @@ public class LedgerRecurringService {
                     .orElseThrow(() -> new CustomException(ErrorCode.LEDGER_ASSET_NOT_FOUND));
             if (counter.getType() == LedgerAssetType.CREDIT_CARD) {
                 throw new CustomException(ErrorCode.LEDGER_RECURRING_CARD_PAYMENT);
+            }
+            if (counter.isLoan()) {
+                // 카드 대금과 같은 이유다 — 원리금은 달마다 비율이 바뀌어 금액 하나로 반복할 수 없고,
+                // 정기 이체로 적어 두면 상환 처리와 겹쳐 원금이 두 번 빠진다.
+                throw new CustomException(ErrorCode.LEDGER_RECURRING_LOAN);
             }
         }
         if (categoryId == null) {

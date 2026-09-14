@@ -135,3 +135,5 @@ databaseChangeLog:
       file: db/changelog/changes/067-add-place-admin-area.yaml
   - include:
       file: db/changelog/changes/068-add-ledger-housing-subscription.yaml
+  - include:
+      file: db/changelog/changes/069-create-ledger-loan.yaml

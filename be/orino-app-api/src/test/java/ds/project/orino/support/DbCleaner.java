@@ -37,6 +37,10 @@ public class DbCleaner {
             "ledger_tag",
             "ledger_category",
             "ledger_statement",
+            // 자산과 1:1인 표들. 자산을 비우면 id가 1부터 다시 쓰여, 남은 행이 새 자산에 붙는다.
+            "ledger_rate_history",
+            "ledger_loan",
+            "ledger_housing_subscription",
             "ledger_asset",
             "ledger_asset_group",
             "ledger_settings",

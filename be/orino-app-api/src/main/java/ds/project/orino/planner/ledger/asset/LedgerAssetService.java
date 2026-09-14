@@ -30,6 +30,7 @@ import ds.project.orino.planner.ledger.common.LedgerBootstrap;
 import ds.project.orino.planner.ledger.common.LedgerCategorySpending;
 import ds.project.orino.planner.ledger.common.LedgerClock;
 import ds.project.orino.planner.ledger.common.LedgerNames;
+import ds.project.orino.planner.ledger.liability.LedgerLoanService;
 import ds.project.orino.planner.ledger.subscription.LedgerSubscriptionService;
 import ds.project.orino.planner.ledger.transaction.dto.TransactionView;
 import org.springframework.stereotype.Service;
@@ -72,6 +73,7 @@ public class LedgerAssetService {
     private final LedgerBootstrap bootstrap;
     private final LedgerClock clock;
     private final LedgerSubscriptionService subscriptionService;
+    private final LedgerLoanService loanService;
 
     public LedgerAssetService(LedgerAssetRepository assetRepository,
                               LedgerAssetGroupRepository groupRepository,
@@ -83,8 +85,10 @@ public class LedgerAssetService {
                               LedgerSettingsRepository settingsRepository,
                               LedgerBootstrap bootstrap,
                               LedgerClock clock,
-                              LedgerSubscriptionService subscriptionService) {
+                              LedgerSubscriptionService subscriptionService,
+                              LedgerLoanService loanService) {
         this.subscriptionService = subscriptionService;
+        this.loanService = loanService;
         this.assetRepository = assetRepository;
         this.groupRepository = groupRepository;
         this.categoryRepository = categoryRepository;
@@ -116,6 +120,7 @@ public class LedgerAssetService {
         for (LedgerAsset asset : assets) {
             AssetView view = AssetView.of(asset, assetNames.get(asset.getLinkedAssetId()),
                     balances.balanceOf(asset.getId()), balances.unpaidOf(asset.getId()),
+                    balances.principalOf(asset.getId()),
                     subscriptionService.estimatedCount(memberId, asset));
             if (asset.isHidden()) {
                 hidden.add(view);
@@ -140,7 +145,9 @@ public class LedgerAssetService {
         }
 
         return new AssetListResponse(groupViews, hidden,
-                balances.totalAssets(), balances.liabilities(), balances.netWorth());
+                balances.totalAssets(), balances.liabilities(), balances.netWorth(),
+                new AssetListResponse.LiabilityBreakdown(
+                        balances.cardLiabilities(), balances.loanLiabilities()));
     }
 
     @Transactional
@@ -162,10 +169,18 @@ public class LedgerAssetService {
         if (request.savingsKind() != null) {
             applySavingsKind(asset, request.savingsKind());
         }
+        if (request.loan() != null && request.type() != LedgerAssetType.LOAN) {
+            // 블록은 유형과 맞아야 한다(§10.1). 통장에 대출 속성이 붙으면 어느 셈법도 맞지 않는다.
+            throw new CustomException(ErrorCode.LEDGER_LOAN_INVALID);
+        }
 
         assetRepository.save(asset);
+        if (request.type() == LedgerAssetType.LOAN) {
+            // 자산 행이 먼저 있어야 대출 속성이 그 id를 가리킨다. 같은 트랜잭션이라 거부되면 함께 사라진다.
+            loanService.open(memberId, asset, request.loan());
+        }
         // 막 만든 청약에는 기준값이 없다 — 인정 회차는 「모른다」다.
-        return AssetView.of(asset, linkedName(memberId, asset), null, null, null);
+        return AssetView.of(asset, linkedName(memberId, asset), null, null, null, null);
     }
 
     @Transactional
@@ -209,6 +224,7 @@ public class LedgerAssetService {
         LedgerBalances balances = balances(memberId, assets);
         return AssetView.of(asset, linkedName(memberId, asset),
                 balances.balanceOf(asset.getId()), balances.unpaidOf(asset.getId()),
+                balances.principalOf(asset.getId()),
                 subscriptionService.estimatedCount(memberId, asset));
     }
 
@@ -241,6 +257,8 @@ public class LedgerAssetService {
         statementRepository.deleteAllByMemberIdAndCardAssetId(memberId, id);
         // 청약홈 기준값은 원장이 아니라 외부 조회 값이다(D-18). 막을 근거가 아니라 함께 지운다.
         subscriptionService.forget(id);
+        // 거래가 하나도 없는 대출만 여기까지 온다. 속성·금리 이력은 자산 없이는 아무 말도 아니다.
+        loanService.forget(id);
         assetRepository.delete(asset);
     }
 
@@ -273,7 +291,9 @@ public class LedgerAssetService {
             blockers.add(AssetDetailResponse.DeleteBlocker.TEMPLATE);
         }
         if (assetRepository.existsByMemberIdAndLinkedAssetId(memberId, id)
-                || assetRepository.existsByMemberIdAndPaymentAssetId(memberId, id)) {
+                || assetRepository.existsByMemberIdAndPaymentAssetId(memberId, id)
+                // 대출의 출금 계좌도 같다 — 지우면 그 대출의 원금이 빠질 곳이 사라진다.
+                || loanService.isPaymentAccount(id)) {
             blockers.add(AssetDetailResponse.DeleteBlocker.LINKED_ASSET);
         }
         return blockers;
@@ -301,6 +321,7 @@ public class LedgerAssetService {
                 blockers,
                 AssetView.of(asset, linkedName(memberId, asset),
                         balances.balanceOf(asset.getId()), balances.unpaidOf(asset.getId()),
+                        balances.principalOf(asset.getId()),
                         subscriptionService.estimatedCount(memberId, asset)),
                 effective,
                 trend(memberId, asset, effective, from, today),
@@ -377,6 +398,9 @@ public class LedgerAssetService {
                 sum += view.balance();
             } else if (view.unpaidAmount() != null) {
                 sum -= view.unpaidAmount();
+            } else if (view.principalRemaining() != null) {
+                // 대출 잔여 원금도 빚이다. 은행 그룹에 대출이 섞여 있으면 그만큼 줄어야 총자산과 맞는다.
+                sum -= view.principalRemaining();
             }
         }
         return sum;
@@ -416,8 +440,9 @@ public class LedgerAssetService {
     private List<AssetDetailResponse.TrendPoint> trend(Long memberId, LedgerAsset asset,
                                                        AssetDetailResponse.Range range,
                                                        LocalDate from, LocalDate to) {
-        if (asset.getType() == LedgerAssetType.DEBIT_CARD) {
+        if (asset.getType() == LedgerAssetType.DEBIT_CARD || asset.isLoan()) {
             // 체크카드에는 잔액이 없다. 없는 값을 0으로 그려 두면 있는 것처럼 읽힌다.
+            // 대출도 잔액 추이가 아니다 — 원장을 처음부터 더하면 기준 원금이 빠진 엉뚱한 선이 된다.
             return List.of();
         }
         Set<Long> owned = chargedTo(memberId, asset);
@@ -592,7 +617,8 @@ public class LedgerAssetService {
                 transactionRepository.sumConfirmedByAssetAndType(
                         memberId, LedgerTransactionStatus.CONFIRMED),
                 transactionRepository.sumConfirmedByCounterAsset(
-                        memberId, LedgerTransactionStatus.CONFIRMED));
+                        memberId, LedgerTransactionStatus.CONFIRMED),
+                loanService.principals(memberId, clock.today()));
     }
 
     /**

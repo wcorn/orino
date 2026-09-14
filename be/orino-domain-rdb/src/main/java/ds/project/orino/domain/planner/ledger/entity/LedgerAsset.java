@@ -183,6 +183,11 @@ public class LedgerAsset {
         return savingsKind;
     }
 
+    /** 대출인가. 대출에 붙는 거래는 이체뿐이다(LDG-ERR-039). */
+    public boolean isLoan() {
+        return type == LedgerAssetType.LOAN;
+    }
+
     /** 청약인가. 유형까지 함께 본다 — 종류만 보면 예·적금이 아닌 행을 청약으로 셀 길이 남는다. */
     public boolean isHousingSubscription() {
         return type == LedgerAssetType.SAVINGS && savingsKind == LedgerSavingsKind.HOUSING_SUBSCRIPTION;
