@@ -45,7 +45,11 @@ spec:
             description: "Pod가 10분 이상 Ready 상태가 아님"
 
         - alert: ContainerMemoryNearLimit
-          expr: container_memory_working_set_bytes{container!=""} / on(namespace, pod, container) kube_pod_container_resource_limits{resource="memory"} * 100 > 90
+          # working_set이 아니라 rss(anon)로 본다. working_set은 회수 가능한 커널 slab(dentry·inode)까지
+          # 세서, limit에 닿으면 커널이 먼저 회수하는 캐시를 OOM 위험으로 오판한다(minio: anon 102Mi인데
+          # slab 356Mi로 ws 91% 상시 발동, #1403). OOM은 회수 불가한 anon이 limit을 채울 때 난다.
+          # 메모리 tmpfs(shmem)는 rss에 안 잡히지만 여기선 istio 소켓용 소량뿐이다.
+          expr: container_memory_rss{container!=""} / on(namespace, pod, container) kube_pod_container_resource_limits{resource="memory"} * 100 > 90
           for: 5m
           labels:
             severity: warning
