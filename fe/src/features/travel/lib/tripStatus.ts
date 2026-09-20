@@ -26,6 +26,16 @@ export function todayIn(timezone: string, now: Date = new Date()): string {
 }
 
 /**
+ * 기기 시간대의 오늘("YYYY-MM-DD").
+ *
+ * 여행의 "오늘"이 없을 때만 쓴다 — 다녀온 뒤에 산 것은 여행의 마지막 날이 아니라
+ * **실제로 산 날**로 적혀야 「다녀온 뒤」로 묶인다.
+ */
+export function todayLocal(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA").format(now);
+}
+
+/**
  * 화면이 열어야 할 "오늘" — **아직 지나지 않은 첫 날짜**. 전부 지나갔으면 마지막 날.
  *
  * 날짜마다 자기 시계로 "나는 지나갔나"를 묻는다. "그 날짜의 오늘이 그 날짜와 같은가"로
