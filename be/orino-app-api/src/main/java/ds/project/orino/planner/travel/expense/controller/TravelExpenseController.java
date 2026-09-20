@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 여행 경비(경비 독립 §6).
  *
  * <p><b>지출을 만드는 곳이 여기로 왔다.</b> 예전에는 가계부 API로 나갔고
- * ({@code POST /api/ledger/transactions}) 여행이 갖는 것은 「어느 여행의 지출인가」를 정하는
+ * 여행이 갖는 것은 「어느 여행의 지출인가」를 정하는
  * 일뿐이었다(D-27). 가계부가 없어지면서 여행이 자기 장부를 갖고, FE가 다른 도메인 API로
  * 직접 쓰러 가는 구조도 여기서 끝난다.
  *

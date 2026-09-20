@@ -460,7 +460,7 @@ class TripExpenseApiTest extends ApiTestSupport {
                             .header(HttpHeaders.AUTHORIZATION, authHeader))
                     .andExpect(status().isOk());
 
-            // 남을 원장이 없어졌다 — ledger_transaction.trip_id의 SET NULL과 반대다.
+            // 남을 원장이 없어졌다 — 원장 쪽 FK가 SET NULL이던 것과 반대다.
             assertThat(countExpenses(tripId)).isZero();
         }
     }

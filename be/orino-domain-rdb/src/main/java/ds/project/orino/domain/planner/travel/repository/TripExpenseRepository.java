@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * 여행 지출 조회. 예전에는 {@code LedgerTransactionRepository}가 이 자리였다 — 경비가
+ * 여행 지출 조회. 예전에는 가계부의 원장 리포지토리가 이 자리였다 — 경비가
  * 원장 위의 읽기 뷰였기 때문이다(D-27). 이제 여행이 자기 장부를 읽는다.
  *
  * <p>유형 필터가 사라진 것이 눈에 띄는 차이다. 원장에서는 <b>이체와 수입을 빼는 일</b>이
