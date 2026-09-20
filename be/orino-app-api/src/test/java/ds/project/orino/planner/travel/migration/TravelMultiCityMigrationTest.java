@@ -27,8 +27,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * v2.1 마이그레이션(053)이 <b>이미 데이터가 있는 DB</b>에서 무엇을 하는지 고정한다.
  *
  * <p>보통의 테스트는 빈 DB에 changelog를 처음부터 적용하므로 백필 구문이 한 행도 건드리지 않아
- * "돌긴 했다"는 것 말고는 아무것도 증명하지 못한다. 여기서는 태그 지점까지 <b>되돌린 뒤</b>
- * v2.0 형태의 여행을 심고 다시 적용한다 — 롤백문과 백필문이 둘 다 실제로 검증된다.
+ * "돌긴 했다"는 것 말고는 아무것도 증명하지 못한다. 여기서는 <b>태그 지점까지만 적용해</b>
+ * v2.0 스키마를 만든 뒤 그 시절 여행을 심고 끝까지 적용한다 — 백필문이 실제 행을 만난다.
+ *
+ * <p><b>예전에는 전체 적용 → 태그까지 롤백으로 그 상태를 만들었다.</b> 가계부 제거 3단계
+ * (#1410)가 테이블 24개를 떨어뜨리면서 그 길이 막혔다 — 되돌리기가 057~069의 롤백문에
+ * 닿는데, 그것들이 지우려는 테이블은 이미 없다. 3단계는 <b>되돌릴 수 없게 설계됐고</b>
+ * (제거 계획 §3) 그 사실을 우회하지 않는다. 대신 같은 상태를 앞에서부터 만든다.
  *
  * <p>백필 없이 컬럼만 지우면 기존 여행이 전부 타임존을 잃고 상태 판정이 죽는다. 실사용 데이터가
  * 아직 없어 손실 위험은 낮지만, 그 순서를 지켰는지는 코드가 아니라 DB에 물어봐야 안다.
@@ -64,10 +69,8 @@ class TravelMultiCityMigrationTest {
     @Test
     @DisplayName("v2.0 여행이 담긴 DB에 적용하면 날짜마다 기준 도시가 붙고 목적지 컬럼이 사라진다")
     void backfillsDaysAndDropsDestinationColumns() throws Exception {
-        runLiquibase(liquibase -> liquibase.update(new Contexts(), new LabelExpression()));
-
-        // 태그 지점까지 되돌리면 v2.0 스키마다 — 되돌리기가 정말 되는지부터 확인한다.
-        runLiquibase(liquibase -> liquibase.rollback(TAG, new Contexts(), new LabelExpression()));
+        // 태그 지점까지만 적용하면 v2.0 스키마다 — 여기서 멈춰야 백필이 만날 행을 심을 수 있다.
+        runLiquibase(liquibase -> liquibase.update(TAG, new Contexts(), new LabelExpression()));
         assertThat(columnExists("trip", "timezone")).isTrue();
         assertThat(tableExists("trip_day")).isFalse();
 

@@ -139,3 +139,5 @@ databaseChangeLog:
       file: db/changelog/changes/069-create-ledger-loan.yaml
   - include:
       file: db/changelog/changes/070-create-trip-expense.yaml
+  - include:
+      file: db/changelog/changes/071-drop-ledger.yaml
