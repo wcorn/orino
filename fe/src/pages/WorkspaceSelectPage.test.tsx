@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -60,7 +60,7 @@ describe("WorkspaceSelectPage", () => {
     useAuthStore.setState({ accessToken: "valid-token" });
   });
 
-  it("네 워크스페이스 카드를 보여준다 — 링크도 가계부도 일상의 하위가 아니다", async () => {
+  it("세 워크스페이스 카드를 보여준다 — 링크는 일상의 하위가 아니다", async () => {
     renderApp(["/select"]);
 
     await waitFor(() => {
@@ -71,7 +71,8 @@ describe("WorkspaceSelectPage", () => {
     expect(screen.getByRole("button", { name: /여행/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /일상/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /링크/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /가계부/ })).toBeInTheDocument();
+    // 가계부는 네 번째 카드였다. 안 쓰는 모듈이라 지웠다(#1405).
+    expect(screen.queryByRole("button", { name: /가계부/ })).toBeNull();
   });
 
   it("사이드바가 없다 — 선택 화면은 앱 셸 밖이다", async () => {
@@ -316,46 +317,23 @@ describe("WorkspaceSelectPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "링크" })).toBeInTheDocument();
     });
-    // 링크 워크스페이스로 들어왔으므로 사이드바 스위처도 링크를 가리킨다.
+    // 링크 워크스페이스로 들어왔으므로 사이드바 세그먼트도 링크를 가리킨다.
     expect(
-      screen.getByRole("button", { name: "워크스페이스 전환 — 현재 링크" }),
-    ).toBeInTheDocument();
+      within(screen.getByRole("group", { name: "워크스페이스" })).getByRole(
+        "button",
+        { name: "링크" },
+      ),
+    ).toHaveAttribute("aria-current", "true");
   });
 
-  it("가계부 카드는 요약이 없어 배지도 메타도 그리지 않는다", async () => {
-    renderApp(["/select"]);
-
-    const ledgerCard = await screen.findByRole("button", { name: /가계부/ });
-    expect(ledgerCard).toHaveTextContent("내역, 카드 청구서, 정기 항목, 예산");
-    // `미납 0`도 `이번 달 예상 0`도 그리지 않는다 — 없는 것과 모르는 것은 다르다.
-    expect(ledgerCard).not.toHaveTextContent(/미납/);
-    expect(ledgerCard).not.toHaveTextContent(/이번 달 예상/);
-  });
-
-  it("가계부 카드를 누르면 /ledger로 간다", async () => {
-    renderApp(["/select"]);
-
-    const ledgerCard = await screen.findByRole("button", { name: /가계부/ });
-    await userEvent.click(ledgerCard);
+  it("가계부로 가던 경로는 이제 선택 화면으로 돌아온다", async () => {
+    // 라우트가 사라졌으니 `/ledger`는 앱이 모르는 주소다 — 랜딩의 인증 분기가 받아
+    // 로그인한 사용자를 선택 화면으로 돌려보낸다.
+    renderApp(["/ledger"]);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "가계부" }),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.getByRole("button", { name: "워크스페이스 전환 — 현재 가계부" }),
-    ).toBeInTheDocument();
-  });
-
-  it("아직 없는 가계부 하위 경로는 가계부 홈으로 보낸다 — 랜딩으로 튕기지 않는다", async () => {
-    // 가계부의 모든 화면이 라우트를 가진 뒤로는, 없는 경로를 일부러 하나 고른다 —
-    // 리다이렉트가 살아 있는지는 「언젠가 생길 이름」이 아니라 규칙 자체로 확인한다.
-    renderApp(["/ledger/there-is-no-such-page"]);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "가계부" }),
+        screen.getByRole("heading", { name: "어디로 갈까요" }),
       ).toBeInTheDocument();
     });
   });

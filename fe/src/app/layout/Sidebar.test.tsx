@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -517,61 +517,46 @@ describe("Sidebar", () => {
       );
     });
 
-    it("드롭다운에 워크스페이스 4개와 「선택 화면으로」가 있고 현재 항목에 표시가 붙는다", async () => {
+    it("세그먼트에 워크스페이스 셋이 있고 지금 있는 곳에 표시가 붙는다", async () => {
       renderSidebar("/home");
-      await waitFor(() => {
-        expect(switcher("일상")).toBeInTheDocument();
-      });
 
-      await userEvent.click(switcher("일상"));
-
-      for (const name of ["여행", "일상", "링크", "가계부"]) {
-        expect(
-          await screen.findByRole("menuitem", { name }),
-        ).toBeInTheDocument();
+      const group = within(
+        await screen.findByRole("group", { name: "워크스페이스" }),
+      );
+      for (const name of ["여행", "일상", "링크"]) {
+        expect(group.getByRole("button", { name })).toBeInTheDocument();
       }
-      expect(
-        screen.getByRole("menuitem", { name: "선택 화면으로" }),
-      ).toBeInTheDocument();
-      // 열었을 때 어디에 있는지가 먼저 보여야 한다.
-      expect(screen.getByRole("menuitem", { name: "일상" })).toHaveAttribute(
+      // 가계부는 네 번째 칸이었다. 세 칸이 되면서 드롭다운을 걷었다(#1408).
+      expect(group.queryByRole("button", { name: "가계부" })).toBeNull();
+
+      expect(group.getByRole("button", { name: "일상" })).toHaveAttribute(
         "aria-current",
         "true",
       );
+      expect(group.getByRole("button", { name: "링크" })).not.toHaveAttribute(
+        "aria-current",
+      );
+    });
+
+    it("「선택 화면으로」는 목록 아래에 남는다 — 워크스페이스 안에서 가는 유일한 길이다", async () => {
+      renderSidebar("/home");
+
       expect(
-        screen.getByRole("menuitem", { name: "가계부" }),
-      ).not.toHaveAttribute("aria-current");
+        await screen.findByRole("link", { name: "선택 화면으로" }),
+      ).toHaveAttribute("href", "/select");
     });
 
-    it("트리거는 접힘·펼침을 알린다 — 224px에 4칸을 넣지 않는다", async () => {
+    it("세그먼트에서 링크를 고르면 링크 메뉴로 바뀐다", async () => {
       renderSidebar("/home");
-      await waitFor(() => {
-        expect(switcher("일상")).toHaveAttribute("aria-expanded", "false");
-      });
-      expect(switcher("일상")).toHaveAttribute("aria-haspopup", "menu");
-
-      await userEvent.click(switcher("일상"));
-
-      await waitFor(() => {
-        expect(switcher("일상")).toHaveAttribute("aria-expanded", "true");
-      });
-    });
-
-    it("드롭다운에서 가계부를 고르면 가계부 메뉴로 바뀐다", async () => {
-      renderSidebar("/home");
-      await waitFor(() => {
-        expect(switcher("일상")).toBeInTheDocument();
-      });
-
-      await userEvent.click(switcher("일상"));
-      await userEvent.click(
-        await screen.findByRole("menuitem", { name: "가계부" }),
+      const group = within(
+        await screen.findByRole("group", { name: "워크스페이스" }),
       );
 
-      await waitFor(() => {
-        expect(switcher("가계부")).toBeInTheDocument();
-      });
-      expect(screen.getByRole("link", { name: /내역/ })).toBeInTheDocument();
+      await userEvent.click(group.getByRole("button", { name: "링크" }));
+
+      expect(
+        await screen.findByRole("link", { name: /링크 목록/ }),
+      ).toBeInTheDocument();
       expect(screen.queryByRole("link", { name: /학습 자료/ })).toBeNull();
     });
 
@@ -675,96 +660,15 @@ describe("Sidebar", () => {
       ).not.toContain("text-primary");
     });
   });
-
-  describe("가계부 메뉴", () => {
-    const LABELS = [
-      "홈",
-      "내역",
-      "예정",
-      "자산",
-      "카드 청구서",
-      "정기 항목",
-      "예산",
-      "통계",
-      "가져오기",
-      "설정",
-    ];
-
-    it("가계부 경로에서는 가계부 메뉴 10개를 보여준다 — 일상·링크 메뉴는 사라진다", async () => {
-      renderSidebar("/ledger");
-
-      await waitFor(() => {
-        expect(screen.getByRole("link", { name: /내역/ })).toBeInTheDocument();
-      });
-      for (const label of LABELS) {
-        expect(
-          screen.getByRole("link", { name: new RegExp(label) }),
-        ).toBeInTheDocument();
-      }
-      expect(screen.queryByRole("link", { name: /학습 자료/ })).toBeNull();
-      expect(screen.queryByRole("link", { name: /링크 목록/ })).toBeNull();
-    });
-
-    it("「홈」은 /ledger에서만 활성이다 — 하위 경로까지 잡지 않는다", async () => {
-      const { unmount } = renderSidebar("/ledger");
-      let home = await screen.findByRole("link", { name: /홈/ });
-      expect(home.className).toContain("text-primary");
-      unmount();
-
-      renderSidebar("/ledger/transactions");
-      home = await screen.findByRole("link", { name: /홈/ });
-      expect(home.className).not.toContain("text-primary");
-      expect(screen.getByRole("link", { name: /내역/ }).className).toContain(
-        "text-primary",
-      );
-    });
-
-    it("자산 상세에서도 「자산」이 활성이다", async () => {
-      renderSidebar("/ledger/assets/3");
-
-      const assets = await screen.findByRole("link", { name: /자산/ });
-      expect(assets.className).toContain("text-primary");
-      expect(switcher("가계부")).toBeInTheDocument();
-    });
-
-    it("청구서 경로에서도 「카드 청구서」가 활성이다", async () => {
-      renderSidebar("/ledger/cards/12/statements");
-
-      const cards = await screen.findByRole("link", { name: /카드 청구서/ });
-      expect(cards.className).toContain("text-primary");
-    });
-
-    it("가계부에서는 링크 API를 부르지 않는다", async () => {
-      let called = false;
-      server.use(
-        http.get(`${API_BASE}/shortlinks`, () => {
-          called = true;
-          return HttpResponse.json({
-            code: "OK",
-            data: {
-              counts: { all: 0, active: 0, inactive: 0 },
-              favorites: [],
-              recent: [],
-            },
-          });
-        }),
-      );
-
-      renderSidebar("/ledger");
-      await waitFor(() => {
-        expect(screen.getByRole("link", { name: /내역/ })).toBeInTheDocument();
-      });
-
-      expect(called).toBe(false);
-    });
-  });
 });
 
-/** 스위처 트리거. 접근성 이름이 현재 워크스페이스를 담는다. */
+/** 세그먼트에서 지금 있는 칸. `aria-current`가 현재 워크스페이스를 말한다. */
 function switcher(workspace: string) {
-  return screen.getByRole("button", {
-    name: `워크스페이스 전환 — 현재 ${workspace}`,
-  });
+  const button = within(
+    screen.getByRole("group", { name: "워크스페이스" }),
+  ).getByRole("button", { name: workspace });
+  expect(button).toHaveAttribute("aria-current", "true");
+  return button;
 }
 
 /** 사이드바 개수만 보는 테스트라 카드 내용은 최소로 채운다. */

@@ -5,7 +5,6 @@ import {
   Link2,
   MapPin,
   Plane,
-  Wallet,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import { useNavigate } from "react-router-dom";
@@ -106,7 +105,7 @@ export function WorkspaceSelectPage() {
     <div className="flex min-h-svh flex-col">
       <AppHeader />
       <main className="grid flex-1 place-items-center px-4 pt-8 pb-16">
-        <div className="flex w-full max-w-[880px] flex-col gap-6">
+        <div className="flex w-full max-w-[680px] flex-col gap-6">
           <div>
             <h1 className="text-title font-semibold">어디로 갈까요</h1>
             <p className="text-muted-foreground mt-1 text-sm">
@@ -152,22 +151,6 @@ export function WorkspaceSelectPage() {
               meta={linkMeta}
               onClick={() => navigate("/links")}
             />
-            {/*
-              가계부는 네 번째 워크스페이스다(Epic #1257 · D-1). 배지(`미납 N`)와
-              메타(`이번 달 예상 … · 월말 …`)는 `GET /api/ledger/summary`가 생긴 뒤 붙는다
-              — 지금 `0`을 그리면 「미납이 없다」와 「아직 모른다」가 같아 보인다.
-            */}
-            <WorkspaceCard
-              title="가계부"
-              description="내역, 카드 청구서, 정기 항목, 예산"
-              icon={Wallet}
-              // 여기도 중립 톤이다. bg-accent는 여행 전용.
-              iconClassName="bg-muted"
-              badge={null}
-              metaIcon={ChartColumn}
-              meta={null}
-              onClick={() => navigate("/ledger")}
-            />
           </div>
         </div>
       </main>
@@ -204,7 +187,7 @@ function WorkspaceCard({
       type="button"
       onClick={onClick}
       className={cn(
-        // basis는 200px다 — 카드 4장 + gap 48 = 848px로 max-w-[880px] 안에 한 줄로 선다.
+        // basis는 200px다 — 카드 3장 + gap 32 = 632px로 max-w-[680px] 안에 한 줄로 선다.
         // (그 아래 폭에서는 원래대로 wrap.)
         "bg-card ring-foreground/10 flex flex-1 basis-[200px] flex-col gap-3.5 rounded-xl p-5 text-left ring-1",
         "hover:ring-primary transition-all duration-150 hover:-translate-y-px",
