@@ -13,7 +13,7 @@ import { ExpenseQuickSheet } from "./ExpenseQuickSheet";
 
 const API_BASE = "https://api.orino.dev/api";
 
-/** 여행 도구의 환율. 가계부 `/ledger/fx/rate`가 아니다 — 그건 2단계에서 사라진다. */
+/** 여행 도구의 환율. 경비는 이제 여행이 가진 고시만 본다. */
 function mockFx(rate: number | null = 9.4166) {
   server.use(
     http.get(`${API_BASE}/travel/fx`, ({ request }) => {
