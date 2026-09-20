@@ -137,3 +137,5 @@ databaseChangeLog:
       file: db/changelog/changes/068-add-ledger-housing-subscription.yaml
   - include:
       file: db/changelog/changes/069-create-ledger-loan.yaml
+  - include:
+      file: db/changelog/changes/070-create-trip-expense.yaml

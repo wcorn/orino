@@ -2,12 +2,12 @@ package ds.project.orino.planner.travel.expense.service;
 
 import ds.project.orino.common.exception.CustomException;
 import ds.project.orino.common.exception.ErrorCode;
-import ds.project.orino.domain.planner.ledger.entity.LedgerTransaction;
-import ds.project.orino.domain.planner.ledger.entity.LedgerTransactionStatus;
-import ds.project.orino.domain.planner.ledger.repository.LedgerTransactionRepository;
 import ds.project.orino.domain.planner.travel.entity.TravelPlace;
 import ds.project.orino.domain.planner.travel.entity.Trip;
+import ds.project.orino.domain.planner.travel.entity.TripExpense;
+import ds.project.orino.domain.planner.travel.entity.TripExpenseStatus;
 import ds.project.orino.domain.planner.travel.entity.TripStatus;
+import ds.project.orino.domain.planner.travel.repository.TripExpenseRepository;
 import ds.project.orino.domain.planner.travel.repository.TripRepository;
 import ds.project.orino.planner.travel.day.service.TripClock;
 import ds.project.orino.planner.travel.day.service.TripDayService;
@@ -28,11 +28,11 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 경비 조회(명세 v2.2 §4~§5 · API §11).
+ * 경비 조회(경비 독립 §6).
  *
- * <p><b>조립은 여기서 한다.</b> 가계부에서 {@code trip_id}가 이 여행인 지출을 읽어 여행의
- * 문법(출발 전 · N일차·도시 · 다녀온 뒤)으로 다시 묶는다. 원장은 가계부 하나뿐이고 이 서비스는
- * 그 위의 읽기 뷰라, 여기서 거래를 만들거나 고치지 않는다.
+ * <p><b>조립은 여기서 한다.</b> 그 여행의 지출을 읽어 여행의 문법(출발 전 · N일차·도시 ·
+ * 다녀온 뒤)으로 묶는다. 예전에는 가계부 원장에서 {@code trip_id}가 이 여행인 행을 읽는
+ * 읽기 뷰였다(D-27) — 원장이 없어져 여행이 자기 장부를 읽는다.
  *
  * <p><b>그룹 라벨을 저장하지 않는다.</b> 「3일차 · 교토」는 날짜와 기준 도시에서 매번 파생한다 —
  * 저장하면 기준 도시를 바꿨을 때 옛 도시가 조용히 남는다.
@@ -42,16 +42,16 @@ import java.util.stream.Collectors;
 public class TripExpenseQueryService {
 
     private final TripRepository tripRepository;
-    private final LedgerTransactionRepository transactionRepository;
+    private final TripExpenseRepository expenseRepository;
     private final TripDayService tripDayService;
     private final Clock clock;
 
     public TripExpenseQueryService(TripRepository tripRepository,
-                                   LedgerTransactionRepository transactionRepository,
+                                   TripExpenseRepository expenseRepository,
                                    TripDayService tripDayService,
                                    Clock clock) {
         this.tripRepository = tripRepository;
-        this.transactionRepository = transactionRepository;
+        this.expenseRepository = expenseRepository;
         this.tripDayService = tripDayService;
         this.clock = clock;
     }
@@ -64,9 +64,10 @@ public class TripExpenseQueryService {
         TripStatus status = TripClock.status(trip, cities, clock);
         LocalDate today = TripClock.today(trip, cities, clock);
 
-        List<LedgerTransaction> rows = transactionRepository.findTripExpenses(tripId);
-        long spent = sumOf(rows, LedgerTransactionStatus.CONFIRMED);
-        long scheduled = sumOf(rows, LedgerTransactionStatus.SCHEDULED);
+        List<TripExpense> rows = expenseRepository
+                .findAllByTripIdAndDeletedAtIsNullOrderByOccurredOnAscIdAsc(tripId);
+        long spent = sumOf(rows, TripExpenseStatus.CONFIRMED);
+        long scheduled = sumOf(rows, TripExpenseStatus.SCHEDULED);
         boolean completed = status == TripStatus.COMPLETED;
 
         return new TripExpenseResponse(
@@ -75,17 +76,17 @@ public class TripExpenseQueryService {
                 status == TripStatus.ONGOING ? trip.dayNumberOf(today) : null,
                 budgetOf(trip, spent, scheduled, today, status),
                 totalsOf(trip, spent, scheduled, completed),
-                (int) rows.stream().filter(tx -> tx.getCategoryId() == null).count(),
-                groupsOf(trip, cities, rows));
+                (int) rows.stream().filter(row -> row.getCategory() == null).count(),
+                groupsOf(trip, cities, rows, today));
     }
 
     /**
      * 여러 여행의 경비 한 줄씩. 사이드바 여행 트리와 폴백 화면이 진행 중·예정 전부를 함께
      * 그린다 — 여행마다 {@link #get}을 부르면 화면 한 벌을 여러 번 조립하게 된다.
      *
-     * <p>여기서 세는 것은 <b>화면과 같은 행</b>이다(확정 · 지출 · 안 지운 것). 다만 합계만
-     * 필요하므로 목록을 끌어오지 않고 DB에서 더한다 — 두 질의를 나란히 두고 함께 고친다
-     * ({@link LedgerTransactionRepository#sumConfirmedExpenseByTrip}).
+     * <p>여기서 세는 것은 <b>화면과 같은 행</b>이다(확정 · 안 지운 것). 다만 합계만 필요하므로
+     * 목록을 끌어오지 않고 DB에서 더한다
+     * ({@link TripExpenseRepository#sumConfirmedByTrip}).
      *
      * @return 여행 id → 요약. <b>지출이 한 건도 없는 여행도 들어 있다</b>({@code spent: 0}) —
      *         빠뜨리면 화면이 「모른다」와 「안 썼다」를 구분할 수 없다
@@ -94,11 +95,11 @@ public class TripExpenseQueryService {
         if (trips.isEmpty()) {
             return Map.of();
         }
-        Map<Long, Long> spentByTrip = transactionRepository
-                .sumConfirmedExpenseByTrip(trips.stream().map(Trip::getId).toList()).stream()
+        Map<Long, Long> spentByTrip = expenseRepository
+                .sumConfirmedByTrip(trips.stream().map(Trip::getId).toList()).stream()
                 .collect(Collectors.toMap(
-                        LedgerTransactionRepository.TripTotal::getTripId,
-                        LedgerTransactionRepository.TripTotal::getTotal));
+                        TripExpenseRepository.TripTotal::getTripId,
+                        TripExpenseRepository.TripTotal::getTotal));
 
         Map<Long, ExpenseSummary> summaries = new LinkedHashMap<>();
         for (Trip trip : trips) {
@@ -116,28 +117,29 @@ public class TripExpenseQueryService {
      * 여행 중 화면의 위아래가 빈 카드로 찬다.
      */
     private static List<TripExpenseResponse.ExpenseGroup> groupsOf(
-            Trip trip, Map<LocalDate, TravelPlace> cities, List<LedgerTransaction> rows) {
-        List<LedgerTransaction> before = new ArrayList<>();
-        List<LedgerTransaction> after = new ArrayList<>();
-        Map<LocalDate, List<LedgerTransaction>> byDate = new LinkedHashMap<>();
+            Trip trip, Map<LocalDate, TravelPlace> cities, List<TripExpense> rows,
+            LocalDate today) {
+        List<TripExpense> before = new ArrayList<>();
+        List<TripExpense> after = new ArrayList<>();
+        Map<LocalDate, List<TripExpense>> byDate = new LinkedHashMap<>();
         for (int i = 0; i < trip.totalDays(); i++) {
             byDate.put(trip.getStartDate().plusDays(i), new ArrayList<>());
         }
 
-        for (LedgerTransaction tx : rows) {
-            LocalDate date = tx.getOccurredOn();
+        for (TripExpense expense : rows) {
+            LocalDate date = expense.getOccurredOn();
             if (date.isBefore(trip.getStartDate())) {
-                before.add(tx);
+                before.add(expense);
             } else if (date.isAfter(trip.getEndDate())) {
-                after.add(tx);
+                after.add(expense);
             } else {
-                byDate.get(date).add(tx);
+                byDate.get(date).add(expense);
             }
         }
 
         List<TripExpenseResponse.ExpenseGroup> groups = new ArrayList<>();
         if (!before.isEmpty()) {
-            groups.add(group("BEFORE", "출발 전", null, null, null, before));
+            groups.add(group("BEFORE", "출발 전", null, null, null, before, today));
         }
         byDate.forEach((date, dayRows) -> {
             int dayNumber = trip.dayNumberOf(date);
@@ -145,10 +147,11 @@ public class TripExpenseQueryService {
             String label = cityName == null
                     ? labelOf(date)
                     : "%s · %s".formatted(labelOf(date), cityName);
-            groups.add(group("DAY-" + dayNumber, label, dayNumber, date, cityName, dayRows));
+            groups.add(group("DAY-" + dayNumber, label, dayNumber, date, cityName, dayRows,
+                    today));
         });
         if (!after.isEmpty()) {
-            groups.add(group("AFTER", "다녀온 뒤", null, null, null, after));
+            groups.add(group("AFTER", "다녀온 뒤", null, null, null, after, today));
         }
         return groups;
     }
@@ -169,18 +172,10 @@ public class TripExpenseQueryService {
 
     private static TripExpenseResponse.ExpenseGroup group(
             String key, String label, Integer dayNumber, LocalDate date, String cityName,
-            List<LedgerTransaction> rows) {
+            List<TripExpense> rows, LocalDate today) {
         return new TripExpenseResponse.ExpenseGroup(key, label, dayNumber, date, cityName,
-                rows.stream().mapToLong(LedgerTransaction::getAmount).sum(),
-                rows.stream().map(TripExpenseQueryService::row).toList());
-    }
-
-    private static TripExpenseResponse.ExpenseRow row(LedgerTransaction tx) {
-        return new TripExpenseResponse.ExpenseRow(
-                tx.getId(), tx.getTitle(), tx.getAmount(),
-                tx.hasFx() ? new TripExpenseResponse.FxView(
-                        tx.getFxCurrency(), tx.getFxAmount(), tx.getFxRate()) : null,
-                tx.getStatus().name(), tx.getCategoryId() == null, tx.getOccurredOn());
+                rows.stream().mapToLong(TripExpense::getAmount).sum(),
+                rows.stream().map(expense -> ExpenseRows.of(expense, today)).toList());
     }
 
     /**
@@ -237,10 +232,10 @@ public class TripExpenseQueryService {
                 completed && days > 0 ? spent / days : null);
     }
 
-    private static long sumOf(List<LedgerTransaction> rows, LedgerTransactionStatus status) {
+    private static long sumOf(List<TripExpense> rows, TripExpenseStatus status) {
         return rows.stream()
-                .filter(tx -> tx.getStatus() == status)
-                .mapToLong(LedgerTransaction::getAmount)
+                .filter(expense -> expense.getStatus() == status)
+                .mapToLong(TripExpense::getAmount)
                 .sum();
     }
 }

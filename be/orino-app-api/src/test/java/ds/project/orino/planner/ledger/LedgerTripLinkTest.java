@@ -15,11 +15,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.ResultActions;
 
 import java.time.LocalDate;
-import java.util.Arrays;
-import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
@@ -30,10 +27,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 거래에 여행을 붙인다(여행 v2.2 §3 · §18).
+ * 거래에 여행을 붙인다(여행 v2.2 §3).
  *
- * <p><b>여행 안에 장부를 만들지 않는다.</b> 원장은 가계부 하나뿐이고 여행 화면은 그 위의
- * 읽기 뷰라, 가계부에 생기는 것은 컬럼 하나와 필터 몇 개다.
+ * <p>가계부에 생긴 것은 컬럼 하나와 필터 몇 개다. <b>여기서 지키는 것은 그 컬럼의 규칙뿐</b>이고,
+ * 여행 화면의 경비는 더 이상 이 원장을 읽지 않는다 — 여행이 자기 장부를 갖는다(#1406).
+ * 여러 건을 골라 붙이고 떼던 길({@code /expenses/attach} · {@code /detach})도 그래서 없다.
  *
  * <p>이 파일이 지키는 것 중 가장 중요한 하나는 <b>여행을 지워도 쓴 돈은 남는다</b>는 것이다.
  * 애플리케이션이 아니라 DB(FK {@code ON DELETE SET NULL})가 보장하므로, 여행을 지우는 길이
@@ -90,73 +88,6 @@ class LedgerTripLinkTest extends ApiTestSupport {
                             .content(expenseBody(4500, othersTrip)))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("TRAVEL-ERR-001"));
-        }
-
-        @Test
-        @DisplayName("고른 여러 건을 한 번에 붙인다 — 붙이는 길은 여행 쪽에 있다(§18)")
-        void attachesManyThroughTravelApi() throws Exception {
-            long first = LedgerFixture.transactionId(expense(4500, null));
-            long second = LedgerFixture.transactionId(expense(12000, null));
-
-            attach(tripId, first, second)
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.affected").value(2));
-
-            assertThat(transactionRepository.findById(first).orElseThrow().getTripId())
-                    .isEqualTo(tripId);
-            assertThat(transactionRepository.findById(second).orElseThrow().getTripId())
-                    .isEqualTo(tripId);
-        }
-
-        @Test
-        @DisplayName("떼면 연결만 끊긴다 — 거래는 지우지 않는다")
-        void detachesWithoutDeleting() throws Exception {
-            long id = LedgerFixture.transactionId(expense(4500, tripId));
-
-            detach(tripId, id)
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.affected").value(1));
-
-            assertThat(transactionRepository.findById(id)).isPresent();
-            assertThat(transactionRepository.findById(id).orElseThrow().getTripId()).isNull();
-        }
-
-        @Test
-        @DisplayName("다른 여행에 붙어 있는 건은 떼지 않는다 — 화면이 말한 것만 일어난다")
-        void detachLeavesOtherTripsAlone() throws Exception {
-            long otherTrip = createTrip(authHeader, "봄 여행");
-            long id = LedgerFixture.transactionId(expense(4500, otherTrip));
-
-            detach(tripId, id)
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.affected").value(0));
-
-            assertThat(transactionRepository.findById(id).orElseThrow().getTripId())
-                    .isEqualTo(otherTrip);
-        }
-
-        @Test
-        @DisplayName("붙이기도 남의 여행은 404다")
-        void attachRejectsOthersTrip() throws Exception {
-            long id = LedgerFixture.transactionId(expense(4500, null));
-            long othersTrip = createTrip(otherAuthHeader, "남의 여행");
-
-            attach(othersTrip, id)
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("TRAVEL-ERR-001"));
-        }
-
-        @Test
-        @DisplayName("남의 거래는 조용히 빠진다 — 한 건 때문에 전부 거절하지 않는다")
-        void skipsForeignTransactions() throws Exception {
-            long mine = LedgerFixture.transactionId(expense(4500, null));
-
-            attach(tripId, mine, 999999L)
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.affected").value(1));
-
-            assertThat(transactionRepository.findById(mine).orElseThrow().getTripId())
-                    .isEqualTo(tripId);
         }
 
         @Test
@@ -298,26 +229,6 @@ class LedgerTripLinkTest extends ApiTestSupport {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) JsonPath.read(body, "$.data.id")).longValue();
-    }
-
-    private ResultActions attach(long trip, long... transactionIds) throws Exception {
-        return expenseAction(trip, "attach", transactionIds);
-    }
-
-    private ResultActions detach(long trip, long... transactionIds) throws Exception {
-        return expenseAction(trip, "detach", transactionIds);
-    }
-
-    private ResultActions expenseAction(long trip, String action, long... transactionIds)
-            throws Exception {
-        String ids = Arrays.stream(transactionIds)
-                .mapToObj(String::valueOf)
-                .collect(Collectors.joining(", "));
-        return mockMvc.perform(
-                post("/api/travel/trips/" + trip + "/expenses/" + action)
-                        .header(HttpHeaders.AUTHORIZATION, authHeader)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"transactionIds\": [%s]}".formatted(ids)));
     }
 
     private String expense(long amount, Long trip) throws Exception {
