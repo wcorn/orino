@@ -33,9 +33,9 @@ import java.util.Map;
  * <p><b>가계부를 여행 안에 다시 짓지 않는다.</b> 자산·잔액·이체·청구서·정기 항목은 아무것도
  * 따라오지 않았고, 그래서 이 클래스가 하는 일은 「무엇에 얼마를 언제 썼나」를 받아 적는 것뿐이다.
  *
- * <p>환율은 {@link ExchangeRateService}를 직접 쓴다. 가계부의 {@code LedgerFxService}를
- * 거치지 않는다 — 그 클래스는 실패를 {@code LDG-ERR-*}로 옮겨 놓기 위해 있었고, 그 코드들은
- * 2단계(#1409)에서 사라진다.
+ * <p>환율은 {@link ExchangeRateService}를 직접 쓴다. 가계부에는 실패를 제 모듈의 코드로
+ * 옮겨 놓는 껍데기가 한 겹 있었는데, 여행에는 그럴 이유가 없다 — 여기서 나는 에러는
+ * 이미 {@code TRAVEL-ERR-*}다.
  */
 @Service
 @Transactional(readOnly = true)

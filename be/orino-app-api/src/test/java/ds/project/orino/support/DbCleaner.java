@@ -22,28 +22,6 @@ import org.springframework.stereotype.Component;
 public class DbCleaner {
 
     private static final String[] TABLES_IN_FK_ORDER = {
-            // 가계부 — 자기참조(refund_of_id)와 자산 FK가 있어 원장부터 지운다.
-            "ledger_installment_round",
-            "ledger_installment",
-            "ledger_transaction_receipt",
-            "ledger_transaction_template",
-            "ledger_transaction_tag",
-            "ledger_transaction",
-            "ledger_budget_category",
-            "ledger_budget",
-            "ledger_recurring_override",
-            "ledger_recurring_amount_history",
-            "ledger_recurring",
-            "ledger_tag",
-            "ledger_category",
-            "ledger_statement",
-            // 자산과 1:1인 표들. 자산을 비우면 id가 1부터 다시 쓰여, 남은 행이 새 자산에 붙는다.
-            "ledger_rate_history",
-            "ledger_loan",
-            "ledger_housing_subscription",
-            "ledger_asset",
-            "ledger_asset_group",
-            "ledger_settings",
             "shortlink_visit_daily",
             "shortlink_visit",
             "shortlink_target_history",

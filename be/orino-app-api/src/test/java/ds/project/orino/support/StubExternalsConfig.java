@@ -51,7 +51,7 @@ public class StubExternalsConfig {
         return new StubEcbRatesClient();
     }
 
-    /** 영수증 보존 배치가 훑는 버킷. 메모리 위에 두고 목록·삭제만 흉내 낸다(#1275). */
+    /** 이미지 버킷(일상기록·여행 사진). 메모리 위에 두고 목록·삭제만 흉내 낸다. */
     @Bean
     @Primary
     public S3Client stubImageS3Client() {
