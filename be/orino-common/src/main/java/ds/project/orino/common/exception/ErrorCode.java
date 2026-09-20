@@ -6,6 +6,9 @@ public enum ErrorCode {
     BAD_REQUEST("GLB-ERR-001", "잘못된 요청입니다.", 400),
     METHOD_NOT_ALLOWED("GLB-ERR-002", "허용되지 않은 메서드입니다.", 405),
     INTERNAL_SERVER_ERROR("GLB-ERR-003", "내부 서버 오류입니다.", 500),
+    // 500이 아니라 404인 이유 — 없는 주소를 부른 것은 클라이언트 쪽 사실이다.
+    // 500으로 답하면 오타 하나가 에러율 지표를 올리고, 그 사이에 진짜 5xx가 묻힌다.
+    NOT_FOUND("GLB-ERR-004", "존재하지 않는 경로입니다.", 404),
 
     // AUTH
     INVALID_CREDENTIALS("AUTH-ERR-001", "아이디 또는 비밀번호가 올바르지 않습니다.", 401),
