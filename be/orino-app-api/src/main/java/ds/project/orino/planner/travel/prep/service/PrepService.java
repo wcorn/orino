@@ -338,7 +338,7 @@ public class PrepService {
 
     private static PrepGroup toGroup(PrepCategory category, List<TripPrepItem> items,
                                      LocalDate startDate, LocalDate today) {
-        return PrepGroup.of(category, items.size(),
+        return new PrepGroup(category, items.size(),
                 (int) items.stream().filter(TripPrepItem::isDone).count(),
                 toSections(items, startDate, today));
     }
