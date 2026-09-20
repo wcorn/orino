@@ -1,0 +1,112 @@
+databaseChangeLog:
+  # 가계부 데이터 제거 (#1410, Epic #1405 — 3단계).
+  #
+  # **되돌릴 수 없다.** 0~2단계는 revert 한 번으로 돌아왔지만 여기는 아니다.
+  # 그래서 rollback 블록에 empty를 적는다 — 「되돌릴 수 있는 척」이 가장 위험하다.
+  # 지운 것을 되살리는 길은 백업 복원뿐이고, 그건 Liquibase의 일이 아니다.
+  #
+  # 덤프를 떠서 보관하지 않는다(제거 계획 §3). 남기면 백업·용량·복원 절차에 계속 실린다.
+  # 남는 것은 trip_expense로 이관된 여행 지출뿐인데, 그건 070이 이미 옮겨 놓았다.
+  #
+  # 순서가 전부다. 057~069가 만든 것을 참조의 반대 방향으로 되짚는다 —
+  # 자식을 먼저 떨어뜨리지 않으면 MySQL이 DROP을 거부하고, 그 자리에서 배포가 멈춘다.
+
+  - changeSet:
+      id: 071-drop-ledger-trip-link
+      author: wcorn
+      comment: |
+        원장이 여행을 가리키던 칸을 먼저 뗀다(#1327에서 붙였다).
+
+        테이블보다 먼저인 이유 — 이것만이 가계부 밖으로 나가는 유일한 참조다.
+        나머지 FK는 전부 ledger_* 사이에 있어 테이블과 함께 사라지지만, 이 하나는
+        trip을 가리키고 있어 남겨 두면 「여행을 지울 때 무엇이 딸려 가는가」가
+        테이블을 지우는 중간 상태에 달리게 된다.
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            tableName: ledger_transaction
+            columnName: trip_id
+      changes:
+        - dropForeignKeyConstraint:
+            baseTableName: ledger_transaction
+            constraintName: fk_ledger_tx_trip
+        - dropIndex:
+            tableName: ledger_transaction
+            indexName: idx_ledger_tx_trip
+        - dropColumn:
+            tableName: ledger_transaction
+            columnName: trip_id
+      rollback:
+        - empty
+
+  - changeSet:
+      id: 071-drop-ledger-tables
+      author: wcorn
+      comment: |
+        가계부 테이블 24개를 지운다. 참조의 자식부터다.
+
+        ledger_transaction은 statement·installment·receipt·tag가 모두 비워진 뒤에야
+        떨어진다. ledger_asset과 ledger_category는 거의 모두의 부모라 거의 마지막이고,
+        ledger_asset_group이 맨 끝이다.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: ledger_transaction
+      changes:
+        # ── 거래에 매달린 것들 ─────────────────────────────────
+        - dropTable:
+            tableName: ledger_transaction_receipt
+        - dropTable:
+            tableName: ledger_transaction_tag
+        - dropTable:
+            tableName: ledger_installment_round
+        - dropTable:
+            tableName: ledger_installment
+        # ── 정기 항목에 매달린 것들 ───────────────────────────
+        - dropTable:
+            tableName: ledger_recurring_amount_history
+        - dropTable:
+            tableName: ledger_recurring_override
+        # ── 예산·규칙·템플릿 ──────────────────────────────────
+        - dropTable:
+            tableName: ledger_budget_category
+        - dropTable:
+            tableName: ledger_auto_rule
+        - dropTable:
+            tableName: ledger_transaction_template
+        # ── 원장. 위가 다 빠진 뒤다 ───────────────────────────
+        - dropTable:
+            tableName: ledger_transaction
+        - dropTable:
+            tableName: ledger_recurring
+        # ── 청구서와 자산에 매달린 것들 ───────────────────────
+        - dropTable:
+            tableName: ledger_statement
+        - dropTable:
+            tableName: ledger_loan
+        - dropTable:
+            tableName: ledger_rate_history
+        - dropTable:
+            tableName: ledger_housing_subscription
+        # ── 아무도 안 가리키는 것들 ───────────────────────────
+        - dropTable:
+            tableName: ledger_tag
+        - dropTable:
+            tableName: ledger_budget
+        - dropTable:
+            tableName: ledger_point
+        - dropTable:
+            tableName: ledger_settings
+        - dropTable:
+            tableName: ledger_import_batch
+        - dropTable:
+            tableName: ledger_import_preset
+        # ── 부모들 ────────────────────────────────────────────
+        - dropTable:
+            tableName: ledger_category
+        - dropTable:
+            tableName: ledger_asset
+        - dropTable:
+            tableName: ledger_asset_group
+      rollback:
+        - empty
