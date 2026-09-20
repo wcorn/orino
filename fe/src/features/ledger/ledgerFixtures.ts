@@ -456,7 +456,6 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
   const duplicated: Record<string, unknown>[] = [];
   const bulkSent: Record<string, unknown>[][] = [];
   /** 여행에 붙이기 요청. 어느 여행에 무엇을 골라 보냈는지가 이 흐름의 전부다. */
-  const tripAttached: { tripId: number; transactionIds: number[] }[] = [];
   /** 자산 생성 본문. 「무엇을 보냈는가」로만 체크카드 연결 규칙을 확인할 수 있다. */
   const assetsCreated: Record<string, unknown>[] = [];
   /** `analyze`를 몇 번 불렀는지. 첫 시도만 거절하는 흐름을 만드는 데 쓴다. */
@@ -651,18 +650,6 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
         groups: groupByDate(rows),
       });
     }),
-    // 여행에 붙이기. 가계부가 아니라 <b>여행</b> API다 — 보낸 요청을 그대로 모아 둔다.
-    http.post(
-      `${API_BASE}/travel/trips/:tripId/expenses/attach`,
-      async ({ params, request }) => {
-        const body = (await request.json()) as { transactionIds: number[] };
-        tripAttached.push({
-          tripId: Number(params.tripId),
-          transactionIds: body.transactionIds,
-        });
-        return ok({ affected: body.transactionIds.length });
-      },
-    ),
     http.get(`${API_BASE}/ledger/fx/rate`, ({ request }) => {
       const currency = new URL(request.url).searchParams.get("currency") ?? "";
       return ok({
@@ -1283,7 +1270,6 @@ export function mockLedgerApi(options: LedgerMockOptions = {}) {
     subscriptionBaselines,
     duplicated,
     bulkSent,
-    tripAttached,
     occurrenceActions,
     categoryAttributes,
     reverts,

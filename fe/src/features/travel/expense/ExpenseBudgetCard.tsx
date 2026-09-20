@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
-import { gaugeWidths } from "@/features/ledger/lib/balance";
-import { formatAmount, formatCompactAmount } from "@/features/ledger/lib/money";
 
 import type { TripExpenses } from "../api/expenses";
+import { gaugeWidths } from "../lib/budgetGauge";
+import { formatAmount, formatCompactAmount } from "../lib/money";
 
 interface ExpenseBudgetCardProps {
   data: TripExpenses;
@@ -54,7 +54,7 @@ export function ExpenseBudgetCard({
     );
   }
 
-  // 같은 계산을 두 곳에 적으면 두 화면이 다른 폭을 그린다 — 가계부의 것을 그대로 쓴다.
+  // 같은 계산을 두 곳에 적으면 두 화면이 다른 폭을 그린다 — 한 곳에서만 센다.
   const widths = gaugeWidths(budget.spent, budget.scheduled, budget.amount);
   const spentPercent = Math.round((budget.spent / budget.amount) * 100);
   const scheduledPercent = Math.round((budget.scheduled / budget.amount) * 100);
@@ -98,7 +98,7 @@ export function ExpenseBudgetCard({
           className="bg-primary block"
           style={{ width: `${widths.spent}%` }}
         />
-        {/* 2층은 확정분 위에 이어 붙는다 — 25일에 고정비가 빠지고 놀라지 않도록. */}
+        {/* 2층은 확정분 위에 이어 붙는다 — 숙소 잔금이 빠지고 놀라지 않도록. */}
         <span
           className="block"
           style={{
@@ -133,13 +133,14 @@ export function ExpenseBudgetCard({
       </div>
 
       {/*
-        각주가 카드에서 가장 중요한 한 줄일 수 있다 — 「카드값 200만이 또 나갔다」는
-        이중 계산을 사람이 머릿속에서 하지 않도록 여기서 미리 답한다(§4.2).
+        각주는 게이지가 말하지 못하는 한 가지를 받는다 — 2층이 무엇인가.
+        「카드 대금 납부는 여기 들어가지 않아요」는 이제 성립하지 않는다: 이체라는 개념이
+        없고 여행 경비에는 지출만 있다(경비 독립 §3).
       */}
       {!completed && (
         <p className="text-muted-foreground text-[13px]">
           남은 {formatCompactAmount(budget.remaining)} ÷ 남은 {budget.daysLeft}
-          일. <b>카드 대금 납부는 여기 들어가지 않아요.</b>
+          일. <b>연한 칸은 아직 안 나간 예정이에요.</b>
         </p>
       )}
     </section>

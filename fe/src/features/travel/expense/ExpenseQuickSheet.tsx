@@ -1,31 +1,29 @@
-import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useId, useState } from "react";
 
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useCreateTransaction } from "@/features/ledger/hooks/useLedgerMutations";
-import {
-  useFxRate,
-  useLedgerAssets,
-  useLedgerCategories,
-} from "@/features/ledger/hooks/useLedgerQueries";
-import { formatAmount } from "@/features/ledger/lib/money";
+import { fetchExchangeRate } from "@/features/travel/api/tools";
 import { formatDateWithWeekday } from "@/features/travel/lib/tripStatus";
 import { cn } from "@/lib/utils";
 
-import { getLastAsset, rememberLastAsset } from "./lastAsset";
+import {
+  EXPENSE_CATEGORIES,
+  EXPENSE_CATEGORY_LABELS,
+  type ExpenseCategory,
+  type ExpenseCreateBody,
+  type ExpenseRow,
+  type ExpenseUpdateBody,
+} from "../api/expenses";
+import { formatAmount } from "../lib/money";
+import { travelKeys } from "../queryKeys";
+import {
+  getLastPaymentMethod,
+  rememberLastPaymentMethod,
+} from "./lastPaymentMethod";
 
-/**
- * 여행에서 자주 쓰는 갈래(§6.1). <b>이 이름들이 다 있지는 않다</b> — 가계부 프리셋에는
- * 식비·교통만 있고 관광·쇼핑·숙소는 없다.
- *
- * <p>그렇다고 없는 카테고리를 지어내거나 「관광 → 문화」처럼 짝지어 두지 않는다. 뜻이 다른
- * 것을 같은 것으로 만들면 나중에 통계가 조용히 틀린다. 대신 <b>있는 것을 먼저 놓고
- * 나머지는 사용자의 카테고리로 채운다</b> — 이 줄의 목적은 「대개 여기서 끝난다」이지
- * 「이 다섯 개여야 한다」가 아니다.
- */
-const PREFERRED_CATEGORIES = ["식비", "교통", "관광", "쇼핑", "숙소"];
-const CHIP_LIMIT = 5;
+const KRW = "KRW";
 
 interface ExpenseQuickSheetProps {
   open: boolean;
@@ -34,22 +32,30 @@ interface ExpenseQuickSheetProps {
   /** 오늘 있는 도시. 통화 기본값이 여기서 온다 — `trip.currency`는 v2.1에서 사라졌다. */
   cityName: string | null;
   cityCurrency: string | null;
-  /** 오늘 날짜(여행 기준). 서버가 준 값을 그대로 쓴다. 부제도 이 값으로 말한다. */
+  /** 새로 적을 때의 날짜(여행 기준). 서버가 준 값을 그대로 쓴다. */
   occurredOn: string;
-  onSaved: () => void;
+  /** 고칠 줄. `null`이면 새로 적는 것이다 — <b>시트는 한 벌</b>이다(§7). */
+  editing: ExpenseRow | null;
+  /** 결제수단 자동완성 후보. <b>이 여행에서 이미 쓴 값</b>만이다(§4.2). */
+  paymentMethods: string[];
+  onCreate: (body: ExpenseCreateBody) => void;
+  onUpdate: (expenseId: number, body: ExpenseUpdateBody) => void;
+  onDelete: (row: ExpenseRow) => void;
+  pending: boolean;
 }
 
 /**
- * 지출 빠른 입력(화면 §10.3 · 명세 §6.1).
+ * 지출을 적고 고치는 시트(경비 독립 §6.1 · §7).
  *
- * <p><b>30초 안에 끝나야 한다.</b> 그래서 금액만 적고 저장할 수 있다 — 카테고리를 고르느라
- * 기록을 포기하느니 나중에 채운다. 안 채운 것은 경비 화면에 「정리할 내역 N건」으로 남는다.
+ * <p><b>입력과 편집이 한 컴포넌트다.</b> 행을 누르면 여기가 그 값으로 열린다 — 필드가
+ * 하나 늘 때 고칠 자리가 하나이고, 「적을 때는 되는데 고칠 때는 안 되는 것」이 생기지 않는다.
+ * 예전에는 행을 누르면 가계부 지출 상세로 나갔다(D-35). 갈 곳이 없어졌다.
  *
- * <p>저장은 <b>가계부 API</b>로 나간다({@code POST /api/ledger/transactions}). 여행 전용 지출
- * 엔드포인트를 만들지 않는다 — 원장은 하나뿐이고 여행은 그 위의 읽기 뷰다.
+ * <p><b>30초 안에 끝나야 한다.</b> 그래서 금액만 적고 저장할 수 있다 — 분류를 고르느라
+ * 기록을 포기하느니 나중에 채운다. 안 채운 것은 「정리할 내역 N건」으로 남는다.
  *
- * <p>기본값은 전부 FE가 정한다. 통화는 오늘 도시, 결제수단은 직전에 쓴 것, 날짜와 N일차는
- * 자동이다 — 사용자가 고르는 것은 금액 하나로 줄인다.
+ * <p>분류 칩은 <b>여섯 개 고정</b>이고 서버에서 목록을 받아오지 않는다. 결제수단은 입력이고,
+ * 자동완성 후보는 그 여행에서 이미 쓴 값뿐이다 — 전역 목록을 만들면 그게 자산 테이블이다.
  */
 export function ExpenseQuickSheet({
   open,
@@ -58,92 +64,118 @@ export function ExpenseQuickSheet({
   cityName,
   cityCurrency,
   occurredOn,
-  onSaved,
+  editing,
+  paymentMethods,
+  onCreate,
+  onUpdate,
+  onDelete,
+  pending,
 }: ExpenseQuickSheetProps) {
+  const listId = useId();
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("KRW");
-  const [categoryId, setCategoryId] = useState<number | null>(null);
-  const [assetId, setAssetId] = useState<number | null>(null);
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState<ExpenseCategory | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState("");
+  /** 사용자가 직접 고른 통화. 안 골랐으면 `null`이고 아래에서 기본값이 답한다. */
+  const [pickedCurrency, setPickedCurrency] = useState<string | null>(null);
 
-  const { data: assetData } = useLedgerAssets(open);
-  const { data: categories } = useLedgerCategories("EXPENSE");
-  const createTransaction = useCreateTransaction();
-
-  const assets = useMemo(
-    () => (assetData?.groups ?? []).flatMap((group) => group.assets),
-    [assetData],
-  );
-  const chips = useMemo(() => {
-    const all = categories ?? [];
-    const preferred = PREFERRED_CATEGORIES.map((name) =>
-      all.find((category) => category.name === name),
-    ).filter((category) => category !== undefined);
-    // 남는 자리는 사용자의 카테고리로 채운다. 하위 카테고리는 넣지 않는다 —
-    // 한 손으로 고르는 줄에 「식비 > 카페」까지 늘어놓으면 고르는 데 30초가 간다.
-    const rest = all.filter(
-      (category) =>
-        category.parentId === null &&
-        !preferred.some((chip) => chip.id === category.id),
-    );
-    return [...preferred, ...rest].slice(0, CHIP_LIMIT);
-  }, [categories]);
-
-  // 열 때마다 기본값으로 되돌린다. 남아 있으면 방금 저장한 금액이 다음 입력에 얹혀 보인다.
+  /**
+   * 열 때만 값을 다시 세운다. 고칠 줄이 있으면 그 값으로, 없으면 빈 칸으로.
+   *
+   * <p>남겨 두면 방금 저장한 금액이 다음 입력에 얹혀 보이고, 편집을 닫았다 새로 적을 때
+   * 남의 제목이 따라 들어온다.
+   *
+   * <p><b>`cityCurrency`는 여기 들어오지 않는다.</b> 그 값은 시트를 연 뒤에 도착하는
+   * 보드 응답에서 오는데, 의존성에 넣으면 도착하는 순간 이 효과가 한 번 더 돌아
+   * <b>이미 찍어 둔 금액이 지워진다</b>. 현지에서 망이 느릴수록 잘 맞는 타이밍이라
+   * 정확히 이 화면에서 가장 아픈 자리다. 통화 기본값은 상태가 아니라 파생으로 받는다.
+   */
   useEffect(() => {
     if (!open) return;
-    setAmount("");
-    setCategoryId(null);
-    // 오사카면 엔, 인천공항이면 원. 도시가 없으면(기간 밖) 원화로 둔다.
-    setCurrency(cityCurrency ?? "KRW");
-    setAssetId(getLastAsset(tripId));
-  }, [open, cityCurrency, tripId]);
-
-  // 결제수단을 한 번도 고른 적 없으면 첫 자산으로 시작한다 — 자산은 반드시 있어야 저장된다.
-  useEffect(() => {
-    if (open && assetId === null && assets.length > 0) {
-      setAssetId(assets[0].id);
+    setPickedCurrency(null);
+    if (editing) {
+      // 외화 건이면 적힌 값은 외화다 — 원화 환산액을 보여주면 고치는 순간 두 배가 된다.
+      setAmount(String(editing.fx ? editing.fx.amount : editing.amount));
+      setTitle(editing.title ?? "");
+      setCategory(editing.category);
+      setPaymentMethod(editing.paymentMethod ?? "");
+      return;
     }
-  }, [open, assetId, assets]);
+    setAmount("");
+    setTitle("");
+    setCategory(null);
+    setPaymentMethod(getLastPaymentMethod(tripId) ?? "");
+  }, [open, editing, tripId]);
 
-  const foreign = currency !== "KRW";
-  // 외화일 때만 환율을 부른다. 원화 입력에 환율 요청이 붙으면 그건 그냥 낭비다.
-  const { data: fx } = useFxRate(open && foreign ? currency : null);
+  /**
+   * 쓸 통화. <b>고른 것 > 고치는 줄의 것 > 오늘 도시의 것 > 원화</b> 순이다.
+   *
+   * <p>오사카면 엔, 인천공항이면 원. 도시를 아직 모르면(보드가 오기 전이거나 기간 밖)
+   * 원화로 두고, 도시가 도착하면 <b>다른 입력을 건드리지 않고</b> 칩만 따라 움직인다.
+   */
+  const currency =
+    pickedCurrency ??
+    (editing ? (editing.fx?.currency ?? KRW) : (cityCurrency ?? KRW));
+  const foreign = currency !== KRW;
+  /**
+   * 환산 미리보기. 여행 도구의 환율을 그대로 쓴다 — 저장할 때 굳는 값은 서버가 다시
+   * 정하므로 이 값은 <b>보여주기 전용</b>이다.
+   *
+   * <p>외화일 때만 부른다. 원화 입력에 환율 요청이 붙으면 그건 그냥 낭비다.
+   * 못 받아 와도 저장은 그대로 된다 — 환율 때문에 기록을 막지 않는다(§6).
+   */
+  const { data: fx } = useQuery({
+    queryKey: travelKeys.fx(currency, KRW),
+    queryFn: () => fetchExchangeRate(currency, KRW),
+    enabled: open && foreign,
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  });
 
   const parsed = amount.trim() === "" ? null : Number(amount);
-  const krw =
-    parsed === null ? null : foreign ? convertedKrw(parsed, fx?.rate) : parsed;
+  const valid = parsed !== null && parsed > 0;
+  const krw = !valid ? null : foreign ? convertedKrw(parsed, fx?.rate) : parsed;
 
   const save = () => {
-    if (parsed === null || parsed <= 0 || assetId === null) return;
-    createTransaction.mutate(
-      {
-        type: "EXPENSE",
+    if (!valid) return;
+    const label = paymentMethod.trim();
+    const money = foreign
+      ? // 환율은 비워 보낸다. 서버가 오늘 고시로 채우고 그 지출에 고정한다(§4.3).
+        { fx: { currency, amount: parsed, rate: null } }
+      : { amount: parsed };
+
+    if (editing) {
+      onUpdate(editing.expenseId, {
+        ...money,
+        // 보낸 것만 바뀐다 — 비우는 것은 clear로 말해야 한다.
+        ...(title.trim() === ""
+          ? { clearTitle: true }
+          : { title: title.trim() }),
+        ...(category === null ? { clearCategory: true } : { category }),
+        ...(label === ""
+          ? { clearPaymentMethod: true }
+          : { paymentMethod: label }),
+        // 원화로 되돌리는 길. amount는 위에서 이미 실었다.
+        ...(foreign ? {} : { clearFx: true }),
+      });
+    } else {
+      onCreate({
         occurredOn,
-        assetId,
-        categoryId,
-        tripId,
-        // 원화면 amount를, 외화면 fx를 보낸다. 환율은 서버가 오늘 고시로 채우고
-        // 그 거래에 고정한다 — 조회할 때마다 다시 계산하면 총액이 매일 바뀐다(§4.3).
-        ...(foreign
-          ? { fx: { currency, amount: parsed, rate: null } }
-          : { amount: parsed }),
-      },
-      {
-        onSuccess: () => {
-          rememberLastAsset(tripId, assetId);
-          onOpenChange(false);
-          onSaved();
-        },
-      },
-    );
+        ...money,
+        ...(title.trim() === "" ? {} : { title: title.trim() }),
+        ...(category === null ? {} : { category }),
+        ...(label === "" ? {} : { paymentMethod: label }),
+      });
+    }
+    rememberLastPaymentMethod(tripId, label);
   };
 
   return (
     <BottomSheet
       open={open}
       onOpenChange={onOpenChange}
-      title="지출 적기"
-      description={describe(cityName, occurredOn)}
+      title={editing ? "지출 고치기" : "지출 적기"}
+      description={describe(editing, cityName, occurredOn)}
     >
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-2">
@@ -157,15 +189,15 @@ export function ExpenseQuickSheet({
             }
             className="h-13 flex-1 text-[28px] font-semibold tabular-nums"
           />
-          {[cityCurrency, "KRW"]
+          {[cityCurrency, KRW]
             .filter((code, index, all) => code && all.indexOf(code) === index)
             .map((code) => (
               <Chip
                 key={code}
                 selected={currency === code}
-                onClick={() => setCurrency(code as string)}
+                onClick={() => setPickedCurrency(code as string)}
               >
-                {code === "KRW" ? "KRW ₩" : code === "JPY" ? "JPY ¥" : code}
+                {code === KRW ? "KRW ₩" : code === "JPY" ? "JPY ¥" : code}
               </Chip>
             ))}
         </div>
@@ -177,52 +209,94 @@ export function ExpenseQuickSheet({
             : `${formatAmount(krw)}원 · 오늘 환율로 굳습니다`}
         </p>
 
-        <Field label="카테고리" hint="— 나중에 채워도 돼요">
-          {chips.map((category) => (
+        {/*
+          이름과 곁들임말을 한 덩이로 묶는다 — `flex-col` 안에서 둘을 나란히 두면
+          곁들임말이 제 줄로 떨어져 나가, 옆의 분류 줄과 높이가 어긋난다.
+        */}
+        <label className="flex flex-col gap-2 text-[13px]">
+          <span>
+            무엇에{" "}
+            <span className="text-muted-foreground">— 안 적어도 돼요</span>
+          </span>
+          <Input
+            value={title}
+            aria-label="무엇에"
+            placeholder="이자카야"
+            onChange={(event) => setTitle(event.currentTarget.value)}
+          />
+        </label>
+
+        <Field label="분류" hint="— 나중에 채워도 돼요">
+          {EXPENSE_CATEGORIES.map((code) => (
             <Chip
-              key={category.id}
-              selected={categoryId === category.id}
-              onClick={() =>
-                setCategoryId(categoryId === category.id ? null : category.id)
-              }
+              key={code}
+              selected={category === code}
+              onClick={() => setCategory(category === code ? null : code)}
             >
-              {category.name}
+              {EXPENSE_CATEGORY_LABELS[code]}
             </Chip>
           ))}
         </Field>
 
-        <Field label="결제수단" hint="— 직전에 쓴 것">
-          {assets.map((asset) => (
-            <Chip
-              key={asset.id}
-              selected={assetId === asset.id}
-              onClick={() => setAssetId(asset.id)}
-            >
-              {asset.name}
-            </Chip>
-          ))}
-        </Field>
+        <label className="flex flex-col gap-2 text-[13px]">
+          <span>
+            결제수단{" "}
+            <span className="text-muted-foreground">— 직전에 쓴 것</span>
+          </span>
+          <Input
+            value={paymentMethod}
+            aria-label="결제수단"
+            placeholder="국민 체크"
+            list={listId}
+            maxLength={40}
+            onChange={(event) => setPaymentMethod(event.currentTarget.value)}
+          />
+          {/*
+            후보는 이 여행에서 이미 쓴 값뿐이다. 전역 목록을 만들면 그게 자산 테이블이고,
+            그때부터 이름 고치기·합치기·숨기기가 따라온다(§4.2).
+          */}
+          <datalist id={listId}>
+            {paymentMethods.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+        </label>
 
-        <Button
-          type="button"
-          className="h-11"
-          disabled={
-            parsed === null ||
-            parsed <= 0 ||
-            assetId === null ||
-            createTransaction.isPending
-          }
-          onClick={save}
-        >
-          저장
-        </Button>
+        <div className="flex items-center gap-2">
+          {editing && (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11"
+              disabled={pending}
+              onClick={() => onDelete(editing)}
+            >
+              지우기
+            </Button>
+          )}
+          <Button
+            type="button"
+            className="h-11 flex-1"
+            disabled={!valid || pending}
+            onClick={save}
+          >
+            저장
+          </Button>
+        </div>
       </div>
     </BottomSheet>
   );
 }
 
 /** 「오사카 · 10.26 (월) · 30초 안에 끝나게」. 모르는 값은 조용히 뺀다. */
-function describe(cityName: string | null, date: string | null): string {
+function describe(
+  editing: ExpenseRow | null,
+  cityName: string | null,
+  date: string | null,
+): string {
+  if (editing) {
+    return formatDateWithWeekday(editing.occurredOn);
+  }
   return [
     cityName,
     date === null ? null : formatDateWithWeekday(date),

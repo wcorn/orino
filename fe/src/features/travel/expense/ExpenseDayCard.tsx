@@ -1,10 +1,14 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { Link } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
-import { formatAmount } from "@/features/ledger/lib/money";
+import { Button } from "@/components/ui/button";
 
-import type { ExpenseGroup, ExpenseRow } from "../api/expenses";
+import {
+  EXPENSE_CATEGORY_LABELS,
+  type ExpenseGroup,
+  type ExpenseRow,
+} from "../api/expenses";
+import { formatAmount } from "../lib/money";
 
 interface ExpenseDayCardProps {
   group: ExpenseGroup;
@@ -12,21 +16,30 @@ interface ExpenseDayCardProps {
   onToggleOpen: () => void;
   /** 오늘 묶음이면 헤더에 배지를 단다. 기본 펼침도 이 묶음 하나뿐이다(§10.2). */
   today: boolean;
+  /** 행을 누르면 여행 안에서 편집 시트가 열린다 — 가계부로 나가지 않는다(D-43). */
+  onEdit: (row: ExpenseRow) => void;
+  /** 지난 예정의 「확정」. 승격 배치가 없으므로 이 길이 유일하다(§4.3). */
+  onConfirm: (row: ExpenseRow) => void;
+  /** 오프라인이면 쓰기 입구를 잠근다 — 큐에 쌓아 나중에 보내지 않는다(D-33). */
+  offline: boolean;
 }
 
 /**
  * 날짜 묶음 카드(화면 §10.2). <b>준비의 분류 카드와 같은 껍데기·같은 헤더 버튼</b>이다 —
  * 두 화면이 같은 여행 안에서 나란히 쓰이므로 눌러야 열린다는 사실이 같아야 한다.
  *
- * <p><b>행 전체가 가계부 지출 상세 링크</b>다. 여행 안에 편집 화면을 두 벌 만들지
- * 않는다(D-35) — 여기서 고칠 수 있게 하면 같은 거래를 고치는 화면이 둘이 되고,
- * 그때부터 어느 쪽이 최신인지가 질문이 된다.
+ * <p><b>행은 링크가 아니라 버튼이다.</b> 예전에는 가계부 지출 상세로 나가는 링크였다 —
+ * 편집 화면이 가계부에 있었기 때문이다(D-35). 그 화면이 사라지면서 편집이 여행 안으로
+ * 들어왔고, 「같은 화면이 둘」이라는 걱정도 함께 사라졌다.
  */
 export function ExpenseDayCard({
   group,
   open,
   onToggleOpen,
   today,
+  onEdit,
+  onConfirm,
+  offline,
 }: ExpenseDayCardProps) {
   return (
     <section className="bg-card ring-foreground/10 rounded-xl ring-1">
@@ -58,8 +71,30 @@ export function ExpenseDayCard({
         ) : (
           <ul className="border-foreground/10 border-t pb-1">
             {group.rows.map((row) => (
-              <li key={row.transactionId}>
-                <ExpenseRowLink row={row} />
+              <li
+                key={row.expenseId}
+                className="flex items-center gap-1 pr-2 pl-0"
+              >
+                <ExpenseRowButton
+                  row={row}
+                  onEdit={onEdit}
+                  disabled={offline}
+                />
+                {/*
+                  지난 예정에만 붙는다. 실제로 결제가 일어났는지는 앱이 알 수 없으므로
+                  올려 주는 배치를 두지 않고 사람이 누른다(§4.3).
+                */}
+                {row.overdue && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={offline}
+                    onClick={() => onConfirm(row)}
+                  >
+                    확정
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
@@ -68,14 +103,32 @@ export function ExpenseDayCard({
   );
 }
 
-function ExpenseRowLink({ row }: { row: ExpenseRow }) {
+function ExpenseRowButton({
+  row,
+  onEdit,
+  disabled,
+}: {
+  row: ExpenseRow;
+  onEdit: (row: ExpenseRow) => void;
+  disabled: boolean;
+}) {
   return (
-    <Link
-      to={`/ledger/transactions/${row.transactionId}`}
-      className="hover:bg-muted flex min-h-11 items-center gap-2 px-4 py-2.5 transition-colors"
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onEdit(row)}
+      className="hover:bg-muted flex min-h-11 flex-1 items-center gap-2 px-4 py-2.5 text-left transition-colors disabled:hover:bg-transparent"
     >
       <span className="truncate text-sm">{row.title ?? "제목 없음"}</span>
-      {row.status === "SCHEDULED" && <Badge variant="outline">예정</Badge>}
+      {row.category && (
+        <Badge variant="secondary">
+          {EXPENSE_CATEGORY_LABELS[row.category]}
+        </Badge>
+      )}
+      {/* 지난 예정은 「예정」이 아니라 「확정하세요」다 — 옆의 버튼이 그 말을 받는다. */}
+      {row.status === "SCHEDULED" && (
+        <Badge variant="outline">{row.overdue ? "지난 예정" : "예정"}</Badge>
+      )}
       {/* 미분류는 경고가 아니라 할 일이다 — 「채우면 끝나요」가 상단 줄에 함께 있다. */}
       {row.uncategorized && <Badge variant="outline">정리 필요</Badge>}
 
@@ -86,8 +139,13 @@ function ExpenseRowLink({ row }: { row: ExpenseRow }) {
             {row.fx.currency} {row.fx.amount.toLocaleString("ko-KR")}
           </span>
         )}
-        <span className="text-sm">{formatAmount(row.amount)}원</span>
+        {/* 환율을 못 받은 채 저장된 건. 0원이라고 말하면 거짓이다 — 채우라고 말한다. */}
+        <span className="text-sm">
+          {row.fx && row.fx.rate === null
+            ? "환율 미입력"
+            : `${formatAmount(row.amount)}원`}
+        </span>
       </span>
-    </Link>
+    </button>
   );
 }

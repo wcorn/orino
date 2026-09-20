@@ -6,9 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingText } from "@/components/ui/loading-text";
-import { formatCompactAmount } from "@/features/ledger/lib/money";
 import type { SidebarTripSummary } from "@/features/travel/api/travel";
 import { useTravelSummary } from "@/features/travel/hooks/useTravelSummary";
+import { formatCompactAmount } from "@/features/travel/lib/money";
 import { formatShortDate } from "@/features/travel/lib/tripStatus";
 
 /** 이 화면이 대신 열어 주는 탭. 라우트 두 개가 같은 컴포넌트를 쓴다. */
