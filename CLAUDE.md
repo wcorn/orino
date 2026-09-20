@@ -69,7 +69,8 @@ Active profiles: `local` (default, docker-compose), `prod`, `test`. 모두 `mysq
 
 - **JPA Auditing**: Enabled — entities can use `@CreatedDate`/`@LastModifiedDate`
 - **OpenAPI/Swagger**: `/swagger-ui.html`
-- **Actuator**: `/actuator/health`
+- **Actuator**: **별도 포트 9090**에 `base-path: /`로 붙는다 — health는 `:9090/health`다.
+  앱 포트(8080)의 `/actuator/**`는 매핑이 아니라 404다
 - **TestContainers**: Tests use real MySQL 8.4.4 (no H2)
 
 ## Testing
