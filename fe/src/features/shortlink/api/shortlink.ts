@@ -17,6 +17,9 @@ export interface LinkSummary {
    */
   shortUrl: string;
   targetUrl: string;
+  /** 사용자가 붙인 이름. null이면 화면은 짧은 주소를 제목 자리에 둔다(#1424). */
+  title: string | null;
+  /** 화면에서는 「설명」이다. 필드 이름은 발급 때부터 memo라 그대로 둔다. */
   memo: string | null;
   tags: string[];
   /** 사용자가 슬러그를 직접 지었는지(「커스텀」 배지). */
@@ -94,6 +97,7 @@ export interface CreateLinkRequest {
   targetUrl: string;
   /** 비우면 서버가 5자를 자동으로 뽑는다. */
   slug?: string;
+  title?: string;
   memo?: string;
   tags?: string[];
   expiresAt?: string;
@@ -177,6 +181,9 @@ export interface UpdateLinkRequest {
   targetUrl?: string;
   /** 목적지가 실제로 바뀔 때만 이력에 실린다. */
   targetChangeReason?: string;
+  /** 빈 문자열을 보내면 지워진다(생략은 "변경 없음"이다). */
+  title?: string;
+  /** 빈 문자열을 보내면 지워진다. */
   memo?: string;
   tags?: string[];
   /** null을 명시하면 해제된다(생략은 "변경 없음"이다). */

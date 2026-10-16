@@ -119,6 +119,7 @@ function pendingRow(body: CreateLinkRequest): LinkSummary {
     // 낙관적 행에는 주소를 짓지 않는다. 화면은 슬러그 자리만 흐리게 보여 준다.
     shortUrl: "",
     targetUrl: body.targetUrl,
+    title: body.title ?? null,
     memo: body.memo ?? null,
     tags: body.tags ?? [],
     custom: Boolean(body.slug),

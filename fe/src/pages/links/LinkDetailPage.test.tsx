@@ -19,6 +19,7 @@ function detail(overrides: Record<string, unknown> = {}) {
     slug: "jeju",
     shortUrl: "https://s.orino.dev/jeju",
     targetUrl: AUG,
+    title: null,
     memo: "부모님께 보낸 8월 흐름",
     tags: ["가족"],
     custom: true,
@@ -212,6 +213,66 @@ describe("LinkDetailPage", () => {
       "line-through",
     );
     expect(within(items[1]).getByText(AUG).className).toContain("line-through");
+  });
+
+  it("제목이 없으면 짧은 주소가 화면의 이름이다 — 제목 자리를 비워 두지 않는다", async () => {
+    renderDetail();
+    await screen.findByText("jeju");
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+  });
+
+  it("제목·설명 수정으로 이름을 붙이고, 비우고 저장하면 지운다", async () => {
+    const sent: unknown[] = [];
+    server.use(
+      http.patch(`${API_BASE}/shortlinks/jeju`, async ({ request }) => {
+        const body = (await request.json()) as {
+          title: string;
+          memo: string;
+        };
+        sent.push(body);
+        return HttpResponse.json({
+          code: "OK",
+          data: detail({
+            title: body.title || null,
+            memo: body.memo || null,
+          }),
+        });
+      }),
+    );
+
+    renderDetail();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /제목·설명 수정/ }),
+    );
+    let modal = within(screen.getByRole("dialog"));
+    // 지금 설명에서 시작한다 — 대개 일부만 고친다.
+    expect(modal.getByLabelText("설명")).toHaveValue("부모님께 보낸 8월 흐름");
+    await userEvent.type(modal.getByLabelText("제목"), "8월 가족사진");
+    await userEvent.click(modal.getByRole("button", { name: "저장" }));
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "8월 가족사진" }),
+    ).toBeInTheDocument();
+    expect(sent[0]).toEqual({
+      title: "8월 가족사진",
+      memo: "부모님께 보낸 8월 흐름",
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /제목·설명 수정/ }),
+    );
+    modal = within(screen.getByRole("dialog"));
+    await userEvent.clear(modal.getByLabelText("제목"));
+    await userEvent.click(modal.getByRole("button", { name: "저장" }));
+
+    // 생략이 아니라 빈 문자열을 보내야 서버가 지운다.
+    await waitFor(() => {
+      expect(sent[1]).toEqual({ title: "", memo: "부모님께 보낸 8월 흐름" });
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { level: 1 })).toBeNull(),
+    );
   });
 
   it("비밀번호는 스위치로 걸고 끄는 즉시 해제된다 — 해제에는 확인을 더 묻지 않는다", async () => {
