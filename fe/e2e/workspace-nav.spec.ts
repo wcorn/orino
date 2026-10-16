@@ -171,3 +171,48 @@ test.describe("워크스페이스 진입 동선", () => {
     ).toBeVisible();
   });
 });
+
+/**
+ * 본문이 길어도 사이드바가 화면에 남는다(#1421). 데스크톱 전용이다 — 모바일은 사이드바가
+ * 드로어라 원래 화면에 붙어 있다.
+ *
+ * <p>목 응답으로는 긴 화면이 안 나오므로 본문에 높이만 덧댄다. 확인하는 것은 레이아웃이지
+ * 화면 내용이 아니다.
+ */
+test.describe("사이드바 고정", () => {
+  test.beforeEach(async ({ page, isMobile }) => {
+    test.skip(isMobile, "모바일은 드로어라 해당 없다");
+    await mockApi(page);
+  });
+
+  test("본문을 끝까지 내려도 사이드바가 화면 맨 위에 붙어 있다", async ({
+    page,
+  }) => {
+    await page.goto("/home");
+    const nav = page.getByRole("navigation", { name: "주 메뉴" });
+    await expect(nav).toBeInViewport();
+
+    // 맨 위에서는 헤더 아래에서 시작한다 — 헤더를 덮지 않는다.
+    const header = await page.locator("header").boundingBox();
+    const navAtTop = await nav.boundingBox();
+    expect(navAtTop!.y).toBeGreaterThanOrEqual(header!.y + header!.height - 1);
+
+    await page.locator("main").evaluate((main) => {
+      const spacer = document.createElement("div");
+      spacer.style.height = "5000px";
+      main.appendChild(spacer);
+    });
+    await page.evaluate(() =>
+      window.scrollTo(0, document.documentElement.scrollHeight),
+    );
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeGreaterThan(1000);
+
+    const navScrolled = await nav.boundingBox();
+    expect(navScrolled!.y).toBe(0);
+    await expect(
+      page.getByRole("link", { name: /학습 자료/ }),
+    ).toBeInViewport();
+  });
+});
