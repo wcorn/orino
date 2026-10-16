@@ -43,6 +43,7 @@ public interface ShortlinkRepository extends JpaRepository<Shortlink, Long> {
               AND (:query IS NULL
                    OR LOWER(s.slug) LIKE :query
                    OR LOWER(s.targetUrl) LIKE :query
+                   OR LOWER(s.title) LIKE :query
                    OR LOWER(s.memo) LIKE :query)
               AND (:tag IS NULL OR EXISTS (
                     SELECT 1 FROM ShortlinkTag t

@@ -13,6 +13,7 @@ public record CreatedLink(
         String slug,
         String shortUrl,
         String targetUrl,
+        String title,
         String memo,
         List<String> tags,
         boolean custom,
@@ -26,7 +27,7 @@ public record CreatedLink(
 
     public static CreatedLink of(LinkSummary summary) {
         return new CreatedLink(summary.slug(), summary.shortUrl(), summary.targetUrl(),
-                summary.memo(), summary.tags(), summary.custom(), summary.favorite(),
+                summary.title(), summary.memo(), summary.tags(), summary.custom(), summary.favorite(),
                 summary.state(), summary.hasPassword(), summary.visitCount(),
                 summary.lastVisitedAt(), summary.shortUrl());
     }

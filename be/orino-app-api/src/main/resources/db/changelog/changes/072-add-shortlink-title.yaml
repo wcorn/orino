@@ -1,0 +1,35 @@
+databaseChangeLog:
+  # 링크 제목 (#1424).
+  #
+  # 자동 롤백에 맡기지 않고 dropColumn을 직접 적는다 — 064와 같은 이유다.
+
+  - changeSet:
+      id: 072-add-shortlink-title
+      author: wcorn
+      comment: 목록에서 링크를 알아보는 이름. 자동 슬러그는 뜻이 없다(#1424).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: shortlink
+                columnName: title
+      changes:
+        - addColumn:
+            tableName: shortlink
+            columns:
+              # 사용자가 적는 이름. NULL이면 화면은 지금처럼 짧은 주소를 제목 자리에 둔다.
+              #
+              # 설명 컬럼은 따로 두지 않는다. 기존 memo가 그 역할이고, 화면 라벨만
+              # 「설명」으로 바꾼다 — 같은 일을 하는 칸이 둘이면 어디에 적을지가 갈린다.
+              #
+              # og_title로 채우지 않는다. 그건 목적지가 말하는 제목이고, 목적지를
+              # 갈아끼우면 바뀌어야 하는 값이다. 이 칸은 사용자가 붙인 이름이라 그대로 남는다.
+              - column:
+                  name: title
+                  type: VARCHAR(100)
+      rollback:
+        - dropColumn:
+            tableName: shortlink
+            columns:
+              - column:
+                  name: title

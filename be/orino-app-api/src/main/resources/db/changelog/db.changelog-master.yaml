@@ -141,3 +141,5 @@ databaseChangeLog:
       file: db/changelog/changes/070-create-trip-expense.yaml
   - include:
       file: db/changelog/changes/071-drop-ledger.yaml
+  - include:
+      file: db/changelog/changes/072-add-shortlink-title.yaml

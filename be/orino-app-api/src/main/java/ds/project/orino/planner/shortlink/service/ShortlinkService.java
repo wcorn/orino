@@ -152,6 +152,7 @@ public class ShortlinkService {
                 : slugGenerator.generate();
 
         Shortlink link = new Shortlink(memberId, slug, targetUrl, custom);
+        link.updateTitle(blankToNull(request.title()));
         link.updateMemo(blankToNull(request.memo()));
         link.updateExpiresAt(request.expiresAt());
         if (hasText(request.password())) {
@@ -204,6 +205,9 @@ public class ShortlinkService {
                 historyRepository.save(new ShortlinkTargetHistory(link.getId(), targetUrl,
                         blankToNull(request.targetChangeReason()), clock.instant()));
             }
+        }
+        if (request.title() != null) {
+            link.updateTitle(blankToNull(request.title()));
         }
         if (request.memo() != null) {
             link.updateMemo(blankToNull(request.memo()));
@@ -397,6 +401,7 @@ public class ShortlinkService {
                 link.getSlug(),
                 properties.shortUrl(link.getSlug()),
                 link.getTargetUrl(),
+                link.getTitle(),
                 link.getMemo(),
                 tags,
                 link.isCustomSlug(),

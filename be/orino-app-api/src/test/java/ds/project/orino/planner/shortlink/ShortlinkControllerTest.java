@@ -21,6 +21,7 @@ import org.springframework.test.web.servlet.ResultActions;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -108,6 +109,44 @@ class ShortlinkControllerTest extends ApiTestSupport {
                     .andExpect(jsonPath("$.data.targetHistory", hasSize(1)))
                     .andExpect(jsonPath("$.data.targetHistory[0].targetUrl").value(TARGET))
                     .andExpect(jsonPath("$.data.targetHistory[0].reason").value("최초 발급"));
+        }
+
+        @Test
+        @DisplayName("제목을 붙여 발급하면 발급·목록·상세 응답에 실린다")
+        void carriesTitle() throws Exception {
+            create("""
+                    {"targetUrl": "%s", "slug": "jeju", "title": "  여름 여행 일정표 ",
+                     "memo": "가족 단톡방 공유용"}
+                    """.formatted(TARGET))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.title").value("여름 여행 일정표"))
+                    .andExpect(jsonPath("$.data.memo").value("가족 단톡방 공유용"));
+
+            list("").andExpect(jsonPath("$.data.recent[0].title").value("여름 여행 일정표"));
+            detail("jeju").andExpect(jsonPath("$.data.title").value("여름 여행 일정표"));
+        }
+
+        @Test
+        @DisplayName("제목은 선택이다 — 안 보내거나 공백이면 null이다")
+        void titleIsOptional() throws Exception {
+            create("""
+                    {"targetUrl": "%s", "slug": "jeju"}
+                    """.formatted(TARGET))
+                    .andExpect(jsonPath("$.data.title").value(nullValue()));
+            create("""
+                    {"targetUrl": "%s", "slug": "busan", "title": "   "}
+                    """.formatted(TARGET))
+                    .andExpect(jsonPath("$.data.title").value(nullValue()));
+        }
+
+        @Test
+        @DisplayName("제목이 100자를 넘으면 거부한다")
+        void rejectsLongTitle() throws Exception {
+            create("""
+                    {"targetUrl": "%s", "title": "%s"}
+                    """.formatted(TARGET, "가".repeat(101)))
+                    .andExpect(status().isBadRequest());
+            assertThat(shortlinkRepository.count()).isZero();
         }
 
         @Test
@@ -215,7 +254,7 @@ class ShortlinkControllerTest extends ApiTestSupport {
         }
 
         @Test
-        @DisplayName("검색은 슬러그·목적지·메모를 함께 본다")
+        @DisplayName("검색은 슬러그·목적지·제목·메모를 함께 본다")
         void searchesAcrossFields() throws Exception {
             create("""
                     {"targetUrl": "%s", "slug": "jeju", "memo": "부모님께 보낸 8월 흐름"}
@@ -223,10 +262,18 @@ class ShortlinkControllerTest extends ApiTestSupport {
             create("""
                     {"targetUrl": "https://example.com/other", "slug": "busan"}
                     """);
+            create("""
+                    {"targetUrl": "%s", "slug": "daegu", "title": "Summer Trip"}
+                    """.formatted(TARGET))
+                    .andExpect(status().isOk());
 
             list("?query=부모님")
                     .andExpect(jsonPath("$.data.recent", hasSize(1)))
                     .andExpect(jsonPath("$.data.recent[0].slug").value("jeju"));
+            // 대소문자를 가리지 않는다 — 슬러그·메모와 같은 규칙이다.
+            list("?query=summer")
+                    .andExpect(jsonPath("$.data.recent", hasSize(1)))
+                    .andExpect(jsonPath("$.data.recent[0].slug").value("daegu"));
             list("?query=example.com")
                     .andExpect(jsonPath("$.data.recent", hasSize(1)))
                     .andExpect(jsonPath("$.data.recent[0].slug").value("busan"));
@@ -323,6 +370,29 @@ class ShortlinkControllerTest extends ApiTestSupport {
                     """.formatted(TARGET))
                     .andExpect(jsonPath("$.data.memo").value("메모만 고친다"))
                     .andExpect(jsonPath("$.data.targetHistory", hasSize(1)));
+        }
+
+        @Test
+        @DisplayName("제목은 보낼 때만 바뀌고, 빈 문자열을 보내면 지워진다")
+        void updatesTitleOnlyWhenSent() throws Exception {
+            create("""
+                    {"targetUrl": "%s", "slug": "jeju", "title": "여름 여행"}
+                    """.formatted(TARGET));
+
+            // 메모만 고친다 — 제목은 그대로다.
+            patchLink("jeju", """
+                    {"memo": "설명만 고친다"}
+                    """)
+                    .andExpect(jsonPath("$.data.title").value("여름 여행"));
+            patchLink("jeju", """
+                    {"title": "가을 여행"}
+                    """)
+                    .andExpect(jsonPath("$.data.title").value("가을 여행"))
+                    .andExpect(jsonPath("$.data.memo").value("설명만 고친다"));
+            patchLink("jeju", """
+                    {"title": ""}
+                    """)
+                    .andExpect(jsonPath("$.data.title").value(nullValue()));
         }
 
         @Test
