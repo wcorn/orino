@@ -1,6 +1,6 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '4.0.7' apply false
+    id 'org.springframework.boot' version '4.0.8' apply false
     id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -19,11 +19,16 @@ subprojects {
         }
     }
 
-    // BOM보다 높은 버전이 필요한 것만 남긴다(CVE 대응). 나머지는 4.0.7 BOM이 이미 커버한다.
-    // CVE-2026-75595 (CRITICAL, netty-handler). 4.2.17.Final에서 고쳐졌다.
+    // BOM보다 높은 버전이 필요한 것만 남긴다(CVE 대응). 나머지는 4.0.8 BOM이 이미 커버한다.
+    // CVE-2026-75595 (CRITICAL, netty-handler). 4.2.17.Final에서 고쳐졌다. 4.0.8 BOM은 4.2.17이다.
     ext['netty.version'] = '4.2.18.Final'
-    // CVE-2026-65182 · 65905 · 68525 (전부 CRITICAL, 인증·인가 우회). BOM은 11.0.22다.
+    // CVE-2026-65182 · 65905 · 68525 (전부 CRITICAL, 인증·인가 우회). 4.0.8 BOM은 11.0.24다.
     ext['tomcat.version'] = '11.0.25'
+    // CVE-2026-89407 · 89425 · 68497 · 91776 · 91777 (HIGH, 전부 DoS) — #1426.
+    // Jackson 3(tools.jackson)과, 아직 의존성 트리에 남은 Jackson 2를 함께 올린다.
+    // 4.0.8 BOM은 3.1.5 · 2.21.5라 아직 취약하다.
+    ext['jackson-bom.version'] = '3.1.7'
+    ext['jackson-2-bom.version'] = '2.21.7'
 
     repositories {
         mavenCentral()
@@ -31,7 +36,7 @@ subprojects {
 
     dependencyManagement {
         imports {
-            mavenBom "org.springframework.boot:spring-boot-dependencies:4.0.7"
+            mavenBom "org.springframework.boot:spring-boot-dependencies:4.0.8"
         }
     }
 

@@ -33,7 +33,7 @@ orino/
 
 ## Backend (be/)
 
-**Spring Boot 4.0.7 / Java 25**, Gradle Groovy DSL, 멀티모듈
+**Spring Boot 4.0.8 / Java 25**, Gradle Groovy DSL, 멀티모듈
 (`orino-app-api`, `orino-core-web`, `orino-domain-rdb`, `orino-domain-redis`, `orino-common`)
 
 ```bash
