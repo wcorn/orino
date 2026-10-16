@@ -294,12 +294,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           onClick={onClose}
         />
       )}
+      {/*
+        데스크톱은 창 스크롤에 붙어 있는다(#1421) — 본문이 길어 내려가도 메뉴가 남는다.
+        `main`을 따로 스크롤시키지 않는 것은 창 스크롤에 기대는 화면이 있어서다
+        (데이터 그리드의 useWindowVirtualizer, 주간표의 sticky 헤더).
+        메뉴가 화면보다 길면 사이드바 안에서 스크롤한다. 모바일 드로어도 같다.
+      */}
       <nav
         aria-label="주 메뉴"
         className={cn(
-          "border-border bg-background w-56 shrink-0 border-r",
+          "border-border bg-background w-56 shrink-0 overflow-y-auto border-r",
           "fixed inset-y-0 left-0 z-50 transition-transform",
-          "md:static md:translate-x-0",
+          "md:sticky md:top-0 md:h-svh md:translate-x-0 md:self-start",
           open ? "translate-x-0" : "-translate-x-full md:translate-x-0",
         )}
       >
