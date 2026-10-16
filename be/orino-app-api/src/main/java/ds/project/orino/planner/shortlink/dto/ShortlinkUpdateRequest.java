@@ -28,7 +28,10 @@ public record ShortlinkUpdateRequest(
         @Size(max = 255, message = "교체 사유는 255자를 넘을 수 없습니다.")
         String targetChangeReason,
 
-        @Size(max = 255, message = "메모는 255자를 넘을 수 없습니다.")
+        @Size(max = 100, message = "제목은 100자를 넘을 수 없습니다.")
+        String title,
+
+        @Size(max = 255, message = "설명은 255자를 넘을 수 없습니다.")
         String memo,
 
         List<String> tags,

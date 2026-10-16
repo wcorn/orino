@@ -1,4 +1,4 @@
-import { ArrowLeft, Globe, SquarePen } from "lucide-react";
+import { ArrowLeft, Globe, Pencil, SquarePen } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingText } from "@/components/ui/loading-text";
 import type { LinkState } from "@/features/shortlink/api/shortlink";
+import { LinkInfoEditModal } from "@/features/shortlink/components/LinkInfoEditModal";
 import { PasswordCard } from "@/features/shortlink/components/PasswordCard";
 import { QrPanel } from "@/features/shortlink/components/QrPanel";
 import { ShortUrlText } from "@/features/shortlink/components/ShortUrlText";
@@ -45,6 +46,7 @@ export function LinkDetailPage() {
   const { data: stats } = useLinkStats(slug);
   const update = useUpdateLink(slug);
   const [editOpen, setEditOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
 
   if (isPending) {
     return <LoadingText />;
@@ -85,13 +87,32 @@ export function LinkDetailPage() {
               {formatDate(link.createdAt)} 발급
               {link.tags.length > 0 ? ` · ${link.tags.join(" · ")}` : ""}
             </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="ml-auto"
+              onClick={() => setInfoOpen(true)}
+            >
+              <Pencil className="size-3.5" />
+              제목·설명 수정
+            </Button>
           </div>
+
+          {/* 제목이 있으면 그게 이 화면의 이름이고, 짧은 주소는 한 단계 내려온다(#1424). */}
+          {link.title && (
+            <h1 className="text-title font-semibold break-words">
+              {link.title}
+            </h1>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
             <ShortUrlText
               shortUrl={link.shortUrl}
               slug={link.slug}
-              className="text-[28px] tracking-[-0.02em]"
+              className={
+                link.title ? "text-lg" : "text-[28px] tracking-[-0.02em]"
+              }
             />
             <Button type="button" variant="secondary" size="sm" onClick={copy}>
               복사
@@ -145,6 +166,21 @@ export function LinkDetailPage() {
       {stats && <StatsPanel stats={stats} />}
 
       <TargetHistoryList history={link.targetHistory} />
+
+      <LinkInfoEditModal
+        open={infoOpen}
+        onOpenChange={setInfoOpen}
+        currentTitle={link.title}
+        currentMemo={link.memo}
+        pending={update.isPending}
+        onSubmit={(title, memo) =>
+          // 빈 문자열을 그대로 보낸다 — 생략하면 「변경 없음」이라 지울 방법이 사라진다.
+          update.mutate(
+            { title, memo },
+            { onSuccess: () => setInfoOpen(false) },
+          )
+        }
+      />
 
       <TargetEditModal
         open={editOpen}

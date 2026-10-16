@@ -44,6 +44,11 @@ public class Shortlink {
     @Column(name = "target_url", nullable = false, length = 2048)
     private String targetUrl;
 
+    /** 사용자가 붙인 이름. NULL이면 화면은 짧은 주소를 제목 자리에 둔다(#1424). */
+    @Column(length = 100)
+    private String title;
+
+    /** 화면에서는 「설명」이다(#1424). 컬럼 이름은 발급 때부터 memo라 그대로 둔다. */
     @Column(length = 255)
     private String memo;
 
@@ -113,6 +118,10 @@ public class Shortlink {
         return true;
     }
 
+    public void updateTitle(String title) {
+        this.title = title;
+    }
+
     public void updateMemo(String memo) {
         this.memo = memo;
     }
@@ -180,6 +189,10 @@ public class Shortlink {
 
     public String getTargetUrl() {
         return targetUrl;
+    }
+
+    public String getTitle() {
+        return title;
     }
 
     public String getMemo() {

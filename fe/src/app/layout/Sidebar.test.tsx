@@ -677,6 +677,7 @@ function linkCard(slug: string, favorite: boolean) {
     slug,
     shortUrl: `https://s.orino.dev/${slug}`,
     targetUrl: "https://img.orino.dev/a.jpg",
+    title: null,
     memo: null,
     tags: [],
     custom: true,

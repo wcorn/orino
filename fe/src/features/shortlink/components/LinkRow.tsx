@@ -84,11 +84,21 @@ export function LinkRow({
               className="text-primary size-3.5 shrink-0 fill-current"
             />
           )}
-          <ShortUrlText
-            shortUrl={link.shortUrl}
-            slug={link.slug}
-            className="text-[15px]"
-          />
+          {/*
+            제목이 있으면 그게 첫 줄이다(#1424) — 사람이 붙인 이름이 슬러그보다 잘 읽힌다.
+            짧은 주소는 버리지 않고 둘째 줄 앞으로 내린다. 복사하는 것은 여전히 그 주소다.
+          */}
+          {link.title ? (
+            <span className="truncate text-[15px] font-semibold">
+              {link.title}
+            </span>
+          ) : (
+            <ShortUrlText
+              shortUrl={link.shortUrl}
+              slug={link.slug}
+              className="text-[15px]"
+            />
+          )}
           {link.custom && <Badge variant="secondary">커스텀</Badge>}
           {inactive && (
             <Badge variant="secondary">{STATE_BADGE[link.state]}</Badge>
@@ -106,6 +116,12 @@ export function LinkRow({
           )}
         </div>
         <p className="text-muted-foreground truncate text-[13px]">
+          {link.title && (
+            <>
+              <ShortUrlText shortUrl={link.shortUrl} slug={link.slug} />
+              {" · "}
+            </>
+          )}
           {link.targetUrl}
         </p>
         {/* 좁은 화면에서는 메모·태그 줄을 접는다 — 두 줄 안에 주소와 목적지가 들어와야 한다. */}

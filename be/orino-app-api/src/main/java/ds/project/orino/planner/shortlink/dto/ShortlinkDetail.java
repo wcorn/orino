@@ -14,6 +14,7 @@ public record ShortlinkDetail(
         String slug,
         String shortUrl,
         String targetUrl,
+        String title,
         String memo,
         List<String> tags,
         boolean custom,
@@ -31,7 +32,7 @@ public record ShortlinkDetail(
     public static ShortlinkDetail of(LinkSummary summary, Instant createdAt, Instant expiresAt,
                                      OgPreview og, List<TargetHistoryEntry> targetHistory) {
         return new ShortlinkDetail(summary.slug(), summary.shortUrl(), summary.targetUrl(),
-                summary.memo(), summary.tags(), summary.custom(), summary.favorite(),
+                summary.title(), summary.memo(), summary.tags(), summary.custom(), summary.favorite(),
                 summary.state(), summary.hasPassword(), summary.visitCount(),
                 summary.lastVisitedAt(), createdAt, expiresAt, og, targetHistory);
     }

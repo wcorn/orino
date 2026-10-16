@@ -43,6 +43,7 @@ export function NewLinkModal({
 }: NewLinkModalProps) {
   const [targetUrl, setTargetUrl] = useState("");
   const [slug, setSlug] = useState("");
+  const [title, setTitle] = useState("");
   const [memo, setMemo] = useState("");
   const [tags, setTags] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
@@ -54,6 +55,7 @@ export function NewLinkModal({
   const reset = () => {
     setTargetUrl("");
     setSlug("");
+    setTitle("");
     setMemo("");
     setTags("");
     setExpiresAt("");
@@ -80,6 +82,7 @@ export function NewLinkModal({
     onCreate({
       targetUrl: targetUrl.trim(),
       slug: slug.trim() || undefined,
+      title: title.trim() || undefined,
       memo: memo.trim() || undefined,
       tags: splitTags(tags),
       // 날짜만 받아 그날 끝으로 잡는다 — "12월 31일까지"는 그날 자정까지라는 뜻이다.
@@ -196,6 +199,30 @@ export function NewLinkModal({
           </span>
         </div>
 
+        {/*
+          제목·설명은 목록에서 링크를 알아보는 자리다(#1424). 자동 슬러그는 뜻이 없어서,
+          이게 없으면 목적지 URL을 읽어야 무슨 링크인지 안다. 둘 다 선택이다.
+        */}
+        <FormField label="제목 (선택)" htmlFor="title">
+          <Input
+            id="title"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="목록에서 알아볼 이름 — 비우면 짧은 주소"
+            maxLength={100}
+          />
+        </FormField>
+
+        <FormField label="설명 (선택)" htmlFor="memo">
+          <Textarea
+            id="memo"
+            rows={2}
+            value={memo}
+            onChange={(event) => setMemo(event.target.value)}
+            maxLength={255}
+          />
+        </FormField>
+
         <FormField label="커스텀 슬러그 (선택)" htmlFor="slug">
           <Input
             id="slug"
@@ -218,15 +245,6 @@ export function NewLinkModal({
             type="date"
             value={expiresAt}
             onChange={(event) => setExpiresAt(event.target.value)}
-          />
-        </FormField>
-
-        <FormField label="메모 (선택)" htmlFor="memo">
-          <Textarea
-            id="memo"
-            rows={2}
-            value={memo}
-            onChange={(event) => setMemo(event.target.value)}
           />
         </FormField>
 

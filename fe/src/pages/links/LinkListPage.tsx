@@ -119,7 +119,7 @@ export function LinkListPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             aria-label="링크 검색"
-            placeholder="슬러그·목적지·메모 검색"
+            placeholder="제목·슬러그·목적지·설명 검색"
             className="pl-7"
           />
         </div>

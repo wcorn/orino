@@ -16,6 +16,7 @@ function link(overrides: Record<string, unknown> = {}) {
     slug: "jeju",
     shortUrl: "https://s.orino.dev/jeju",
     targetUrl: "https://img.orino.dev/note-images/2026/aug.jpg",
+    title: null,
     memo: null,
     tags: [],
     custom: true,
@@ -234,6 +235,67 @@ describe("LinkListPage", () => {
     expect(
       within(activeRow!).getByRole("button", { name: "QR 보기" }),
     ).toBeInTheDocument();
+  });
+
+  it("새 링크 모달에서 제목·설명을 함께 보낸다", async () => {
+    let sent: Record<string, unknown> | undefined;
+    server.use(
+      http.post(`${API_BASE}/shortlinks`, async ({ request }) => {
+        sent = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          code: "OK",
+          data: {
+            ...link({ slug: "9dwqr", title: "여름 여행 일정표" }),
+            qrPayload: "https://s.orino.dev/9dwqr",
+          },
+        });
+      }),
+    );
+
+    renderLinks();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /새 링크/ }),
+    );
+    const modal = within(screen.getByRole("dialog"));
+    await userEvent.type(
+      modal.getByLabelText(/목적지 URL/),
+      "https://example.com/trip",
+    );
+    await userEvent.type(modal.getByLabelText(/제목/), "  여름 여행 일정표 ");
+    await userEvent.type(modal.getByLabelText(/설명/), "가족 단톡방 공유용");
+    await userEvent.click(modal.getByRole("button", { name: "만들기" }));
+
+    await waitFor(() => {
+      expect(sent).toMatchObject({
+        targetUrl: "https://example.com/trip",
+        title: "여름 여행 일정표",
+        memo: "가족 단톡방 공유용",
+      });
+    });
+  });
+
+  it("제목이 있으면 첫 줄이 제목이고, 복사하는 것은 여전히 짧은 주소다", async () => {
+    mockList({
+      counts: { all: 1, active: 1, inactive: 0 },
+      recent: [link({ title: "여름 여행 일정표", memo: "가족 단톡방 공유용" })],
+    });
+
+    renderLinks();
+    const row = await screen.findByRole("button", {
+      name: /여름 여행 일정표/,
+    });
+
+    // 짧은 주소는 사라지지 않고 둘째 줄로 내려온다 — 목적지와 같은 줄이다.
+    const secondLine = within(row).getByText(/img\.orino\.dev/);
+    expect(within(secondLine).getByText("jeju")).toBeInTheDocument();
+    expect(within(row).getByText("가족 단톡방 공유용")).toBeInTheDocument();
+
+    await userEvent.click(
+      within(row).getByRole("button", { name: "주소 복사" }),
+    );
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("https://s.orino.dev/jeju");
+    });
   });
 
   it("링크가 하나도 없으면 빈 상태를 보여준다", async () => {
