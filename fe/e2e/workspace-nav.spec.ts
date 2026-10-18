@@ -133,15 +133,19 @@ test.describe("워크스페이스 진입 동선", () => {
     await segment(page, "일상").click();
 
     await expect(page).toHaveURL(/\/home$/);
-    await openSidebar(page);
+    // 주소만 보고 드로어를 열지 않는다(#1428). 라우터가 이동을 startTransition으로 감싸서,
+    // 주소는 즉시 바뀌어도 새 경로는 페이지 청크가 붙은 뒤에야 커밋된다. 그 커밋이 늦게
+    // 오면 「경로가 바뀌면 드로어를 닫는」 효과가 방금 연 드로어를 닫는다. `aria-current`는
+    // 커밋 뒤에야 바뀌므로 이걸 먼저 기다린다. 닫힌 드로어 안에서도 속성은 읽힌다.
     await expectCurrent(page, "일상");
+    await openSidebar(page);
     await expect(page.getByRole("link", { name: /학습 자료/ })).toBeVisible();
 
     await segment(page, "여행").click();
 
     await expect(page).toHaveURL(/\/travel$/);
-    await openSidebar(page);
     await expectCurrent(page, "여행");
+    await openSidebar(page);
     await expect(page.getByRole("link", { name: /여행 목록/ })).toBeVisible();
   });
 
