@@ -6,6 +6,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { TimeInput } from "@/components/ui/time-input";
 import type { BoardDay } from "@/features/travel/api/activities";
 import { formatDateWithWeekday } from "@/features/travel/lib/tripStatus";
 
@@ -117,11 +118,10 @@ export function PlaceAddSheet({
         </FormField>
 
         <FormField label="시각 (선택)" htmlFor="placeAddTime">
-          <Input
+          <TimeInput
             id="placeAddTime"
-            type="time"
             value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
+            onChange={(value) => setStartTime(value)}
             // 보관함에는 순서가 없다 — 시각을 받아도 쓸 자리가 없다.
             disabled={date === ARCHIVE}
           />

@@ -5,6 +5,7 @@ import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
+import { TimeInput } from "@/components/ui/time-input";
 import type { Activity } from "@/features/travel/api/activities";
 import { useBoard } from "@/features/travel/hooks/useBoard";
 
@@ -130,11 +131,10 @@ export function AddSheet({
             />
           </FormField>
           <FormField label="시각 (선택)" htmlFor="activityTime">
-            <Input
+            <TimeInput
               id="activityTime"
-              type="time"
               value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
+              onChange={(value) => setStartTime(value)}
             />
           </FormField>
           <div className="flex justify-between gap-2">

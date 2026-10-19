@@ -132,6 +132,38 @@ describe("FeedPage", () => {
     expect(await screen.findByText("새 기록입니다")).toBeInTheDocument();
   });
 
+  it("발생 시각은 날짜와 24시간제 시각으로 넣는다 — 오전/오후를 고르지 않는다", async () => {
+    let sent: { occurredAt: string | null } | undefined;
+    server.use(
+      feedHandler([]),
+      http.post(`${API}/lifelog/moments`, async ({ request }) => {
+        sent = (await request.json()) as { occurredAt: string | null };
+        return HttpResponse.json({ code: "OK", data: moment({ id: 98 }) });
+      }),
+    );
+
+    renderWithRouter(<FeedPage />);
+    await screen.findByText("첫 순간을 기록해보세요.");
+    await userEvent.click(screen.getByRole("button", { name: "기록" }));
+    const dialog = within(await screen.findByRole("dialog"));
+
+    // 시각은 날짜가 있어야 의미가 있다.
+    expect(dialog.getByLabelText("발생 시각")).toBeDisabled();
+
+    await userEvent.type(dialog.getByLabelText("발생 날짜"), "2026-07-20");
+    await userEvent.clear(dialog.getByLabelText("발생 시각"));
+    await userEvent.type(dialog.getByLabelText("발생 시각"), "2130");
+    await userEvent.type(dialog.getByLabelText("본문"), "야경");
+    await userEvent.click(dialog.getByRole("button", { name: "기록" }));
+
+    await waitFor(() => {
+      // 로컬 21:30이다. 기기 타임존과 무관하게 같은 순간인지 본다.
+      expect(sent?.occurredAt).toBe(
+        new Date(2026, 6, 20, 21, 30).toISOString(),
+      );
+    });
+  });
+
   it("기록을 삭제하면 피드에서 사라진다", async () => {
     const store: MomentCard[] = [moment({ id: 7, body: "지울기록", tags: [] })];
     server.use(

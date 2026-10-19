@@ -26,6 +26,8 @@ export function formatMomentTime(iso: string): string {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    // 지정하지 않으면 ko-KR은 「오후 02:30」이다. 화면은 24시간제로 통일한다(#1430).
+    hourCycle: "h23",
   }).format(d);
 }
 

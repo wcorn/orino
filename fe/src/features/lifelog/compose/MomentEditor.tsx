@@ -2,8 +2,10 @@ import { MapPin, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
+import { TimeInput } from "@/components/ui/time-input";
 
 import type { MomentCard, Mood, PhotoRequest } from "../api/types";
 import { useReverseGeocode } from "../hooks/useGeocode";
@@ -40,6 +42,9 @@ export function MomentEditor({
   const [tags, setTags] = useState<string[]>([]);
   const [occurredAt, setOccurredAt] = useState("");
   const [occurredTouched, setOccurredTouched] = useState(false);
+  // `YYYY-MM-DDTHH:mm`을 날짜·시각 두 칸으로 나눠 보여 준다.
+  const occurredDate = occurredAt.slice(0, 10);
+  const occurredTime = occurredAt.slice(11, 16);
   const [location, setLocation] = useState<LocationValue | null>(null);
   const [locationOpen, setLocationOpen] = useState(false);
 
@@ -141,19 +146,37 @@ export function MomentEditor({
           aria-label="본문"
         />
 
-        <label className="flex flex-col gap-1 text-sm">
+        {/*
+          `datetime-local` 하나였는데 날짜와 시각으로 나눈다(#1430). 그 입력은 한국어
+          로캘에서 오전/오후를 따로 고르게 하고, 24시간제로 바꿀 수 없다.
+          시각은 날짜가 있어야 의미가 있다 — 날짜를 비우면 시각도 함께 비운다.
+        */}
+        <div className="flex flex-col gap-1 text-sm">
           <span className="text-muted-foreground text-xs">발생 시각</span>
-          <input
-            type="datetime-local"
-            value={occurredAt}
-            onChange={(e) => {
-              setOccurredAt(e.target.value);
-              setOccurredTouched(true);
-            }}
-            className="border-border bg-background h-9 rounded-md border px-3 text-sm"
-            aria-label="발생 시각"
-          />
-        </label>
+          <div className="flex gap-2">
+            <Input
+              type="date"
+              value={occurredDate}
+              onChange={(e) => {
+                const date = e.target.value;
+                setOccurredAt(date ? `${date}T${occurredTime || "00:00"}` : "");
+                setOccurredTouched(true);
+              }}
+              aria-label="발생 날짜"
+              className="flex-1"
+            />
+            <TimeInput
+              value={occurredTime}
+              onChange={(time) => {
+                setOccurredAt(`${occurredDate}T${time || "00:00"}`);
+                setOccurredTouched(true);
+              }}
+              disabled={!occurredDate}
+              aria-label="발생 시각"
+              className="w-24"
+            />
+          </div>
+        </div>
 
         <div>
           <span className="text-muted-foreground mb-1.5 block text-xs">
