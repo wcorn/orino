@@ -549,6 +549,89 @@ describe("PlaceSearchPage", () => {
       expect(bodies[0]).toMatchObject({ activityDate: "2026-10-25" });
     });
 
+    /** 보드에서 장소를 찾아 담기 시트까지 연다. */
+    async function openAddSheetFrom(
+      boardPath: string,
+      user: ReturnType<typeof userEvent.setup>,
+    ) {
+      renderWithRouter(
+        <Providers>
+          <AppRouter />
+        </Providers>,
+        { initialEntries: [boardPath] },
+      );
+      await user.click(
+        await screen.findByRole("button", { name: "장소 검색" }),
+      );
+      await user.type(await screen.findByLabelText("장소 검색"), "센소지");
+      await user.keyboard("{Enter}");
+      await user.click(await screen.findByRole("button", { name: "담기" }));
+    }
+
+    function mockCreate() {
+      server.use(
+        http.post(`${API_BASE}/travel/trips/:tripId/activities`, () =>
+          HttpResponse.json({ code: "OK", data: { id: 11 } }),
+        ),
+      );
+    }
+
+    it("저장하면 담은 날짜의 탭으로 돌아간다 — 첫날이 아니다(#1434)", async () => {
+      mockSearch();
+      mockCreate();
+      const user = userEvent.setup();
+      // 2일차를 보다가 들어와 2일차에 담는다.
+      await openAddSheetFrom("/travel/trips/3/board?day=1", user);
+      await user.click(screen.getByRole("button", { name: "저장" }));
+
+      // 예전에는 날짜 없이 보드로 가서 서버 기본값(1일차)이 열렸다.
+      await waitFor(() => {
+        expect(screen.getByRole("tab", { name: /10\.25/ })).toHaveAttribute(
+          "aria-selected",
+          "true",
+        );
+      });
+    });
+
+    it("보관함에 담으면 보관함 탭으로 돌아간다", async () => {
+      mockSearch();
+      mockCreate();
+      const user = userEvent.setup();
+      await openAddSheetFrom("/travel/trips/3/board?day=1", user);
+      await user.click(await screen.findByRole("combobox", { name: "날짜" }));
+      await user.click(await screen.findByRole("option", { name: /보관함/ }));
+      await user.click(screen.getByRole("button", { name: "저장" }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("tab", { name: /보관함/ })).toHaveAttribute(
+          "aria-selected",
+          "true",
+        );
+      });
+    });
+
+    it("담지 않고 뒤로 가면 보던 날짜로 돌아간다", async () => {
+      mockSearch();
+      const user = userEvent.setup();
+      renderWithRouter(
+        <Providers>
+          <AppRouter />
+        </Providers>,
+        { initialEntries: ["/travel/trips/3/board?day=1"] },
+      );
+      await user.click(
+        await screen.findByRole("button", { name: "장소 검색" }),
+      );
+      await user.click(await screen.findByRole("button", { name: "뒤로" }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("tab", { name: /10\.25/ })).toHaveAttribute(
+          "aria-selected",
+          "true",
+        );
+      });
+    });
+
     it("보던 날짜의 도시를 들고 온다 — 이 화면의 기본 조회로는 알 수 없는 값이다", async () => {
       mockSearch();
       const user = userEvent.setup();
