@@ -1,6 +1,6 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { FormField } from "@/components/ui/form-field";
-import { Input } from "@/components/ui/input";
+import { TimeInput } from "@/components/ui/time-input";
 
 interface TimeRangeFieldsProps {
   startTime: string;
@@ -34,11 +34,10 @@ export function TimeRangeFields({
           htmlFor={`${idPrefix}-start`}
           className="flex-1"
         >
-          <Input
+          <TimeInput
             id={`${idPrefix}-start`}
-            type="time"
             value={startTime}
-            onChange={(e) => onStartChange(e.target.value)}
+            onChange={(value) => onStartChange(value)}
           />
         </FormField>
         <FormField
@@ -47,12 +46,11 @@ export function TimeRangeFields({
           className="flex-1"
           error={reversed ? "종료가 시작보다 늦어야 합니다." : undefined}
         >
-          <Input
+          <TimeInput
             id={`${idPrefix}-end`}
-            type="time"
             value={midnight ? "" : endTime}
             disabled={midnight}
-            onChange={(e) => onEndChange(e.target.value)}
+            onChange={(value) => onEndChange(value)}
           />
         </FormField>
       </div>

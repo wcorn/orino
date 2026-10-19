@@ -6,6 +6,7 @@ import { FieldError } from "@/components/ui/field-error";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { TimeInput } from "@/components/ui/time-input";
 import type { BaseCity } from "@/features/travel/api/activities";
 import type { Stay, StayWriteRequest } from "@/features/travel/api/stays";
 import { overlapMessage, overlaps } from "@/features/travel/lib/stayForDay";
@@ -224,11 +225,10 @@ export function StayFormSheet({
             htmlFor="stay-in-time"
             className="flex-1"
           >
-            <Input
+            <TimeInput
               id="stay-in-time"
-              type="time"
               value={draft.checkInTime}
-              onChange={(e) => set("checkInTime", e.target.value)}
+              onChange={(value) => set("checkInTime", value)}
             />
           </FormField>
           <FormField
@@ -236,11 +236,10 @@ export function StayFormSheet({
             htmlFor="stay-out-time"
             className="flex-1"
           >
-            <Input
+            <TimeInput
               id="stay-out-time"
-              type="time"
               value={draft.checkOutTime}
-              onChange={(e) => set("checkOutTime", e.target.value)}
+              onChange={(value) => set("checkOutTime", value)}
             />
           </FormField>
         </div>

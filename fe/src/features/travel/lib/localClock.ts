@@ -22,6 +22,7 @@ export function localTime(timezone: string, at: Date = new Date()): string {
     timeZone: timezone,
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    // hour12: false는 엔진에 따라 자정을 「24:00」으로 그린다. h23은 00–23이다(#1430).
+    hourCycle: "h23",
   }).format(at);
 }

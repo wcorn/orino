@@ -23,6 +23,7 @@ import { LoadingText } from "@/components/ui/loading-text";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { TimeInput } from "@/components/ui/time-input";
 import {
   type Activity,
   deleteActivity as deleteActivityRequest,
@@ -318,11 +319,10 @@ export function ActivityDetailPage() {
             />
           </FormField>
           <FormField label="시작 시각" htmlFor="startTime" className="flex-1">
-            <Input
+            <TimeInput
               id="startTime"
-              type="time"
               value={form.startTime}
-              onChange={(e) => set("startTime", e.target.value)}
+              onChange={(value) => set("startTime", value)}
             />
           </FormField>
         </div>

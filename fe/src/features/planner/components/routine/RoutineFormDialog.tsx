@@ -6,6 +6,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
+import { TimeInput } from "@/components/ui/time-input";
 import { GoogleRequiredState } from "@/features/google/components/GoogleRequiredState";
 
 import type {
@@ -265,18 +266,16 @@ export function RoutineFormDialog({
           {!form.allDay && (
             <FormField label="시간">
               <div className="flex items-center gap-2">
-                <Input
-                  type="time"
+                <TimeInput
                   aria-label="시작 시간"
                   value={form.startTime}
-                  onChange={(e) => set("startTime", e.target.value)}
+                  onChange={(value) => set("startTime", value)}
                 />
                 <span className="text-muted-foreground">~</span>
-                <Input
-                  type="time"
+                <TimeInput
                   aria-label="종료 시간"
                   value={form.endTime}
-                  onChange={(e) => set("endTime", e.target.value)}
+                  onChange={(value) => set("endTime", value)}
                 />
               </div>
             </FormField>

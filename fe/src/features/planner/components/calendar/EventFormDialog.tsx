@@ -5,6 +5,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
+import { TimeInput } from "@/components/ui/time-input";
 import { GoogleRequiredState } from "@/features/google/components/GoogleRequiredState";
 
 import type { EventWriteRequest } from "../../api/events";
@@ -160,11 +161,10 @@ export function EventFormDialog({
                 onChange={(e) => set("startDate", e.target.value)}
               />
               {!form.allDay && (
-                <Input
-                  type="time"
+                <TimeInput
                   aria-label="시작 시간"
                   value={form.startTime}
-                  onChange={(e) => set("startTime", e.target.value)}
+                  onChange={(value) => set("startTime", value)}
                 />
               )}
             </div>
@@ -179,11 +179,10 @@ export function EventFormDialog({
                 onChange={(e) => set("endDate", e.target.value)}
               />
               {!form.allDay && (
-                <Input
-                  type="time"
+                <TimeInput
                   aria-label="종료 시간"
                   value={form.endTime}
-                  onChange={(e) => set("endTime", e.target.value)}
+                  onChange={(value) => set("endTime", value)}
                 />
               )}
             </div>
