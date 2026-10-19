@@ -24,13 +24,12 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { TimeInput } from "@/components/ui/time-input";
-import {
-  type Activity,
-  deleteActivity as deleteActivityRequest,
-} from "@/features/travel/api/activities";
-import { useUndoableAction } from "@/features/travel/board/useUndoableAction";
+import type { Activity } from "@/features/travel/api/activities";
 import { useActivity } from "@/features/travel/hooks/useActivity";
-import { useUpdateActivity } from "@/features/travel/hooks/useActivityMutations";
+import {
+  useDeleteActivity,
+  useUpdateActivity,
+} from "@/features/travel/hooks/useActivityMutations";
 import { useBoard } from "@/features/travel/hooks/useBoard";
 import { usePlaceDetail } from "@/features/travel/hooks/usePlaceDetail";
 import { useTrip } from "@/features/travel/hooks/useTrip";
@@ -109,7 +108,7 @@ export function ActivityDetailPage() {
     { enabled: activity !== undefined },
   );
   const updateActivity = useUpdateActivity(activity?.tripId ?? 0);
-  const undoable = useUndoableAction(activity?.tripId ?? 0);
+  const deleteActivity = useDeleteActivity(activity?.tripId ?? 0);
 
   const [form, setForm] = useState<FormState | null>(null);
   const dayLabelId = useId();
@@ -138,8 +137,8 @@ export function ActivityDetailPage() {
   /**
    * 이 일정이 속한 탭으로 돌아간다.
    *
-   * <p>기본 탭으로 돌려보내면 방금 옮기거나 지운 일정이 보이지 않아, 반영됐는지도
-   * 실행취소가 먹혔는지도 확인할 수 없다.
+   * <p>기본 탭으로 돌려보내면 방금 옮기거나 지운 일정이 보이지 않아, 반영됐는지
+   * 확인할 수 없다.
    */
   const boardPathFor = (day: string) => {
     const base = `/travel/trips/${activity.tripId}/board`;
@@ -251,13 +250,17 @@ export function ActivityDetailPage() {
     }
   };
 
-  /** 삭제는 보드로 돌아간 뒤에도 5초 안에 되돌릴 수 있다(보류함이 화면 밖에 있다). */
+  /**
+   * 삭제는 <b>누르는 즉시 요청을 보낸다</b>(#1432). 보드로 바로 돌아가고, 보드에서는 훅이
+   * 행을 먼저 뺀다. 이 화면은 곧 사라지므로 토스트는 `mutate` 콜백이 아니라 약속에 건다 —
+   * 콜백은 화면이 내려가면 불리지 않는다.
+   */
   const remove = () => {
-    undoable({
-      activityId,
-      message: `"${activity.title}"을(를) 삭제했어요.`,
-      run: () => deleteActivityRequest(activityId),
-    });
+    const title = activity.title;
+    deleteActivity.mutateAsync(activityId).then(
+      () => toast(`"${title}"을(를) 삭제했어요.`, "success"),
+      () => toast("삭제하지 못했어요.", "error"),
+    );
     navigate(boardPath);
   };
 

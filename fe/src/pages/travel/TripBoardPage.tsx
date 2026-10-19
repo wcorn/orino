@@ -38,7 +38,6 @@ import type {
   Move,
 } from "@/features/travel/api/activities";
 // 삭제는 뮤테이션 훅이 아니라 raw 요청을 쓴다 — 화면을 떠난 뒤에 보낼 수도 있어서다.
-import { deleteActivity as deleteActivityRequest } from "@/features/travel/api/activities";
 import type { DayUpdateRequest } from "@/features/travel/api/days";
 import type { Stay, StayWriteRequest } from "@/features/travel/api/stays";
 import { stayOverlapOf } from "@/features/travel/api/stays";
@@ -53,11 +52,11 @@ import { LocalClockLine } from "@/features/travel/board/LocalClockLine";
 import { MoveRow } from "@/features/travel/board/MoveRow";
 import { type MoveDraft, MoveSheet } from "@/features/travel/board/MoveSheet";
 import { OfflineBanner } from "@/features/travel/board/OfflineBanner";
-import { usePendingActions } from "@/features/travel/board/pendingActions";
 import { SwapDaySheet } from "@/features/travel/board/SwapDaySheet";
-import { useUndoableAction } from "@/features/travel/board/useUndoableAction";
 import {
+  useArchiveActivity,
   useCreateActivity,
+  useDeleteActivity,
   useDeleteMove,
   useReorderActivities,
   useSaveMove,
@@ -189,8 +188,8 @@ export function TripBoardPage() {
   const swapDays = useSwapDayActivities(tripId);
   const saveMove = useSaveMove(tripId);
   const removeMove = useDeleteMove(tripId);
-  const undoable = useUndoableAction(tripId);
-  const pendingIds = usePendingActions((state) => state.pendingIds);
+  const deleteActivity = useDeleteActivity(tripId);
+  const archive = useArchiveActivity(tripId);
 
   // 드래그 모드 안에서만 정렬이 켜지므로(행의 `disabled`) 여기서는 지연을 두지 않는다.
   // 모드에 들어와 있다는 건 이미 "옮기려는 중"이라, 곧바로 잡히는 편이 자연스럽다.
@@ -217,10 +216,8 @@ export function TripBoardPage() {
   const selectedDate = isArchive ? null : (requestedDate ?? board.selectedDate);
   /** 아직 고른 날짜의 일정이 오지 않았다. 앞 날짜의 목록을 그 날의 것처럼 보여줄 수는 없다. */
   const loadingDay = board.selectedDate !== selectedDate;
-  // 실행취소를 기다리는 동안에는 이미 사라진 것처럼 보여야 한다(낙관적 반영).
-  const activities = loadingDay
-    ? []
-    : board.activities.filter((a) => !pendingIds.includes(a.id));
+  // 지우거나 보관함으로 내린 일정은 훅이 캐시에서 먼저 뺀다(낙관적 반영, #1432).
+  const activities = loadingDay ? [] : board.activities;
   /**
    * 구간을 <b>도착</b> 일정 id로 걸어 둔다 — 행을 그 일정 <b>바로 앞</b>에 그리기 위해서다.
    *
@@ -325,25 +322,22 @@ export function TripBoardPage() {
   };
 
   /**
-   * 보관함으로 내리기·삭제는 요청을 5초 미룬다. 화면에서는 즉시 사라지고,
-   * 실행취소를 누르면 요청 자체가 나가지 않는다(서버에 복원 API를 두지 않는 이유).
+   * 보관함으로 내리기·삭제는 <b>누르는 즉시 요청을 보낸다</b>(#1432). 예전에는 실행취소를
+   * 위해 5초 미뤘는데, 그 사이 삭제가 안 된 채로 남는 게 더 헷갈렸다. 행은 훅이 먼저 빼고,
+   * 실패하면 되돌려 놓는다.
    */
   const archiveActivity = (activity: Activity) =>
-    undoable({
-      activityId: activity.id,
-      message: `"${activity.title}"을(를) 보관함으로 옮겼어요.`,
-      run: () =>
-        updateActivity.mutateAsync({
-          activityId: activity.id,
-          body: activityWriteBodyFrom(activity, { activityDate: null }),
-        }),
+    archive.mutate(activity, {
+      onSuccess: () =>
+        toast(`"${activity.title}"을(를) 보관함으로 옮겼어요.`, "success"),
+      onError: () => toast("보관함으로 옮기지 못했어요.", "error"),
     });
 
-  const removeActivityDeferred = (activity: Activity) =>
-    undoable({
-      activityId: activity.id,
-      message: `"${activity.title}"을(를) 삭제했어요.`,
-      run: () => deleteActivityRequest(activity.id),
+  const removeActivity = (activity: Activity) =>
+    deleteActivity.mutate(activity.id, {
+      onSuccess: () =>
+        toast(`"${activity.title}"을(를) 삭제했어요.`, "success"),
+      onError: () => toast("삭제하지 못했어요.", "error"),
     });
 
   /** 같은 날짜 안에서 두 행의 자리를 바꾼다(드래그·화살표 공통). */
@@ -723,7 +717,7 @@ export function TripBoardPage() {
                     onMoveDown={() => {}}
                     onArchive={() => {}}
                     onPickDay={() => setPickingDayFor(activity)}
-                    onDelete={() => removeActivityDeferred(activity)}
+                    onDelete={() => removeActivity(activity)}
                     onEnterDragMode={() => {}}
                     pointerFine={pointerFine}
                   />
@@ -759,7 +753,7 @@ export function TripBoardPage() {
                     onMoveUp={() => moveWithin(index, index - 1)}
                     onMoveDown={() => moveWithin(index, index + 1)}
                     onArchive={() => archiveActivity(activity)}
-                    onDelete={() => removeActivityDeferred(activity)}
+                    onDelete={() => removeActivity(activity)}
                     onEnterDragMode={enterDragMode}
                     pointerFine={pointerFine}
                   />

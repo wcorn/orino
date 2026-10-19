@@ -69,7 +69,7 @@ export function PrepCategoryCard({
   const label = PREP_CATEGORY_LABEL[group.category];
   const donePercent = group.total === 0 ? 0 : (group.done / group.total) * 100;
 
-  // 서버는 빈 묶음을 내리지 않지만, 실행취소를 기다리는 줄을 화면이 걷어내면 여기서 빈다.
+  // 서버는 빈 묶음을 내리지 않지만, 지우는 줄을 화면이 응답 전에 먼저 걷어내면 여기서 빈다.
   const sections = group.sections.filter((section) => section.items.length > 0);
   const labeled = sections.some((section) => section.label !== null);
   const visibleOf = (section: PrepSection) =>

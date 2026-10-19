@@ -4,7 +4,7 @@ import { expect, type Page, test } from "./support/test";
  * 준비 화면 한 바퀴(S-10, #1324).
  *
  * <p>여기서 확인하는 것은 <b>출발 전날 밤의 한 흐름</b>이다 — 연달아 적고, 훑으면서 체크하고,
- * 다 한 것은 숨기고, 잘못 적은 것은 지웠다가 되돌린다. 통합 테스트가 각 조각을 보는 것과 달리
+ * 다 한 것은 숨기고, 잘못 적은 것은 지운다. 통합 테스트가 각 조각을 보는 것과 달리
  * 이 스펙은 그 조각들이 <b>한 화면에서 이어지는지</b>를 본다.
  */
 
@@ -281,7 +281,7 @@ test.describe("준비", () => {
     expect(layout.crumbRight).toBeLessThanOrEqual(layout.viewport);
   });
 
-  test("연달아 적고, 체크하고, 숨기고, 지웠다 되돌린다", async ({ page }) => {
+  test("연달아 적고, 체크하고, 숨기고, 지운다", async ({ page }) => {
     await mockPrep(page);
     await page.goto(`/travel/trips/${TRIP_ID}/prep`);
 
@@ -338,13 +338,16 @@ test.describe("준비", () => {
       bag.getByRole("listitem").filter({ hasText: "양말" }),
     ).toContainText("4");
 
-    // 삭제는 5초 실행취소다. 되돌리면 요청 자체가 나가지 않는다.
+    // 삭제는 누르는 즉시 나간다(#1432). 예전에는 실행취소를 위해 5초 보류했다.
     const medicine = page.getByRole("button", { name: "상비약", exact: true });
     await page.getByLabel("상비약 삭제").click();
     await expect(medicine).toBeHidden();
-    await page.getByRole("button", { name: "실행취소" }).click();
-    await expect(medicine).toBeVisible();
-    await expect(page.getByRole("button", { name: "짐 1/3" })).toBeVisible();
+    await expect(page.getByText("「상비약」을(를) 지웠어요")).toBeVisible();
+    await expect(page.getByRole("button", { name: "실행취소" })).toHaveCount(0);
+    // 서버가 다시 센 집계가 곧바로 따라온다 — 5초 뒤가 아니다.
+    await expect(page.getByRole("button", { name: "짐 1/2" })).toBeVisible({
+      timeout: 2000,
+    });
   });
 
   /**

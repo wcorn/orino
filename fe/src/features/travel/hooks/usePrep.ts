@@ -166,11 +166,40 @@ export function useReorderPrep(tripId: number) {
   });
 }
 
-/** 되돌리기는 화면이 5초 미뤄서 한다 — 여기까지 오면 이미 되돌릴 뜻이 없다. */
+/**
+ * 삭제. <b>누르는 즉시 요청을 보낸다</b>(#1432) — 예전에는 실행취소를 위해 5초 미뤘다.
+ *
+ * <p>항목은 캐시에서 먼저 뺀다. 집계(전체·완료 수)는 손대지 않는다 — 곧 서버가 다시 세어
+ * 주고, 화면이 스스로 빼면 실패했을 때 돌려놓을 값이 하나 더 는다.
+ */
 export function useDeletePrepItem(tripId: number) {
+  const queryClient = useQueryClient();
   const invalidate = useInvalidatePrep(tripId);
   return useMutation({
     mutationFn: (itemId: number) => deletePrepItem(itemId),
+    onMutate: async (itemId) => {
+      const key = travelKeys.prep(tripId);
+      await queryClient.cancelQueries({ queryKey: key });
+      const snapshot = queryClient.getQueryData<PrepResponse>(key);
+      if (snapshot) {
+        queryClient.setQueryData<PrepResponse>(key, {
+          ...snapshot,
+          groups: snapshot.groups.map((group) => ({
+            ...group,
+            sections: group.sections.map((section) => ({
+              ...section,
+              items: section.items.filter((item) => item.id !== itemId),
+            })),
+          })),
+        });
+      }
+      return { key, snapshot };
+    },
+    onError: (_error, _itemId, context) => {
+      if (context?.snapshot) {
+        queryClient.setQueryData(context.key, context.snapshot);
+      }
+    },
     onSettled: invalidate,
   });
 }

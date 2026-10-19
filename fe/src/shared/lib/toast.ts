@@ -18,11 +18,6 @@ export interface ToastItem {
   durationMs: number;
   /** 사라질 시각(epoch ms). 카운트다운 계산 기준. */
   expiresAt: number;
-  /**
-   * 액션 없이 그냥 사라졌을 때 실행할 일. 실행취소 스낵바에서
-   * "취소하지 않았으므로 이제 진짜 반영한다"를 담는다.
-   */
-  onExpire?: () => void;
 }
 
 const AUTO_DISMISS_MS = 3500;
@@ -36,15 +31,12 @@ interface ShowOptions {
   action?: ToastAction;
   /** `Infinity`면 스스로 닫히지 않는다 — 사용자가 액션을 누르거나 닫아야 한다. */
   durationMs?: number;
-  onExpire?: () => void;
 }
 
 interface ToastState {
   toasts: ToastItem[];
   show: (message: string, options?: ShowOptions) => string;
-  /** 타이머 만료로 닫기 — `onExpire`가 있으면 실행한다. */
-  expire: (id: string) => void;
-  /** 사용자가 닫거나 액션을 눌러 닫기 — `onExpire`는 실행하지 않는다. */
+  /** 닫기 — 시간이 다 됐을 때, 사용자가 닫을 때, 액션을 눌렀을 때 모두 이것이다. */
   dismiss: (id: string) => void;
   runAction: (id: string) => void;
 }
@@ -57,7 +49,6 @@ export const useToastStore = create<ToastState>((set, get) => ({
       variant = "info",
       action,
       durationMs = action ? UNDO_DURATION_MS : AUTO_DISMISS_MS,
-      onExpire,
     } = options;
     const id = `t-${Date.now()}-${++counter}`;
     set((state) => ({
@@ -70,23 +61,15 @@ export const useToastStore = create<ToastState>((set, get) => ({
           action,
           durationMs,
           expiresAt: Date.now() + durationMs,
-          onExpire,
         },
       ],
     }));
     // durationMs가 유한하지 않으면 타이머를 걸지 않는다.
     // setTimeout(fn, Infinity)는 0으로 강제돼 오히려 즉시 사라진다.
     if (Number.isFinite(durationMs)) {
-      setTimeout(() => get().expire(id), durationMs);
+      setTimeout(() => get().dismiss(id), durationMs);
     }
     return id;
-  },
-
-  expire: (id) => {
-    const item = get().toasts.find((t) => t.id === id);
-    if (!item) return;
-    get().dismiss(id);
-    item.onExpire?.();
   },
 
   dismiss: (id) =>
@@ -108,23 +91,20 @@ export function toast(message: string, variant: ToastVariant = "info") {
 interface UndoOptions {
   /** 실행취소를 누르면 실행. 되돌리는 일 자체는 호출부가 한다. */
   onUndo: () => void;
-  /**
-   * 되돌리지 않고 시간이 다 됐을 때 실행. 삭제 요청을 이 시점까지 미뤄 두면
-   * 실행취소 시 요청 자체가 나가지 않는다(서버에 복원 API를 두지 않는 이유).
-   */
-  onCommit?: () => void;
   durationMs?: number;
 }
 
 /**
- * 실행취소 스낵바. 5초 안에 누르면 `onUndo`, 그냥 지나가면 `onCommit`이 실행된다.
- * 낙관적으로 화면만 먼저 바꾸고 실제 요청은 `onCommit`에서 보내는 쓰임을 전제로 한다.
+ * 실행취소 스낵바. 5초 안에 누르면 `onUndo`가 실행된다.
+ *
+ * <p><b>이미 끝난 일을 되돌리는 버튼일 뿐이다.</b> 요청을 이 스낵바가 닫힐 때까지 미뤄 두는
+ * 쓰임은 없앴다(#1432) — 누른 일은 그 자리에서 실행하고, 되돌리기는 같은 값으로 다시 적는
+ * 식으로 호출부가 한다(경비 삭제가 그렇다).
  */
 export function toastUndo(message: string, options: UndoOptions) {
-  const { onUndo, onCommit, durationMs = UNDO_DURATION_MS } = options;
+  const { onUndo, durationMs = UNDO_DURATION_MS } = options;
   return useToastStore.getState().show(message, {
     action: { label: "실행취소", onAction: onUndo },
     durationMs,
-    onExpire: onCommit,
   });
 }

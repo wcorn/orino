@@ -1,7 +1,8 @@
 import { expect, type Page, test } from "./support/test";
 
 /**
- * 스와이프 액션 + 실행취소(#1038).
+ * 스와이프 액션(#1038). 지우기·보관함은 <b>누르는 즉시 요청이 나간다</b>(#1432) — 예전에는
+ * 실행취소를 위해 5초 보류했다.
  *
  * 스와이프는 <b>터치 포인터</b>로만 재현된다 — 마우스는 스와이프하지 않고 버튼을 쓴다.
  * 그래서 이 파일은 `mobile-touch` 프로젝트에서 의미가 있고, 데스크톱 실행에서는
@@ -53,6 +54,9 @@ interface Captured {
 
 async function mockBoard(page: Page): Promise<Captured> {
   const captured: Captured = { deletes: [], updates: [] };
+  // 진짜 서버처럼 지우거나 보관함으로 내린 일정은 그날 목록에서 뺀다 — 요청 뒤 보드를
+  // 다시 받아도 돌아오지 않아야 한다.
+  const gone = new Set<string>();
 
   await page.route("**/api/auth/reissue", (route) =>
     route.fulfill(ok({ accessToken: "mock-access-token" })),
@@ -79,11 +83,12 @@ async function mockBoard(page: Page): Promise<Captured> {
     const id = route.request().url().split("/").pop() ?? "";
     if (method === "DELETE") {
       captured.deletes.push(id);
+      gone.add(id);
       return route.fulfill(ok(null));
     }
-    captured.updates.push(
-      route.request().postDataJSON() as Record<string, unknown>,
-    );
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    captured.updates.push(body);
+    if (body.activityDate === null) gone.add(id);
     return route.fulfill(ok(activity(1, "센소지", 0)));
   });
   await page.route(`**/api/travel/trips/${TRIP_ID}/board*`, (route) => {
@@ -124,7 +129,9 @@ async function mockBoard(page: Page): Promise<Captured> {
         activities:
           isArchive === "true"
             ? []
-            : [activity(1, "센소지", 0), activity(2, "우에노", 1)],
+            : [activity(1, "센소지", 0), activity(2, "우에노", 1)].filter(
+                (a) => !gone.has(String(a.id)),
+              ),
         moves: [],
         stayMove: null,
       }),
@@ -163,8 +170,8 @@ async function swipeRow(page: Page, text: string, dx: number) {
   });
 }
 
-test.describe("스와이프 · 실행취소", () => {
-  test("왼쪽으로 밀면 삭제되고, 5초 안에는 요청이 나가지 않는다", async ({
+test.describe("스와이프", () => {
+  test("왼쪽으로 밀면 곧바로 삭제 요청이 나간다 — 5초를 기다리지 않는다", async ({
     page,
   }) => {
     const captured = await mockBoard(page);
@@ -173,13 +180,16 @@ test.describe("스와이프 · 실행취소", () => {
 
     await swipeRow(page, "센소지", -120);
 
-    // 화면에서는 즉시 사라지고 되돌릴 기회가 뜬다.
     await expect(page.getByText("센소지", { exact: true })).toBeHidden();
-    await expect(page.getByRole("button", { name: /실행취소/ })).toBeVisible();
-    expect(captured.deletes).toHaveLength(0);
+    // 5초 보류가 남아 있으면 이 짧은 대기 안에 요청이 나가지 않는다.
+    await expect.poll(() => captured.deletes, { timeout: 2000 }).toEqual(["1"]);
+    await expect(page.getByText('"센소지"을(를) 삭제했어요.')).toBeVisible();
+    await expect(page.getByRole("button", { name: /실행취소/ })).toHaveCount(0);
+    // 다시 받아 온 보드에서도 돌아오지 않는다.
+    await expect(page.getByText("센소지", { exact: true })).toBeHidden();
   });
 
-  test("오른쪽으로 밀면 보관함으로 간다", async ({ page }) => {
+  test("오른쪽으로 밀면 곧바로 보관함으로 간다", async ({ page }) => {
     const captured = await mockBoard(page);
     await page.goto(`/travel/trips/${TRIP_ID}/board`);
     await expect(page.getByText("센소지")).toBeVisible();
@@ -187,32 +197,15 @@ test.describe("스와이프 · 실행취소", () => {
     await swipeRow(page, "센소지", 120);
 
     await expect(page.getByText("센소지", { exact: true })).toBeHidden();
-    await expect(page.getByRole("button", { name: /실행취소/ })).toBeVisible();
-    expect(captured.updates).toHaveLength(0);
-  });
-
-  test("실행취소를 누르면 되살아나고 요청이 아예 나가지 않는다", async ({
-    page,
-  }) => {
-    const captured = await mockBoard(page);
-    await page.goto(`/travel/trips/${TRIP_ID}/board`);
-    await expect(page.getByText("센소지")).toBeVisible();
-
-    await swipeRow(page, "센소지", -120);
-    await page.getByRole("button", { name: /실행취소/ }).click();
-
-    await expect(page.getByText("센소지", { exact: true })).toBeVisible();
-    expect(captured.deletes).toHaveLength(0);
-  });
-
-  test("그냥 두면 5초 뒤에 삭제 요청이 나간다", async ({ page }) => {
-    const captured = await mockBoard(page);
-    await page.goto(`/travel/trips/${TRIP_ID}/board`);
-    await expect(page.getByText("센소지")).toBeVisible();
-
-    await swipeRow(page, "센소지", -120);
-
-    await expect.poll(() => captured.deletes, { timeout: 8000 }).toEqual(["1"]);
+    await expect
+      .poll(() => captured.updates.map((u) => u.activityDate), {
+        timeout: 2000,
+      })
+      .toEqual([null]);
+    await expect(
+      page.getByText('"센소지"을(를) 보관함으로 옮겼어요.'),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: /실행취소/ })).toHaveCount(0);
   });
 
   test("살짝만 밀면 아무 일도 없다", async ({ page }) => {

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import {
+  type Activity,
   type ActivityWriteRequest,
   type Board,
   createActivity,
@@ -12,6 +13,7 @@ import {
   swapDayActivities,
   updateActivity,
 } from "../api/activities";
+import { activityWriteBodyFrom } from "../lib/activityWriteBody";
 import { travelKeys } from "../queryKeys";
 
 /**
@@ -59,11 +61,78 @@ export function useUpdateActivity(tripId: number) {
   });
 }
 
+/**
+ * 일정 하나를 보드 캐시에서 먼저 뺀다. 요청은 곧바로 나가지만(#1432) 응답을 기다리면
+ * 스와이프한 행이 제자리로 튀었다가 사라진다. 실패하면 돌려놓을 수 있게 전부 떠 둔다.
+ *
+ * <p>날짜별 캐시가 여럿이라 그 여행의 보드 전부에서 뺀다 — 지금 보는 날짜만 고치면
+ * 다른 탭으로 갔을 때 지운 일정이 잠깐 보인다.
+ */
+function useOptimisticRemove(tripId: number) {
+  const queryClient = useQueryClient();
+  return {
+    remove: async (activityId: number) => {
+      const prefix = travelKeys.boards(tripId);
+      await queryClient.cancelQueries({ queryKey: prefix });
+      const snapshots = queryClient.getQueriesData<Board>({ queryKey: prefix });
+      queryClient.setQueriesData<Board>({ queryKey: prefix }, (old) =>
+        old
+          ? {
+              ...old,
+              activities: old.activities.filter((a) => a.id !== activityId),
+            }
+          : old,
+      );
+      return { snapshots };
+    },
+    restore: (context?: {
+      snapshots: [readonly unknown[], Board | undefined][];
+    }) => {
+      context?.snapshots.forEach(([key, data]) =>
+        queryClient.setQueryData(key, data),
+      );
+    },
+  };
+}
+
+/**
+ * 삭제. <b>누르는 즉시 요청을 보낸다</b>(#1432) — 예전에는 실행취소를 위해 5초 미뤘다.
+ * 서버에 복원 API가 없으니 이제 되돌리기는 없다.
+ */
 export function useDeleteActivity(tripId: number) {
   const invalidate = useInvalidateBoard(tripId);
+  const { remove, restore } = useOptimisticRemove(tripId);
   return useMutation({
     mutationFn: (activityId: number) => deleteActivity(activityId),
-    onSuccess: invalidate,
+    onMutate: remove,
+    onError: (_error, _id, context) => restore(context),
+    onSettled: invalidate,
+  });
+}
+
+/**
+ * 보관함으로 내리기. 삭제와 같은 이유로 바로 보내고 지금 날짜에서 먼저 뺀다(#1432).
+ *
+ * <p>수정은 전체 교체라 지금 값을 그대로 실어 보낸다 — 호출자가 일정 전체를 넘긴다.
+ */
+export function useArchiveActivity(tripId: number) {
+  const queryClient = useQueryClient();
+  const invalidate = useInvalidateBoard(tripId);
+  const { remove, restore } = useOptimisticRemove(tripId);
+  return useMutation({
+    mutationFn: (activity: Activity) =>
+      updateActivity(
+        activity.id,
+        activityWriteBodyFrom(activity, { activityDate: null }),
+      ),
+    onMutate: (activity) => remove(activity.id),
+    onError: (_error, _activity, context) => restore(context),
+    onSettled: (_data, _error, activity) => {
+      invalidate();
+      void queryClient.invalidateQueries({
+        queryKey: travelKeys.activity(activity.id),
+      });
+    },
   });
 }
 

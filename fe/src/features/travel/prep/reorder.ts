@@ -89,8 +89,8 @@ export function moveSection(
   const next = [...sections];
   const [moved] = next.splice(from, 1);
   next.splice(to, 0, moved);
-  // 빈 묶음은 보내지 않는다 — 서버가 받지 않고(빈 배열), 실행취소를 기다리는 줄을 화면이
-  // 걷어낸 사이에 이런 묶음이 잠깐 생긴다.
+  // 빈 묶음은 보내지 않는다 — 서버가 받지 않고(빈 배열), 지우는 줄을 화면이 응답 전에
+  // 먼저 걷어낸 사이에 이런 묶음이 잠깐 생긴다.
   return next
     .filter((section) => section.items.length > 0)
     .map((section) => ({

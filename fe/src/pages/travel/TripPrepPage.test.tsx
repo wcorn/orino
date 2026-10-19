@@ -12,7 +12,6 @@ import type {
   PrepPatchRequest,
   PrepSectionOrder,
 } from "@/features/travel/api/prep";
-import { usePendingPrepActions } from "@/features/travel/board/pendingActions";
 import { useToastStore } from "@/shared/lib/toast";
 import { server } from "@/test/mocks/server";
 import { renderWithRouter } from "@/test/render";
@@ -282,7 +281,6 @@ describe("TripPrepPage", () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: "valid-token" });
     useToastStore.setState({ toasts: [] });
-    usePendingPrepActions.setState({ pendingIds: [], commits: new Map() });
     server.use(
       http.get(`${API_BASE}/travel/summary`, () =>
         HttpResponse.json({
@@ -446,24 +444,36 @@ describe("TripPrepPage", () => {
     expect(screen.getByText("D-20")).toBeVisible();
   });
 
-  it("삭제는 5초 안에 되돌리면 요청이 나가지 않는다", async () => {
+  it("삭제는 누르는 즉시 요청을 보낸다 — 5초를 기다리지 않는다", async () => {
     const requests = mockPrep([item({ id: 1, title: "멀티어댑터" })]);
     const user = userEvent.setup();
     renderPrep();
 
     await user.click(await screen.findByLabelText("멀티어댑터 삭제"));
 
-    // 화면에서는 곧바로 사라진다 — 실제 요청은 아직 나가지 않았다.
-    await waitFor(() => {
-      expect(screen.queryByText("멀티어댑터")).not.toBeInTheDocument();
-    });
-    expect(requests.deleted).toEqual([]);
+    // 예전에는 실행취소를 위해 5초 보류했다(#1432). 이제 바로 나간다.
+    await waitFor(() => expect(requests.deleted).toEqual([1]));
+    expect(
+      await screen.findByText("「멀티어댑터」을(를) 지웠어요"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /실행취소/ })).toBeNull();
+    expect(screen.queryByLabelText("멀티어댑터 삭제")).toBeNull();
+  });
 
-    await user.click(await screen.findByRole("button", { name: /실행취소/ }));
+  it("삭제가 실패하면 항목이 돌아오고 알려 준다", async () => {
+    mockPrep([item({ id: 1, title: "멀티어댑터" })]);
+    server.use(
+      http.delete(`${API_BASE}/travel/prep/items/:itemId`, () =>
+        HttpResponse.error(),
+      ),
+    );
+    const user = userEvent.setup();
+    renderPrep();
 
-    expect(requests.deleted).toEqual([]);
-    expect(usePendingPrepActions.getState().pendingIds).toEqual([]);
-    expect(await screen.findByText("멀티어댑터")).toBeVisible();
+    await user.click(await screen.findByLabelText("멀티어댑터 삭제"));
+
+    expect(await screen.findByText("지우지 못했어요.")).toBeInTheDocument();
+    expect(await screen.findByLabelText("멀티어댑터 삭제")).toBeInTheDocument();
   });
 
   it("기한은 「출발 N일 전」 숫자 하나로 저장한다 — 날짜 칸이 없다", async () => {

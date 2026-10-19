@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Providers } from "@/app/providers";
 import { AppRouter } from "@/app/router";
 import { useAuthStore } from "@/features/auth/store/authStore";
-import { usePendingActions } from "@/features/travel/board/pendingActions";
 import { useToastStore } from "@/shared/lib/toast";
 import { server } from "@/test/mocks/server";
 import { renderWithRouter } from "@/test/render";
@@ -176,11 +175,9 @@ function renderBoard(path = "/travel/trips/3/board") {
 describe("TripBoardPage", () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: "valid-token" });
-    // 스낵바는 모듈 스토어라 테스트 사이에 남는다. 이전 실행취소 스낵바가 섞이면
-    // 다음 테스트가 엉뚱한 버튼을 누른다.
+    // 스낵바는 모듈 스토어라 테스트 사이에 남는다. 이전 스낵바가 섞이면
+    // 다음 테스트가 엉뚱한 글자를 찾는다.
     useToastStore.setState({ toasts: [] });
-    // 보류함도 모듈 스토어라 테스트 사이에 남는다.
-    usePendingActions.setState({ pendingIds: [], commits: new Map() });
   });
 
   afterEach(() => {
@@ -1205,80 +1202,115 @@ describe("TripBoardPage", () => {
     });
   });
 
-  describe("일정 액션 · 실행취소", () => {
-    /** 보류 중인 요청을 잡아 두고, 실제로 나갔는지 세는 핸들러. */
-    function captureWrites() {
+  describe("일정 액션 — 보류 없이 바로 실행", () => {
+    /**
+     * 진짜 서버처럼 움직이는 핸들러. 지우거나 보관함으로 내리면 그날 목록에서 빠지므로,
+     * 요청 뒤 보드를 다시 받아도 돌아오지 않는다. 응답은 `respond`가 풀릴 때까지 잡아 둔다
+     * — 응답 전에 이미 사라졌는지(낙관적 반영)를 보려고.
+     */
+    function serverLike(byDate: Record<string, unknown[]>, date: string) {
       const puts: Record<string, unknown>[] = [];
       const deletes: string[] = [];
+      let release: () => void = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const drop = (id: string) => {
+        byDate[date] = byDate[date].filter(
+          (a) => String((a as { id: number }).id) !== id,
+        );
+      };
       server.use(
-        http.put(`${API_BASE}/travel/activities/:id`, async ({ request }) => {
-          puts.push((await request.json()) as Record<string, unknown>);
-          return HttpResponse.json({ code: "OK", data: activity() });
-        }),
-        http.delete(`${API_BASE}/travel/activities/:id`, ({ params }) => {
+        http.put(
+          `${API_BASE}/travel/activities/:id`,
+          async ({ request, params }) => {
+            puts.push((await request.json()) as Record<string, unknown>);
+            await held;
+            drop(String(params.id));
+            return HttpResponse.json({ code: "OK", data: activity() });
+          },
+        ),
+        http.delete(`${API_BASE}/travel/activities/:id`, async ({ params }) => {
           deletes.push(String(params.id));
+          await held;
+          drop(String(params.id));
           return HttpResponse.json({ code: "OK", data: null });
         }),
       );
-      return { puts, deletes };
+      return { puts, deletes, respond: () => release() };
     }
 
-    it("보관함으로 옮기면 즉시 사라지지만 요청은 아직 나가지 않는다", async () => {
-      mockBoard({ byDate: { "2026-10-24": [activity()] } });
-      const { puts } = captureWrites();
+    it("삭제를 누르면 곧바로 요청이 나가고 행은 응답 전에 사라진다 — 5초를 기다리지 않는다", async () => {
+      const byDate = { "2026-10-24": [activity()] };
+      mockBoard({ byDate });
+      const { deletes, respond } = serverLike(byDate, "2026-10-24");
 
       renderBoard();
       await screen.findByText("센소지");
+      await userEvent.click(screen.getByLabelText("센소지 삭제"));
 
-      await userEvent.click(screen.getByLabelText("센소지 보관함으로"));
+      // 요청이 이미 나갔다. 예전에는 실행취소를 위해 5초 동안 보류했다(#1432).
+      await waitFor(() => expect(deletes).toEqual(["1"]));
+      // 응답 전인데 이미 목록에 없다 — 스와이프한 행이 튀어 돌아오지 않는다.
+      expect(screen.queryByText("센소지")).toBeNull();
 
-      // 낙관적으로 목록에서 빠지고, 되돌릴 수 있는 스낵바가 뜬다.
-      await waitFor(() => {
-        expect(screen.queryByLabelText("센소지 보관함으로")).toBeNull();
-      });
+      respond();
       expect(
-        await screen.findByRole("button", { name: /실행취소/ }),
+        await screen.findByText('"센소지"을(를) 삭제했어요.'),
       ).toBeInTheDocument();
-      expect(puts).toHaveLength(0);
+      // 되돌리기는 없다 — 이미 지웠고, 서버에 복원 API가 없다.
+      expect(screen.queryByRole("button", { name: /실행취소/ })).toBeNull();
+      expect(screen.queryByText("센소지")).toBeNull();
     });
 
-    it("보관함으로 내려도 장소·메모·알림은 그대로다 — 되돌려 놓을 때 필요하다", async () => {
+    it("삭제가 실패하면 일정이 돌아오고 알려 준다", async () => {
+      mockBoard({ byDate: { "2026-10-24": [activity()] } });
+      server.use(
+        http.delete(`${API_BASE}/travel/activities/:id`, () =>
+          HttpResponse.error(),
+        ),
+      );
+
+      renderBoard();
+      await screen.findByText("센소지");
+      await userEvent.click(screen.getByLabelText("센소지 삭제"));
+
+      expect(await screen.findByText("삭제하지 못했어요.")).toBeInTheDocument();
+      // 지운 줄 알고 넘어가면 서버와 어긋난다. 화면이 다시 서버와 같아진다.
+      expect(await screen.findByText("센소지")).toBeInTheDocument();
+    });
+
+    it("보관함으로 옮기면 곧바로 요청이 나가고, 장소·메모·알림은 그대로 싣는다", async () => {
       // 보관함행은 `activityDate`만 null로 바꾸는 수정인데, `PUT`이 전체 교체라
       // 나머지를 안 보내면 담아 둔 장소까지 함께 지워졌다(#1197).
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-      mockBoard({
-        byDate: {
-          "2026-10-24": [
-            activity({
-              place: {
-                id: 42,
-                name: "센소지 본당",
-                address: "다이토구",
-                lat: 35.7148,
-                lng: 139.7967,
-                cityName: "도쿄",
-                adminArea: null,
-                cityPlaceRef: "ChIJ_tokyo",
-              },
-              memo: "가미나리몬 앞",
-              notifyEnabled: true,
-              notifyMinutes: 20,
-            }),
-          ],
-        },
-      });
-      const { puts } = captureWrites();
+      const byDate = {
+        "2026-10-24": [
+          activity({
+            place: {
+              id: 42,
+              name: "센소지 본당",
+              address: "다이토구",
+              lat: 35.7148,
+              lng: 139.7967,
+              cityName: "도쿄",
+              adminArea: null,
+              cityPlaceRef: "ChIJ_tokyo",
+            },
+            memo: "가미나리몬 앞",
+            notifyEnabled: true,
+            notifyMinutes: 20,
+          }),
+        ],
+      };
+      mockBoard({ byDate });
+      const { puts, respond } = serverLike(byDate, "2026-10-24");
 
       renderBoard();
       await screen.findByText("센소지");
       await userEvent.click(screen.getByLabelText("센소지 보관함으로"));
-      await screen.findByRole("button", { name: /실행취소/ });
-
-      await act(async () => {
-        vi.advanceTimersByTime(5000);
-      });
 
       await waitFor(() => expect(puts).toHaveLength(1));
+      expect(screen.queryByLabelText("센소지 보관함으로")).toBeNull();
       expect(puts[0]).toMatchObject({
         activityDate: null,
         placeId: 42,
@@ -1287,103 +1319,12 @@ describe("TripBoardPage", () => {
         notifyEnabled: true,
         notifyMinutes: 20,
       });
-      vi.useRealTimers();
-    });
 
-    it("실행취소를 누르면 요청이 아예 나가지 않고 일정이 돌아온다", async () => {
-      mockBoard({ byDate: { "2026-10-24": [activity()] } });
-      const { puts, deletes } = captureWrites();
-
-      renderBoard();
-      await screen.findByText("센소지");
-      await userEvent.click(screen.getByLabelText("센소지 삭제"));
-      await waitFor(() => {
-        expect(screen.queryByLabelText("센소지 삭제")).toBeNull();
-      });
-
-      await userEvent.click(
-        await screen.findByRole("button", { name: /실행취소/ }),
-      );
-
-      expect(await screen.findByText("센소지")).toBeInTheDocument();
-      expect(deletes).toHaveLength(0);
-      expect(puts).toHaveLength(0);
-    });
-
-    it("5초가 지나면 삭제 요청이 실제로 나간다", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-      mockBoard({ byDate: { "2026-10-24": [activity()] } });
-      const { deletes } = captureWrites();
-
-      renderBoard();
-      await screen.findByText("센소지");
-      await userEvent.click(screen.getByLabelText("센소지 삭제"));
-      await screen.findByRole("button", { name: /실행취소/ });
-
-      await act(async () => {
-        vi.advanceTimersByTime(5000);
-      });
-
-      await waitFor(() => expect(deletes).toEqual(["1"]));
-      vi.useRealTimers();
-    });
-
-    it("보류가 풀린 뒤 요청이 실패하면 알려 주고 목록을 되돌린다", async () => {
-      mockBoard({ byDate: { "2026-10-24": [activity()] } });
-      server.use(
-        http.delete(`${API_BASE}/travel/activities/:id`, () =>
-          HttpResponse.error(),
-        ),
-      );
-
-      // 스낵바 타이머가 등록되기 전에 가짜 시계를 켜야 앞당길 수 있다.
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-      renderBoard();
-      await screen.findByText("센소지");
-      await userEvent.click(screen.getByLabelText("센소지 삭제"));
-      await screen.findByRole("button", { name: /실행취소/ });
-
-      await act(async () => {
-        vi.advanceTimersByTime(5000);
-      });
-
-      // 화면에서는 이미 지운 뒤라, 실패를 알리지 않으면 서버와 어긋난 채로 남는다.
+      respond();
       expect(
-        await screen.findByText("변경을 저장하지 못했어요."),
+        await screen.findByText('"센소지"을(를) 보관함으로 옮겼어요.'),
       ).toBeInTheDocument();
-      vi.useRealTimers();
-    });
-
-    it("보드를 떠나도 보류가 유지된다 — 되돌릴 기회가 사라지면 안 된다", async () => {
-      mockBoard({ byDate: { "2026-10-24": [activity()] } });
-      const { deletes } = captureWrites();
-
-      const { unmount } = renderBoard();
-      await screen.findByText("센소지");
-      await userEvent.click(screen.getByLabelText("센소지 삭제"));
-      await screen.findByRole("button", { name: /실행취소/ });
-
-      // 일정 상세 등 다른 화면으로 옮겨 가는 상황. 타이머는 스낵바가 들고 있다.
-      unmount();
-
-      expect(deletes).toHaveLength(0);
-      expect(usePendingActions.getState().pendingIds).toEqual([1]);
-    });
-
-    it("탭을 닫으면 보류 중인 요청을 즉시 보낸다", async () => {
-      mockBoard({ byDate: { "2026-10-24": [activity()] } });
-      const { deletes } = captureWrites();
-
-      renderBoard();
-      await screen.findByText("센소지");
-      await userEvent.click(screen.getByLabelText("센소지 삭제"));
-      await screen.findByRole("button", { name: /실행취소/ });
-      expect(deletes).toHaveLength(0);
-
-      // 그냥 사라지면 사용자는 지웠다고 믿는데 서버에는 남는다.
-      window.dispatchEvent(new Event("pagehide"));
-
-      await waitFor(() => expect(deletes).toEqual(["1"]));
+      expect(screen.queryByRole("button", { name: /실행취소/ })).toBeNull();
     });
   });
 
