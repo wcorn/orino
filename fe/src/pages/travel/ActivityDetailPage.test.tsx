@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Providers } from "@/app/providers";
 import { AppRouter } from "@/app/router";
 import { useAuthStore } from "@/features/auth/store/authStore";
-import { usePendingActions } from "@/features/travel/board/pendingActions";
 import { useToastStore } from "@/shared/lib/toast";
 import { server } from "@/test/mocks/server";
 import { renderWithRouter } from "@/test/render";
@@ -91,7 +90,6 @@ describe("ActivityDetailPage", () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: "valid-token" });
     useToastStore.setState({ toasts: [] });
-    usePendingActions.setState({ pendingIds: [], commits: new Map() });
   });
 
   it("계획과 알림 영역을 보여준다 — 기록은 4단계다", async () => {
@@ -399,12 +397,12 @@ describe("ActivityDetailPage", () => {
   });
 
   describe("삭제", () => {
-    it("보드로 돌아간 뒤에도 실행취소할 수 있다", async () => {
+    it("누르면 곧바로 지우고 보드로 돌아간다 — 5초를 기다리지 않는다", async () => {
       mockDetail();
-      let deleted = false;
+      const deleted: string[] = [];
       server.use(
-        http.delete(`${API_BASE}/travel/activities/:id`, () => {
-          deleted = true;
+        http.delete(`${API_BASE}/travel/activities/:id`, ({ params }) => {
+          deleted.push(String(params.id));
           return HttpResponse.json({ code: "OK", data: null });
         }),
       );
@@ -415,22 +413,25 @@ describe("ActivityDetailPage", () => {
 
       await userEvent.click(screen.getByLabelText("일정 삭제"));
 
-      // 보드로 이동했는데도 되돌릴 기회가 남아 있다 — 보류함이 화면 밖에 있기 때문이다.
       await waitFor(() => {
         expect(screen.getByRole("tab", { name: /10\.24/ })).toBeInTheDocument();
       });
+      // 예전에는 실행취소를 위해 5초 보류했다(#1432). 이제 요청이 바로 나간다.
+      await waitFor(() => expect(deleted).toEqual(["1"]));
+      // 화면은 이미 보드다 — 상세가 내려간 뒤에도 결과를 알려 준다.
       expect(
-        await screen.findByRole("button", { name: /실행취소/ }),
+        await screen.findByText('"센소지"을(를) 삭제했어요.'),
       ).toBeInTheDocument();
-      expect(deleted).toBe(false);
-
-      await userEvent.click(screen.getByRole("button", { name: /실행취소/ }));
-      expect(deleted).toBe(false);
-      expect(usePendingActions.getState().pendingIds).toEqual([]);
+      expect(screen.queryByRole("button", { name: /실행취소/ })).toBeNull();
     });
 
-    it("되돌리지 않으면 보류함에 남아 있다가 나간다", async () => {
+    it("실패하면 보드로 돌아간 뒤에도 알려 준다", async () => {
       mockDetail();
+      server.use(
+        http.delete(`${API_BASE}/travel/activities/:id`, () =>
+          HttpResponse.error(),
+        ),
+      );
       renderDetail();
       await waitFor(() => {
         expect(screen.getByLabelText("제목")).toHaveValue("센소지");
@@ -438,9 +439,7 @@ describe("ActivityDetailPage", () => {
 
       await userEvent.click(screen.getByLabelText("일정 삭제"));
 
-      await waitFor(() => {
-        expect(usePendingActions.getState().pendingIds).toEqual([1]);
-      });
+      expect(await screen.findByText("삭제하지 못했어요.")).toBeInTheDocument();
     });
   });
 

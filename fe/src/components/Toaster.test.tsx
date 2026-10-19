@@ -42,13 +42,12 @@ describe("Toaster", () => {
     expect(undo.textContent).toMatch(/실행취소\s*[45]/);
   });
 
-  it("실행취소를 누르면 onUndo가 실행되고 onCommit은 실행되지 않는다", async () => {
+  it("실행취소를 누르면 onUndo가 실행되고 스낵바가 닫힌다", async () => {
     const onUndo = vi.fn();
-    const onCommit = vi.fn();
     render(<Toaster />);
 
     act(() => {
-      toastUndo("일정을 삭제했어요", { onUndo, onCommit });
+      toastUndo("지웠어요", { onUndo });
     });
 
     await userEvent.click(
@@ -56,45 +55,43 @@ describe("Toaster", () => {
     );
 
     expect(onUndo).toHaveBeenCalledTimes(1);
-    expect(onCommit).not.toHaveBeenCalled();
     await waitFor(() => {
-      expect(screen.queryByText("일정을 삭제했어요")).toBeNull();
+      expect(screen.queryByText("지웠어요")).toBeNull();
     });
   });
 
-  it("그냥 두면 시간이 다 된 뒤 onCommit이 실행된다", async () => {
+  it("그냥 두면 시간이 다 된 뒤 닫히기만 한다 — 그때 실행되는 일은 없다", async () => {
+    // 닫힐 때 요청을 보내던 쓰임(5초 보류)은 없앴다(#1432).
     vi.useFakeTimers();
     const onUndo = vi.fn();
-    const onCommit = vi.fn();
     render(<Toaster />);
 
     act(() => {
-      toastUndo("일정을 삭제했어요", { onUndo, onCommit, durationMs: 5000 });
+      toastUndo("지웠어요", { onUndo, durationMs: 5000 });
     });
-    expect(screen.getByText("일정을 삭제했어요")).toBeInTheDocument();
+    expect(screen.getByText("지웠어요")).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(5000);
     });
 
-    expect(onCommit).toHaveBeenCalledTimes(1);
     expect(onUndo).not.toHaveBeenCalled();
-    expect(screen.queryByText("일정을 삭제했어요")).toBeNull();
+    expect(screen.queryByText("지웠어요")).toBeNull();
   });
 
-  it("닫기 버튼으로 닫으면 onCommit이 실행되지 않는다", async () => {
-    const onCommit = vi.fn();
+  it("닫기 버튼으로 닫으면 onUndo가 실행되지 않는다", async () => {
+    const onUndo = vi.fn();
     render(<Toaster />);
 
     act(() => {
-      toastUndo("일정을 삭제했어요", { onUndo: () => {}, onCommit });
+      toastUndo("지웠어요", { onUndo });
     });
 
     await userEvent.click(
       await screen.findByRole("button", { name: "알림 닫기" }),
     );
 
-    expect(onCommit).not.toHaveBeenCalled();
+    expect(onUndo).not.toHaveBeenCalled();
   });
 
   it("액션 없는 알림은 카운트다운을 그리지 않는다", async () => {

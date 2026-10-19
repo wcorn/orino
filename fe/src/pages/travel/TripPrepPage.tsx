@@ -24,7 +24,6 @@ import type {
 import { isTripNotFound } from "@/features/travel/api/travel";
 import { DragModeBar } from "@/features/travel/board/DragModeBar";
 import { OfflineBanner } from "@/features/travel/board/OfflineBanner";
-import { usePendingPrepActions } from "@/features/travel/board/pendingActions";
 import {
   useCreatePrepItem,
   useDeletePrepItem,
@@ -38,8 +37,8 @@ import { PrepAddBar } from "@/features/travel/prep/PrepAddBar";
 import { PrepCategoryCard } from "@/features/travel/prep/PrepCategoryCard";
 import { PrepItemSheet } from "@/features/travel/prep/PrepItemSheet";
 import { moveSection, moveTo } from "@/features/travel/prep/reorder";
-import { usePrepUndo } from "@/features/travel/prep/usePrepUndo";
 import { TripBreadcrumb } from "@/features/travel/trip/TripBreadcrumb";
+import { toast } from "@/shared/lib/toast";
 import { useOnline } from "@/shared/lib/useOnline";
 import { usePointerFine } from "@/shared/lib/usePointerFine";
 
@@ -85,8 +84,6 @@ export function TripPrepPage() {
   const updateItem = useUpdatePrepItem(tripId);
   const deleteItem = useDeletePrepItem(tripId);
   const reorder = useReorderPrep(tripId);
-  const undoable = usePrepUndo(tripId);
-  const pendingIds = usePendingPrepActions((state) => state.pendingIds);
 
   /*
     모드 안에서만(또는 손잡이에서만) 정렬이 켜지므로 지연을 두지 않는다 — 이미 「옮기려는
@@ -239,27 +236,15 @@ export function TripPrepPage() {
   };
 
   const remove = (item: PrepItemView) => {
-    undoable({
-      itemId: item.id,
-      message: `「${item.title}」을(를) 지웠어요`,
-      run: () => deleteItem.mutateAsync(item.id),
+    // 누르는 즉시 지운다(#1432). 항목은 훅이 목록에서 먼저 빼고, 실패하면 되돌려 놓는다.
+    deleteItem.mutate(item.id, {
+      onSuccess: () => toast(`「${item.title}」을(를) 지웠어요`, "success"),
+      onError: () => toast("지우지 못했어요.", "error"),
     });
     setEditing(null);
   };
 
-  /**
-   * 실행취소를 기다리는 동안에는 이미 사라진 것처럼 보여야 한다(낙관적 반영).
-   *
-   * <p>다만 <b>집계는 손대지 않는다.</b> 5초 뒤 요청이 나가면 서버가 다시 세어 주고, 그
-   * 사이 화면이 스스로 −1 하면 되돌렸을 때 되돌려 놓을 값을 또 기억해야 한다.
-   */
-  const groups = data.groups.map((group) => ({
-    ...group,
-    sections: group.sections.map((section) => ({
-      ...section,
-      items: section.items.filter((item) => !pendingIds.includes(item.id)),
-    })),
-  }));
+  const groups = data.groups;
 
   /*
     분류마다 지금 있는 묶음 이름. 화면이 따로 들지 않고 목록에서 그때그때 뽑는다 —
