@@ -4,6 +4,7 @@ import {
   type ReactNode,
   useContext,
   useEffect,
+  useLayoutEffect,
   useState,
 } from "react";
 import { useLocation } from "react-router-dom";
@@ -78,8 +79,13 @@ function AuthProvider({ children }: { children: ReactNode }) {
    *
    * <p><b>{@code online} 이벤트만 믿지 않는다.</b> 폰에서 앱을 접어 뒀다 다시 여는 사이에
    * 네트워크가 돌아오면 그 이벤트를 못 받는다 — 화면에 돌아올 때도 한 번 확인한다.
+   *
+   * <p><b>`useLayoutEffect`다(#1423).</b> `useEffect`는 「오프라인 세션」을 그린 커밋보다 늦게,
+   * 다음 작업으로 미뤄져 돌 때가 있다. 그 틈에 `online`이 오면 받을 리스너가 없어 다시 묻지
+   * 않고, 그 뒤로 아무도 묻지 않아 오프라인 세션에 굳는다. 레이아웃 이펙트는 같은 커밋 안에서
+   * 돌아 그 틈이 없다.
    */
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!offlineSession) return;
     const retry = () => refresh();
     const onVisible = () => {
