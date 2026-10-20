@@ -135,6 +135,36 @@ describe("오프라인 세션", () => {
     await waitFor(() => expect(screen.getByText("미인증")).toBeInTheDocument());
   });
 
+  it("「오프라인 세션」이 그려지자마자 online이 와도 놓치지 않는다(#1423)", async () => {
+    // 그린 커밋 직후, 이펙트가 돌기 전의 틈을 일부러 노린다. DOM이 바뀐 바로 그 순간
+    // (MutationObserver)에 online을 쏜다. 리스너를 useEffect로 붙이던 때는 이 틈에 리스너가
+    // 아직 없어 다시 묻지 않았고, 오프라인 세션에 굳었다 — CI에서 가끔 깨지던 원인이다.
+    markSession();
+    mockUnreachable();
+    const observer = new MutationObserver(() => {
+      if (document.body.textContent?.includes("오프라인 세션")) {
+        observer.disconnect();
+        server.use(
+          http.post(`${API_BASE}/auth/reissue`, () =>
+            HttpResponse.json({ code: "OK", data: { accessToken: "fresh" } }),
+          ),
+        );
+        window.dispatchEvent(new Event("online"));
+      }
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    renderApp();
+
+    await waitFor(() => expect(screen.getByText("인증됨")).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("오프라인 세션")).toBeNull());
+    observer.disconnect();
+  });
+
   it("돌아온 뒤 재발급에 성공하면 정상 세션이 된다", async () => {
     markSession();
     mockUnreachable();
