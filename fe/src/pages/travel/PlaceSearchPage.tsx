@@ -116,11 +116,25 @@ export function PlaceSearchPage() {
     enabled: replaceId !== null,
   });
   const updateActivity = useUpdateActivity(tripId);
-  /** 교체 모드면 떠나온 일정 상세로 돌아간다. */
+  /**
+   * 그 날짜의 보드 탭(#1434). 보관함(null)이면 보관함 탭이다.
+   *
+   * <p>날짜 없이 `/board`로 보내면 보드는 서버 기본값(오늘 또는 1일차)을 연다 — 3일차에 담고
+   * 돌아갔는데 1일차가 열려, 방금 담은 일정이 어디 갔는지 보이지 않았다.
+   */
+  const boardPathOn = (date: string | null) => {
+    const base = `/travel/trips/${tripId}/board`;
+    if (date === null) return `${base}?day=archive`;
+    const index = board?.days.findIndex((day) => day.date === date) ?? -1;
+    return index >= 0 ? `${base}?day=${index}` : base;
+  };
+  /** 보드에서 왔으면 보던 날짜로, 교체 모드면 떠나온 일정 상세로 돌아간다. */
   const backPath =
-    replaceId === null
-      ? `/travel/trips/${tripId}/board`
-      : `/travel/activities/${replaceId}`;
+    replaceId !== null
+      ? `/travel/activities/${replaceId}`
+      : viewingDate !== null
+        ? boardPathOn(viewingDate)
+        : `/travel/trips/${tripId}/board`;
   // 교체할 일정을 아직 못 읽었으면 고를 수 없다 — 나머지 필드를 되돌려 보낼 값이 없다.
   const pending =
     createActivity.isPending ||
@@ -172,6 +186,9 @@ export function PlaceSearchPage() {
           const where = date === null ? "보관함" : formatDateWithWeekday(date);
           toast(`${where}에 담았어요`, "success");
           setTarget(null);
+          // 담은 날짜의 탭으로 돌아간다(#1434). 검색 화면을 기록에서 바꿔 끼워, 보드에서
+          // 뒤로 가기를 눌렀을 때 방금 끝낸 검색으로 다시 들어오지 않게 한다.
+          navigate(boardPathOn(date), { replace: true });
         },
         onError: () =>
           toast("담지 못했어요. 잠시 후 다시 시도해 주세요", "error"),
